@@ -5,7 +5,10 @@ open Xunit
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
+open Berreman.Media
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -98,6 +101,26 @@ module ItemEvaluationTests =
         Assert.Equal<Result<BoundOpticalElement, ItemEvaluationError>>(expected, actual)
 
     let private at600 : WaveLength = WaveLength.nm 600.0<nm>
+
+    /// The sample bound at the values over the store, evaluated at the orientation and λ (spec 0050 S8.1).
+    let private stackSampleMuellerAt
+        (materials : MaterialProxy)
+        (values : ParameterValues)
+        (sample : Sample)
+        (orientation : ElementOrientation)
+        (w : WaveLength)
+        : Result<MuellerMatrix, ItemEvaluationError> =
+        BoundOpticalElement.ofStackSample materials values sample
+        |> Result.bind (fun bound -> bound.muellerAt orientation w)
+
+    /// The sample's materials resolved as the table's run resolves them (spec 0050 S8.1; 001 §N).
+    let private resolvedAsTheTable (materials : MaterialProxy) (sample : Sample) : Propagation.ResolvedSample =
+        match Propagation.resolveSampleMaterials materials sample with
+        | Ok resolved -> resolved
+        | Error error -> failwith (SampleMaterialErr error).describe
+
+    let private assertSample (expected : Result<Sample, ItemEvaluationError>) (actual : Result<Sample, ItemEvaluationError>) : unit =
+        Assert.Equal<Result<Sample, ItemEvaluationError>>(expected, actual)
 
     let private sampledRotations : Angle list = [ 0.0<deg>; 30.0<deg>; 135.0<deg> ] |> List.map Angle.degree
 
@@ -213,6 +236,7 @@ module ItemEvaluationTests =
     [<Fact>]
     let ``every evaluation error renders its condition and its payload`` () : unit =
         let polarizerReason = "'Ideal polarizer (preset binding)' (d47e5ce3-3e74-5058-848e-3aa54930e377) is an ideal polarizer"
+        let unknownGlass = MaterialError.unknownMaterialVersion (MaterialVersionId.firstOf MaterialIds.glass152)
         let cases : (ItemEvaluationError * string) list =
             [
                 MissingParameterValueErr "ellipticity", "the values hold no number for the parameter: ellipticity"
@@ -221,13 +245,18 @@ module ItemEvaluationTests =
                 NotALightSourceErr polarizerReason, $"the model is not a light source: {polarizerReason}"
                 UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits",
                 "the element has no such branch: the reflected branch of a polarizer preset, which only transmits"
+                SampleMaterialErr unknownGlass,
+                "the sample's materials do not resolve: unknown material version '55750ee2-358c-40d4-ab6c-06fc144adbf8' v1"
+                // Any material error's reason is the payload, not only an unknown version's.
+                SampleMaterialErr (MaterialStoreUnavailableErr "the material store is closed"),
+                "the sample's materials do not resolve: the material store is closed"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(4, descriptions |> List.distinct |> List.length)
+        Assert.Equal(6, descriptions |> List.distinct |> List.length)
 
     [<Fact>]
     let ``the default source is unpolarized light at unit scale`` () : unit =
@@ -517,3 +546,105 @@ module ItemEvaluationTests =
             Error (MissingParameterValueErr "retardance"),
             unchecked.muellerAt (ElementOrientation.transmittingAt Angle.zero) at600
         )
+
+    [<Fact>]
+    let ``a stack sample at its own thicknesses is solved as the table solves it`` () : unit =
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let spin = Angle.degree 20.0<deg>
+        let incidence = IncidenceAngle.create (Angle.degree 30.0<deg>)
+
+        for id in [ SampleIds.glassPlate1mmId; SampleIds.glassFilm200Id ] do
+            let sample = BuiltinCatalogue.sample id
+            let defaults = ParameterValues.defaultsOf sample.parameterAxes
+            let resolved = resolvedAsTheTable materials sample
+
+            // At its own thicknesses the sample is unchanged.
+            assertSample (Ok sample) (sample.withThicknessValues defaults)
+
+            for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+                let orientation : ElementOrientation = { rotation = spin; incidence = incidence; branch = branch }
+                assertMuellerExact
+                    (Propagation.sampleMuellerSpun branch resolved at600 incidence spin)
+                    (stackSampleMuellerAt materials defaults sample orientation at600)
+
+    [<Fact>]
+    let ``a stack sample's thickness parameters change the layers they name`` () : unit =
+        let layerOf (material : MaterialId) (thickness : Thickness) : SampleLayer =
+            { materialId = MaterialVersionId.firstOf material; thickness = thickness; orientation = PrimaryAxes }
+        let film = layerOf MaterialIds.glass175 (Thickness.nm 5.0<nm>)
+        let cellFirst = layerOf MaterialIds.glass152 (Thickness.nm 10.0<nm>)
+        let cellSecond = layerOf MaterialIds.glass200 (Thickness.nm 20.0<nm>)
+        let plate = layerOf MaterialIds.glass150 (Thickness.mm 1.0<mm>)
+
+        // A 5 nm film, a 10 nm / 20 nm cell over three periods and a 1 mm plate, each layer of its own material.
+        let structureOf (single : SampleLayer) (secondInCell : SampleLayer) (substrate : SampleLayer) : SampleStructure =
+            {
+                films = [ SingleLayer single; Repeated { cell = [ cellFirst; secondInCell ]; count = PeriodCount 3 } ]
+                substrate = Some substrate
+                lower = None
+            }
+
+        let stacked = { BuiltinCatalogue.sample SampleIds.glassFilm600Id with structure = structureOf film cellSecond plate }
+        let defaults = ParameterValues.defaultsOf stacked.parameterAxes
+        let film1 = ParameterName "film1.thickness"
+        let changed =
+            ((defaults.withValue film1 (ParameterValue 6.0e-9)).withValue (ParameterName "film2.layer2.thickness") (ParameterValue 2.5e-8)).withValue
+                (ParameterName "substrate.thickness")
+                (ParameterValue 2.0e-3)
+        let sixNm = Thickness 6.0e-9<meter>
+        let twentyFiveNm = Thickness 2.5e-8<meter>
+        let twoMm = Thickness 2.0e-3<meter>
+        let expected =
+            { stacked with
+                structure = structureOf { film with thickness = sixNm } { cellSecond with thickness = twentyFiveNm } { plate with thickness = twoMm } }
+
+        let actual = stacked.withThicknessValues changed
+        assertSample (Ok expected) actual
+
+        // The cell is stored once, so its second layer is 25 nm in every period.
+        match actual with
+        | Ok held ->
+            let ten = cellFirst.thickness
+            Assert.Equal<Thickness list>(
+                [ sixNm; ten; twentyFiveNm; ten; twentyFiveNm; ten; twentyFiveNm ],
+                held.structure.expandedFilms |> List.map _.thickness
+            )
+        | Error error -> Assert.Fail error.describe
+
+        assertSample
+            (Error (ParameterOutOfRangeErr "film1.thickness = -1E-09 lies outside [0, ∞)"))
+            (stacked.withThicknessValues (defaults.withValue film1 (ParameterValue -1.0e-9)))
+
+        // A bound thickness reaches the solve: the 200 nm film at 300 nm is solved as a 300 nm film.
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let glassFilm200 = BuiltinCatalogue.sample SampleIds.glassFilm200Id
+        let glassDefaults = ParameterValues.defaultsOf glassFilm200.parameterAxes
+        let normal = ElementOrientation.transmittingAt Angle.zero
+        let film300 =
+            match glassFilm200.structure.films with
+            | [ SingleLayer layer ] ->
+                { glassFilm200 with
+                    structure = { glassFilm200.structure with films = [ SingleLayer { layer with thickness = Thickness.nm 300.0<nm> } ] } }
+            | _ -> failwith "the Built-in 200 nm glass film is one single film"
+        let at300 = stackSampleMuellerAt materials (glassDefaults.withValue film1 (ParameterValue 3.0e-7)) glassFilm200 normal at600
+
+        assertMuellerWithin
+            (Propagation.sampleMuellerSpun Propagation.BranchTransmitted (resolvedAsTheTable materials film300) at600 IncidenceAngle.normal Angle.zero)
+            at300
+
+        let at200 = matrixOf (stackSampleMuellerAt materials glassDefaults glassFilm200 normal at600)
+        let m00At300 = (matrixOf at300).element 0 0
+        Assert.True(abs (m00At300 - at200.element 0 0) > 1.0e-6, $"m00 at 300 nm ({m00At300:R}) equals m00 at 200 nm")
+
+    [<Fact>]
+    let ``a sample whose material does not resolve answers SampleMaterialErr`` () : unit =
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+        let emptyStore = MaterialProxy.createInMemory (fun _ -> [])
+
+        // The plate has no film, so its substrate plate is the first layer the store is asked for.
+        match plate.structure.substrate with
+        | Some substrate ->
+            assertBound
+                (Error (SampleMaterialErr (MaterialError.unknownMaterialVersion substrate.materialId)))
+                (BoundOpticalElement.ofStackSample emptyStore (ParameterValues.defaultsOf plate.parameterAxes) plate)
+        | None -> Assert.Fail "the Built-in 1 mm glass plate carries a substrate plate"

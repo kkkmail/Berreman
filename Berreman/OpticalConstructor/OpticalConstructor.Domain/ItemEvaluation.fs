@@ -5,6 +5,9 @@ open System.Globalization
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
+open Berreman.Media
+open Berreman.Constants
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -14,13 +17,14 @@ open OpticalConstructor.Domain.ExperimentRun
 module ItemEvaluation =
 
     /// Why an evaluation refused: the values hold no number for a parameter the model publishes, a number lies outside
-    /// its kind's range, a model that is no light source was asked to emit, or an element was asked for a branch it
-    /// does not have (spec 0050 S8.1).
+    /// its kind's range, a model that is no light source was asked to emit, an element was asked for a branch it
+    /// does not have, or a sample's materials do not resolve in the store (spec 0050 S8.1).
     type ItemEvaluationError =
         | MissingParameterValueErr of reason : string
         | ParameterOutOfRangeErr of reason : string
         | NotALightSourceErr of reason : string
         | UnmodelledBranchErr of reason : string
+        | SampleMaterialErr of error : MaterialError
 
         member this.describe : string =
             match this with
@@ -28,6 +32,24 @@ module ItemEvaluation =
             | ParameterOutOfRangeErr reason -> $"the parameter value is outside its range: {reason}"
             | NotALightSourceErr reason -> $"the model is not a light source: {reason}"
             | UnmodelledBranchErr reason -> $"the element has no such branch: {reason}"
+            | SampleMaterialErr error ->
+                let reason =
+                    match error with
+                    | UnknownMaterialIdErr reason
+                    | DuplicateMaterialIdErr reason
+                    | MaterialStillReferencedErr reason
+                    | InvalidMaterialErr reason
+                    | MaterialVersionPinnedErr reason
+                    | MaterialStoreUnavailableErr reason -> reason
+
+                $"the sample's materials do not resolve: {reason}"
+
+    /// Every result in order, or the first error: a black box's elements, a compound's components, a sample's layers
+    /// (spec 0050 S8.1).
+    let private sequenced (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
+        results
+        |> List.fold (fun held result -> held |> Result.bind (fun read -> result |> Result.map (fun item -> item :: read))) (Ok [])
+        |> Result.map List.rev
 
     /// The numbers an evaluation reads, by the name a model publishes, each in its kind's unit (spec 0050 S8.1; 001 §I).
     type ParameterValues =
@@ -101,6 +123,12 @@ module ItemEvaluation =
             let (ParameterValue radians) = this
             Angle radians
 
+        /// The number read as metres, a `ThicknessParameter`'s unit; `Thickness.parameterValueOpt` is the other way
+        /// (spec 0050 S8.1).
+        member this.thickness : Thickness =
+            let (ParameterValue metres) = this
+            Thickness (metres * 1.0<meter>)
+
         /// The number as a retardance in radians at `w`: as given under `ConstantRetardance`, scaled by λ_ref / λ under
         /// `InverseWaveLengthRetardance λ_ref` (spec 0050 S8.1; step 208).
         member this.retardanceAt (dispersion : RetardanceDispersion) (w : WaveLength) : MuellerReconstruction.Retardance =
@@ -108,6 +136,44 @@ module ItemEvaluation =
             match dispersion with
             | ConstantRetardance -> MuellerReconstruction.Retardance radians
             | InverseWaveLengthRetardance reference -> MuellerReconstruction.Retardance (radians * (reference.value / w.value))
+
+    type Sample with
+
+        /// The sample with each finite layer's thickness read under the name `parameterAxes` publishes for it, a
+        /// repeated cell's once for every period; an infinite layer and every other field are kept (spec 0050 S8.1).
+        member this.withThicknessValues (values : ParameterValues) : Result<Sample, ItemEvaluationError> =
+            values.checkedFor this.parameterAxes
+            |> Result.bind (fun held ->
+                let layerAt (name : ParameterName) (layer : SampleLayer) : Result<SampleLayer, ItemEvaluationError> =
+                    match layer.thickness.parameterValueOpt with
+                    | Some _ -> held.valueOf name |> Result.map (fun value -> { layer with thickness = value.thickness })
+                    | None -> Ok layer
+
+                let films : Result<StackItem list, ItemEvaluationError> =
+                    this.structure.films
+                    |> List.mapi (fun i item ->
+                        let position = ParameterNameIndex (i + 1)
+                        match item with
+                        | SingleLayer layer -> layerAt (ParameterName.filmThickness position) layer |> Result.map SingleLayer
+                        | Repeated group ->
+                            group.cell
+                            |> List.mapi (fun j layer ->
+                                let cellLayer = ParameterNameIndex (j + 1)
+                                layerAt (ParameterName.repeatedLayerThickness position cellLayer) layer)
+                            |> sequenced
+                            |> Result.map (fun cell -> Repeated { group with cell = cell }))
+                    |> sequenced
+
+                let substrate : Result<SampleLayer option, ItemEvaluationError> =
+                    match this.structure.substrate with
+                    | Some layer -> layerAt ParameterName.substrateThickness layer |> Result.map Some
+                    | None -> Ok None
+
+                films
+                |> Result.bind (fun heldFilms ->
+                    substrate
+                    |> Result.map (fun heldSubstrate ->
+                        { this with structure = { this.structure with films = heldFilms; substrate = heldSubstrate } })))
 
     type SourceEmission with
 
@@ -175,29 +241,45 @@ module ItemEvaluation =
         static member transmittingAt (rotation : Angle) : ElementOrientation =
             { rotation = rotation; incidence = IncidenceAngle.normal; branch = Propagation.BranchTransmitted }
 
+    /// A stack sample at its thicknesses, its materials resolved once for every solve. It holds their dispersion
+    /// functions, so it is equal only to itself and `BoundOpticalElement` keeps value equality (spec 0050 S8.1).
+    [<ReferenceEquality>]
+    type ResolvedStackSample =
+        {
+            resolved : Propagation.ResolvedSample
+        }
+
     /// What an element evaluates from, its parameters bound: a polarizer preset, which publishes no parameter, an
-    /// empty slot, the calibration reference, or an optical form with a value for each of its axes (spec 0050 S8.1;
-    /// 001 §I).
+    /// empty slot, the calibration reference, an optical form with a value for each of its axes, or a stack sample at
+    /// its thicknesses, its materials resolved (spec 0050 S8.1; 001 §I).
     type BoundOpticalElement =
         | BoundPolarizerPreset of PolarizerBehavior
         | BoundEmptySlot
         | BoundOpticalForm of form : OpticalForm * values : ParameterValues
+        | BoundStackSample of ResolvedStackSample
 
         /// The form bound once the values hold each of its axes in range (spec 0050 S8.1).
         static member ofOpticalForm (values : ParameterValues) (form : OpticalForm) : Result<BoundOpticalElement, ItemEvaluationError> =
             values.checkedFor form.parameterAxes |> Result.map (fun held -> BoundOpticalForm (form, held))
 
-        /// The element arm of the evaluator: a preset is its behaviour at the rotation, the matrix the run law takes, an
-        /// empty slot the identity, and a form its Stokes–Mueller matrix at the rotation and λ (spec 0050 S8.1; 001 §I,
-        /// §N). Each only transmits and ignores the incidence.
+        /// The sample at the values' thicknesses, its materials resolved once here so a sweep re-solves without
+        /// re-resolving, as the table's run does (spec 0050 S8.1; 001 §N).
+        static member ofStackSample
+            (materials : MaterialProxy)
+            (values : ParameterValues)
+            (sample : Sample)
+            : Result<BoundOpticalElement, ItemEvaluationError> =
+            sample.withThicknessValues values
+            |> Result.bind (fun thicknesses ->
+                Propagation.resolveSampleMaterials materials thicknesses
+                |> Result.mapError SampleMaterialErr
+                |> Result.map (fun resolved -> BoundStackSample { resolved = resolved }))
+
+        /// The element arm of the evaluator: a preset is its behaviour at the rotation, an empty slot the identity and a
+        /// form its Stokes–Mueller matrix, each only transmitting at any incidence; a stack sample is solved by Berreman
+        /// on either branch at the incidence, spun by the rotation (spec 0050 S8.1; 001 §I, §N).
         member this.muellerAt (orientation : ElementOrientation) (w : WaveLength) : Result<MuellerMatrix, ItemEvaluationError> =
             let rotation = orientation.rotation
-
-            // Every result in order, or the first error: a black box's elements, a compound's components.
-            let sequenced (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
-                results
-                |> List.fold (fun held result -> held |> Result.bind (fun read -> result |> Result.map (fun item -> item :: read))) (Ok [])
-                |> Result.map List.rev
 
             match this, orientation.branch with
             | BoundPolarizerPreset behavior, Propagation.BranchTransmitted -> Ok (Propagation.behaviorMueller behavior rotation)
@@ -273,6 +355,9 @@ module ItemEvaluation =
                         evaluated))
                 |> sequenced
                 |> Result.map (fun parts -> Propagation.rotateMueller rotation (Propagation.compoundMueller parts))
+            | BoundStackSample stack, Propagation.BranchTransmitted
+            | BoundStackSample stack, Propagation.BranchReflected ->
+                Ok (Propagation.sampleMuellerSpun orientation.branch stack.resolved w orientation.incidence rotation)
             | BoundPolarizerPreset _, Propagation.BranchReflected ->
                 Error (UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits")
             | BoundEmptySlot, Propagation.BranchReflected ->
