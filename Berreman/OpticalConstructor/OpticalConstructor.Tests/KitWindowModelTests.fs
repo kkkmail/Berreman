@@ -1174,3 +1174,90 @@ module KitWindowModelTests =
                     Assert.Equal<Map<FileName, FileByteContent>>(sourceBefore, folderBytes source.sourceFolder)
                     Assert.Empty(experimentFilesIn folder)
                 finally e1Chosen.closeCopySource () |> ignore))
+
+    [<Fact>]
+    let ``the flow strip's steps follow 001's order and a window opens on Setups`` () : unit =
+        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ], ConstructorFlowStep.all)
+        Assert.Equal<ControlCaption list>(
+            [ ControlCaption "Items"; ControlCaption "Setups"; ControlCaption "Experiments" ],
+            ConstructorFlowStep.all |> List.map _.caption)
+        let scene = initMain () |> kitValue
+        try
+            Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, scene.flowStep)
+            Assert.Equal<Ribbon.BayName>(BayNames.add, scene.ribbon)
+            let inverse = initInverseWithKit scene.library scene.experiments scene.materials scene.samples scene.categories scene.kit
+            Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, inverse.flowStep)
+            Assert.Equal<Ribbon.BayName>(BayNames.add, inverse.ribbon)
+        finally scene.kit.close () |> kitValue
+
+    [<Fact>]
+    let ``showing a flow step shows its surface, and the Experiments step is the Experiments bay`` () : unit =
+        let scene = initMain () |> kitValue
+        try
+            let experiments = scene |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    scene with
+                        flowStep = ExperimentsFlowStep
+                        ribbon = BayNames.experiments
+                },
+                experiments)
+            let items = experiments |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    experiments with flowStep = ItemsFlowStep
+                },
+                items)
+            let setups = items |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    items with
+                        flowStep = SetupsFlowStep
+                        ribbon = BayNames.add
+                },
+                setups)
+            let details =
+                scene
+                |> updateTableAndElementRotation (SelectBay BayNames.details)
+                |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
+            Assert.Equal<Ribbon.BayName>(BayNames.details, details.ribbon)
+            let detailsKept = details |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    details with flowStep = SetupsFlowStep
+                },
+                detailsKept)
+        finally scene.kit.close () |> kitValue
+
+    [<Fact>]
+    let ``choosing a ribbon bay keeps the flow strip on Setups or Experiments`` () : unit =
+        let scene = initMain () |> kitValue
+        try
+            let placed = scene |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
+            let model =
+                placed
+                |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
+                |> updateTableAndElementRotation ExpCommit
+                |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
+            Assert.Equal(1, List.length model.experimentCollection.experiments)
+            let experiments = model |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+            Assert.Equal<ConstructorFlowStep>(ExperimentsFlowStep, experiments.flowStep)
+            Assert.Equal<Ribbon.BayName>(BayNames.experiments, experiments.ribbon)
+            let rotation = experiments |> updateTableAndElementRotation (SelectBay BayNames.rotation)
+            Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, rotation.flowStep)
+            Assert.Equal<Ribbon.BayName>(BayNames.rotation, rotation.ribbon)
+            let rotationFromItems = model |> updateTableAndElementRotation (SelectBay BayNames.rotation)
+            Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, rotationFromItems.flowStep)
+            for answer in [ experiments; rotation; rotationFromItems ] do
+                Assert.Equal<KitContext>(model.kit, answer.kit)
+                Assert.Equal<TestElement list>(model.elements, answer.elements)
+                Assert.Equal<Experiments.ExperimentCollection>(model.experimentCollection, answer.experimentCollection)
+                Assert.Equal<TableAndElementRotationModel>(
+                    {
+                        model with
+                            ribbon = answer.ribbon
+                            flowStep = answer.flowStep
+                    },
+                    answer)
+        finally scene.kit.close () |> kitValue

@@ -347,6 +347,27 @@ type KitCopySource =
         | Ok () -> ()
         | Error error -> Softellect.Sys.Logging.Logger.logError $"KitCopySource.release: could not close the copy source: {error.describe}"
 
+/// The step of the constructor's flow strip the window shows, each reachable directly (spec 0050 S7.2, 001 §O). It is
+/// window state, never stored, so it carries no wire tag.
+type ConstructorFlowStep =
+    /// The kit's Items panel (spec 0050 S7.2).
+    | ItemsFlowStep
+    /// The table (spec 0050 S7.2).
+    | SetupsFlowStep
+    /// The existing Experiments bay (spec 0050 S7.2).
+    | ExperimentsFlowStep
+
+    /// The steps in 001 §O's order; S9.3, S11 and S14 insert Data, Unknowns, Plan, Fit, Results and Publish when each
+    /// works (spec 0050 S7.2, .spec-md §3.22).
+    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ]
+
+    /// The strip's caption of the step (spec 0050 S7.2).
+    member this.caption : ControlCaption =
+        match this with
+        | ItemsFlowStep -> ControlCaption "Items"
+        | SetupsFlowStep -> ControlCaption "Setups"
+        | ExperimentsFlowStep -> ControlCaption "Experiments"
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -454,6 +475,8 @@ type TableAndElementRotationModel =
         savedScenes : Scene.SceneName list
         /// The kit's items in label order, as the kit last read or wrote them (spec 0050 S6, S7.1).
         kitItems : Item list
+        /// The flow strip's step the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
+        flowStep : ConstructorFlowStep
         /// Measured-data attachments read through kit (spec 0050 S4.2/S4.3).
         experimentData : ExperimentData.ExperimentDataProxy
         /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
@@ -602,6 +625,8 @@ let initWith
         sceneName = ControlCaption ""
         savedScenes = []
         kitItems = []
+        // Spec 0050 S7.2: a window opens on the table and its Add bay, as before the strip.
+        flowStep = SetupsFlowStep
         experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
         experimentDataStatus = Map.empty
         elementMenu = None
@@ -811,6 +836,8 @@ type TableAndElementRotationMsg =
     | RenderSetLineOpacity of RendererControls.RendererOpacity
     /// Main-screen ribbon: show this Bay (large control) by name.
     | SelectBay of Ribbon.BayName
+    /// A press of a flow-strip step (spec 0050 S7.2).
+    | ShowFlowStep of ConstructorFlowStep
     /// Main-screen LIBRARY bay (task 024): bind this Library entry id to the selected element's
     /// `valueId` (inert when the table or nothing is selected).
     | BindValueId of ElementValueId
@@ -1883,7 +1910,16 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | RenderSetRailOpacity v -> { model with render = model.render.withRailOpacity v }
     | RenderSetFaceOpacity v -> { model with render = model.render.withFaceOpacity v }
     | RenderSetLineOpacity v -> { model with render = model.render.withLineOpacity v }
-    | SelectBay name -> { model with ribbon = name }
+    | SelectBay name ->
+        // Spec 0050 S7.2: the strip names the surface the ribbon shows.
+        let flowStep = if name = BayNames.experiments then ExperimentsFlowStep else SetupsFlowStep
+        { model with ribbon = name; flowStep = flowStep }
+    | ShowFlowStep ItemsFlowStep -> { model with flowStep = ItemsFlowStep }
+    | ShowFlowStep SetupsFlowStep ->
+        // Spec 0050 S7.2: Setups leaves the Experiments bay for the table's first bay; any other open bay stays.
+        let bay = if model.ribbon = BayNames.experiments then BayNames.add else model.ribbon
+        { model with flowStep = SetupsFlowStep; ribbon = bay }
+    | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
     | BindValueId entryId ->
         // Spec 0038 (017): the direct bind CONVERGES on the one targeted commit arm below —
         // resolve the selected element's serializable id and delegate to `BindValueIdTo`.
