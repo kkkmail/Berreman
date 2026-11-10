@@ -1,1 +1,1 @@
-pid=168608 exe=C:\Python314\python.exe argv=[C:\GitHub\AI-Strategy-Generator\arc-runner.py C:/GitHub/Berreman/specs/0050/.manifest --executability-profile 1 --operator-reply C:/GitHub/Berreman/specs/0050/.manual/016-step-0252-recommit-fixture.md] acquired_at=2026-11-10T13:57:46Z
+pid=88304 exe=C:\Python314\python.exe argv=[C:/GitHub/AI-Strategy-Generator/arc-runner.py C:/GitHub/Berreman/specs/0050/.manifest --executability-profile 1 --operator-reply C:/GitHub/AI-Strategy-Generator/specs/0090/.manual/036-content-only-pipeline-fingerprints.md] acquired_at=2026-11-10T14:56:20Z

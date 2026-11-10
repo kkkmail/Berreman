@@ -12,8 +12,13 @@ Spec 0050, section S8.1 ("The run law walks every object; the source is real"), 
 - S8.2's slots and S11.2's detector forward model come later.
 - **The approved recovery is committed** (`73c2b10`, `fae11f6`). Manual 016 authorized two repairs: the fixture
   repair and reuse of the ordered Result collector.
-- **This round is the normal profile-1 resume.**
-  - It makes no product edit.
+- **Attempt 02 was a tool false positive (BRM-0050 0252-02).**
+  - The profile-1 resume passed review and all 19 gates.
+  - ASG's tracked-tree fingerprint then moved, because it hashed git's CRLF warnings and an index refresh silenced
+    them.
+  - ASG spec 0090 manual 036 fixes it: the fingerprint hashes diff content only, and descriptors are written in LF.
+- **This round is the normal profile-1 resume after that repair.**
+  - It makes no product, test, gate or catalogue edit.
   - It confirms that the tree is byte-identical to the one the operator verified.
   - It leaves the 19 gates, and checkpoint 251, to the supervisor.
 
@@ -31,7 +36,22 @@ Spec 0050, section S8.1 ("The run law walks every object; the source is real"), 
 
 ## Tests
 
-Relaunch, 2026-11-10. No gate was run in this round (Invariant 6), and no product file changed.
+Relaunch after the ASG fingerprint repair, 2026-11-10. No gate was run in this round (Invariant 6), and no product
+file changed.
+- **What was compared:** the tree check, re-run against the operator-verified hashes
+  (`.artifacts/0252-relaunch-03/tree-check.json`).
+- **Result:** 1014 product files checked; none differs, none is missing, and no F# source or project file is
+  unverified.
+- **HEAD and working tree:** HEAD `61deb4a` changes only `specs/0050/` after `fae11f6`. The working tree has no
+  change and no untracked file outside `specs/`.
+- **What the supervisor measured on this exact tree (attempt 02):**
+  - all 19 gates passed;
+  - build 75.3 s, elevation 207.1 s, constructor-unit-tests 69.2 s (1401), ui-smoke 195.6 s (245) and selected
+    ui-tests 103.4 s (85);
+  - all fourteen invariants passed;
+  - every run was within its effective deadline.
+
+Earlier relaunch, 2026-11-10. No gate was run in that round (Invariant 6), and no product file changed.
 - **What was compared:** 1014 product files under `Berreman/`, `MathNetNumerics/` and `Elevation/`, plus the root
   build files, against the operator-verified hashes (`.artifacts/0252-relaunch/tree-check.json`).
 - **Result:** no file differs, none is missing, and every F# source and project file is in the verified set.
@@ -119,6 +139,9 @@ Nothing in this step's scope is deferred. The inherited fixture failure is repai
 
 ## Gotchas
 
+- **A stat-only index refresh is not a source change.** Boot-re-emitted descriptors can be stat-dirty with
+  identical content. Since ASG manual 036, the verify check hashes diff content alone. To keep git read-only, run
+  it with `GIT_OPTIONAL_LOCKS=0`; plain `git status` / `git diff` may refresh the index.
 - **Copied assignments must reference stored kit items.** The repaired fixture initially binds its sample and
   records all three physical items before recommitting. Preserve those items when step 0261 changes slot storage.
 - **`WaveLength` and `IncidenceAngle` are `Berreman.Fields` types,** not `Berreman.Geometry` types.
@@ -138,4 +161,9 @@ Nothing in this step's scope is deferred. The inherited fixture failure is repai
   - Initially blocked on the inherited `InverseConstructorTests` red; repaired and verified under manual 016.
 - 2026-11-10: step 0252 resumed normally on profile 1, with no product edit.
   - The tree was confirmed byte-identical to the operator-verified one.
+  - The gates and checkpoint 251 are left to the supervisor.
+- 2026-11-10: step 0252 resumed again after ASG's content-only fingerprint repair (manual 036), with no product
+  edit.
+  - Attempt 02's escalation was a tool false positive after all 19 gates passed.
+  - The tree was re-confirmed byte-identical to the verified one.
   - The gates and checkpoint 251 are left to the supervisor.

@@ -1,5 +1,43 @@
 # Step 0252 — impl log
 
+## Relaunch after the ASG fingerprint repair (BRM-0050 0252-02), 2026-11-10
+
+This round is the normal profile-1 resume that the operator's reply asks for, under ASG spec 0090 manual 036 with
+manual 016 still binding. It makes no product, test, gate or catalogue edit.
+
+1. Read the two system prompts, the project prompt, the slice, the operator note, manual 016, and
+   `0252-02.postmortem-md` with its review.
+   - **Why attempt 02 escalated:** all 19 gates passed, then the verify phase reported "a verification gate
+     unexpectedly changed tracked source".
+   - **The cause is in ASG:** its tree fingerprint hashed `git diff`'s stderr. The stderr carried CRLF warnings for
+     486 boot-re-emitted descriptors, and an index refresh silenced them. No product defect.
+2. Confirmed the committed implementation is unchanged:
+   - **HEAD is `61deb4a`.** The commits after `fae11f6` (`54e15e1`, `61deb4a`) touch only `specs/0050/`:
+     postmortem 0252-02 and its review, supervisor state, and this step's impl-log and SoW.
+   - **Working tree outside `specs/`:** no difference from HEAD and no untracked file. Inside `specs/0050/`, only
+     the supervisor's `.executability-json`, `.manifest.state.json` and `.supervisor-lock.diag` differ.
+   - **Tree hashes:** re-ran `.artifacts/0252-relaunch/tree_check.py` against the operator-verified hashes
+     (`.artifacts/0252-relaunch-03/tree-check.json`). 1014 product files checked: none differs, none is missing,
+     and no F# source or project file is outside the verified set.
+   - **Slice requirements, spot-checked by grep:**
+     - `RunStep` is `ElementStep` / `ObjectStep`. `SourceEmission.emittedInto` is present, and `detectorStokes` and
+       `read` take the emission.
+     - The five new or renamed `ExperimentRunTests` facts and the new `ExperimentControlsTests` fact are present.
+     - `chartForRun` calls `ItemEvaluation.sequenced` four times.
+     - `behaviorInputStokes`, `runInputStokes`, `PolarizerStep`, `SampleStep` and `inOrder` are absent from every
+       `.fs` file under `OpticalConstructor/`.
+3. **Pending descriptors are LF**, by `git ls-files --eol`
+   (`.artifacts/0252-relaunch-03/descriptor-eol.txt`).
+   - **Pending, 0252–0494:** all 486 are `w/lf`, and `0252.slice-md`'s blob equals HEAD's.
+   - **Completed, 0001–0251:** all 502 are `i/lf w/crlf` and clean. They are the frozen working copies, which boot
+     preserves unchanged.
+4. **Ran no gate** (Invariant 6). This tree is the one that passed all 19 gates under the supervisor in attempt 02:
+   - constructor 1401, ui-smoke 245, selected ui-tests 85;
+   - elevation and the fourteen invariants green.
+
+   The gate engine reruns them after this round and publishes checkpoint 251. No checkpoint, counter, receipt or
+   acceptance file was touched.
+
 ## Relaunch after manual 016, 2026-11-10
 
 This round is the normal profile-1 resume that manual 016 asks for. It makes no product edit.
@@ -203,6 +241,9 @@ Development runs (no gate verdict is claimed, Invariant 6). Logs are under `spec
 
 ## Artifacts
 
+- `specs/0050/.artifacts/0252-relaunch-03/tree-check.json`: this relaunch's re-run of the same comparison (1014
+  checked, 0 differing or missing)
+- `specs/0050/.artifacts/0252-relaunch-03/descriptor-eol.txt`: `git ls-files --eol` over the 988 slice descriptors
 - `specs/0050/.artifacts/0252-relaunch/tree_check.py`, `tree-check.json`: the relaunch's comparison of the tree
   with the operator-verified hashes
 - `specs/0050/.artifacts/0252-operator-repair/`: the operator's measured gate, census and whole-UI evidence
@@ -216,6 +257,16 @@ Development runs (no gate verdict is claimed, Invariant 6). Logs are under `spec
 
 ## Gotchas
 
+- **An early read-only git call in this round refreshed the index's stat cache.**
+  - **What happened:** before I set `GIT_OPTIONAL_LOCKS=0`, `git status` listed the 486 boot-re-emitted descriptors
+    as modified. Their content was identical to HEAD.
+  - **The likely cause:** most likely `git diff`'s automatic refresh. After it, `git diff --name-only` lists only the
+    three supervisor files.
+  - **What changed:** stat data only. No content, no staged blob and no HEAD.
+  - **Why it is harmless:** under ASG manual 036 the fingerprint hashes diff content alone. Every later git call ran
+    with `GIT_OPTIONAL_LOCKS=0`.
+- **Git Bash's `grep` does not see CRs on this host.** It reported no CR in files that `git ls-files --eol` lists as
+  `w/crlf`. Read line endings from `git ls-files --eol`.
 - **The `InverseConstructorTests` red is resolved by manual 016.** `recommitting a copied experiment preserves its
   assigned physical ids` had been red since step 0227 (see Testing state). The operator has repaired its fixture and
   committed the repair in `fae11f6`.
