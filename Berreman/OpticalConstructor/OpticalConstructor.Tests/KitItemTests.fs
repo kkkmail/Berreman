@@ -719,3 +719,110 @@ module KitItemTests =
             Assert.Equal<ItemModelInstance>(cpl1.model, cpl2.model)
             Assert.NotEqual<Parameter list>(cpl1.parameters, cpl2.parameters)
         | Error error -> Assert.Fail($"CPL1 refused a known fast-axis offset: {error.describe}")
+
+    // ============================ spec 0050 S7.1: publishing a revision ============================
+
+    let private fastAxisOffset : ParameterName = ParameterName "c2.fastAxisOffset"
+
+    /// CPL1's retardance as the quartz study's fit run calibrated it, with the given standard deviation.
+    let private calibratedRetardance (sigma : ParameterSigma) : Parameter =
+        let calibration : CalibratedParameterData =
+            {
+                value = ParameterValue 1.55
+                sigma = sigma
+                fitRun = FitRunName "QZ-LR@20261101T120000Z"
+            }
+
+        { name = retardance; state = CalibratedParameter calibration }
+
+    [<Fact>]
+    let ``publishing a revision records the values it replaces and counts the revision up`` () : unit =
+        let calibrated = calibratedRetardance (ParameterSigma 0.002)
+        let offset : Parameter = { name = fastAxisOffset; state = KnownParameter (ParameterValue 0.01) }
+
+        let revisionOne : ItemRevisionRecord =
+            {
+                revision = ItemRevision 1
+                parameters =
+                    [
+                        knownAt (ParameterName "c1.extinctionRatio") (ParameterValue 0.0)
+                        knownAt (ParameterName "c1.axisOffset") (ParameterValue 0.0)
+                        knownAt retardance (ParameterValue (Math.PI / 2.0))
+                        knownAt fastAxisOffset (ParameterValue 0.0)
+                        knownAt (ParameterName "dialZero") (ParameterValue 0.0)
+                    ]
+            }
+
+        Assert.Equal<Parameter list>(revisionOne.parameters, heldCpl1.parameters)
+
+        match heldCpl1.publishRevision [ calibrated ] with
+        | Ok revisionTwo ->
+            // The calibration takes the retardance's place; the other four keep revision 1's values, in order.
+            let expectedParameters : Parameter list =
+                revisionOne.parameters |> List.map (fun held -> if held.name = retardance then calibrated else held)
+
+            let expected : Item =
+                {
+                    heldCpl1 with
+                        parameters = expectedParameters
+                        revision = ItemRevision 2
+                        history = [ revisionOne ]
+                }
+
+            Assert.Equal<Item>(expected, revisionTwo)
+            Assert.Equal<Parameter option>(Some calibrated, revisionTwo.tryFindParameter retardance)
+
+            // Any state may be published: a known offset on revision 2 records it after revision 1, oldest first.
+            let revisionTwoRecord : ItemRevisionRecord = { revision = ItemRevision 2; parameters = expectedParameters }
+
+            match revisionTwo.publishRevision [ offset ] with
+            | Ok revisionThree ->
+                let expectedThree : Item =
+                    {
+                        revisionTwo with
+                            parameters = expectedParameters |> List.map (fun held -> if held.name = fastAxisOffset then offset else held)
+                            revision = ItemRevision 3
+                            history = [ revisionOne; revisionTwoRecord ]
+                    }
+
+                Assert.Equal<Item>(expectedThree, revisionThree)
+                Assert.Equal<Parameter option>(Some offset, revisionThree.tryFindParameter fastAxisOffset)
+                Assert.Equal<Parameter option>(Some calibrated, revisionThree.tryFindParameter retardance)
+            | Error error -> Assert.Fail($"CPL1's revision 2 refused a known fast-axis offset: {error.describe}")
+        | Error error -> Assert.Fail($"CPL1 refused a calibrated retardance: {error.describe}")
+
+    [<Fact>]
+    let ``a revision naming a parameter the item lacks, naming one twice or breaking a rule publishes nothing`` () : unit =
+        let calibrated = calibratedRetardance (ParameterSigma 0.002)
+        let atZeroSigma = calibratedRetardance (ParameterSigma 0.0)
+        let unknownName : Parameter = knownAt (ParameterName "nothing") (ParameterValue 0.0)
+
+        // Each refused revision leads with a valid offset, so a refusal anywhere in it refuses all of it.
+        let offset : Parameter = knownAt fastAxisOffset (ParameterValue 0.01)
+
+        match heldCpl1.publishRevision [ offset; unknownName ] with
+        | Error (UnknownItemParameterErr reason) ->
+            Assert.Contains("'nothing'", reason)
+            Assert.Contains("'CPL1'", reason)
+            Assert.Equal<Result<Item, ItemError>>(Error (UnknownItemParameterErr reason), heldCpl1.withParameterState unknownName.name unknownName.state)
+        | Error error -> Assert.Fail($"expected an unknown item parameter: {error.describe}")
+        | Ok item -> Assert.Fail($"'{item.label.value}' published revision {item.revision.value} with a parameter it lacks")
+
+        match heldCpl1.publishRevision [ offset; calibrated; calibrated ] with
+        | Error (InvalidParameterStateErr reason) ->
+            Assert.StartsWith("c2.retardance: ", reason)
+            Assert.Contains(" twice ", reason)
+            Assert.Contains("'CPL1'", reason)
+        | Error error -> Assert.Fail($"expected an invalid parameter state: {error.describe}")
+        | Ok item -> Assert.Fail($"'{item.label.value}' published revision {item.revision.value} naming c2.retardance twice")
+
+        match heldCpl1.publishRevision [ offset; atZeroSigma ] with
+        | Error (InvalidParameterStateErr reason) ->
+            Assert.Equal<string>("c2.retardance: the calibration sigma 0 is not above zero", reason)
+            Assert.Equal<Result<Parameter, ItemError>>(Error (InvalidParameterStateErr reason), atZeroSigma.validate)
+        | Error error -> Assert.Fail($"expected an invalid parameter state: {error.describe}")
+        | Ok item -> Assert.Fail($"'{item.label.value}' published revision {item.revision.value} with a calibration sigma of 0")
+
+        Assert.Equal<ItemRevision>(ItemRevision 1, heldCpl1.revision)
+        Assert.Empty(heldCpl1.history)
+        Assert.Equal<Item>(modelItem circularPolarizerModel heldCpl1.id heldCpl1.label, heldCpl1)

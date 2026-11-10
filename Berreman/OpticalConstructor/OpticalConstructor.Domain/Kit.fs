@@ -611,6 +611,32 @@ module Kit =
                             parameters = this.parameters |> List.map (fun held -> if held.name = name then validated else held)
                     })
 
+        /// The next revision, once each published parameter is one of the item's, named once, keeping its rules: the
+        /// current values join `history`, `revision` counts up and each state replaces its own (spec 0050 S7.1; 001 §I).
+        member this.publishRevision (published : Parameter list) : Result<Item, ItemError> =
+            let rec publishFrom (item : Item) (taken : ParameterName list) (remaining : Parameter list) : Result<Item, ItemError> =
+                match remaining with
+                | [] -> Ok item
+                | parameter :: _ when taken |> List.contains parameter.name ->
+                    Error (InvalidParameterStateErr $"{parameter.name.value}: published twice in one revision of '{this.label.value}'")
+                | parameter :: rest ->
+                    item.withParameterState parameter.name parameter.state
+                    |> Result.bind (fun next -> publishFrom next (parameter.name :: taken) rest)
+
+            let replaced : ItemRevisionRecord =
+                {
+                    revision = this.revision
+                    parameters = this.parameters
+                }
+
+            publishFrom this [] published
+            |> Result.map (fun revised ->
+                {
+                    revised with
+                        revision = this.revision.next
+                        history = this.history @ [ replaced ]
+                })
+
     /// An item model as the library resolved it: a binding form with the preset or sample version it binds, or a model
     /// that stands alone (spec 0050 S7.1; 001 §I).
     type ItemModelChoice =
