@@ -1,5 +1,46 @@
 # Step 0252 — impl log
 
+## Relaunch after manual 016, 2026-11-10
+
+This round is the normal profile-1 resume that manual 016 asks for. It makes no product edit.
+
+1. Read the two system prompts, the project prompt, the slice, the operator note and
+   `specs/0050/.manual/016-step-0252-recommit-fixture.md`.
+2. Confirmed that HEAD holds the whole step:
+   - `73c2b10` holds the worker's implementation.
+   - `fae11f6` holds both operator repairs:
+     - `ItemEvaluation.sequenced` is public, and `chartForRun` calls it four times.
+     - The `InverseConstructorTests` fixture binds the plate and records its three items with
+       `KitLibraryContext.recordItem`.
+   - The working tree differs from HEAD only in the supervisor's own state files.
+3. Checked every slice requirement against the code. All are in place:
+   - `RunStep` has two cases, `ElementStep` and `ObjectStep`.
+   - `SourceEmission.emittedInto` exists.
+   - `detectorStokes` and `read` take the emission.
+   - The docs of `DetectorIntensity` and `PolarizerBehavior` are updated, as is AGENTS.md's gotcha.
+   - In `chartForRun`:
+     - polarizers are evaluated through `BoundPolarizerPreset`;
+     - samples are bound once through `BoundOpticalElement.ofStackSample`;
+     - every chart reads the default emission;
+     - the two failure charts are in place.
+   - The four new `ExperimentRunTests` facts and the renamed one are present.
+   - Both `behaviorInputStokes` facts are gone, and the new UI fact is present.
+   - A grep for `behaviorInputStokes`, `runInputStokes`, `PolarizerStep`, `SampleStep` and `inOrder` over every
+     `.fs` file under `OpticalConstructor/` finds nothing.
+4. Compared the product tree with the hashes the operator verified (`.artifacts/0252-relaunch/tree_check.py`, result
+   in `tree-check.json`):
+   - 1014 product files were checked: `Berreman/`, `MathNetNumerics/`, `Elevation/` and the root build files.
+   - None differs and none is missing.
+   - No F# source or project file is outside the verified set.
+
+   So the operator's measurements in `.artifacts/0252-operator-repair/` describe exactly this tree:
+   - 19 of 19 gate evaluations passed;
+   - constructor tests 1401, smoke 245 and selected UI 85, all with exact censuses and no failures or skips;
+   - the whole non-smoke UI suite passed 674;
+   - elevation was clean over 12 projects from `f395597`.
+5. Ran no gate (Invariant 6). The arc-runner's gate engine runs the 19 gates after this round and publishes
+   checkpoint 251. No checkpoint, counter or acceptance file was touched.
+
 ## Operator recovery, 2026-11-10
 
 Manual 016 authorizes the formerly out-of-scope fixture repair and Result collector reuse. The fixture now
@@ -162,6 +203,9 @@ Development runs (no gate verdict is claimed, Invariant 6). Logs are under `spec
 
 ## Artifacts
 
+- `specs/0050/.artifacts/0252-relaunch/tree_check.py`, `tree-check.json`: the relaunch's comparison of the tree
+  with the operator-verified hashes
+- `specs/0050/.artifacts/0252-operator-repair/`: the operator's measured gate, census and whole-UI evidence
 - `specs/0050/.artifacts/0252-build-1.log`, `0252-build-2.log`
 - `specs/0050/.artifacts/0252-constructor-unit-tests.log`
 - `specs/0050/.artifacts/0252-ui-tests.log`, `0252-ui-recommit-alone.log`
@@ -172,9 +216,14 @@ Development runs (no gate verdict is claimed, Invariant 6). Logs are under `spec
 
 ## Gotchas
 
-- **Inherited red in a selected class:** `InverseConstructorTests.recommitting a copied experiment preserves its
-  assigned physical ids`, red since step 0227 (see Testing state). The ui-tests gate cannot pass at this step
-  without an operator decision.
+- **The `InverseConstructorTests` red is resolved by manual 016.** `recommitting a copied experiment preserves its
+  assigned physical ids` had been red since step 0227 (see Testing state). The operator has repaired its fixture and
+  committed the repair in `fae11f6`.
+  - Steps 0254, 0259, 0260 and 0261 must keep its three stored items and their bindings.
+- **`ItemEvaluation.sequenced` is now public; its doc was left as committed.** The doc still names only the
+  evaluator's own uses (a black box's elements, a compound's components, a sample's layers). Its contract, "every
+  result in order, or the first error", is accurate for the host's use too. Editing it would have changed the tree
+  the operator verified.
 - **`WaveLength` and `IncidenceAngle` are `Berreman.Fields` types,** not `Berreman.Geometry` types; a UI test needs
   both opens.
 - **Opening `ItemModels` / `ItemEvaluation` in the UI file is order-sensitive for record-label inference.** They are

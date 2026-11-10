@@ -2,8 +2,8 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0050\\.manifest",
   "branch": "0050",
   "started_utc": "2026-11-05T11:30:30Z",
-  "last_updated_utc": "2026-11-10T11:13:27Z",
-  "cumulative_wall_seconds": 291326.59293969907,
+  "last_updated_utc": "2026-11-10T14:15:25Z",
+  "cumulative_wall_seconds": 292301.44025419885,
   "completed_slices": [
     {
       "index": 0,
@@ -1767,10 +1767,10 @@
     "index": 251,
     "path": "specs\\0050\\.slices\\0252.slice-md",
     "status": "escalated",
-    "reason": "code-judge escalated on cycle 1: The in-scope implementation meets slice 0252, and on its merits it would be review-green. ExperimentRun folds ElementStep/ObjectStep from SourceEmission.emittedInto with no first-polarizer arm. chartForRun builds every step through ItemEvaluation. behaviorInputStokes and runInputStokes are retired.  (resolver consulted: C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\resolver\\0252-resolver-01.md)",
+    "reason": "a verification gate unexpectedly changed tracked source",
     "worker_logs": "C:\\GitHub\\Berreman\\specs\\0050\\.manifest-arc-runner.log",
     "escalation_md": "",
-    "conversation_seq": 1,
+    "conversation_seq": 3,
     "operator_reply": "",
     "total_route_backs": 0,
     "resolver_runs": 1,
@@ -1781,7 +1781,7 @@
       }
     ],
     "phase": "implement",
-    "tree_fingerprint": "47c3bd07e392841c373655e68e4ddfb97e9e0617df5349412d96e0c51d10efde",
+    "tree_fingerprint": "70df52014dd4c601355849b8aa762aff6d9810339605987c76341c45936e37c5",
     "review_epoch": 0,
     "review_cycle": 1,
     "review_attestation": null,
@@ -1793,7 +1793,7 @@
     "verification_evidence": [],
     "post_repair_route": null,
     "reliability_counts": {
-      "gate_attempts": 1,
+      "gate_attempts": 2,
       "resolver_invocations": 1
     },
     "ownership": {},

@@ -1,0 +1,107 @@
+# Post-mortem -- slice 0252, attempt 02
+
+## Summary
+
+The normal profile-1 resume of 0252 ran green end to end: no product edit, review-green, and all 19 gates passed under the supervisor. It then escalated because the verify phase's tracked-tree fingerprint changed while no tracked content changed.
+The fingerprint hashes git's stderr. The boot had re-emitted 486 descriptors with CRLF line endings, so git's stderr carried 486 CRLF warnings. An index refresh at 14:08:05 UTC by a process outside the gate roster silenced them, and the hash moved: a false positive in the tool.
+
+## Root cause
+
+Owner: **the tool** (the runner's tracked-tree fingerprint). Before the verify gates run, `run_phases.py:688-713` takes `tracked_tree_fingerprint`. It takes it again after them and escalates on any difference with "a verification gate unexpectedly changed tracked source".
+
+`tracked_tree_fingerprint` (`pipeline/state.py:103-105`) and `tree_fingerprint` (`96-100`) both hash `tracked_diff_bytes` (`82-93`). That function returns `proc.stdout + proc.stderr` of `git diff --binary HEAD`. Its stderr carries git's safecrlf warnings ("in the working copy of X, CRLF will be replaced by LF…"). Git emits one only for a CRLF file whose index stat entry is stale, that is, one it has to re-read. So the hash depends on the git index's stat cache, not on tracked content. `cleaned_sha256` normalizes line endings but cannot remove whole lines.
+
+The step-compiler supplies the precondition at every boot. It re-emitted all 243 non-completed `.slice-md` and `.gates` files (13:58:42–43 UTC) through `step_compiler/compile.py:1706`, `write_text(..., encoding="utf-8")` with no `newline="\n"`. On Windows that writes CRLF against the repository's `* text=auto eol=lf`, and `git ls-files --eol` shows `i/lf w/crlf`. That leaves 486 content-identical files with fresh mtimes, each producing a warning.
+
+At review time the diff's stderr held 488 warnings: the 486 descriptors, `.executability-json` and `.supervisor-lock.diag`. `.git/index` was then rewritten at 14:08:05 UTC, inside the elevation gate's run. After that refresh only the last two warnings remain. Those two persist because their CRLF size differs from the size the index recorded, so a refresh cannot clear them.
+
+I reproduced both recorded fingerprints byte-exactly with ASG's own `cleaned_sha256`. The current stdout plus the current 2 warnings gives `70df52014dd4…`, the state's value after the escalation. The same stdout plus the review-time 488 warnings gives `90f20879e95d…`, the REVIEW-ATTESTED and verify PHASE-START value. The diff text is identical, and no tracked file except the two excluded supervisor files has an mtime inside the verify window.
+
+I could not identify what wrote the index at 14:08:05. It is outside the gate roster:
+- The elevation script's git calls use `--no-optional-locks` and run at its start (14:05:33).
+- The runner's own repeated `git diff` calls did not clear the warnings between 14:03:04 and 14:05:31.
+- 0210's resume ran the same roster over the same precondition (572 warnings) and passed.
+
+The most likely writer is an interactive git client or IDE on the repository (`.git/` shows a second lock touch at 14:08:35), but this is unverified. It does not change the owner: a check that a gate changed tracked source must not move when something refreshes the index.
+
+This is the second false-mutation variant of the same check. ASG 0090 (033) (`ASG-ERRORS.md` row 65) fixed the `.manual/`/`.specrc` variant by path exclusion. Path exclusion cannot reach a diagnostic about a path that is still in scope, which is why that fix missed this case. The class fix is to hash content only.
+
+ASG commit `d93561be` (13:56 UTC, two minutes before this boot) is the only tool change since the last green slice. It threads a budget-warning sink into `evaluate_all_gates` and writes only the git-ignored `.artifacts/operator-warnings.json`, which is absent. It is cleared as a suspect; the fingerprint code last changed on 2026-11-08.
+
+## Evidence
+
+- Trigger: `.manifest-arc-runner.log:20910` PHASE-RESULT verify `"result": "gate-mutated-tracked-tree"`; `:20911` ESCALATION-RECORDED `"a verification gate unexpectedly changed tracked source"`, conversation_seq 3.
+- Gates green on this tree: log `:20838`–`:20909`.
+  - build 75.3 s (pre-review) and 3.9 s (build phase);
+  - elevation 207.1 s; constructor-unit-tests 69.2 s;
+  - ui-smoke 195.6 s; ui-tests 103.4 s, step filter of 6 classes;
+  - all fourteen s25 invariants passed;
+  - the task file's gate block agrees.
+- Review: `code_judge/0252-01-code-judge.md` verdict review-green; log `:20846`; REVIEW-ATTESTED `:20848` fingerprint `90f20879e95d`; build PHASE-RESULT green `:20853`.
+- Worker round: SoW and impl-log say "makes no product edit". `git status` shows only `.executability-json` (CRLF-only, no content diff), `.expected-red-observed-json`, `.manifest.state.json`, `.supervisor-lock.diag`, `0252-impl-log.md` and `0252-state-of-the-world.md` dirty.
+- Fingerprint code: ASG `pipeline/state.py:93` `return proc.stdout + proc.stderr`; excludes at `:42-55` and `:58-61`; verify check at `run_phases.py:688-713`; build check at `:275-298`.
+- CRLF emitter: ASG `step_compiler/compile.py:1706`. `git ls-files --eol specs/0050/.slices/0252.gates` gives `i/lf w/crlf attr/text=auto eol=lf`. The 0252–0494 descriptors carry mtimes 13:58:42.975–43.214 UTC.
+- Review-time stderr: `.artifacts/review/0252-epoch-01-cycle-01-tracked.diff`, written 14:03:04 UTC, lines 1514 onward, 488 warning lines. A `--no-optional-locks` re-run of the same diff now emits 2.
+- Reproduction (read-only, `python -I -B`, ASG `cleaned_sha256`, `git --no-optional-locks diff`):
+  - current gives `70df52014dd4c601…`, equal to `.manifest.state.json` `current_slice.tree_fingerprint`;
+  - the same stdout with the 488 review-time warnings gives `90f20879e95d438d…`, equal to log `:20848`;
+  - the cached diff is empty.
+- Index write: `.git/index` mtime 2026-11-10 14:08:05.405 UTC; `.git/` directory 14:08:35.96 UTC; no other `.git` metadata changed after the 13:55:45 commit.
+- Tracked mtimes in the verify window (14:05:32–14:15:25): only `.expected-red-observed-json` (14:15:25.185) and `.manifest.state.json` (14:15:25.297), both excluded by `state.py:48-54`.
+- Elevation script: `Elevation/Run-ElevationGate.ps1:193` puts `--no-optional-locks` on every git call; `:209` and `:219` run before analysis. The root `Directory.Build.*` files contain no git invocation.
+- Comparison (the same check's green paths):
+  - 0210's resume: review diff `0210-epoch-01-cycle-01-tracked.diff` carries 572 warnings, the verify roster is identical, and the result is green at log `:16951`.
+  - 0251: no boot, no UI gates, green at `:20749`.
+  - 247 verify phases green in this arc and none mutated before this one; ASG `asg_version=1.8.90.1` at every boot.
+- Tool suspect cleared: ASG `d93561be` touches `run_phases.py` only to pass `on_budget_warning`. `runtime/operator_warnings.py:24` writes `.artifacts/operator-warnings.json`, which is git-ignored (`.gitignore:347`) and does not exist.
+- Prior class fix: `ASG-ERRORS.md:65` (BRM-0050 0160-03, 0090 (033)) "exclude operator configuration/manual descendants from execution fingerprints"; ASG `specs/0090/.manual/033-live-operator-configuration-and-notes.md:25-27`.
+- Arc history:
+  - ESCALATION-RECORDED: 18 — 0013, 0035, 0052, 0056, 0059, 0069, 0118, 0132, 0145, 0150, 0153, 0160 ×3, 0185, 0210 and 0252 ×2 (`:20790`, `:20911`).
+  - ESCALATE: 15, plus this one, which is pending by design.
+  - INTERRUPTED: 1 (`:2761`).
+  - Accepts: 5 COMMIT-OVERRIDE (idx 34, 51, 55, 117, 152) and 4 ACCEPT-BACKFILL-EXPECTED-RED.
+  - Operator replies: 12 OPERATOR-REPLY-CONSUMED, the latest at `:20829` (4309 chars, manual 016).
+  - None has this trigger.
+- Post-mortems on file: 17 — 0013-01, 0046-mechanical, 0052-01, 0056-01, 0059-01, 0069-01, 0118-01, 0132-01, 0145-01, 0150-01, 0153-01, 0160-01/02/03, 0185-01, 0210-01 and 0252-01. 0160-03 recorded CRLF-only `.executability-json` boot churn but not this mechanism.
+- Manuals: `.manual/001` (Nov 3) through `016-step-0252-recommit-fixture.md` (Nov 10, 08:43 local). None concerns git stat or stderr fingerprints.
+  - 016 binds: "resume normally with the operator reply and `--executability-profile 1`, without `--accept-current-slice`. The supervisor must publish measured checkpoint 251".
+  - The project prompt repeats this at lines 202-206.
+- Tree:
+  - HEAD `fae11f6` (operator, 13:55:45 UTC) over `73c2b10` over `8a61dd3` (0251);
+  - `completed_slices` has 251 entries, the last being index 250 (0251);
+  - the first pending step is 0252;
+  - `.checkpoints-json` tops out at key 250 (1399); 251 is absent.
+- Spawns: implement_worker `:20831`, code_judge `:20841`, resolver `:20784` and postmortem `:20915` are all anthropic `claude-opus-5-5[1m]` (cli, subscription). The last different spawn is openai `gpt-6-astra` implement_worker at `:11822` (2026-11-08T17:02, slice 0160).
+- Counters, from the log: resolver runs for 0252 = 1 (`:20789`, confirm-escalation); route-backs = 0 (no REVIEW-ROUTE-BACK for idx 251). conversation_seq 3 is 2 escalations plus 1 consumed reply. The scalars agree with the log.
+
+## Proposed solutions
+
+Decision: owner the tool; recommend 1; confidence high; operator decides whether to land the ASG content-only fingerprint fix before resuming (ASG is read-only from this repository).
+
+1. **Fix the fingerprint in ASG, then resume 0252 normally through an operator note.** With the arc stopped:
+   - **The ASG change.** Record it under ASG spec 0090, the way the operator recorded 033–035. Change `tracked_diff_bytes` so it returns git's stdout only, and fails with git's stderr in the reason when git exits non-zero, so a broken git is never hashed as a tree.
+   - **What it covers.** `tracked_tree_fingerprint` (the build and verify checks), `tree_fingerprint` (review attestation at `attestation.py:92`, boot drift at `state.py:210`), `write_tracked_diff` (the 488-line noise the judge read) and the repair and build-failure deltas.
+   - **Why it works.** I traced it: the reproduction shows both recorded fingerprints share byte-identical stdout, so after the change both hash to the same value and this verify passes.
+   - **Commit order.** Add the regression test from item 3, run ASG's tests, then commit ASG. In Berreman, change nothing: leave the six dirty supervisor and worker files for the slice commit. This post-mortem may ride your next manual commit, as 0252-01 did in `73c2b10`.
+   - **Receipt.** If the boot then reports the executability receipt stale, republish through supported publication, as manual 016 did.
+   - **Resume.** Resume with `--executability-profile 1` and the note below as the operator reply, without `--accept-current-slice` (manual 016).
+   - **Gates before the resume.** None in Berreman: this exact tree just passed all 19 under the supervisor. The resume reruns build, elevation, constructor-unit-tests, ui-smoke, ui-tests and the fourteen s25 invariants, and publishes measured checkpoint 251 (constructor 1401, ui-smoke 245, ui-tests 85).
+   - **Steps covered.** Every pending step 0252–0494 whose attempt follows a boot, because every launch re-emits all non-completed descriptors in CRLF. That names 0252 now, the manual-016 steps 0254, 0259, 0260 and 0261, and every future recovery resume, each of which begins with a boot.
+
+2. OR resume now with the same note and no ASG change, keeping every git client off `C:\GitHub\Berreman` from launch to the 0252 commit: IDE source-control panels, Git GUIs, and shells running plain `git status`. This is second because it repairs nothing. Every launch recreates the 486 stat-dirty CRLF descriptors, and the 14:08:05 index writer is unidentified, so you cannot guarantee it stays quiet for the roughly 10 minutes between the review attestation and the end of verify.
+
+3. **asg-error** (file in `ASG-ERRORS.md` as BRM-0050 0252-02).
+   - **The defect.** ASG `src/ai_strategy_generator/multistep/_arc_runner/pipeline/state.py`, `tracked_diff_bytes` (lines 82-93), hashes `proc.stdout + proc.stderr` into `tree_fingerprint` and `tracked_tree_fingerprint`.
+   - **Why it misfires.** Git's safecrlf warnings appear only while a CRLF file's index stat entry is stale. Any process that refreshes the index therefore changes the fingerprint with no content change.
+   - **What it triggers.** `run_phases.py:699-713` then reports "a verification gate unexpectedly changed tracked source". The same false positive can fire at the build check (`:286-298`), as a stale review attestation, and as boot drift.
+   - **What exposes it.** `step_compiler/compile.py:1706` writes descriptors with CRLF on Windows, so every boot creates hundreds of such entries.
+   - **Why the earlier fix missed it.** 0090 (033)'s path exclusions cannot cover diagnostics about in-scope paths.
+   - **Reproducing test** (in `tests/multistep/test_phased_pipeline.py`):
+     1. In a temporary repo with `* text=auto eol=lf`, commit an LF file.
+     2. Rewrite it with CRLF and `git add` it, then set an older, different mtime on it.
+     3. Take `tracked_tree_fingerprint`, run `git update-index --refresh`, and take it again.
+     4. Assert equality (it fails today) and, as a positive control, that a real content edit still changes it.
+
+Operator note for the resume (fill in the ASG reference):
+
+> Step 0252's work is committed (`73c2b10`, `fae11f6`) and unchanged. The second escalation was a false positive of the supervisor's tracked-tree check, not a defect. All 19 gates passed on this tree, with constructor 1401, ui-smoke 245 and ui-tests 85. Git's tracked content was byte-identical before and after verification. Only git's CRLF warnings for the boot-re-emitted descriptors vanished after an outside index refresh, and ASG now fingerprints git's diff output alone (ASG spec 0090, <manual>). Manual 016 still binds. Make no product, test, gate or catalogue edit. Confirm the tree is unchanged, record this resume in the SoW and impl-log, and return for normal review and all 19 gates, so the supervisor publishes checkpoint 251. Do not use `--accept-current-slice`, manufacture a checkpoint or reset counters.

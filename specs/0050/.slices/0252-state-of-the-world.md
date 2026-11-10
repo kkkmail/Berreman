@@ -10,9 +10,12 @@ Spec 0050, section S8.1 ("The run law walks every object; the source is real"), 
     emission and has no first-polarizer arm.
   - `chartForRun` builds its steps through `ItemEvaluation`.
 - S8.2's slots and S11.2's detector forward model come later.
-- **The approved recovery is ready for the operator's commit.** Manual 016 authorizes the fixture repair and
-  ordered Result collector reuse. All 19 frozen gates passed; normal profile-1 resume must still publish
-  checkpoint 251 after the commit. No checkpoint or progress state was changed during preparation.
+- **The approved recovery is committed** (`73c2b10`, `fae11f6`). Manual 016 authorized two repairs: the fixture
+  repair and reuse of the ordered Result collector.
+- **This round is the normal profile-1 resume.**
+  - It makes no product edit.
+  - It confirms that the tree is byte-identical to the one the operator verified.
+  - It leaves the 19 gates, and checkpoint 251, to the supervisor.
 
 ## What's working
 
@@ -27,6 +30,12 @@ Spec 0050, section S8.1 ("The run law walks every object; the source is real"), 
   samples solved in series
 
 ## Tests
+
+Relaunch, 2026-11-10. No gate was run in this round (Invariant 6), and no product file changed.
+- **What was compared:** 1014 product files under `Berreman/`, `MathNetNumerics/` and `Elevation/`, plus the root
+  build files, against the operator-verified hashes (`.artifacts/0252-relaunch/tree-check.json`).
+- **Result:** no file differs, none is missing, and every F# source and project file is in the verified set.
+- The operator's measurements below therefore apply unchanged to the tree the gate engine will run.
 
 Operator recovery verification (manual 016): all 19 frozen gates passed, including constructor 1401/1401,
 smoke 245/245 and selected UI 85/85, with exact accepted test censuses and zero failures/skips. The whole
@@ -127,3 +136,6 @@ Nothing in this step's scope is deferred. The inherited fixture failure is repai
   - `behaviorInputStokes` and `runInputStokes` retired.
   - Constructor tests 1399 → 1401; one new UI fact.
   - Initially blocked on the inherited `InverseConstructorTests` red; repaired and verified under manual 016.
+- 2026-11-10: step 0252 resumed normally on profile 1, with no product edit.
+  - The tree was confirmed byte-identical to the operator-verified one.
+  - The gates and checkpoint 251 are left to the supervisor.
