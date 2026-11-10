@@ -3731,11 +3731,6 @@ let chartForRun
             | Ok entry -> entry
             | Error _ -> None
         | None -> None
-    // Every value in order, or the first error.
-    let inOrder (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
-        match results |> List.tryPick (fun result -> match result with Error error -> Some error | Ok _ -> None) with
-        | Some error -> Error error
-        | None -> Ok (results |> List.choose Result.toOption)
     let sweptAngle (x : float) : Angle = Angle.degree (x * 1.0<deg>)
     // One path step → its builder (or nothing: the source, a mirror, a lens, an unbound element).
     let builderFor (step : BeamLayout.PathStep) : Result<StepBuilder option, ItemEvaluationError> =
@@ -3774,14 +3769,14 @@ let chartForRun
                 |> Result.map Some
             | _ -> Ok None
     let buildersFor (path : BeamLayout.PathStep list) : Result<StepBuilder list, ItemEvaluationError> =
-        path |> List.map builderFor |> inOrder |> Result.map (List.choose id)
+        path |> List.map builderFor |> ItemEvaluation.sequenced |> Result.map (List.choose id)
     let stepsAt (builders : StepBuilder list) (x : float) : Result<ExperimentRun.RunStep list, ItemEvaluationError> =
         builders
         |> List.map (fun b ->
             match b with
             | FixedStep step -> Ok step
             | SweptStep f -> f x)
-        |> inOrder
+        |> ItemEvaluation.sequenced
     let variedIsBound = Option.isSome (boundOf variedElement)
     let detectors = model.captureDetectors chosen
     let captured =
@@ -3851,9 +3846,9 @@ let chartForRun
                     |> Result.bind (fun builders ->
                         xs
                         |> List.map (fun x -> stepsAt builders x |> Result.map (fun steps -> x, ExperimentRun.read kind emission steps))
-                        |> inOrder)
+                        |> ItemEvaluation.sequenced)
                     |> Result.map (fun readings -> tag, kind, readings))
-                |> inOrder)
+                |> ItemEvaluation.sequenced)
         match evaluated with
         | Error (SampleMaterialErr err) ->
             {

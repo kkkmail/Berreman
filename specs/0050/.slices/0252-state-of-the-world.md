@@ -10,8 +10,9 @@ Spec 0050, section S8.1 ("The run law walks every object; the source is real"), 
     emission and has no first-polarizer arm.
   - `chartForRun` builds its steps through `ItemEvaluation`.
 - S8.2's slots and S11.2's detector forward model come later.
-- **The step is not commit-ready.** Its ui-tests gate selects `InverseConstructorTests`, which carries a red
-  inherited from step 0227 that only an out-of-scope fixture repair can clear (see Tests).
+- **The approved recovery is ready for the operator's commit.** Manual 016 authorizes the fixture repair and
+  ordered Result collector reuse. All 19 frozen gates passed; normal profile-1 resume must still publish
+  checkpoint 251 after the commit. No checkpoint or progress state was changed during preparation.
 
 ## What's working
 
@@ -27,8 +28,13 @@ Spec 0050, section S8.1 ("The run law walks every object; the source is real"), 
 
 ## Tests
 
-No gate verdict is claimed here (Invariant 6). The worker's development runs over the final tree are below, with
-logs under `specs/0050/.artifacts/0252-*`.
+Operator recovery verification (manual 016): all 19 frozen gates passed, including constructor 1401/1401,
+smoke 245/245 and selected UI 85/85, with exact accepted test censuses and zero failures/skips. The whole
+non-smoke UI suite passed 674/674. Elevation covered all 12 projects from the immutable arc origin with
+zero findings. Evidence is under `.artifacts/0252-operator-repair/`; this is preparation, not a checkpoint.
+
+The original worker measurements below describe the pre-recovery tree and are retained as incident evidence.
+Their missing-authority and inherited-red statements were resolved by manual 016.
 
 - **build:** exit 0, `0 Warning(s)`, `0 Error(s)` (`0252-build-final.log`).
 - **constructor-unit-tests,** the gate's command: `Passed!`, 1401 succeeded, 0 failed, 0 skipped
@@ -74,7 +80,7 @@ logs under `specs/0050/.artifacts/0252-*`.
 gates:
   constructor_unit_tests: 1401
   ui_smoke_tests: 245
-  ui_tests: 84
+  ui_tests: 85
 ```
 
 ## Architecture
@@ -100,20 +106,18 @@ gates:
 
 ## Deferred
 
-Nothing in this step's scope is deferred. The one open item is the inherited `InverseConstructorTests` red. It
-belongs to step 0261's scope and needs an operator decision at this step (see Tests).
+Nothing in this step's scope is deferred. The inherited fixture failure is repaired under manual 016.
 
 ## Gotchas
 
-- **The ui-tests gate cannot pass at this step as authorized.** `InverseConstructorTests.recommitting a copied
-  experiment preserves its assigned physical ids` has been red since step 0227. Selected ui-tests counts are not
-  checkpointed, so 84 is this run's measurement.
+- **Copied assignments must reference stored kit items.** The repaired fixture initially binds its sample and
+  records all three physical items before recommitting. Preserve those items when step 0261 changes slot storage.
 - **`WaveLength` and `IncidenceAngle` are `Berreman.Fields` types,** not `Berreman.Geometry` types.
 - **The UI file now opens `ItemModels` and `ItemEvaluation`,** which their extension members need. They are opened
   just after `OpticalConstructor.Domain`, so every later open keeps its precedence. The orientation records are
   annotated `ElementOrientation`.
-- **`ItemEvaluation.sequenced` is private.** `chartForRun` therefore collects `Result`s with a local `inOrder`
-  (`tryPick` / `choose`), since `ItemEvaluation.fs` is outside this step's edits.
+- **`ItemEvaluation.sequenced` is shared.** Manual 016 exposes the existing ordered collector; all four host
+  call sites reuse it, and the local `inOrder` duplicate is deleted.
 
 ## Changelog
 
@@ -122,4 +126,4 @@ belongs to step 0261's scope and needs an operator decision at this step (see Te
   - `chartForRun` builds steps through `ItemEvaluation`.
   - `behaviorInputStokes` and `runInputStokes` retired.
   - Constructor tests 1399 → 1401; one new UI fact.
-  - Blocked on the inherited `InverseConstructorTests` red.
+  - Initially blocked on the inherited `InverseConstructorTests` red; repaired and verified under manual 016.

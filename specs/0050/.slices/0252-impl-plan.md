@@ -1,5 +1,10 @@
 # Step 0252 — impl plan
 
+Operator extension, 2026-11-10 (manual 016): repair the copied-experiment fixture by binding and storing its
+three assigned items, then expose/reuse `ItemEvaluation.sequenced` and delete the host's duplicate collector.
+Preserve every assertion, gate and compiled slice. Both repairs are complete; all 19 gates and the whole
+non-smoke UI suite passed. Wait for commits, then normal profile-1 resume must publish checkpoint 251.
+
 Spec 0050 S8.1, the run law. `ExperimentRun` stops special-casing the first polarizer and folds every step
 of the light path through its Mueller matrix. It starts from a real source emission whose default parameter
 set (unpolarized, unit scale, referenced after the first polarizer) reproduces today's numbers exactly.

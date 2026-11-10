@@ -199,6 +199,12 @@ entry's `id` is reserved.
 
 ## Standing operator rulings (every spec)
 
+At spec 0050 steps 0252, 0254, 0259, 0260 and 0261, every role also reads
+`specs/0050/.manual/016-step-0252-recommit-fixture.md`. Preserve the copied-item
+fixture's three stored items through later slot changes and reuse the shared
+ordered Result collector. The 0252 recovery resumes normally with profile 1,
+without `--accept-current-slice`, to record measured checkpoint 251.
+
 These bind every role on every step of every spec, a post-mortem's
 proposals included. A project prompt states its own rulings because
 ASG cannot; these are the ones STL's prompt carries (ASG spec 0090

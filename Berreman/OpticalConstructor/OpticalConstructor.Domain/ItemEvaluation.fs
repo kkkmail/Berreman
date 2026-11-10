@@ -50,7 +50,7 @@ module ItemEvaluation =
 
     /// Every result in order, or the first error: a black box's elements, a compound's components, a sample's layers
     /// (spec 0050 S8.1).
-    let private sequenced (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
+    let sequenced (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
         results
         |> List.fold (fun held result -> held |> Result.bind (fun read -> result |> Result.map (fun item -> item :: read))) (Ok [])
         |> Result.map List.rev

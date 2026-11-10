@@ -1,5 +1,20 @@
 # Step 0252 — impl log
 
+## Operator recovery, 2026-11-10
+
+Manual 016 authorizes the formerly out-of-scope fixture repair and Result collector reuse. The fixture now
+binds the initial inverse sample to the glass plate and stores its three assigned physical items through
+`KitLibraryContext.recordItem`, preserving all assertions.
+`ItemEvaluation.sequenced` is exposed and replaces all four calls to the deleted local `inOrder` collector.
+
+All 19 frozen gates passed: constructor 1401, smoke 245, selected UI 85; exact accepted censuses and no
+failures/skips. The additional whole non-smoke UI suite passed 674. Elevation found no issues across all 12
+projects from the arc origin. Evidence: `.artifacts/0252-operator-repair/`. The original worker history below
+describes the escalation before this recovery. Its not-ready statements are superseded by these results.
+
+Wait for operator commits, then resume normally with `--executability-profile 1` and manual 016 as the
+operator reply. The supervisor must produce checkpoint 251; no accept-current-slice or checkpoint fabrication.
+
 ## Progress
 
 1. Read the protocol, the project prompt, the slice, AGENTS.md, manuals 013 and 015, and 0251's state of the

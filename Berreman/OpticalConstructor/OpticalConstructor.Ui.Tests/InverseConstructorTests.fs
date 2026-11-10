@@ -458,9 +458,14 @@ module InverseConstructorTests =
     [<Fact>]
     let ``recommitting a copied experiment preserves its assigned physical ids`` () =
         let folder = TestAppScope.freshKitFolder owner
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+        let plateEntry = (Library.SampleItem plate).entryId
+        let initial = inverseIn folder
+        let initialSample = theSample initial
         // Two linear polarizers on the one preset: two physical pieces that only their ids tell apart.
         let built, expId =
-            inverseIn folder
+            initial
+            |> updateTableAndElementRotation (BindValueIdTo (initialSample.id, plateEntry))
             |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
             |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
             |> withIntensityExperiment
@@ -474,6 +479,43 @@ module InverseConstructorTests =
         let pieceB = ItemId (System.Guid.Parse "4daf2058-9b3e-4c17-af64-208b3d9e5c71")
         let samplePiece = ItemId (System.Guid.Parse "5eb03169-ac4f-4d28-b075-319c4eaf6d82")
         let assigned = Map.ofList [ lpA.id, pieceA; lpB.id, pieceB; sample.id, samplePiece ]
+        let polarizer =
+            match BuiltinCatalogue.preset PresetIds.polarizerLp with
+            | PolarizerItem value -> value
+            | _ -> failwith "The linear polarizer preset must hold a polarizer."
+        let polarizerChoice =
+            PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.idealPolarizerItemModelId, polarizer)
+        let sampleChoice =
+            StackSampleChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.stackSampleItemModelId, SampleVersionId.firstOf plate.id, plate)
+        let drafts : ItemDraft list =
+            [
+                {
+                    id = pieceA
+                    label = ItemLabel "Copied polarizer A"
+                    model = polarizerChoice
+                    dial = FixedMounting
+                }
+                {
+                    id = pieceB
+                    label = ItemLabel "Copied polarizer B"
+                    model = polarizerChoice
+                    dial = FixedMounting
+                }
+                {
+                    id = samplePiece
+                    label = ItemLabel "Copied sample"
+                    model = sampleChoice
+                    dial = FixedMounting
+                }
+            ]
+        let library : KitLibrary.KitLibraryContext =
+            {
+                kit = built.kit
+                imports = built.catalogueImports
+            }
+        // A real copy stores its items before the experiment (spec 0050 .manual/016).
+        for draft in drafts do
+            library.recordItem draft.toItem |> Result.defaultWith (fun error -> failwith error.describe)
 
         // A copy writes the experiment into the kit with the pieces its item mapping assigned (spec 0050 S6, S7.2).
         let captured = Assert.Single(built.experimentCollection.experiments)
