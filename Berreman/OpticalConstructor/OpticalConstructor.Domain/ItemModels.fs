@@ -11,14 +11,98 @@ open OpticalConstructor.Domain.Library
 /// models publish, the parameterised item models as data and the item-model store's seam (spec 0050 S7.1).
 module ItemModels =
 
+    /// A number a published parameter name carries: a Mueller row or column, 0 to 3, or a 1-based film, cell-layer or
+    /// compound-component position (spec 0050 S8.1; elevated because ELEV010 refuses an `int` beside `ParameterName`).
+    type ParameterNameIndex =
+        | ParameterNameIndex of int
+
+        member this.value : int = let (ParameterNameIndex i) = this in i
+
     /// The name a fitted parameter is reported under — elevated so that a report cannot silently pair a
     /// name with the wrong column, and so that a name can never be passed where a reason or a description
-    /// is expected. Spec 0050 S7.1 moved it here from `MuellerInverse`.
+    /// is expected. Spec 0050 S7.1 moved it here from `MuellerInverse`; spec 0050 S8.1 writes every name an item model
+    /// publishes once, as a member below.
     type ParameterName =
         | ParameterName of string
 
         /// The name as text (the reporting seam).
         member this.value = let (ParameterName n) = this in n
+
+        /// The light source's polarization azimuth (spec 0050 S8.1).
+        static member azimuth : ParameterName = ParameterName "azimuth"
+
+        /// The light source's ellipticity angle (spec 0050 S8.1).
+        static member ellipticity : ParameterName = ParameterName "ellipticity"
+
+        /// The light source's degree of polarization (spec 0050 S8.1).
+        static member degreeOfPolarization : ParameterName = ParameterName "degreeOfPolarization"
+
+        /// The light source's intensity scale (spec 0050 S8.1).
+        static member intensityScale : ParameterName = ParameterName "intensityScale"
+
+        /// The real linear polarizer's extinction ratio (spec 0050 S8.1).
+        static member extinctionRatio : ParameterName = ParameterName "extinctionRatio"
+
+        /// The real linear polarizer's diattenuation (spec 0050 S8.1).
+        static member diattenuation : ParameterName = ParameterName "diattenuation"
+
+        /// The real linear polarizer's axis offset (spec 0050 S8.1).
+        static member axisOffset : ParameterName = ParameterName "axisOffset"
+
+        /// The retarder plate's retardance (spec 0050 S8.1).
+        static member retardance : ParameterName = ParameterName "retardance"
+
+        /// The retarder plate's fast-axis offset (spec 0050 S8.1).
+        static member fastAxisOffset : ParameterName = ParameterName "fastAxisOffset"
+
+        /// The black box's scale, published in m00's place (spec 0050 S8.1).
+        static member blackBoxScale : ParameterName = ParameterName "scale"
+
+        /// The intensity detector's gain (spec 0050 S8.1).
+        static member gain : ParameterName = ParameterName "gain"
+
+        /// The intensity detector's dark offset (spec 0050 S8.1).
+        static member darkOffset : ParameterName = ParameterName "darkOffset"
+
+        /// The noise budget's rotation uncertainty (spec 0050 S8.1).
+        static member rotationUncertainty : ParameterName = ParameterName "rotationUncertainty"
+
+        /// The noise budget's element uncertainty (spec 0050 S8.1).
+        static member elementUncertainty : ParameterName = ParameterName "elementUncertainty"
+
+        /// The noise budget's throughput uncertainty (spec 0050 S8.1).
+        static member throughputUncertainty : ParameterName = ParameterName "throughputUncertainty"
+
+        /// A dial-mounted item's dial zero (spec 0050 S8.1).
+        static member dialZero : ParameterName = ParameterName "dialZero"
+
+        /// A sample substrate's thickness (spec 0050 S8.1).
+        static member substrateThickness : ParameterName = ParameterName "substrate.thickness"
+
+        /// The black box's Mueller element `m<row><column>`, rows and columns 0 to 3 (spec 0050 S8.1).
+        static member muellerElement (row : ParameterNameIndex) (column : ParameterNameIndex) : ParameterName =
+            let (ParameterNameIndex i) = row
+            let (ParameterNameIndex j) = column
+            ParameterName $"m{i}{j}"
+
+        /// A single film's thickness `film<k>.thickness`, k 1-based in stack order (spec 0050 S8.1).
+        static member filmThickness (position : ParameterNameIndex) : ParameterName =
+            let (ParameterNameIndex k) = position
+            ParameterName $"film{k}.thickness"
+
+        /// One layer of a repeated film, shared by every period: `film<k>.layer<j>.thickness`, both 1-based
+        /// (spec 0050 S8.1).
+        static member repeatedLayerThickness (position : ParameterNameIndex) (layer : ParameterNameIndex) : ParameterName =
+            let (ParameterNameIndex k) = position
+            let (ParameterNameIndex j) = layer
+            ParameterName $"film{k}.layer{j}.thickness"
+
+        /// The name inside a compound's component k (1-based, light order): `c<k>.<name>`, so a nested compound
+        /// prefixes twice (spec 0050 S8.1).
+        member this.inComponent (position : ParameterNameIndex) : ParameterName =
+            let (ParameterName name) = this
+            let (ParameterNameIndex k) = position
+            ParameterName $"c{k}.{name}"
 
     /// A named two-case sign for the analyzer dial → physical-angle map — never a naked `int`. `.value` is the
     /// multiplicative sign (`+1` / `−1`) the reference `AnalyzerModel.dial_sign` carries (matrix_glue.py:152).
@@ -106,9 +190,9 @@ module ItemModels =
             (throughput : ParameterValue)
             : ItemParameterAxis list =
             [
-                { name = ParameterName "rotationUncertainty"; kind = AngleParameter; defaultValue = rotation }
-                { name = ParameterName "elementUncertainty"; kind = FractionParameter; defaultValue = element }
-                { name = ParameterName "throughputUncertainty"; kind = FractionParameter; defaultValue = throughput }
+                { name = ParameterName.rotationUncertainty; kind = AngleParameter; defaultValue = rotation }
+                { name = ParameterName.elementUncertainty; kind = FractionParameter; defaultValue = element }
+                { name = ParameterName.throughputUncertainty; kind = FractionParameter; defaultValue = throughput }
             ]
 
     type Thickness with
@@ -121,15 +205,19 @@ module ItemModels =
 
     type SourcePreset with
 
-        /// The output polarization and intensity scale over the preset's own λ and tunable limits, defaulting to
-        /// unpolarized light at unit scale (spec 0050 S7.1; 001 §I, §N).
-        member _.parameterAxes : ItemParameterAxis list =
+        /// The light source's four axes in this order: azimuth and ellipticity (angles), degree of polarization, intensity
+        /// scale, defaulting to unpolarized light at unit scale; a run with no bound source reads these (spec 0050 S8.1).
+        static member lightSourceAxes : ItemParameterAxis list =
             [
-                { name = ParameterName "azimuth"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
-                { name = ParameterName "ellipticity"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
-                { name = ParameterName "degreeOfPolarization"; kind = FractionParameter; defaultValue = ParameterValue 0.0 }
-                { name = ParameterName "intensityScale"; kind = ScaleParameter; defaultValue = ParameterValue 1.0 }
+                { name = ParameterName.azimuth; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                { name = ParameterName.ellipticity; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                { name = ParameterName.degreeOfPolarization; kind = FractionParameter; defaultValue = ParameterValue 0.0 }
+                { name = ParameterName.intensityScale; kind = ScaleParameter; defaultValue = ParameterValue 1.0 }
             ]
+
+        /// The output polarization and intensity scale over the preset's own λ and tunable limits: the light-source axes
+        /// (spec 0050 S7.1, S8.1; 001 §I, §N).
+        member _.parameterAxes : ItemParameterAxis list = SourcePreset.lightSourceAxes
 
     type PolarizerPreset with
 
@@ -144,13 +232,17 @@ module ItemModels =
             let filmLayers : (ParameterName * SampleLayer) list =
                 this.structure.films
                 |> List.mapi (fun i item ->
+                    let position = ParameterNameIndex (i + 1)
                     match item with
-                    | SingleLayer layer -> [ ParameterName $"film{i + 1}.thickness", layer ]
+                    | SingleLayer layer -> [ ParameterName.filmThickness position, layer ]
                     | Repeated group ->
-                        group.cell |> List.mapi (fun j layer -> ParameterName $"film{i + 1}.layer{j + 1}.thickness", layer))
+                        group.cell
+                        |> List.mapi (fun j layer ->
+                            let cellLayer = ParameterNameIndex (j + 1)
+                            ParameterName.repeatedLayerThickness position cellLayer, layer))
                 |> List.concat
             let substrateLayers : (ParameterName * SampleLayer) list =
-                this.structure.substrate |> Option.toList |> List.map (fun layer -> ParameterName "substrate.thickness", layer)
+                this.structure.substrate |> Option.toList |> List.map (fun layer -> ParameterName.substrateThickness, layer)
             filmLayers @ substrateLayers
             |> List.choose (fun (name, layer) ->
                 layer.thickness.parameterValueOpt
@@ -190,25 +282,26 @@ module ItemModels =
                 let leakageAxis : ItemParameterAxis =
                     match leakage with
                     | ExtinctionRatioLeakage ->
-                        { name = ParameterName "extinctionRatio"; kind = FractionParameter; defaultValue = ParameterValue 0.0 }
+                        { name = ParameterName.extinctionRatio; kind = FractionParameter; defaultValue = ParameterValue 0.0 }
                     | DiattenuationLeakage ->
-                        { name = ParameterName "diattenuation"; kind = FractionParameter; defaultValue = ParameterValue 1.0 }
+                        { name = ParameterName.diattenuation; kind = FractionParameter; defaultValue = ParameterValue 1.0 }
                 [
                     leakageAxis
-                    { name = ParameterName "axisOffset"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                    { name = ParameterName.axisOffset; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
                 ]
             | RetarderPlateModel _ ->
                 [
-                    { name = ParameterName "retardance"; kind = PhaseParameter; defaultValue = ParameterValue (Math.PI / 2.0) }
-                    { name = ParameterName "fastAxisOffset"; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
+                    { name = ParameterName.retardance; kind = PhaseParameter; defaultValue = ParameterValue (Math.PI / 2.0) }
+                    { name = ParameterName.fastAxisOffset; kind = AngleParameter; defaultValue = ParameterValue 0.0 }
                 ]
             | BlackBoxMuellerModel normalisation ->
+                let indices : ParameterNameIndex list = [ 0 .. 3 ] |> List.map ParameterNameIndex
                 let elements : ItemParameterAxis list =
                     [
-                        for row in 0 .. 3 do
-                            for column in 0 .. 3 do
+                        for row in indices do
+                            for column in indices do
                                 {
-                                    name = ParameterName $"m{row}{column}"
+                                    name = ParameterName.muellerElement row column
                                     kind = MuellerElementParameter
                                     defaultValue = if row = column then ParameterValue 1.0 else ParameterValue 0.0
                                 }
@@ -217,12 +310,12 @@ module ItemModels =
                 | SixteenElementMueller -> elements
                 | FifteenElementsAndScale ->
                     // Row-major, so m00 leads `elements`: the scale takes its place.
-                    { name = ParameterName "scale"; kind = ScaleParameter; defaultValue = ParameterValue 1.0 } :: List.tail elements
+                    { name = ParameterName.blackBoxScale; kind = ScaleParameter; defaultValue = ParameterValue 1.0 } :: List.tail elements
             | CompoundModel components ->
                 components
                 |> List.mapi (fun i part ->
-                    part.form.parameterAxes
-                    |> List.map (fun axis -> { axis with name = ParameterName $"c{i + 1}.{axis.name.value}" }))
+                    let position = ParameterNameIndex (i + 1)
+                    part.form.parameterAxes |> List.map (fun axis -> { axis with name = axis.name.inComponent position }))
                 |> List.concat
 
     /// One component of a compound: its form, turned by its fixed offset within the compound (spec 0050 S7.1).
@@ -295,8 +388,8 @@ module ItemModels =
             | EmptySlotModel -> []
             | OpticalElementModel form -> form.parameterAxes
             | IntensityDetectorModel noise ->
-                { name = ParameterName "gain"; kind = ScaleParameter; defaultValue = ParameterValue 1.0 }
-                :: { name = ParameterName "darkOffset"; kind = ReadingParameter; defaultValue = ParameterValue 0.0 }
+                { name = ParameterName.gain; kind = ScaleParameter; defaultValue = ParameterValue 1.0 }
+                :: { name = ParameterName.darkOffset; kind = ReadingParameter; defaultValue = ParameterValue 0.0 }
                 :: noise
             | MuellerPolarimeterModel noise
             | EllipsometerModel noise -> noise

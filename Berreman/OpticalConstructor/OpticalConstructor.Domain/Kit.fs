@@ -570,7 +570,7 @@ module Kit =
         /// The dial zero as an ordinary parameter of a dial-mounted item; a fixed one has none (spec 0050 S7.1).
         member this.parameterAxes : ItemParameterAxis list =
             match this with
-            | DialMounted _ -> [ { name = ParameterName "dialZero"; kind = AngleParameter; defaultValue = ParameterValue 0.0 } ]
+            | DialMounted _ -> [ { name = ParameterName.dialZero; kind = AngleParameter; defaultValue = ParameterValue 0.0 } ]
             | FixedMounting -> []
 
     /// The parameter values an earlier revision of an item held: its short value history (spec 0050 S7.1; 001 §I).

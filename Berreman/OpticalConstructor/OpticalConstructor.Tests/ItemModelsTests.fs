@@ -33,6 +33,26 @@ module ItemModelsTests =
         Assert.Equal<float>(1.0, DialPositive.value)
         Assert.Equal<float>(-1.0, DialNegative.value)
 
+    /// One member per published name, so the evaluator reads under the very name a model publishes (spec 0050 S8.1).
+    [<Fact>]
+    let ``every published parameter name is one ParameterName member`` () : unit =
+        let one = ParameterNameIndex 1
+        let two = ParameterNameIndex 2
+        let three = ParameterNameIndex 3
+
+        Assert.Equal<ParameterName list>(
+            [ ParameterName.azimuth; ParameterName.ellipticity; ParameterName.degreeOfPolarization; ParameterName.intensityScale ],
+            SourcePreset.lightSourceAxes |> List.map _.name)
+        Assert.Equal<ItemParameterAxis list>(SourcePreset.lightSourceAxes, (BuiltinCatalogue.source PresetIds.heNe633).parameterAxes)
+        Assert.Equal("degreeOfPolarization", ParameterName.degreeOfPolarization.value)
+        Assert.Equal("m23", (ParameterName.muellerElement two three).value)
+        Assert.Equal("film2.thickness", (ParameterName.filmThickness two).value)
+        Assert.Equal("film2.layer1.thickness", (ParameterName.repeatedLayerThickness two one).value)
+        Assert.Equal("substrate.thickness", ParameterName.substrateThickness.value)
+        Assert.Equal("scale", ParameterName.blackBoxScale.value)
+        Assert.Equal("c2.retardance", (ParameterName.retardance.inComponent two).value)
+        Assert.Equal("c2.c1.extinctionRatio", ((ParameterName.extinctionRatio.inComponent one).inComponent two).value)
+
     /// A data projection over test-local values (spec 0050 001 §I): no bench noise model is exercised here.
     [<Fact>]
     let ``the detector noise axes keep their declared quantities`` () : unit =
