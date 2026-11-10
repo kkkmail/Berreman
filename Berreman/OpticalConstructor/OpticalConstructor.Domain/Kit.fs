@@ -930,6 +930,8 @@ module Kit =
         | UnknownSetupSlotErr of reason : string
         | UnknownSlotItemErr of reason : string
         | IncompatibleSlotItemErr of reason : string
+        /// A slot names an item the kit's items lack (spec 0050 S8.2, S7.2).
+        | SetupItemReferenceErr of ItemError
 
         member this.describe : string =
             match this with
@@ -940,6 +942,7 @@ module Kit =
             | UnknownSetupSlotErr reason -> $"the table has no such slot: {reason}"
             | UnknownSlotItemErr reason -> $"the item is not available: {reason}"
             | IncompatibleSlotItemErr reason -> $"the item does not fit the slot: {reason}"
+            | SetupItemReferenceErr error -> $"a slot's item could not be resolved: {error.describe}"
 
     /// A setup's name, kept as given; its `<name>.setup-json` stem follows the shared name rule (spec 0050 S8.2;
     /// 001 §A; .spec-md §3.11).

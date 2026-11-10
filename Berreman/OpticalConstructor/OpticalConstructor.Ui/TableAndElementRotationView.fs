@@ -29,6 +29,7 @@ open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
@@ -316,6 +317,9 @@ type KitCopySource =
         chosen : Experiments.ExperimentId list
         /// The source kit's items, read when it opens (spec 0050 S7.2).
         items : Item list
+        /// The source kit's setups, read when it opens, which the chosen experiments' items are resolved through (spec
+        /// 0050 S8.2).
+        setups : Setups.Setup list
         /// The mapping table: one row per item the chosen experiments use, with its choice (spec 0050 S7.2).
         itemRows : ItemCopyRow list
     }
@@ -1838,21 +1842,6 @@ let private experimentElementLabel (model : TableAndElementRotationModel) (id : 
     |> Option.map (fun (i, e) -> Experiments.ElementLabel $"{e.placement.catalogueKind.kindName} #{i.value + 1}")
     |> Option.defaultValue (Experiments.ElementLabel "(element)")
 
-/// Captures a sample's version-one reference or a preset's entry id; an unbound element
-/// remains Unbound (spec 0038 Part I; spec 0050 S2.2).
-let private descriptorBinding (model : TableAndElementRotationModel) (kind : CatalogueKind) (valueIdOpt : ElementValueId option) : Experiments.ElementBinding =
-    match valueIdOpt with
-    | None -> Experiments.Unbound
-    | Some vid ->
-        match kind with
-        | Sample ->
-            match model.library.tryGetEntry vid with
-            | Ok (Some (Library.SampleItem s)) ->
-                Experiments.BoundByVersion (Lifecycle.SampleVersionRef (Library.SampleVersionId.firstOf s.id))
-            | Ok (Some _) | Ok None | Error _ -> Experiments.BoundByEntryId vid
-        | LightSource | LinearPolarizer | CircularPolarizer | Lens | FlatMirror | CurvedMirror | Detector ->
-            Experiments.BoundByEntryId vid
-
 type TableAndElementRotationModel with
 
     /// Spec 0046 (task 5): the capture the DRAFT actually runs with — its requested capture coerced to what
@@ -1862,35 +1851,6 @@ type TableAndElementRotationModel with
         match draft.elementId with
         | Some id -> BeamLayout.effectiveCapture (availableCaptures model id) draft.measurement
         | None -> None
-
-    /// Spec 0038 Part I (step 025): capture the live scene as an experiment's ordered `setup` — one
-    /// `ElementDescriptor` per present element (in scene order), carrying its id, human label, catalogue kind,
-    /// placement/orientation summary and versioned/preset binding. The detector element is part of the chain
-    /// (its kind fixes the expected data-file shape). Built on commit; the descriptor snapshot survives the
-    /// element's later removal. An element of the edited experiment keeps its assigned item while its binding is
-    /// unchanged; a new or rebound one carries none, never one guessed from its preset (spec 0050 S7.2).
-    member internal model.experimentSetup : Experiments.ElementDescriptor list =
-        let collection = model.experimentCollection
-        let editedSetup : Experiments.ElementDescriptor list =
-            collection.draft.editingId
-            |> Option.bind (fun id -> collection.experiments |> List.tryFind (fun experiment -> experiment.id = id))
-            |> Option.map (fun experiment -> experiment.setup)
-            |> Option.defaultValue []
-
-        model.elements
-        |> List.map (fun e ->
-            let binding = descriptorBinding model e.placement.catalogueKind e.placement.valueId
-            {
-                Experiments.ElementDescriptor.elementId = e.id
-                label = experimentElementLabel model e.id
-                kind = e.placement.catalogueKind
-                placement = Experiments.PlacementSummary.ofPlacement e.placement
-                binding = binding
-                itemIdOpt =
-                    editedSetup
-                    |> List.tryFind (fun descriptor -> descriptor.elementId = e.id && descriptor.binding = binding)
-                    |> Option.bind (fun descriptor -> descriptor.itemIdOpt)
-            })
 
 type MeasuredData.ExperimentDataError with
 
@@ -1904,14 +1864,19 @@ type MeasuredData.ExperimentDataError with
         | MeasuredData.DataRangeMismatchErr _
         | MeasuredData.DataUnitsMismatchErr _ -> AttachedFileValidationError error.caption
 
+/// Validates the attachment in the shape of the detector the experiment's setup revision holds; a revision the kit's
+/// setups lack is the validation's failure (spec 0038 Part L; spec 0050 S8.2).
 let private validateExperimentAttachment
     (model : TableAndElementRotationModel)
     (experiment : Experiments.Experiment)
     (attachment : DataAttachment)
     : ExperimentFileStatus =
-    match ExperimentDataLoad.loadAndValidate model.library model.experimentData experiment attachment with
-    | Ok series -> DataFileValidated series.pointCount
-    | Error error -> error.fileStatus
+    match experiment.slotsIn model.kitSetups with
+    | Ok slots ->
+        match ExperimentDataLoad.loadAndValidate model.library model.experimentData slots experiment attachment with
+        | Ok series -> DataFileValidated series.pointCount
+        | Error error -> error.fileStatus
+    | Error error -> AttachedFileValidationError (ControlCaption error.describe)
 
 /// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3, S8.2; 001
 /// §E): the kit, its experiments with a fresh draft, their attachments rechecked through the model's `experimentData`,
@@ -2095,7 +2060,6 @@ type TableAndElementRotationModel with
                     match entry with
                     | Library.PolarizerItem polarizer -> Some (PolarizerPresetChoice (polarizerModel, polarizer))
                     | Library.SampleItem _ | Library.SourceItem _ | Library.DetectorItem _ -> None))
-        // Version 1 is what an experiment's binding pins (`descriptorBinding`), so an item and an experiment name one entry.
         let samples =
             underBindingModel ItemModels.StackSampleBinding (fun sampleModel ->
                 listed Sample
@@ -2375,8 +2339,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | Some i ->
             // Spec 0040 Part D.3: a bound sample seeds the placed element's emission from its
             // geometry-constrained `supportedEmission` (a Mirror ⇒ reflected-only); a non-sample
-            // bind keeps the kind default (`withBoundSampleEmission`).
-            mapElement i (fun e -> { e with placement = withBoundSampleEmission m { e.placement with valueId = Some entryId } })
+            // bind keeps the kind default (`withBoundSampleEmission`). Spec 0050 S7.2, S8.2: a slot bound to another entry
+            // no longer holds the piece it held, so its identity and its binding never disagree.
+            mapElement i (fun e ->
+                let rebound = { e with placement = withBoundSampleEmission m { e.placement with valueId = Some entryId } }
+                if e.placement.valueId = Some entryId then rebound else rebound.withoutItem)
                 { m with pendingEntry = None; selectStatus = None }
         | None ->
             { m with selectStatus = Some (ControlCaption "The chosen entry was not bound — its target element is no longer on the table.") }
@@ -2439,33 +2406,55 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n.curvePointCount model.experimentCollection }
     | ExpCommit ->
         guardKitWrite model (fun () ->
-            // Spec 0038 step 025; spec 0046: capture the live setup and the detectors' allowed measurement.
-            // Spec 0050 S4.3: accept the committed draft only after its kit file is recorded.
+            // Spec 0046: the detectors' allowed measurement. Spec 0050 S8.2: the table is recorded as the active setup,
+            // minting its next revision when an experiment references the current one, then the experiment over its
+            // reference; the collection, the setups and the active setup change only once both are recorded.
             match model.draftCapture with
             | Some capture ->
-                let collection = Experiments.chooseMeasurement capture model.experimentCollection
-                let committed = Experiments.commit model.experimentSetup collection
-                if committed = model.experimentCollection then model
-                else
-                    match committed.draft.editingId |> Option.bind (fun id -> committed.experiments |> List.tryFind (fun experiment -> experiment.id = id)) with
-                    | Some experiment ->
-                        let library : KitLibraryContext =
-                            {
-                                kit = model.kit
-                                imports = model.catalogueImports
-                            }
-                        match library.recordExperiment experiment with
-                        | Ok () ->
-                            {
-                                model with
-                                    experimentCollection = committed
-                                    kitStatus = None
-                            }
-                        | Error error ->
-                            {
-                                model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                            }
-                    | None -> model
+                let library : KitLibraryContext =
+                    {
+                        kit = model.kit
+                        imports = model.catalogueImports
+                    }
+                let notSaved (error : KitLibraryError) : TableAndElementRotationModel =
+                    {
+                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    }
+                let slots = model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
+                // A first free name is one no held setup's file has, so `create` takes it.
+                let tableSetup : Result<Setups.Setup, KitLibraryError> =
+                    match model.activeSetupOpt with
+                    | Some active -> Ok (active.revisedWith slots (active.pinFor model.experimentCollection.experiments))
+                    | None ->
+                        let fresh = SetupName.firstFree (model.kitSetups |> List.map (fun held -> held.name))
+                        Setups.Setup.create fresh slots model.kitSetups |> Result.mapError KitLibrarySetupErr
+                match tableSetup with
+                | Error error -> notSaved error
+                | Ok setup ->
+                    let collection = Experiments.chooseMeasurement capture model.experimentCollection
+                    let committed = Experiments.commit setup.reference collection
+                    if committed = model.experimentCollection then model
+                    else
+                        match committed.draft.editingId |> Option.bind (fun id -> committed.experiments |> List.tryFind (fun experiment -> experiment.id = id)) with
+                        | Some experiment ->
+                            let setupRecorded =
+                                match model.activeSetupOpt with
+                                | Some active when active = setup -> Ok ()
+                                | Some _
+                                | None -> library.recordSetup setup
+                            match setupRecorded |> Result.bind (fun () -> library.recordExperiment experiment) with
+                            | Ok () ->
+                                {
+                                    model with
+                                        experimentCollection = committed
+                                        kitSetups =
+                                            setup :: (model.kitSetups |> List.filter (fun held -> held.name <> setup.name))
+                                            |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                                        activeSetupOpt = Some setup
+                                        kitStatus = None
+                                }
+                            | Error error -> notSaved error
+                        | None -> model
             | None -> model)
     | ExpNew -> { model with experimentCollection = model.experimentCollection.newDraft }
     | ExpEdit id -> { model with experimentCollection = Experiments.edit id model.experimentCollection }
@@ -2709,19 +2698,24 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                 experiments = []
                                 chosen = []
                                 items = []
+                                setups = []
                                 itemRows = []
                             }
-                        // Spec 0050 S7.2: the items are read after the experiments; no row shows until an experiment is chosen.
+                        // Spec 0050 S7.2, S8.2: the items, then the setups, are read after the experiments; no row shows until
+                        // an experiment is chosen.
                         let read =
                             source.proxy.readExperiments ()
-                            |> Result.bind (fun experiments -> source.proxy.readItems () |> Result.map (fun items -> experiments, items))
+                            |> Result.bind (fun experiments ->
+                                source.proxy.readItems ()
+                                |> Result.bind (fun items -> source.proxy.readSetups () |> Result.map (fun setups -> experiments, items, setups)))
                         match read with
-                        | Ok (experiments, items) ->
+                        | Ok (experiments, items, setups) ->
                             Ok
                                 {
                                     unread with
                                         experiments = experiments
                                         items = items
+                                        setups = setups
                                 }
                         | Error error ->
                             unread.release ()
@@ -2742,9 +2736,9 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | Some copySource ->
             let toggled = copySource.toggled id
             let chosenExperiments = toggled.experiments |> List.filter (fun experiment -> List.contains experiment.id toggled.chosen)
-            // Spec 0050 S7.2: a row comes at its default, keeps the user's choice while used, and goes when unused; a
-            // dangling item id keeps the selection and rows as they were.
-            match Experiments.Experiment.itemsUsedBy chosenExperiments copySource.items with
+            // Spec 0050 S7.2, S8.2: a row comes at its default, keeps the user's choice while used, and goes when unused; a
+            // dangling setup revision or item id keeps the selection and rows as they were.
+            match Experiments.Experiment.itemsUsedBy chosenExperiments copySource.setups copySource.items with
             | Ok used ->
                 {
                     model with
@@ -2784,16 +2778,21 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         guardKitWrite model (fun () ->
             match model.kitCopyOpt with
             | Some copySource when not (List.isEmpty copySource.chosen) ->
+                // Spec 0050 S8.2: the setups are read after the items, so the window holds the setups the copy wrote.
                 let copied =
                     model.kit.copyExperimentsFrom copySource.source copySource.chosen copySource.itemRows
                     |> Result.bind (fun report ->
                         model.kit.proxy.readExperiments ()
-                        |> Result.bind (fun experiments -> model.kit.proxy.readItems () |> Result.map (fun items -> report, experiments, items))
+                        |> Result.bind (fun experiments ->
+                            model.kit.proxy.readItems ()
+                            |> Result.bind (fun items -> model.kit.proxy.readSetups () |> Result.map (fun setups -> experiments, items, setups)))
+                        |> Result.map (fun content -> report, content)
                         |> Result.mapError KitLibraryKitErr)
                 match copied with
-                | Ok (report, experiments, items) ->
-                    // Spec 0050 S6, S7.2: as a reload sets it (step 187), over the kit's items as the copy left them.
-                    let shown = withKitContent model.kit experiments items model.kitSetups model
+                | Ok (report, (experiments, items, setups)) ->
+                    // Spec 0050 S6, S7.2, S8.2: as a reload sets it (step 187), over the kit's items and setups as the copy
+                    // left them.
+                    let shown = withKitContent model.kit experiments items setups model
                     let copiedCount = List.length report.experiments
                     let sourceName = copySource.source.kitFile.name
                     let told =
@@ -3903,7 +3902,7 @@ type TableAndElementRotationModel with
             | _ -> ExperimentChart.emptyExperimentChart
 
 /// The chart of a specific COLLECTED experiment — the per-row "View" action. Spec 0038 Part I (step 025):
-/// the varied element is one entry of the experiment's captured setup; a dark-line experiment (nothing
+/// the varied element is a slot of the experiment's setup revision (spec 0050 S8.2); a dark-line experiment (nothing
 /// varied) has no chart. Spec 0038 Part L (037): also EMPTY when the inverse chart surface is gated off.
 let chartForExperiment (model : TableAndElementRotationModel) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
     if not model.experimentChartVisible then ExperimentChart.emptyExperimentChart

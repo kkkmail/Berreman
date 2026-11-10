@@ -156,24 +156,11 @@ module KitLibraryTests =
             history = []
         }
 
+    /// A dark line over `recordingSetup`'s revision (spec 0050 S8.2).
     let private recordingExperiment : Experiment =
-        let sampleVersion = SampleVersionId.firstOf SampleIds.multilayerQwId
         {
             id = ExperimentId 149
-            setup =
-                recordingSetup.slots |> List.map (fun element ->
-                    {
-                        elementId = element.id
-                        label = ElementLabel "Recorded element"
-                        kind = element.placement.catalogueKind
-                        placement = PlacementSummary.ofPlacement element.placement
-                        binding =
-                            match element.placement.catalogueKind, element.placement.valueId with
-                            | CatalogueKind.Sample, _ -> BoundByVersion (SampleVersionRef sampleVersion)
-                            | _, Some valueId -> BoundByEntryId valueId
-                            | _, None -> Unbound
-                        itemIdOpt = None
-                    })
+            setup = recordingSetup.reference
             varied = None
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR2
@@ -434,7 +421,8 @@ module KitLibraryTests =
                                 }
                     }
                 | UnheldEntryErr _
-                | KitLibraryItemErr _ -> failwith "Only pin and write failures belong to this fixture."
+                | KitLibraryItemErr _
+                | KitLibrarySetupErr _ -> failwith "Only pin and write failures belong to this fixture."
             Assert.Equal<Result<LibraryVersionRef list, KitLibraryError>>(Error failure, failingContext.snapshotReferences [ reference ])
             assertSnapshots [ sampleEnvelope () ] partial
             let expectedPins =
@@ -442,7 +430,8 @@ module KitLibraryTests =
                 | KitLibraryImportErr _ -> [ (sampleEnvelope ()).libraryVersionRef ]
                 | KitLibraryKitErr _ -> [ (sampleEnvelope ()).libraryVersionRef; material.libraryVersionRef ]
                 | UnheldEntryErr _
-                | KitLibraryItemErr _ -> []
+                | KitLibraryItemErr _
+                | KitLibrarySetupErr _ -> []
             Assert.Equal<LibraryVersionRef list>(expectedPins, List.ofSeq partial.pins)
             partial.pins.Clear()
             partial.operations.Clear()
@@ -1576,7 +1565,7 @@ module KitLibraryTests =
         assertConfirmationKitUnchanged failedFixture
 
     [<Fact>]
-    let ``recording an experiment snapshots the library versions it binds, then writes its file`` () : unit =
+    let ``recording an experiment over a setup revision the kit holds writes its file and snapshots nothing of its own`` () : unit =
         use database = BuiltinCatalogue.freshLibraryDatabase ()
         let fixture = snapshotFixture (CatalogueImportProxy.createInDatabase database) ReadWriteKitAccess
         let newerSample =
@@ -1584,7 +1573,12 @@ module KitLibraryTests =
                 (sampleEnvelope ()).content with version = VersionNumber 2
             }
         BuiltinCatalogue.putSealedEntries fixture.context.imports [ newerSample ]
-        let expected = recordingClosure ()
+        let latest = fixture.context.imports.sealEntry newerSample |> expectImportOk
+        // The setup binds the multilayer at its latest; the experiment adds nothing to what `recordSetup` wrote.
+        fixture.context.recordSetup recordingSetup |> expectSnapshotOk
+        let expected =
+            recordingClosure () |> List.map (fun envelope -> if envelope.content.id = latest.content.id then latest else envelope)
+        assertSnapshots expected fixture
         let context, writes = observeContentWrites expected fixture
         context.recordExperiment recordingExperiment |> expectSnapshotOk
         Assert.Equal<KitFileKind list>([ ExperimentKitFile ], List.ofSeq writes)
@@ -1596,6 +1590,8 @@ module KitLibraryTests =
         Assert.Equal<Experiment list>([ recordingExperiment ], context.kit.proxy.readExperiments () |> expectKitOk)
 
         let refused = freshSnapshotFixture ()
+        refused.context.recordSetup recordingSetup |> expectSnapshotOk
+        let expected = recordingClosure ()
         let writeError = KitIoErr "experiment content cannot be written"
         let failingContext = refusingContentWrites expected writeError refused
         Assert.Equal<Result<unit, KitLibraryError>>(
@@ -1659,10 +1655,6 @@ module KitLibraryTests =
     let ``a reference the library and the kit cannot resolve records nothing`` () : unit =
         let missingValue = ElementValueId "14900000-0000-4000-8000-000000000001"
         let missingId = missingValue.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith "The test binding must be a GUID.")
-        let missingDescriptor =
-            {
-                List.head recordingExperiment.setup with binding = BoundByEntryId missingValue
-            }
         let missingSlot =
             let source = List.head recordingSetup.slots
             {
@@ -1672,55 +1664,62 @@ module KitLibraryTests =
                             source.placement with valueId = Some missingValue
                         }
             }
-        let experiment =
-            {
-                recordingExperiment with setup = [ missingDescriptor ]
-            }
         let setup =
             {
                 recordingSetup with slots = [ missingSlot ]
             }
         let fixture = freshSnapshotFixture ()
         let paths = fixture.folder.paths ()
-        for record in [ (fun () -> fixture.context.recordExperiment experiment); (fun () -> fixture.context.recordSetup setup) ] do
-            match record () with
-            | Error (UnheldEntryErr reason) -> Assert.Contains(missingId.value.ToString(), reason)
-            | Error error -> Assert.Fail(error.describe)
-            | Ok () -> Assert.Fail("An unresolved reference must prevent the content write.")
-            Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
-            Assert.Empty(fixture.context.kit.proxy.readSetups () |> expectKitOk)
-            assertSnapshots [] fixture
-            Assert.Empty fixture.pins
-            Assert.Empty fixture.operations
-            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+        match fixture.context.recordSetup setup with
+        | Error (UnheldEntryErr reason) -> Assert.Contains(missingId.value.ToString(), reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("An unresolved reference must prevent the content write.")
+        // The setup was not recorded, so an experiment over it records nothing either.
+        match fixture.context.recordExperiment recordingExperiment with
+        | Error (KitLibrarySetupErr (UnknownSetupErr reason)) -> Assert.Contains(recordingSetup.reference.describe, reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("An experiment over a setup the kit lacks must record nothing.")
+        Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
+        Assert.Empty(fixture.context.kit.proxy.readSetups () |> expectKitOk)
+        assertSnapshots [] fixture
+        Assert.Empty fixture.pins
+        Assert.Empty fixture.operations
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
 
-        let partialExperiment =
-            {
-                recordingExperiment with setup = recordingExperiment.setup @ [ missingDescriptor ]
-            }
         let partialSetup =
             {
                 recordingSetup with slots = recordingSetup.slots @ [ missingSlot ]
             }
-        for record in [ (fun (context : KitLibraryContext) -> context.recordExperiment partialExperiment); (fun context -> context.recordSetup partialSetup) ] do
-            let partial = freshSnapshotFixture ()
-            match record partial.context with
-            | Error (UnheldEntryErr reason) -> Assert.Contains(missingId.value.ToString(), reason)
-            | Error error -> Assert.Fail(error.describe)
-            | Ok () -> Assert.Fail("An unresolved later reference must also prevent the content write.")
-            assertSnapshots (recordingClosure ()) partial
-            Assert.Equal<LibraryVersionRef list>(recordingClosure () |> List.map _.libraryVersionRef, List.ofSeq partial.pins)
-            Assert.Empty(partial.context.kit.proxy.readExperiments () |> expectKitOk)
-            Assert.Empty(partial.context.kit.proxy.readSetups () |> expectKitOk)
+        let partial = freshSnapshotFixture ()
+        match partial.context.recordSetup partialSetup with
+        | Error (UnheldEntryErr reason) -> Assert.Contains(missingId.value.ToString(), reason)
+        | Error error -> Assert.Fail(error.describe)
+        | Ok () -> Assert.Fail("An unresolved later reference must also prevent the content write.")
+        assertSnapshots (recordingClosure ()) partial
+        Assert.Equal<LibraryVersionRef list>(recordingClosure () |> List.map _.libraryVersionRef, List.ofSeq partial.pins)
+        Assert.Empty(partial.context.kit.proxy.readExperiments () |> expectKitOk)
+        Assert.Empty(partial.context.kit.proxy.readSetups () |> expectKitOk)
 
     [<Fact>]
     let ``a read-only kit records nothing`` () : unit =
-        let fixture = snapshotFixture (BuiltinCatalogue.freshStores ()).proxy ReadOnlyKitAccess
-        let paths = fixture.folder.paths ()
-        let emptyExperiment =
+        let stores = BuiltinCatalogue.freshStores ()
+        let writable = snapshotFixture stores.proxy ReadWriteKitAccess
+        writable.context.recordSetup recordingSetup |> expectSnapshotOk
+        let snapshots = writable.context.kit.proxy.listSnapshots () |> expectKitOk
+        // The same folder reopened read-only: its setup is held, so recording an experiment over it reaches the write.
+        let readOnlyKit =
+            KitContext.openKit writable.context.kit.proxy ReadOnlyKitAccess writable.context.kit.clock |> expectKitOk
+        let fixture =
             {
-                recordingExperiment with setup = []
+                writable with
+                    context =
+                        {
+                            writable.context with kit = readOnlyKit
+                        }
             }
+        fixture.pins.Clear()
+        fixture.operations.Clear()
+        let paths = fixture.folder.paths ()
         let emptySetup =
             {
                 recordingSetup with slots = []
@@ -1728,7 +1727,6 @@ module KitLibraryTests =
         let writes =
             [
                 (fun () -> fixture.context.recordExperiment recordingExperiment)
-                (fun () -> fixture.context.recordExperiment emptyExperiment)
                 (fun () -> fixture.context.recordSetup recordingSetup)
                 (fun () -> fixture.context.recordSetup emptySetup)
             ]
@@ -1740,9 +1738,38 @@ module KitLibraryTests =
             Assert.Empty fixture.pins
             Assert.Empty fixture.operations
             Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
-            assertSnapshots [] fixture
+            Assert.Equal<LibraryEntryEnvelope list>(snapshots, fixture.context.kit.proxy.listSnapshots () |> expectKitOk)
             Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
-            Assert.Empty(fixture.context.kit.proxy.readSetups () |> expectKitOk)
+            Assert.Equal<Setups.Setup list>([ recordingSetup ], fixture.context.kit.proxy.readSetups () |> expectKitOk)
+
+    [<Fact>]
+    let ``an experiment over a setup revision the kit lacks records nothing`` () : unit =
+        let fixture = freshSnapshotFixture ()
+        fixture.context.recordSetup recordingSetup |> expectSnapshotOk
+        let snapshots = fixture.context.kit.proxy.listSnapshots () |> expectKitOk
+        fixture.pins.Clear()
+        fixture.operations.Clear()
+        let paths = fixture.folder.paths ()
+        let missing : SetupReference =
+            {
+                recordingSetup.reference with revision = SetupRevision 2
+            }
+        let experiment =
+            {
+                recordingExperiment with setup = missing
+            }
+
+        match fixture.context.recordExperiment experiment with
+        | Error (KitLibrarySetupErr (UnknownSetupRevisionErr reason)) -> Assert.Contains(missing.describe, reason)
+        | Error error -> Assert.Fail($"Expected KitLibrarySetupErr (UnknownSetupRevisionErr _), got {error.describe}")
+        | Ok () -> Assert.Fail("An experiment over a revision the kit lacks must record nothing.")
+
+        Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
+        Assert.Equal<Setups.Setup list>([ recordingSetup ], fixture.context.kit.proxy.readSetups () |> expectKitOk)
+        Assert.Equal<LibraryEntryEnvelope list>(snapshots, fixture.context.kit.proxy.listSnapshots () |> expectKitOk)
+        Assert.Empty fixture.pins
+        Assert.Empty fixture.operations
+        Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
 
     let private presetEntryId (preset : ElementValueId) : LibraryEntryId =
         preset.tryToLibraryEntryId |> Option.defaultWith (fun () -> failwith $"The Built-in preset '{preset.value}' must have an entry id.")
@@ -2085,28 +2112,31 @@ module KitLibraryTests =
                     dial = FixedMounting
                 }
             draft.toItem
-        let experiment =
+        // The setup's source slot holds the piece; the setup file is written without its snapshots.
+        let setup =
             {
-                recordingExperiment with
-                    setup =
-                        recordingExperiment.setup
-                        |> List.map (fun descriptor ->
-                            match descriptor.kind with
+                recordingSetup with
+                    slots =
+                        recordingSetup.slots
+                        |> List.map (fun slot ->
+                            match slot.placement.catalogueKind with
                             | LightSource ->
                                 {
-                                    descriptor with itemIdOpt = Some laser600.id
+                                    slot with content = Setups.ItemInSlot (laser600.id, Setups.PlacementTurn)
                                 }
-                            | _ -> descriptor)
+                            | _ -> slot)
             }
+        let experiment = recordingExperiment
         match experiment.experimentFile.fileText |> Result.bind (fun text -> text.parseExperimentFile) with
         | Ok parsed -> Assert.Equal<Experiment>(experiment, parsed.experiment)
         | Error error -> Assert.Fail($"The experiment must be valid against its schema: {error.describe}")
         let fixture = freshSnapshotFixture ()
+        fixture.context.kit.proxy.writeSetup setup |> expectKitOk
         let paths = fixture.folder.paths ()
 
         match fixture.context.recordExperiment experiment with
-        | Error (KitLibraryItemErr (UnknownKitItemErr reason)) -> Assert.Contains(laser600.id.value.ToString(), reason)
-        | Error error -> Assert.Fail($"Expected KitLibraryItemErr (UnknownKitItemErr _), got {error.describe}")
+        | Error (KitLibrarySetupErr (SetupItemReferenceErr (UnknownKitItemErr reason))) -> Assert.Contains(laser600.id.value.ToString(), reason)
+        | Error error -> Assert.Fail($"Expected KitLibrarySetupErr (SetupItemReferenceErr (UnknownKitItemErr _)), got {error.describe}")
         | Ok () -> Assert.Fail("An experiment naming an item the kit lacks must record nothing.")
 
         assertSnapshots [] fixture
@@ -2115,14 +2145,13 @@ module KitLibraryTests =
         Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
         Assert.Empty(fixture.context.kit.proxy.readExperiments () |> expectKitOk)
 
-        // With the piece's file in the kit, the same experiment records: the unassigned bindings, then the piece's model
-        // and its preset are snapshotted and pinned before the file is written.
+        // With the piece's file in the kit, the same experiment records, and snapshots nothing of its own: the setup's
+        // and the item's entries are theirs to snapshot (spec 0050 S8.2).
         fixture.context.kit.proxy.writeItem laser600 |> expectKitOk
-        let expected = sampleClosure () @ [ itemModelEnvelope ItemModelIds.sourcePresetItemModelId; catalogueEnvelope (presetEntryId PresetIds.source600) ]
-        let context, writes = observeContentWrites expected fixture
+        let context, writes = observeContentWrites [] fixture
         context.recordExperiment experiment |> expectSnapshotOk
         Assert.Equal<KitFileKind list>([ ExperimentKitFile ], List.ofSeq writes)
-        assertSnapshots expected fixture
+        assertSnapshots [] fixture
         Assert.Equal<Experiment list>([ experiment ], context.kit.proxy.readExperiments () |> expectKitOk)
 
     /// A test-local, user-managed item model at its first version (spec 0050 S7.2).
@@ -2294,13 +2323,16 @@ module KitLibraryTests =
         let importError = ImportRejectedErr "the requested version cannot be pinned"
         let reason = "entry 13900000-0000-4000-8000-000000000004 v9"
         let itemError = UnknownKitItemErr "'ML' maps onto 22700000-0000-4000-8000-0000000000ff"
+        let setupError = UnknownSetupRevisionErr "'Bench' revision 2"
         let cases : (KitLibraryError * string) list =
             [
                 KitLibraryKitErr kitError, $"the kit refused the library snapshot: {kitError.describe}"
                 KitLibraryImportErr importError, $"the library refused the kit snapshot: {importError.describe}"
                 UnheldEntryErr reason, $"neither the library nor the kit holds the reference: {reason}"
                 KitLibraryItemErr itemError, $"the items could not be copied: {itemError.describe}"
+                KitLibrarySetupErr setupError, $"the setup could not be used: {setupError.describe}"
             ]
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
-        Assert.Equal(4, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+        Assert.Contains("'Bench' revision 2", (KitLibrarySetupErr setupError).describe)
+        Assert.Equal(5, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)

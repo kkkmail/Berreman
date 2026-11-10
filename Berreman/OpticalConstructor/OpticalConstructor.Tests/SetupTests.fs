@@ -172,6 +172,61 @@ module SetupTests =
             mintedAgain.history
         )
 
+    [<Fact>]
+    let ``an experiment pins the revision it references, and its slots resolve through the kit's setups`` () : unit =
+        let firstSlots = [ src; holding itemA PlacementTurn lp; det ]
+        let currentSlots = [ src; holding itemB PlacementTurn lp; det ]
+        let bench : Setup =
+            {
+                name = SetupName "Bench"
+                revision = SetupRevision 2
+                slots = currentSlots
+                history = [ historyRecord SetupRevision.first firstSlots ]
+            }
+        let plate = createdOver (SetupName "Plate") [ bench ]
+        let setups = [ bench; plate ]
+
+        let over (setup : SetupReference) (id : int) : Experiments.Experiment =
+            {
+                id = Experiments.ExperimentId id
+                setup = setup
+                varied = None
+                measurement = Experiments.CaptureTransmitted
+                range = Experiments.VariableRange.forVariable Experiments.VaryR1
+                dataFileOpt = None
+                sourceWaveLengthOpt = None
+            }
+
+        let onFirst = over { name = SetupName "Bench"; revision = SetupRevision.first } 1
+        let onCurrent = over bench.reference 2
+        Assert.Equal<Result<SetupSlot list, SetupError>>(Ok firstSlots, onFirst.slotsIn setups)
+        Assert.Equal<Result<SetupSlot list, SetupError>>(Ok currentSlots, onCurrent.slotsIn setups)
+        Assert.Equal<Result<SetupSlot list, SetupError>>(Ok plate.slots, (over plate.reference 3).slotsIn setups)
+
+        match (over { name = SetupName "Gone"; revision = SetupRevision.first } 4).slotsIn setups with
+        | Error (UnknownSetupErr reason) -> Assert.Contains("'Gone' revision 1", reason)
+        | other -> Assert.Fail($"expected UnknownSetupErr, got %A{other}")
+
+        match (over { bench.reference with revision = SetupRevision 3 } 5).slotsIn setups with
+        | Error (UnknownSetupRevisionErr reason) -> Assert.Contains("'Bench' revision 3", reason)
+        | other -> Assert.Fail($"expected UnknownSetupRevisionErr, got %A{other}")
+
+        // Only an experiment over the current revision pins it; one over an earlier revision leaves it free to change.
+        Assert.Equal<PinState>(VersionPinned, bench.pinFor [ onCurrent ])
+        Assert.Equal<PinState>(VersionPinned, bench.pinFor [ onFirst; onCurrent ])
+        Assert.Equal<PinState>(VersionUnpinned, bench.pinFor [ onFirst ])
+        Assert.Equal<PinState>(VersionUnpinned, bench.pinFor [])
+        Assert.Equal<PinState>(VersionUnpinned, plate.pinFor [ onCurrent ])
+
+        // A held id the kit's items lack is the nested item error, naming the id, the slot and the revision.
+        match Experiments.Experiment.itemsUsedBy [ onCurrent ] setups [] with
+        | Error (SetupItemReferenceErr (UnknownKitItemErr reason) as error) ->
+            Assert.Contains(itemB.value.ToString(), reason)
+            Assert.Contains("(lp)", reason)
+            Assert.Contains("'Bench' revision 2", reason)
+            Assert.Equal<string>($"a slot's item could not be resolved: the kit has no item of that id: {reason}", error.describe)
+        | other -> Assert.Fail($"expected the missing item, got %A{other}")
+
     let private on (beam : BeamLayout.BeamHost) (slot : SetupSlot) : SetupSlot = { slot with beam = beam }
 
     let private roled (role : SlotRole) (slot : SetupSlot) : RoledSlot = { role = role; slot = slot }

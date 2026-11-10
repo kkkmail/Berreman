@@ -28,7 +28,7 @@ module WireUiFinalCompositionTests =
     /// is proven by `SolverHandoffWindowTests`). The point here is that the window COMPOSES over the
     /// root-wired `library` + `experimentData` proxies and renders one frame without throwing.
     let private handoffSnapshot : ExperimentCollectionStore.ExperimentCollectionSnapshot =
-        { name = ExperimentCollectionStore.CollectionName "wire-ui-sweep"; experiments = [] }
+        { name = ExperimentCollectionStore.CollectionName "wire-ui-sweep"; experiments = []; setups = [] }
 
     /// The ONE composition-root window factory: every `WindowKey` maps to its window built over the
     /// app-scope proxies — the "construct the WindowLauncher with every window factory" seam. The two

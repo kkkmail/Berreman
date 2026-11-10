@@ -157,11 +157,23 @@ module OutOfBandDiagnosticTests =
     [<Fact>]
     let ``requestedWavelengthsOf: a wavelength-sweep experiment requests its range; a dark line is fixed`` () =
         let fixedλ = nm 600.0
+        // A test-local setup revision both runs reference (spec 0050 S8.2).
+        let bench : OpticalConstructor.Domain.Kit.SetupReference =
+            {
+                name = OpticalConstructor.Domain.Kit.SetupName "Bench"
+                revision = OpticalConstructor.Domain.Kit.SetupRevision 1
+            }
         let sweep : Experiment =
             {
                 id = ExperimentId 1
-                setup = []
-                varied = Some { VariedElement.elementId = OpticalConstructor.Domain.Library.ElementId "src"; variable = VaryWaveLength }
+                setup = bench
+                varied =
+                    Some
+                        {
+                            VariedElement.elementId = OpticalConstructor.Domain.Library.ElementId "src"
+                            label = ElementLabel "Light source #1"
+                            variable = VaryWaveLength
+                        }
                 measurement = CaptureTransmitted
                 range = { min = OpticalConstructor.Domain.Propagation.SweptValue 200.0; max = OpticalConstructor.Domain.Propagation.SweptValue 800.0; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
                 dataFileOpt = None
@@ -172,7 +184,7 @@ module OutOfBandDiagnosticTests =
         let darkLine : Experiment =
             {
                 id = ExperimentId 1
-                setup = []
+                setup = bench
                 varied = None
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1

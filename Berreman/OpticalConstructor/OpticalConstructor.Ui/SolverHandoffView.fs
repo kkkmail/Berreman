@@ -1,16 +1,6 @@
-/// Spec 0038 Part L (step 039) — the SolverHandoffView (UICOMP_XDUO_0011): the pure MVU model and
-/// FuncUI projection behind `SolverHandoffWindow`, the inverse flow's TERMINAL screen. It summarizes
-/// a RECEIVED collection (an `ExperimentCollectionStore.ExperimentCollectionSnapshot` — the pure
-/// name-plus-experiments data shape, no live handle): per experiment its ordered `setup`, its
-/// detector kind, its attached data file, and a TYPED per-experiment validation status, plus the
-/// fixed message that the actual solver runs separately. Basic validation ONLY — three checks per
-/// experiment, in order: every element except the sample is specified (bound); a measured-data file
-/// is attached and reads schema-valid through the injected `ExperimentDataProxy`; and its range is
-/// consistent with the step-25 experiment (folded in by `ExperimentDataLoad.loadAndValidate`, which
-/// calls step-34 `validateAgainstExperiment`). NO solving and NO normalization happen here — the data
-/// is gathered raw; corrections belong to the future solver. `update` reaches IO only through the
-/// context's proxies; the whole surface is a pure `state → view` projection a headless test drives
-/// over mock proxies without a real screen.
+/// The inverse flow's terminal screen (UICOMP_XDUO_0011): a received collection summarized per experiment, its setup
+/// revision's slots in light order, its detector, its data file and a typed validation status; nothing is solved here
+/// (spec 0038 Part L step 039; spec 0050 S8.2).
 module OpticalConstructor.Ui.SolverHandoffView
 
 open Avalonia
@@ -21,6 +11,7 @@ open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Setups
 
 /// The fixed message the terminal screen always shows (the how-to's "the actual solver will be done
 /// separately"). A `[<Literal>]` so a test can assert against it and step 044's id-consolidation can
@@ -54,34 +45,43 @@ type ExperimentHandoffStatus =
         | HandoffReady _ -> true
         | UnspecifiedElements _ | MissingDataFile _ | DataFileParseError _ | DataFileValidationError _ -> false
 
+/// How the hand-off reads a slot: specified by its item or its binding, the inverse sample left unknown, or another
+/// slot still unspecified (spec 0038 Part L; spec 0050 S8.2).
+type private HandoffSlotState =
+    | HandoffSpecifiedSlot
+    | HandoffUnknownSample
+    | HandoffUnspecifiedSlot
+
+    /// The tag the setup line shows beside the slot's role.
+    member this.text : string =
+        match this with
+        | HandoffSpecifiedSlot -> "specified"
+        | HandoffUnknownSample -> "the unknown (sample)"
+        | HandoffUnspecifiedSlot -> "UNSPECIFIED"
+
+type SetupSlot with
+
+    /// A slot holding an item or bound by its placement is specified; an empty, unbound `Sample` slot is the unknown the
+    /// solver finds, any other such slot is unspecified (spec 0038 Part L; spec 0050 S8.2).
+    member private this.handoffState : HandoffSlotState =
+        match this.content, this.placement.valueId, this.placement.catalogueKind with
+        | ItemInSlot _, _, _
+        | EmptySlotContent, Some _, _ -> HandoffSpecifiedSlot
+        | EmptySlotContent, None, Placement.Sample -> HandoffUnknownSample
+        | EmptySlotContent, None, _ -> HandoffUnspecifiedSlot
+
 type Experiments.Experiment with
 
-    /// The non-sample elements of the setup that are still UNBOUND — the inverse sample is the unknown
-    /// (allowed unbound, drawn dashed at step 30), so it is excluded; every OTHER element (source /
-    /// detector / polarizer / …) MUST be specified before handoff.
-    member private this.unspecifiedElements : Experiments.ElementDescriptor list =
-        this.setup
-        |> List.filter (fun d ->
-            match d.kind, d.binding with
-            | Placement.Sample, _ -> false
-            | _, Experiments.Unbound -> true
-            | _, (Experiments.BoundByEntryId _ | Experiments.BoundByVersion _) -> false)
-
-    /// The ordered setup, each element labelled with whether it is specified (bound) or still an
-    /// unspecified unknown: the sample reads "the unknown (sample)", every other unbound element
-    /// "UNSPECIFIED".
-    member private this.handoffSetupCaption : ControlCaption =
-        this.setup
-        |> List.map (fun d ->
-            let tag =
-                match d.kind, d.binding with
-                | Placement.Sample, Experiments.Unbound -> "the unknown (sample)"
-                | Placement.Sample, _ -> "specified"
-                | _, Experiments.Unbound -> "UNSPECIFIED"
-                | _, (Experiments.BoundByEntryId _ | Experiments.BoundByVersion _) -> "specified"
-            $"{d.label.value} [{tag}]")
-        |> String.concat "  →  "
-        |> ControlCaption
+    /// The setup revision's slots in light order, each as `<role> [<state>]`, or why the revision does not resolve
+    /// (spec 0050 S8.2).
+    member private this.handoffSetupCaption (setups : Setup list) : ControlCaption =
+        match this.slotsIn setups with
+        | Ok slots ->
+            SetupSlot.inLightOrder slots
+            |> List.map (fun roled -> $"{roled.role.text} [{roled.slot.handoffState.text}]")
+            |> String.concat "  →  "
+            |> ControlCaption
+        | Error error -> ControlCaption error.describe
 
     /// The attached data file's kit-relative path, or a note that none is attached.
     member private this.handoffFileCaption : ControlCaption =
@@ -89,35 +89,40 @@ type Experiments.Experiment with
         | Some attachment -> attachment.path.toControlCaption
         | None -> ControlCaption "(no file attached)"
 
-/// Spec 0038 Part L (step 039): the BASIC per-experiment validation, three checks in order (no solver
-/// math). (1) Every non-sample element specified — else `UnspecifiedElements`. (2) A data file
-/// attached — else `MissingDataFile`. (3) The file reads schema-valid AND range-consistent through
-/// `ExperimentDataLoad.loadAndValidate` (which resolves the detector kind, reads through the
-/// `ExperimentDataProxy`, then folds in step-34 `validateAgainstExperiment`) — a parse / empty-file
-/// failure is `DataFileParseError`, a range / units mismatch is `DataFileValidationError`, success is
-/// `HandoffReady` with the point count. Pure given the proxies — the disk read lives behind the proxy,
-/// so a test drives it over in-memory mocks with no real IO.
+/// The basic validation, in order and with no solver math: the setup revision resolves among `setups` and every slot but
+/// the sample is specified (`UnspecifiedElements`), a data file is attached (`MissingDataFile`), and it reads and fits the
+/// range through `ExperimentDataLoad.loadAndValidate` (spec 0038 Part L step 039; spec 0050 S8.2).
 let validateExperiment
     (library : Library.LibraryProxy)
     (dataProxy : ExperimentData.ExperimentDataProxy)
+    (setups : Setup list)
     (experiment : Experiments.Experiment)
     : ExperimentHandoffStatus =
-    match experiment.unspecifiedElements with
-    | (_ :: _) as unbound ->
-        let names = unbound |> List.map (fun d -> d.label.value) |> String.concat ", "
-        UnspecifiedElements (ControlCaption $"every element except the sample must be specified; still unbound: {names}")
-    | [] ->
-        match experiment.dataFileOpt with
-        | None -> MissingDataFile (ControlCaption "no measured-data file is attached to this experiment")
-        | Some attachment ->
-            match ExperimentDataLoad.loadAndValidate library dataProxy experiment attachment with
-            | Ok series -> HandoffReady series.pointCount
-            | Error ((MeasuredData.MalformedDataFileErr _ | MeasuredData.EmptyDataFileErr _) as err) -> DataFileParseError err.caption
-            | Error ((MeasuredData.DataRangeMismatchErr _ | MeasuredData.DataUnitsMismatchErr _) as err) -> DataFileValidationError err.caption
+    match experiment.slotsIn setups with
+    | Error error -> UnspecifiedElements (ControlCaption $"its setup is not in the collection: {error.describe}")
+    | Ok slots ->
+        let unbound =
+            SetupSlot.inLightOrder slots
+            |> List.filter (fun roled ->
+                match roled.slot.handoffState with
+                | HandoffUnspecifiedSlot -> true
+                | HandoffSpecifiedSlot
+                | HandoffUnknownSample -> false)
+        match unbound with
+        | _ :: _ ->
+            let names = unbound |> List.map (fun roled -> roled.role.text) |> String.concat ", "
+            UnspecifiedElements (ControlCaption $"every element except the sample must be specified; still unbound: {names}")
+        | [] ->
+            match experiment.dataFileOpt with
+            | None -> MissingDataFile (ControlCaption "no measured-data file is attached to this experiment")
+            | Some attachment ->
+                match ExperimentDataLoad.loadAndValidate library dataProxy slots experiment attachment with
+                | Ok series -> HandoffReady series.pointCount
+                | Error ((MeasuredData.MalformedDataFileErr _ | MeasuredData.EmptyDataFileErr _) as err) -> DataFileParseError err.caption
+                | Error ((MeasuredData.DataRangeMismatchErr _ | MeasuredData.DataUnitsMismatchErr _) as err) -> DataFileValidationError err.caption
 
-/// One summarized experiment: the received `Experiment` (its ordered setup + attached file ride
-/// along), the resolved detector kind (fixes the expected data-file shape), and its typed validation
-/// status. A pure projection — no live element reference, so the summary survives the session.
+/// One summarized experiment: the received `Experiment` (its setup reference and attached file ride along), the detector
+/// kind its slots resolve to (fixing the expected data-file shape), and its typed validation status (spec 0050 S8.2).
 type HandoffRow =
     {
         experiment : Experiments.Experiment
@@ -125,20 +130,20 @@ type HandoffRow =
         status : ExperimentHandoffStatus
     }
 
-/// Build the per-experiment summary rows from the received experiments, validating each through the
-/// injected proxies (pure given the proxies). This is the whole computation the screen performs —
-/// basic validation only, no solver math.
+/// The summary rows of the received experiments over the setups they reference, each validated through the injected
+/// proxies; an unresolved revision reads no detector, so `Intensity` (spec 0038 Part L; spec 0050 S8.2).
 let buildRows
     (library : Library.LibraryProxy)
     (dataProxy : ExperimentData.ExperimentDataProxy)
+    (setups : Setup list)
     (experiments : Experiments.Experiment list)
     : HandoffRow list =
     experiments
     |> List.map (fun e ->
         {
             experiment = e
-            detector = ExperimentDataLoad.detectorKindOf library e
-            status = validateExperiment library dataProxy e
+            detector = ExperimentDataLoad.detectorKindOf library (e.slotsIn setups |> Result.defaultValue [])
+            status = validateExperiment library dataProxy setups e
         })
 
 /// The screen's IO seam (the functional-proxy Context convention, the `CategoryEditorContext`
@@ -174,7 +179,7 @@ type SolverHandoffContext with
         {
             context = this
             collectionName = this.collection.name
-            rows = buildRows this.library this.experimentData this.collection.experiments
+            rows = buildRows this.library this.experimentData this.collection.setups this.collection.experiments
         }
 
 /// The only message the read-only terminal screen dispatches: the window-level Close.
@@ -206,10 +211,10 @@ let private infoLine (text : ControlCaption) : IView =
         TextBlock.margin (Thickness(0.0, 1.0, 0.0, 0.0))
     ] :> IView
 
-/// One experiment's summary block: its description, its ordered setup, its detector kind, its attached
+/// One experiment's summary block: its description, its setup revision's slots, its detector kind, its attached
 /// file, and the TYPED validation status (green when ready, red otherwise). Keyed + AutomationId'd by
 /// the experiment id.
-let private summaryEntry (row : HandoffRow) : IView =
+let private summaryEntry (setups : Setup list) (row : HandoffRow) : IView =
     let e = row.experiment
     let rowId = ConstructorUiId.solverHandoffRow e.id
     StackPanel.create [
@@ -222,7 +227,7 @@ let private summaryEntry (row : HandoffRow) : IView =
                 TextBlock.fontWeight FontWeight.SemiBold
                 TextBlock.textWrapping TextWrapping.Wrap
             ]
-            infoLine (ControlCaption $"Setup: {e.handoffSetupCaption.value}")
+            infoLine (ControlCaption $"Setup: {(e.handoffSetupCaption setups).value}")
             infoLine (ControlCaption $"Detector: {row.detector.caption.value}")
             infoLine (ControlCaption $"Data file: {e.handoffFileCaption.value}")
             TextBlock.create [
@@ -242,7 +247,7 @@ let private summaryList (m : SolverHandoffModel) : IView =
     let children : IView list =
         match m.rows with
         | [] -> [ TextBlock.create [ TextBlock.text "(the received collection holds no experiments)"; TextBlock.foreground (brush mutedColor) ] :> IView ]
-        | rows -> rows |> List.map summaryEntry
+        | rows -> rows |> List.map (summaryEntry m.context.collection.setups)
     StackPanel.create [
         StackPanel.name ConstructorUiId.solverHandoffSummaryList.value
         StackPanel.orientation Orientation.Vertical

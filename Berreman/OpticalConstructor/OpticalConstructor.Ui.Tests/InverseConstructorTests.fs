@@ -19,6 +19,7 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Tests
 
 /// Inverse experiments persist in folder kits and revalidate measured data on open (spec 0050 S4.3).
@@ -174,7 +175,12 @@ module InverseConstructorTests =
             |> updateTableAndElementRotation (ExpChooseElement sample.id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation ExpCommit
-        let expId = (List.head m1.experimentCollection.experiments).id
+        let committed = List.head m1.experimentCollection.experiments
+        let expId = committed.id
+        // The detector kind is read from the slots of the setup revision the experiment references (spec 0050 S8.2).
+        match committed.slotsIn m1.kitSetups with
+        | Ok slots -> Assert.Equal<Library.DetectorKind>(Library.Ellipsometer, ExperimentDataLoad.detectorKindOf m1.library slots)
+        | Error error -> Assert.Fail($"the committed experiment's setup must be the window's: {error.describe}")
         let m2 = m1 |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "ellipso.csv"))
         match m2.experimentDataStatus |> Map.tryFind expId with
         | Some (DataFileValidated (MeasuredData.MeasuredPointCount 2)) -> ()
@@ -228,12 +234,16 @@ module InverseConstructorTests =
         let mBuilt, expId = withIntensityExperiment { inverseIn folder with experimentData = proxy }
         let mSaved = mBuilt |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "run.csv"))
         Assert.Equal<Experiments.Experiment list>(mSaved.experimentCollection.experiments, mSaved.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
+        let setupFile = FileName "Setup 1.setup-json"
+        Assert.True(File.Exists((setupFile.combine folder.value).value), "the commit must record the table as the kit's 'Setup 1'")
         mSaved.kit.close () |> SceneTestFixture.kitSuccess
         let mLoaded = inverseIn folder
         Assert.Equal(1, List.length mLoaded.experimentCollection.experiments)
         Assert.Equal<Experiments.Experiment list>(mSaved.experimentCollection.experiments, mLoaded.experimentCollection.experiments)
         let loaded = List.head mLoaded.experimentCollection.experiments
         Assert.Equal<string option>(Some "data/run.csv", loaded.dataFileOpt |> Option.map (fun attachment -> attachment.path.value))
+        Assert.Equal<Setup list>(mSaved.kitSetups, mLoaded.kitSetups)
+        Assert.True(Result.isOk (loaded.slotsIn mLoaded.kitSetups), "the reopened experiment's setup must reopen with it")
         mLoaded.kit.close () |> SceneTestFixture.kitSuccess
 
     [<Fact>]
@@ -368,6 +378,8 @@ module InverseConstructorTests =
         let file = FileName "E1.experiment-json"
         let filePath = file.combine folder.value
         Assert.True(File.Exists filePath.value)
+        let setupFile = FileName "Setup 1.setup-json"
+        Assert.True(File.Exists((setupFile.combine folder.value).value), "the commit must record the table as the kit's 'Setup 1'")
         Assert.Equal<Experiments.Experiment list>(model.experimentCollection.experiments, model.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
         let dataFile = FileName "data/measured.csv"
         let picked = dataFile.combine folder.value
@@ -517,27 +529,32 @@ module InverseConstructorTests =
         for draft in drafts do
             library.recordItem draft.toItem |> Result.defaultWith (fun error -> failwith error.describe)
 
-        // A copy writes the experiment into the kit with the pieces its item mapping assigned (spec 0050 S6, S7.2).
-        let captured = Assert.Single(built.experimentCollection.experiments)
-        Assert.All(captured.setup, fun descriptor -> Assert.Equal<ItemId option>(None, descriptor.itemIdOpt))
-        let copied =
+        // A copy writes the experiment's setup into the kit with the pieces its item mapping assigned (spec 0050 S6, S7.2,
+        // S8.2).
+        let copied = Assert.Single(built.experimentCollection.experiments)
+        let captured = Assert.Single(built.kitSetups)
+        Assert.Equal<SetupReference>(captured.reference, copied.setup)
+        Assert.All(captured.slots, fun slot -> Assert.Equal<ItemId option>(None, slot.content.itemOpt))
+        let copiedSetup =
             {
                 captured with
-                    setup =
-                        captured.setup
-                        |> List.map (fun descriptor ->
-                            {
-                                descriptor with itemIdOpt = Map.tryFind descriptor.elementId assigned
-                            })
+                    slots =
+                        captured.slots
+                        |> List.map (fun slot ->
+                            match Map.tryFind slot.id assigned with
+                            | Some piece ->
+                                {
+                                    slot with content = ItemInSlot (piece, PlacementTurn)
+                                }
+                            | None -> slot)
             }
+        built.kit.proxy.writeSetup copiedSetup |> SceneTestFixture.kitSuccess
         built.kit.proxy.writeExperiment copied |> SceneTestFixture.kitSuccess
         built.kit.close () |> SceneTestFixture.kitSuccess
 
-        // The scene is no kit file, so the reopened bench is laid out as the copy found it.
-        let loaded =
-            {
-                inverseIn folder with elements = built.elements
-            }
+        // The reopened bench is the copied setup drawn on the table.
+        let loaded = inverseIn folder |> updateTableAndElementRotation (ActivateSetup captured.name)
+        Assert.Equal<SetupSlot list>(copiedSetup.slots, loaded.elements)
         Assert.Equal<Experiments.Experiment list>([ copied ], loaded.experimentCollection.experiments)
 
         // Edit the range, rebind the sample to a hint and add a third piece of the same preset, then recommit.
@@ -558,15 +575,21 @@ module InverseConstructorTests =
         reopened.kit.close () |> SceneTestFixture.kitSuccess
         Assert.Equal(expId, stored.id)
         Assert.Equal(7, stored.range.points.value)
+        // The recommit over the referenced revision minted the next one; the stored experiment references it.
+        Assert.Equal<SetupReference>({ captured.reference with revision = SetupRevision 2 }, stored.setup)
+        let storedSlots =
+            match stored.slotsIn reopened.kitSetups with
+            | Ok slots -> slots
+            | Error error -> failwith $"the recommitted experiment's setup must reopen with the kit: {error.describe}"
         let pieceOf (elementId : ElementId) : ItemId option =
-            stored.setup |> List.tryFind (fun descriptor -> descriptor.elementId = elementId) |> Option.bind (fun descriptor -> descriptor.itemIdOpt)
+            storedSlots |> List.tryFind (fun slot -> slot.id = elementId) |> Option.bind (fun slot -> slot.content.itemOpt)
         Assert.Equal<ItemId option>(Some pieceA, pieceOf lpA.id)
         Assert.Equal<ItemId option>(Some pieceB, pieceOf lpB.id)
         Assert.NotEqual<ItemId>(pieceA, pieceB)
         // The rebound sample and the new polarizer carry no piece: none is guessed from a binding or a preset.
         Assert.Equal<ItemId option>(None, pieceOf sample.id)
         Assert.Equal<ItemId option>(None, pieceOf added.id)
-        Assert.Equal<ItemId list>([ pieceA; pieceB ], stored.setup |> List.choose (fun descriptor -> descriptor.itemIdOpt))
+        Assert.Equal<ItemId list>([ pieceA; pieceB ], storedSlots |> List.choose (fun slot -> slot.content.itemOpt))
 
     // ================================ headless render (gate ui-smoke) ================================
 

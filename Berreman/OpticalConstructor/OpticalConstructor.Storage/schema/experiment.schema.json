@@ -24,18 +24,13 @@
         "properties": {
           "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
           "setup": {
-            "type": "array",
-            "items": {
-              "description": "A descriptor names its assigned physical item, or null when none was assigned; a body without the field is refused (spec 0050 S7.2).",
-              "required": ["itemIdOpt"],
-              "properties": {
-                "itemIdOpt": {
-                  "oneOf": [
-                    { "type": "null" },
-                    { "$ref": "https://berreman/schema/library-common.json#/$defs/guid" }
-                  ]
-                }
-              }
+            "description": "The setup revision the experiment was recorded over (spec 0050 S8.2).",
+            "type": "object",
+            "required": ["name", "revision"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "pattern": "\\S" },
+              "revision": { "type": "integer", "minimum": 1 }
             }
           },
           "varied": true,

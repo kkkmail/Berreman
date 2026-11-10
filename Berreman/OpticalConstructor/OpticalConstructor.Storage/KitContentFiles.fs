@@ -8,7 +8,6 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
@@ -38,8 +37,8 @@ module KitContentFiles =
 
         member private this.toContentJsonText : JsonText = JsonText this.value
 
-        /// Validates the experiment schema and rejects unsupported versions before binding (spec 0050 S4.3). A descriptor
-        /// without its `itemIdOpt` is refused, so an older body never binds with an inferred item (spec 0050 S7.2).
+        /// Validates the experiment schema and rejects unsupported versions before binding; a `setup` that is not a setup
+        /// reference is refused (spec 0050 S4.3, S8.2).
         member this.parseExperimentFile : Result<ExperimentFile, StorageError> =
             parseVersionedText SchemaValidation.validateExperimentFile ExperimentKitFile.extension ExperimentFile.currentSchemaVersion this.toContentJsonText
 
@@ -154,24 +153,13 @@ module KitContentFiles =
 
     type ItemModelInstance with
 
-        /// The binding a descriptor takes from the item assigned to it: the preset's id, the sample's version, or none
-        /// for a standalone model, never a binding of another piece (spec 0050 S7.2).
-        member private this.assignedBinding : ElementBinding =
+        /// The entry a slot holding the item is bound to: the preset, the sample, or none for a standalone model, never
+        /// an entry of another piece (spec 0050 S7.2, S8.2).
+        member private this.slotBinding : OpticalConstructor.Domain.Placement.ElementValueId option =
             match this with
-            | PresetInstance (_, preset) -> BoundByEntryId preset
-            | SampleInstance (_, version) -> BoundByVersion (SampleVersionRef version)
-            | ItemModelVersionInstance _ -> Unbound
-
-    type Experiment with
-
-        /// The library references of the descriptors no item is assigned to, once each in setup order (spec 0050 S7.2).
-        member private this.unassignedReferences : EntryReference list =
-            this.setup
-            |> List.choose (fun descriptor ->
-                match descriptor.itemIdOpt with
-                | Some _ -> None
-                | None -> descriptor.binding.entryReferenceOpt)
-            |> List.distinct
+            | PresetInstance (_, preset) -> Some preset
+            | SampleInstance (_, sample) -> Some sample.sampleId.toElementValueId
+            | ItemModelVersionInstance _ -> None
 
     /// The snapshot among the offered ones that answers the reference: the exact version, or the entry's highest one
     /// (spec 0050 S6).
@@ -186,16 +174,14 @@ module KitContentFiles =
 
     type KitLibraryContext with
 
-        /// Resolves the experiment's assigned items through the kit's items, a missing one refused before anything is
-        /// written (spec 0050 S7.2); then snapshots and pins the unassigned bindings, the items' closures and the other
-        /// bindings before writing its file (spec 0050 S4.3). A failure stops recording and retains snapshots already written.
+        /// Writes the experiment once the kit holds the setup revision it references and every item its slots hold,
+        /// refusing it and writing nothing otherwise. It snapshots nothing: the setup's entries were snapshotted when it
+        /// was recorded (spec 0050 S4.3, S7.2, S8.2).
         member this.recordExperiment (experiment : Experiment) : Result<unit, KitLibraryError> =
-            this.kit.proxy.readItems ()
+            this.kit.proxy.readSetups ()
+            |> Result.bind (fun setups -> this.kit.proxy.readItems () |> Result.map (fun items -> setups, items))
             |> Result.mapError KitLibraryKitErr
-            |> Result.bind (fun items -> Experiment.itemsUsedBy [ experiment ] items |> Result.mapError KitLibraryItemErr)
-            |> Result.bind (fun used ->
-                let itemReferences = used |> List.collect (fun item -> item.libraryReferences)
-                this.snapshotReferences (experiment.unassignedReferences @ itemReferences @ experiment.libraryReferences |> List.distinct))
+            |> Result.bind (fun (setups, items) -> Experiment.itemsUsedBy [ experiment ] setups items |> Result.mapError KitLibrarySetupErr)
             |> Result.bind (fun _ -> this.kit.proxy.writeExperiment experiment |> Result.mapError KitLibraryKitErr)
 
         /// Snapshots and pins the entries the setup's slots bind in every revision before writing its file, so a
@@ -244,30 +230,34 @@ module KitContentFiles =
                             Logger.logError $"KitLibraryContext.recordRelabelledItem: could not delete '{relabelled.label.value}': {undoError.describe}"
                         Error (KitLibraryKitErr error))
 
-    /// What a copy brought into the kit, in write order: each experiment and each added item as written, each lab file
-    /// copied in (the experiments' data, then the added items' photos) and each snapshot added (spec 0050 S6, S7.2).
+    /// What a copy brought into the kit, in write order: each experiment, each added item and each setup as written,
+    /// each lab file copied in (the experiments' data, then the added items' photos) and each snapshot added (spec 0050
+    /// S6, S7.2, S8.2).
     type ExperimentCopyReport =
         {
             experiments : Experiment list
             items : Item list
+            setups : Setup list
             dataFiles : DataAttachment list
             snapshots : LibraryVersionRef list
         }
 
-    /// A copy's item mapping: the items it adds, the held items its rows map onto, and the kept experiments with every
-    /// assigned descriptor rewritten onto its target item (spec 0050 S7.2).
+    /// A copy's item mapping: the items it adds, the held items its rows map onto, the kept experiments, and the setups
+    /// they reference with every slot's item mapped onto its target (spec 0050 S7.2, S8.2).
     type private ExperimentCopyPlan =
         {
             added : Item list
             mappedOnto : Item list
-            mapped : Experiment list
+            experiments : Experiment list
+            setups : Setup list
         }
 
     type KitContext with
 
-        /// Copies the chosen source experiments with the items they use, each mapped by its row or default or added, the
-        /// data and photos they reference and the source snapshots this kit lacks, renumbered on a clash. Everything is
-        /// read before anything is written, the source only read; the first failure stops the copy (spec 0050 S6, S7.2).
+        /// Copies the chosen source experiments with the setups they reference and the items those use, each mapped by its
+        /// row or default or added, the data and photos they reference and the source snapshots this kit lacks, renumbered
+        /// on a clash. Everything is read before anything is written, the source only read; the first failure stops the
+        /// copy (spec 0050 S6, S7.2, S8.2).
         member this.copyExperimentsFrom
             (source : KitContext)
             (ids : ExperimentId list)
@@ -278,36 +268,64 @@ module KitContentFiles =
                 | Some missing -> Error (KitLibraryKitErr (MissingKitFileErr (ExperimentKitFile.fileNameOf missing.fileStem).value))
                 | None -> Ok (offered |> List.filter (fun experiment -> List.contains experiment.id ids))
 
-            // An assigned descriptor takes its target item's id and binding; elementId, placement and the varied element
-            // stay, and an unassigned descriptor is kept as it is (spec 0050 S7.2).
-            let rewrite (targets : Map<ItemId, Item>) (experiment : Experiment) : Experiment =
+            // The setups the kept experiments reference, once each in first-reference order; a revision the source lacks
+            // is refused before anything is written (spec 0050 S8.2).
+            let keepSetups (kept : Experiment list) : Result<Setup list, KitLibraryError> =
+                source.proxy.readSetups ()
+                |> Result.mapError KitLibraryKitErr
+                |> Result.bind (fun offered ->
+                    kept
+                    |> List.fold (fun result experiment ->
+                        result |> Result.bind (fun (found : Setup list) ->
+                            experiment.slotsIn offered
+                            |> Result.mapError KitLibrarySetupErr
+                            |> Result.map (fun _ ->
+                                if found |> List.exists (fun setup -> setup.name = experiment.setup.name) then found
+                                else found @ (offered |> List.filter (fun setup -> setup.name = experiment.setup.name))))) (Ok []))
+
+            // A slot holding an item mapped onto another kit item holds that item, bound as it binds a slot, so the slot's
+            // identity and drawn binding agree; an added item keeps its id, so its slot is kept (spec 0050 S7.2, S8.2).
+            let mapSlot (targets : Map<ItemId, Item>) (slot : SetupSlot) : SetupSlot =
+                match slot.content with
+                | ItemInSlot (id, turn) ->
+                    match Map.tryFind id targets with
+                    | Some target when target.id <> id ->
+                        {
+                            slot with
+                                placement = { slot.placement with valueId = target.model.slotBinding }
+                                content = ItemInSlot (target.id, turn)
+                        }
+                    | Some _
+                    | None -> slot
+                | EmptySlotContent -> slot
+
+            let mapSetup (targets : Map<ItemId, Item>) (setup : Setup) : Setup =
                 {
-                    experiment with
-                        setup =
-                            experiment.setup
-                            |> List.map (fun descriptor ->
-                                match descriptor.itemIdOpt |> Option.bind (fun id -> Map.tryFind id targets) with
-                                | Some target ->
-                                    {
-                                        descriptor with
-                                            itemIdOpt = Some target.id
-                                            binding = target.model.assignedBinding
-                                    }
-                                | None -> descriptor)
+                    setup with
+                        slots = setup.slots |> List.map (mapSlot targets)
+                        history =
+                            setup.history
+                            |> List.map (fun record ->
+                                {
+                                    record with slots = record.slots |> List.map (mapSlot targets)
+                                })
                 }
 
-            // The rows' refusals and the rewritten experiments' own resolution come before anything is written (spec 0050 S7.2).
-            let planItems (kept : Experiment list) : Result<ExperimentCopyPlan, KitLibraryError> =
+            // The rows' refusals and the mapped setups' own resolution come before anything is written (spec 0050 S7.2,
+            // S8.2).
+            let planItems (kept : Experiment list) (keptSetups : Setup list) : Result<ExperimentCopyPlan, KitLibraryError> =
                 source.proxy.readItems ()
                 |> Result.mapError KitLibraryKitErr
                 |> Result.bind (fun offered ->
                     this.proxy.readItems ()
                     |> Result.mapError KitLibraryKitErr
                     |> Result.bind (fun held ->
-                        Experiment.itemsUsedBy kept offered
+                        Experiment.itemsUsedBy kept keptSetups offered
+                        |> Result.mapError KitLibrarySetupErr
                         |> Result.bind (fun used ->
                             let rows = ItemCopyRow.copyRowsFor used held itemRows
                             ItemCopyRow.itemsToAdd rows held
+                            |> Result.mapError KitLibraryItemErr
                             |> Result.bind (fun added ->
                                 let targetOf (row : ItemCopyRow) : Item option =
                                     match row.choice with
@@ -324,15 +342,55 @@ module KitContentFiles =
                                         | MapOntoKitItem _ -> targetOf row
                                         | AddCopiedItem -> None)
                                     |> List.distinctBy (fun item -> item.id)
-                                let mapped = kept |> List.map (rewrite targets)
-                                Experiment.itemsUsedBy mapped (held @ added)
+                                let mappedSetups = keptSetups |> List.map (mapSetup targets)
+                                Experiment.itemsUsedBy kept mappedSetups (held @ added)
+                                |> Result.mapError KitLibrarySetupErr
                                 |> Result.map (fun _ ->
                                     {
                                         added = added
                                         mappedOnto = mappedOnto
-                                        mapped = mapped
-                                    })))
-                        |> Result.mapError KitLibraryItemErr))
+                                        experiments = kept
+                                        setups = mappedSetups
+                                    })))))
+
+            // A mapped setup the kit holds as it is is not written again; one whose name's file the kit or an earlier copied
+            // setup holds takes the next free name, its experiments following it at their revisions (spec 0050 S8.2;
+            // .spec-md §3.15).
+            let placeSetups (plan : ExperimentCopyPlan) : Result<ExperimentCopyPlan, KitLibraryError> =
+                this.proxy.readSetups ()
+                |> Result.mapError KitLibraryKitErr
+                |> Result.map (fun heldSetups ->
+                    let heldNames = heldSetups |> List.map (fun setup -> setup.name)
+                    let sameFile (setup : Setup) (held : Setup) : bool =
+                        String.Equals(held.name.fileStem.value, setup.name.fileStem.value, StringComparison.OrdinalIgnoreCase)
+                    let written, renames =
+                        plan.setups
+                        |> List.fold (fun (given : Setup list, renames : Map<SetupName, SetupName>) setup ->
+                            match heldSetups |> List.tryFind (sameFile setup) with
+                            | Some held when held = setup -> given, renames
+                            | Some _
+                            | None ->
+                                let free = setup.name.nextFreeAmong (heldNames @ (given |> List.map (fun placed -> placed.name)))
+                                if free = setup.name then
+                                    given @ [ setup ], renames
+                                else
+                                    let renamed =
+                                        {
+                                            setup with name = free
+                                        }
+                                    given @ [ renamed ], Map.add setup.name free renames) ([], Map.empty)
+                    let following (experiment : Experiment) : Experiment =
+                        match Map.tryFind experiment.setup.name renames with
+                        | Some name ->
+                            {
+                                experiment with setup = { experiment.setup with name = name }
+                            }
+                        | None -> experiment
+                    {
+                        plan with
+                            experiments = plan.experiments |> List.map following
+                            setups = written
+                    })
 
             // A held item a row maps onto resolves its whole closure from this kit's snapshots, never the source's
             // (spec 0050 S7.2).
@@ -347,14 +405,23 @@ module KitContentFiles =
                             | _ -> error)
                         |> Result.map ignore)) (Ok ())
 
-            // The source's snapshots answer the unassigned bindings, then the added items' references (spec 0050 S6, S7.2).
-            let lackedSnapshots (plan : ExperimentCopyPlan) (heldSnapshots : LibraryEntryEnvelope list) : Result<LibraryEntryEnvelope list, KitLibraryError> =
+            // The source's snapshots answer the mapped setups' references, then the added items'; a slot bound by a mapped
+            // item's entry the source lacks resolves among this kit's own (spec 0050 S6, S7.2, S8.2).
+            let lackedSnapshots
+                (mappedSetups : Setup list)
+                (added : Item list)
+                (heldSnapshots : LibraryEntryEnvelope list)
+                : Result<LibraryEntryEnvelope list, KitLibraryError> =
                 source.proxy.listSnapshots ()
                 |> Result.mapError KitLibraryKitErr
                 |> Result.bind (fun offered ->
-                    let unassigned = plan.mapped |> List.collect (fun experiment -> experiment.unassignedReferences)
-                    let addedReferences = plan.added |> List.collect (fun item -> item.libraryReferences)
-                    referenceClosure (resolveAmong offered) (unassigned @ addedReferences))
+                    let resolve (reference : EntryReference) : Result<LibraryEntryEnvelope, KitLibraryError> =
+                        match resolveAmong offered reference with
+                        | Ok envelope -> Ok envelope
+                        | Error _ -> resolveAmong heldSnapshots reference
+                    let setupReferences = mappedSetups |> List.collect (fun setup -> setup.libraryReferences)
+                    let addedReferences = added |> List.collect (fun item -> item.libraryReferences)
+                    referenceClosure resolve (setupReferences @ addedReferences))
                 |> Result.map (fun closure ->
                     let heldVersions = heldSnapshots |> List.map (fun envelope -> envelope.libraryVersionRef)
                     closure |> List.filter (fun envelope -> not (List.contains envelope.libraryVersionRef heldVersions)))
@@ -411,6 +478,15 @@ module KitContentFiles =
                         |> Result.map (fun () -> copy :: written))) (Ok [])
                 |> Result.map List.rev
 
+            let writeSetups (setups : Setup list) : Result<Setup list, KitLibraryError> =
+                setups
+                |> List.fold (fun result setup ->
+                    result |> Result.bind (fun written ->
+                        this.proxy.writeSetup setup
+                        |> Result.mapError KitLibraryKitErr
+                        |> Result.map (fun () -> setup :: written))) (Ok [])
+                |> Result.map List.rev
+
             let writeExperiments (moved : Map<KitRelativePath, DataAttachment>) (renumbered : Experiment list) : Result<Experiment list, KitLibraryError> =
                 renumbered
                 |> List.fold (fun result experiment ->
@@ -424,8 +500,8 @@ module KitContentFiles =
                         |> Result.map (fun () -> copy :: written))) (Ok [])
                 |> Result.map List.rev
 
-            // Snapshots, lab files and items come first, so a written item or experiment never references a file the kit
-            // lacks (spec 0050 S6, S7.2).
+            // Snapshots, lab files, items and setups come first, so a written setup or experiment never references a file
+            // the kit lacks (spec 0050 S6, S7.2, S8.2).
             let writeAll
                 (snapshots : LibraryEntryEnvelope list)
                 (files : (KitRelativePath * LabFileSource) list)
@@ -438,16 +514,19 @@ module KitContentFiles =
                         let moved = Map.ofList copied
                         writeItems moved plan.added
                         |> Result.bind (fun items ->
-                            writeExperiments moved plan.mapped
-                            |> Result.map (fun experiments ->
-                                let report : ExperimentCopyReport =
-                                    {
-                                        experiments = experiments
-                                        items = items
-                                        dataFiles = copied |> List.map snd
-                                        snapshots = written
-                                    }
-                                report))))
+                            writeSetups plan.setups
+                            |> Result.bind (fun setups ->
+                                writeExperiments moved plan.experiments
+                                |> Result.map (fun experiments ->
+                                    let report : ExperimentCopyReport =
+                                        {
+                                            experiments = experiments
+                                            items = items
+                                            setups = setups
+                                            dataFiles = copied |> List.map snd
+                                            snapshots = written
+                                        }
+                                    report)))))
 
             match this.access with
             | ReadOnlyKitAccess -> Error (KitLibraryKitErr (KitReadOnlyErr "copyExperimentsFrom"))
@@ -455,21 +534,23 @@ module KitContentFiles =
                 source.proxy.readExperiments ()
                 |> Result.mapError KitLibraryKitErr
                 |> Result.bind keep
-                |> Result.bind planItems
+                |> Result.bind (fun kept -> keepSetups kept |> Result.bind (planItems kept))
                 |> Result.bind (fun plan ->
                     this.proxy.listSnapshots ()
                     |> Result.mapError KitLibraryKitErr
                     |> Result.bind (fun heldSnapshots ->
                         resolveMappedOnto plan.mappedOnto heldSnapshots
-                        |> Result.bind (fun () -> lackedSnapshots plan heldSnapshots))
+                        |> Result.bind (fun () -> lackedSnapshots plan.setups plan.added heldSnapshots))
                     |> Result.bind (fun snapshots ->
-                        let dataPaths = plan.mapped |> List.choose (fun experiment -> experiment.dataFileOpt |> Option.map (fun attachment -> attachment.path))
+                        let dataPaths = plan.experiments |> List.choose (fun experiment -> experiment.dataFileOpt |> Option.map (fun attachment -> attachment.path))
                         let photoPaths = plan.added |> List.choose (fun item -> item.photoOpt)
                         readLabFiles (dataPaths @ photoPaths)
                         |> Result.bind (fun files ->
-                            renumber plan.mapped
-                            |> Result.bind (fun renumbered ->
-                                writeAll snapshots files
-                                    {
-                                        plan with mapped = renumbered
-                                    }))))
+                            placeSetups plan
+                            |> Result.bind (fun placed ->
+                                renumber placed.experiments
+                                |> Result.bind (fun renumbered ->
+                                    writeAll snapshots files
+                                        {
+                                            placed with experiments = renumbered
+                                        })))))

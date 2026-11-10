@@ -12,21 +12,24 @@ open OpticalConstructor.Domain.ItemModels
 /// Snapshots referenced versions and overlays the session's library with kit entries (spec 0050 S4.2).
 module KitLibrary =
 
-    /// A kit snapshot failure, preserving the storage/import error or missing reference (spec 0050 S4.2), or an item the
-    /// copy could not take (spec 0050 S7.2).
+    /// A kit snapshot failure, preserving the storage/import error or missing reference (spec 0050 S4.2), an item the
+    /// copy could not take (spec 0050 S7.2), or a setup revision the kit cannot resolve (spec 0050 S8.2).
     type KitLibraryError =
         | KitLibraryKitErr of KitError
         | KitLibraryImportErr of CatalogueImportError
         | UnheldEntryErr of reason : string
         | KitLibraryItemErr of ItemError
+        /// A referenced setup, revision or slot item could not be resolved (spec 0050 S8.2).
+        | KitLibrarySetupErr of SetupError
 
-        /// Describes the failed condition and its underlying diagnostic payload (spec 0050 S4.2, S7.2).
+        /// Describes the failed condition and its underlying diagnostic payload (spec 0050 S4.2, S7.2, S8.2).
         member this.describe : string =
             match this with
             | KitLibraryKitErr error -> $"the kit refused the library snapshot: {error.describe}"
             | KitLibraryImportErr error -> $"the library refused the kit snapshot: {error.describe}"
             | UnheldEntryErr reason -> $"neither the library nor the kit holds the reference: {reason}"
             | KitLibraryItemErr error -> $"the items could not be copied: {error.describe}"
+            | KitLibrarySetupErr error -> $"the setup could not be used: {error.describe}"
 
     /// A kit identity explicitly rebound to a held library envelope (spec 0050 S4.2).
     type EntryReplacement =

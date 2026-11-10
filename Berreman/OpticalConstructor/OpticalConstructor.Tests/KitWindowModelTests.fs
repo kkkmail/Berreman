@@ -20,6 +20,7 @@ open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Domain.Setups
 
 module KitWindowModelTests =
 
@@ -56,11 +57,20 @@ module KitWindowModelTests =
             scene.kit.close () |> kitValue
             opened.library.kit.close () |> kitValue
 
+    /// The dark line's setup, holding no slot (spec 0050 S8.2).
+    let private darkSetup : Setups.Setup =
+        {
+            name = SetupName "Dark"
+            revision = SetupRevision.first
+            slots = []
+            history = []
+        }
+
     /// The experiment `E1` a kit holds before it is opened read-only.
     let private storedExperiment : Experiments.Experiment =
         {
             id = Experiments.ExperimentId 1
-            setup = []
+            setup = darkSetup.reference
             varied = None
             measurement = Experiments.CaptureTransmitted
             range = Experiments.VariableRange.forVariable Experiments.VaryR1
@@ -343,8 +353,9 @@ module KitWindowModelTests =
             Assert.Equal<KitName>(KitName "Renamed", reloaded.kit.kitFile.name)
             Assert.StartsWith("Renamed", reloaded.kitWindowTitle.value)
             Assert.Equal<KitContext>({ offered.kit with kitFile = reloaded.kit.kitFile }, reloaded.kit)
-            Assert.Empty(offered.kitSetups)
-            Assert.Equal<Setups.Setup list>([ bench ], reloaded.kitSetups)
+            // The commit recorded the table as `Setup 1` (spec 0050 S8.2); the other writer's `Bench` arrives on reload.
+            Assert.Equal<SetupName list>([ SetupName "Setup 1" ], offered.kitSetups |> List.map (fun setup -> setup.name))
+            Assert.Equal<Setups.Setup list>(bench :: offered.kitSetups, reloaded.kitSetups)
             Assert.Empty(reloaded.kitChanges)
             Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)
             let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
@@ -647,11 +658,12 @@ module KitWindowModelTests =
         Directory.Delete(Path.Combine(folder.value.value, ".oc"), true)
         source
 
-    /// The copy source holding E1, a dark line, and E2, which attaches `measured.csv` from outside the kit through
-    /// `attachLabFile` (spec 0050 S6).
+    /// The copy source holding the dark setup, E1, a dark line, and E2, which attaches `measured.csv` from outside the
+    /// kit through `attachLabFile` (spec 0050 S6, S8.2).
     let private copySourceUnder (factFolder : FolderName) (imports : CatalogueImportContext) : CopySourceKit =
         sourceKitUnder factFolder imports (fun folder library ->
             let proxy = library.kit.proxy
+            library.recordSetup darkSetup |> openedValue
             let picked = (FileName "measured.csv").combine factFolder
             File.WriteAllText(picked.value, "x,intensity\n0,1\n45,0.5\n")
             let lab : LabFileSource =
@@ -729,7 +741,9 @@ module KitWindowModelTests =
                 Assert.Equal<KitCopySource option>(None, copied.kitCopyOpt)
                 Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatus)
                 Assert.Equal<Item list>(model.kitItems, copied.kitItems)
-                Assert.Equal<Setups.Setup list>(model.kitSetups, copied.kitSetups)
+                Assert.Empty(model.kitSetups)
+                Assert.Equal<Setups.Setup list>([ darkSetup ], copied.kitSetups)
+                Assert.Equal<string list>([ "Dark.setup-json" ], rootFilesIn folder "*.setup-json")
                 Assert.Equal<KitContext>(model.kit, copied.kit)
                 Assert.Equal<Map<FileName, FileByteContent>>(sourceBefore, folderBytes source.sourceFolder)
                 let checkedChanges = copied |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
@@ -790,6 +804,7 @@ module KitWindowModelTests =
                                         experiments = [ source.e1; source.e2 ]
                                         chosen = [ source.e2.id ]
                                         items = []
+                                        setups = [ darkSetup ]
                                         itemRows = []
                                     }
                     }
@@ -879,54 +894,55 @@ module KitWindowModelTests =
             }
         draft.toItem
 
-    /// E1 binds the 600 nm source preset by its entry id at its light source, where Laser600 is assigned.
-    let private itemE1 : Experiments.Experiment =
+    /// A rest-pose slot of that kind at the table's origin, bound to the entry, holding the item (spec 0050 S8.2).
+    let private slotHolding (id : string) (kind : Placement.CatalogueKind) (valueId : Placement.ElementValueId) (item : Item) : Setups.SetupSlot =
         {
-            storedExperiment with
-                setup =
-                    [
-                        {
-                            elementId = Library.ElementId "copied-source"
-                            label = Experiments.ElementLabel "Light source #1"
-                            kind = Placement.CatalogueKind.LightSource
-                            placement =
-                                Experiments.PlacementSummary.ofPlacement (
-                                    Placement.ElementPlacement.create Placement.CatalogueKind.LightSource Placement.TablePoint.origin
-                                )
-                            binding = Experiments.BoundByEntryId Library.PresetIds.source600
-                            itemIdOpt = Some sourceLaser600.id
-                        }
-                    ]
+            id = Library.ElementId id
+            placement =
+                {
+                    Placement.ElementPlacement.create kind Placement.TablePoint.origin with valueId = Some valueId
+                }
+            zoom = BeamLayout.ElementZoom 1.0
+            beam = BeamLayout.OnMainBeam
+            content = Setups.ItemInSlot (item.id, Setups.PlacementTurn)
         }
 
-    /// E2 binds the 1 mm glass plate at version 1 at its sample, where QZ is assigned.
+    /// E1's `Laser bench` binds the 600 nm source preset at its light source, which holds Laser600.
+    let private laserBench : Setups.Setup =
+        {
+            darkSetup with
+                name = SetupName "Laser bench"
+                slots = [ slotHolding "copied-source" Placement.CatalogueKind.LightSource Library.PresetIds.source600 sourceLaser600 ]
+        }
+
+    /// E2's `Plate bench` binds the 1 mm glass plate at its sample, which holds QZ.
+    let private plateBench : Setups.Setup =
+        {
+            darkSetup with
+                name = SetupName "Plate bench"
+                slots = [ slotHolding "copied-plate" Placement.CatalogueKind.Sample Library.SampleIds.glassPlate1mmId.toElementValueId sourceQz ]
+        }
+
+    let private itemE1 : Experiments.Experiment =
+        {
+            storedExperiment with setup = laserBench.reference
+        }
+
     let private itemE2 : Experiments.Experiment =
         {
             storedExperiment with
                 id = Experiments.ExperimentId 2
-                setup =
-                    [
-                        {
-                            elementId = Library.ElementId "copied-plate"
-                            label = Experiments.ElementLabel "Sample #1"
-                            kind = Placement.CatalogueKind.Sample
-                            placement =
-                                Experiments.PlacementSummary.ofPlacement (
-                                    Placement.ElementPlacement.create Placement.CatalogueKind.Sample Placement.TablePoint.origin
-                                )
-                            binding =
-                                Experiments.BoundByVersion (Lifecycle.SampleVersionRef (Library.SampleVersionId.firstOf Library.SampleIds.glassPlate1mmId))
-                            itemIdOpt = Some sourceQz.id
-                        }
-                    ]
+                setup = plateBench.reference
         }
 
-    /// The copy source holding Laser600 and QZ, recorded through `recordItem`, then E1 and E2, recorded through
-    /// `recordExperiment` (spec 0050 S6, S7.2).
+    /// The copy source holding Laser600 and QZ, recorded through `recordItem`, their setups through `recordSetup`, then
+    /// E1 and E2, recorded through `recordExperiment` (spec 0050 S6, S7.2, S8.2).
     let private itemSourceUnder (factFolder : FolderName) (imports : CatalogueImportContext) : CopySourceKit =
         sourceKitUnder factFolder imports (fun folder library ->
             for item in [ sourceLaser600; sourceQz ] do
                 library.recordItem item |> openedValue
+            for setup in [ laserBench; plateBench ] do
+                library.recordSetup setup |> openedValue
             for experiment in [ itemE1; itemE2 ] do
                 library.recordExperiment experiment |> openedValue
             {
@@ -951,25 +967,28 @@ module KitWindowModelTests =
         | Some copySource -> copySource
         | None -> failwith "the copy source must stay open while its experiments and items are chosen"
 
-    /// What a kit holds after a copy, read once it is closed and reopened read-only: its experiments, the items they
-    /// resolve to, and all its items (spec 0050 S7.2).
+    /// What a kit holds after a copy, read once it is closed and reopened read-only: its experiments, the items their
+    /// setups' slots resolve to, all its items and its setups (spec 0050 S7.2, S8.2).
     type private ReopenedCopy =
         {
             experiments : Experiments.Experiment list
-            resolved : Result<Item list, ItemError>
+            resolved : Result<Item list, SetupError>
             items : Item list
+            setups : Setups.Setup list
         }
 
-    /// Reopens the kit at the folder read-only and resolves its experiments through its items.
+    /// Reopens the kit at the folder read-only and resolves its experiments through its setups and items.
     let private reopenedCopy (folder : KitFolder) : ReopenedCopy =
         let later = KitContext.openKit (KitProxy.create folder) ReadOnlyKitAccess ClockProvider.system |> kitValue
         try
             let experiments = later.proxy.readExperiments () |> kitValue
             let items = later.proxy.readItems () |> kitValue
+            let setups = later.proxy.readSetups () |> kitValue
             {
                 experiments = experiments
-                resolved = Experiments.Experiment.itemsUsedBy experiments items
+                resolved = Experiments.Experiment.itemsUsedBy experiments setups items
                 items = items
+                setups = setups
             }
         finally later.close () |> kitValue
 
@@ -1050,7 +1069,7 @@ module KitWindowModelTests =
                 Assert.Equal<KitCopySource option>(None, copied.kitCopyOpt))
             let added = reopenedCopy folder
             Assert.Equal<Experiments.ExperimentId list>([ source.e1.id; source.e2.id ], added.experiments |> List.map (fun experiment -> experiment.id))
-            Assert.Equal<Result<Item list, ItemError>>(Ok [ addedLaser600; sourceQz ], added.resolved)
+            Assert.Equal<Result<Item list, SetupError>>(Ok [ addedLaser600; sourceQz ], added.resolved)
 
             // Mapped: the user's choice of a differently identified piece of the same preset, not the default Laser600.
             let benchFolder = KitFolder (factFolder.combine (FolderName "Optics bench"))
@@ -1082,7 +1101,8 @@ module KitWindowModelTests =
                 Assert.Equal<ItemId>(dialLaser600.id, onPiece.id)
                 Assert.Equal<Parameter list>(dialLaser600.parameters, onPiece.parameters)
                 Assert.NotEqual<Parameter list>(targetLaser600.parameters, onPiece.parameters)
-                Assert.Equal<ItemId option list>([ Some dialLaser600.id ], copiedE1.setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+                Assert.Equal<Result<ItemId option list, SetupError>>(
+                    Ok [ Some dialLaser600.id ], copiedE1.slotsIn mapped.setups |> Result.map (List.map (fun slot -> slot.content.itemOpt)))
             | experiments, _ -> Assert.Fail $"E1 must be copied alone and resolve exactly the chosen piece, not {List.length experiments} experiment(s)"
             Assert.Equal<Item list>([ targetLaser600; dialLaser600 ], mapped.items))
 
@@ -1137,17 +1157,18 @@ module KitWindowModelTests =
                     |> updateTableAndElementRotation (ToggleCopiedExperiment source.e1.id)
                 try
                     let missing = ItemId (Guid.Parse "22800000-0000-4000-8000-0000000000ff")
-                    let plate = List.exactlyOne source.e2.setup
-                    let dangling =
+                    let plate = List.exactlyOne plateBench.slots
+                    let danglingBench =
                         {
-                            source.e2 with
-                                setup =
+                            plateBench with
+                                slots =
                                     [
                                         {
-                                            plate with itemIdOpt = Some missing
+                                            plate with content = Setups.ItemInSlot (missing, Setups.PlacementTurn)
                                         }
                                     ]
                         }
+                    let dangling = source.e2
                     let loaded = copySourceOf e1Chosen
                     let injected =
                         {
@@ -1155,13 +1176,18 @@ module KitWindowModelTests =
                                 kitCopyOpt =
                                     Some
                                         {
-                                            loaded with experiments = [ source.e1; dangling ]
+                                            loaded with
+                                                experiments = [ source.e1; dangling ]
+                                                setups = loaded.setups |> List.map (fun setup -> if setup.name = danglingBench.name then danglingBench else setup)
                                         }
                         }
                     let before = folderBytes folder
                     let sourceBefore = folderBytes source.sourceFolder
                     let refused = injected |> updateTableAndElementRotation (ToggleCopiedExperiment dangling.id)
-                    let diagnostic = UnknownKitItemErr $"{missing.value}, assigned at the element '{plate.label.value}' ({plate.elementId.value}) of E2"
+                    let role = (Setups.SetupSlot.inLightOrder danglingBench.slots |> List.exactlyOne).role
+                    let slot = $"'{role.text}' ({plate.id.value})"
+                    let held = $"{missing.value}, held in the slot {slot} of {danglingBench.reference.describe}, which E2 references"
+                    let diagnostic = SetupItemReferenceErr (UnknownKitItemErr held)
                     Assert.Equal<ControlCaption option>(
                         Some (ControlCaption $"The experiment could not be chosen to copy — {diagnostic.describe}"),
                         refused.kitStatus)

@@ -67,7 +67,7 @@ module KitOpeningTests =
     let private openingExperiment : Experiment =
         {
             id = ExperimentId 1
-            setup = []
+            setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
             varied = None
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1

@@ -18,8 +18,9 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// The constructor's setup messages over a kit opened read-write: CreateSetup records the table as a kit setup and
-/// ActivateSetup draws one, the window keeping its view, snap mode and pivot (spec 0050 S8.2; 001 §P).
+/// The constructor's setup messages over a kit opened read-write: CreateSetup records the table as a kit setup,
+/// ActivateSetup draws one, the window keeping its view, snap mode and pivot, and a commit records the table as the
+/// active setup its experiment references (spec 0050 S8.2; 001 §P).
 module SetupModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -46,6 +47,29 @@ module SetupModelTests =
         model
         |> updateTableAndElementRotation (SetSetupName (ControlCaption name))
         |> updateTableAndElementRotation CreateSetup
+
+    /// The kit folder's experiment files, by id in ordinal order.
+    let private experimentFilesIn (folder : KitFolder) : string list =
+        Directory.GetFiles(folder.value.value, "*.experiment-json")
+        |> Array.map Path.GetFileName
+        |> Array.sort
+        |> List.ofArray
+
+    /// The table with a linear polarizer added, which the add selects.
+    let private withPolarizer (model : TableAndElementRotationModel) : TableAndElementRotationModel * Library.ElementId =
+        let placed = model |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let polarizer = placed.elements |> List.find (fun slot -> slot.placement.catalogueKind = LinearPolarizer)
+        placed, polarizer.id
+
+    /// The draft varying the element, committed.
+    let private committedVarying (id : Library.ElementId) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        model
+        |> updateTableAndElementRotation (ExpChooseElement id)
+        |> updateTableAndElementRotation ExpCommit
+
+    /// The selected element turned to R1 = 30°.
+    let private turned (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        model |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
 
     /// The kit folder's setup files, by name in ordinal order.
     let private setupFilesIn (folder : KitFolder) : string list =
@@ -142,3 +166,78 @@ module SetupModelTests =
             | None -> Assert.Fail "a setup the kit does not hold must be told in the kit status"
             Assert.Equal<Setups.SetupSlot list>(activated.elements, missing.elements)
             Assert.Equal<Setups.Setup option>(activated.activeSetupOpt, missing.activeSetupOpt))
+
+    [<Fact>]
+    let ``a commit on a table that is no setup yet records it as the first free setup and references it`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer model
+            Assert.Equal<Setups.Setup option>(None, placed.activeSetupOpt)
+
+            let committed = placed |> committedVarying polarizer
+
+            Assert.Equal<string list>([ "Setup 1.setup-json" ], setupFilesIn folder)
+            Assert.Equal<string list>([ "E1.experiment-json" ], experimentFilesIn folder)
+            let setup1 = Assert.Single(committed.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<SetupName>(SetupName "Setup 1", setup1.name)
+            Assert.Equal<SetupRevision>(SetupRevision.first, setup1.revision)
+            Assert.Equal<Setups.SetupSlot list>(placed.elements, setup1.slots)
+            let e1 = Assert.Single(committed.kit.proxy.readExperiments () |> kitValue)
+            let expected : SetupReference = { name = SetupName "Setup 1"; revision = SetupRevision.first }
+            Assert.Equal<SetupReference>(expected, e1.setup)
+            Assert.Equal<Experiments.Experiment list>([ e1 ], committed.experimentCollection.experiments)
+            Assert.Equal<Setups.Setup option>(Some setup1, committed.activeSetupOpt)
+            Assert.Equal<Setups.Setup list>([ setup1 ], committed.kitSetups)
+            Assert.Equal<ControlCaption option>(None, committed.kitStatus))
+
+    [<Fact>]
+    let ``a commit over a changed table whose revision an experiment references mints the next revision, and the earlier experiment keeps its own`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer model
+            let first = placed |> committedVarying polarizer
+            let firstSlots = first.elements
+            let rotated = turned first
+            Assert.NotEqual<Setups.SetupSlot list>(firstSlots, rotated.elements)
+
+            let second =
+                rotated
+                |> updateTableAndElementRotation ExpNew
+                |> committedVarying polarizer
+
+            Assert.Equal<string list>([ "Setup 1.setup-json" ], setupFilesIn folder)
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
+            let setup1 = Assert.Single(second.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<SetupRevision>(SetupRevision 2, setup1.revision)
+            Assert.Equal<Setups.SetupSlot list>(rotated.elements, setup1.slots)
+            let firstRecord : Setups.SetupRevisionRecord =
+                {
+                    revision = SetupRevision.first
+                    slots = firstSlots
+                }
+            Assert.Equal<Setups.SetupRevisionRecord list>([ firstRecord ], setup1.history)
+            match second.kit.proxy.readExperiments () |> kitValue with
+            | [ e1; e2 ] ->
+                Assert.Equal<SetupReference>({ name = SetupName "Setup 1"; revision = SetupRevision.first }, e1.setup)
+                Assert.Equal<SetupReference>({ name = SetupName "Setup 1"; revision = SetupRevision 2 }, e2.setup)
+            | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
+            Assert.Equal<Setups.Setup option>(Some setup1, second.activeSetupOpt)
+            Assert.Equal<Setups.Setup list>([ setup1 ], second.kitSetups))
+
+    [<Fact>]
+    let ``a commit over a changed table no experiment references changes the setup in place`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer model
+            let created = placed |> createdAs "Bench"
+            let rotated = turned created
+            Assert.NotEqual<Setups.SetupSlot list>(created.elements, rotated.elements)
+
+            let committed = rotated |> committedVarying polarizer
+
+            Assert.Equal<string list>([ "Bench.setup-json" ], setupFilesIn folder)
+            let bench = Assert.Single(committed.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<SetupName>(SetupName "Bench", bench.name)
+            Assert.Equal<SetupRevision>(SetupRevision.first, bench.revision)
+            Assert.Equal<Setups.SetupSlot list>(rotated.elements, bench.slots)
+            Assert.Empty(bench.history)
+            let e1 = Assert.Single(committed.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<SetupReference>(bench.reference, e1.setup)
+            Assert.Equal<Setups.Setup option>(Some bench, committed.activeSetupOpt))

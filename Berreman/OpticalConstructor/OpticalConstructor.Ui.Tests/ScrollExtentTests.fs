@@ -240,7 +240,14 @@ module ScrollExtentTests =
             }
         assertReachable "Chart" (fun () -> ChartWindow(chart))
         assertReachable "Handoff" (fun () ->
-            SolverHandoffWindow(library, noData, { name = ExperimentCollectionStore.CollectionName "run"; experiments = (filledExperiments ()).experimentCollection.experiments }))
+            let filled = filledExperiments ()
+            let collection : ExperimentCollectionStore.ExperimentCollectionSnapshot =
+                {
+                    name = ExperimentCollectionStore.CollectionName "run"
+                    experiments = filled.experimentCollection.experiments
+                    setups = filled.kitSetups
+                }
+            SolverHandoffWindow(library, noData, collection))
 
     /// Forty kits in memory, every fifth folder missing and every seventh kit starred, so the start screen's list is
     /// longer than the screen (spec 0050 S5.2).
@@ -322,6 +329,7 @@ module ScrollExtentTests =
                 experiments = experiments
                 chosen = experiments |> List.map (fun experiment -> experiment.id)
                 items = sourceItems
+                setups = filled.kitSetups
                 itemRows = sourceItems |> List.mapi rowOf
             }
         let handle : KitArchiveJobHandle =

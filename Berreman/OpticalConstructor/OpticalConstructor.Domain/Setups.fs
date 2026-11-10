@@ -394,3 +394,54 @@ module Setups =
                     }
 
                 CreateSwappedSetup created
+
+    type Setup with
+
+        /// Pinned while an experiment references the current revision, so a changed table then mints the next by
+        /// `Lifecycle.decideVersioning` (spec 0050 S8.2).
+        member this.pinFor (experiments : Experiments.Experiment list) : PinState =
+            if experiments |> List.exists (fun experiment -> experiment.setup = this.reference) then
+                VersionPinned
+            else
+                VersionUnpinned
+
+    type Experiments.Experiment with
+
+        /// The slots of the setup revision the experiment references; a setup the list lacks is refused, naming the
+        /// reference (spec 0050 S8.2).
+        member this.slotsIn (setups : Setup list) : Result<SetupSlot list, SetupError> =
+            match setups |> List.tryFind (fun setup -> setup.name = this.setup.name) with
+            | Some setup -> setup.slotsAt this.setup.revision
+            | None -> Error (UnknownSetupErr this.setup.describe)
+
+        /// The items the slots of the experiments' revisions hold, once each in the supplied order. An unresolved revision
+        /// answers its `slotsIn` error and a held id the items lack is refused, naming the slot by its role, never matched
+        /// by preset or model (spec 0050 S7.2, S8.2).
+        static member itemsUsedBy
+            (experiments : Experiments.Experiment list)
+            (setups : Setup list)
+            (items : Item list)
+            : Result<Item list, SetupError> =
+            let held : Result<(Experiments.Experiment * RoledSlot * ItemId) list, SetupError> =
+                experiments
+                |> List.fold (fun result experiment ->
+                    result |> Result.bind (fun found ->
+                        experiment.slotsIn setups
+                        |> Result.map (fun slots ->
+                            let holding =
+                                SetupSlot.inLightOrder slots
+                                |> List.choose (fun roled -> roled.slot.content.itemOpt |> Option.map (fun id -> experiment, roled, id))
+                            found @ holding))) (Ok [])
+
+            let isHeld (id : ItemId) : bool = items |> List.exists (fun item -> item.id = id)
+
+            held
+            |> Result.bind (fun assigned ->
+                match assigned |> List.tryFind (fun (_, _, id) -> not (isHeld id)) with
+                | Some (experiment, roled, id) ->
+                    let slot = $"'{roled.role.text}' ({roled.slot.id.value})"
+                    let place = $"the slot {slot} of {experiment.setup.describe}, which {experiment.id.fileStem.value} references"
+                    Error (SetupItemReferenceErr (UnknownKitItemErr $"{id.value}, held in {place}"))
+                | None ->
+                    let used = assigned |> List.map (fun (_, _, id) -> id)
+                    items |> List.filter (fun item -> List.contains item.id used) |> List.distinctBy (fun item -> item.id) |> Ok)

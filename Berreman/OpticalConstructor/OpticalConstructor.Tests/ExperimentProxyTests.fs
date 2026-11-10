@@ -2,44 +2,27 @@ namespace OpticalConstructor.Tests
 
 open System
 open Xunit
+open Berreman.Constants
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.MaterialLibrary       // VersionNumber (spec 0038 Part H)
-open OpticalConstructor.Domain.Lifecycle             // VersionRef / SampleVersionRef
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Setups
 
-/// Experiment capture, collection editing and explicit pins on bound sample versions
-/// (spec 0027; spec 0038 Part I; spec 0050 S2.2).
+/// Experiment capture over a setup revision, collection editing and the items a setup revision's slots hold
+/// (spec 0027; spec 0038 Part I; spec 0050 S7.2, S8.2).
 module ExperimentProxyTests =
 
     let private proxy = Experiments.createInMemoryExperiments ()
     let private el (s : string) : ElementId = Library.ElementId s
 
-    /// A placement/orientation summary for a rest-pose element of the given kind.
-    let private placementOf (kind : CatalogueKind) : PlacementSummary =
-        PlacementSummary.ofPlacement (ElementPlacement.create kind TablePoint.origin)
-
-    /// A captured setup descriptor (id / label / kind / rest placement / binding), deliberately assigned no physical item.
-    let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
-        { ElementDescriptor.elementId = el idStr; label = ElementLabel label; kind = kind; placement = placementOf kind; binding = binding; itemIdOpt = None }
-
-    /// A captured setup descriptor with the physical item explicitly assigned at it (spec 0050 S7.2).
-    let private pieceAt (item : Item) (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
-        {
-            desc idStr label kind binding with itemIdOpt = Some item.id
-        }
-
-    /// The version-one binding of `BuiltinCatalogue.sample`'s 1 mm glass plate.
-    let private glassPlateBinding : ElementBinding =
-        BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId))
-
-    // A single-source setup and a single-polarizer setup for the interactive-commit tests.
-    let private srcSetup : ElementDescriptor list = [ desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600) ]
-    let private polSetup : ElementDescriptor list = [ desc "pol" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp) ]
+    // Test-local setup revisions an experiment references (spec 0050 S8.2).
+    let private benchRevision1 : SetupReference = { name = SetupName "Bench"; revision = SetupRevision 1 }
+    let private benchRevision2 : SetupReference = { name = SetupName "Bench"; revision = SetupRevision 2 }
+    let private darkRevision1 : SetupReference = { name = SetupName "Dark"; revision = SetupRevision 1 }
 
     // ============================ variable capability (attached to the kind, as DATA) ============================
 
@@ -121,20 +104,20 @@ module ExperimentProxyTests =
     [<Fact>]
     let ``commit APPENDS a new experiment and then keeps editing it (no duplicate on re-commit)`` () =
         let c0 = withSource ()
-        let c1 = commit srcSetup c0
+        let c1 = commit benchRevision1 c0
         Assert.Equal(1, List.length c1.experiments)
         let added = List.head c1.experiments
         Assert.Equal(Some (el "src"), added.varied |> Option.map (fun v -> v.elementId))
         Assert.Equal(Some VaryWaveLength, added.varied |> Option.map (fun v -> v.variable))
         // The draft now edits the added experiment, so committing again UPDATES rather than appends.
-        let c2 = commit srcSetup c1
+        let c2 = commit benchRevision1 c1
         Assert.Equal(1, List.length c2.experiments)
 
     [<Fact>]
     let ``editing the draft after add updates the stored experiment in place`` () =
-        let c1 = withSource () |> commit srcSetup
+        let c1 = withSource () |> commit benchRevision1
         let id = (List.head c1.experiments).id
-        let c2 = c1 |> chooseMeasurement CaptureReflected |> setRangeMin (Propagation.SweptValue 300.0) |> setRangeMax (Propagation.SweptValue 500.0) |> commit srcSetup
+        let c2 = c1 |> chooseMeasurement CaptureReflected |> setRangeMin (Propagation.SweptValue 300.0) |> setRangeMax (Propagation.SweptValue 500.0) |> commit benchRevision1
         Assert.Equal(1, List.length c2.experiments)
         let updated = c2.experiments |> List.find (fun e -> e.id = id)
         Assert.Equal(CaptureReflected, updated.measurement)
@@ -143,12 +126,12 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``newDraft after add lets a second commit APPEND a distinct experiment`` () =
-        let c1 = withSource () |> commit srcSetup
+        let c1 = withSource () |> commit benchRevision1
         let c2 =
             c1
             |> (fun c -> c.newDraft)
             |> chooseElement (el "pol") (ElementLabel "Linear polarizer #2") (VariableParameter.allowedFor LinearPolarizer) CaptureBoth
-            |> commit polSetup
+            |> commit benchRevision2
         Assert.Equal(2, List.length c2.experiments)
         let ids = c2.experiments |> List.map (fun e -> e.id.value)
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)   // distinct ids
@@ -156,10 +139,10 @@ module ExperimentProxyTests =
     [<Fact>]
     let ``edit loads an experiment into the draft for re-editing`` () =
         let c1 =
-            withSource () |> commit srcSetup
+            withSource () |> commit benchRevision1
             |> (fun c -> c.newDraft)
             |> chooseElement (el "pol") (ElementLabel "Linear polarizer #2") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
-            |> commit polSetup
+            |> commit benchRevision2
         let target = c1.experiments |> List.find (fun e -> (e.varied |> Option.map (fun v -> v.elementId)) = Some (el "pol"))
         let c2 = edit target.id c1
         Assert.Equal(Some target.id, c2.draft.editingId)
@@ -168,7 +151,7 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``remove deletes the experiment and clears the draft when it was being edited`` () =
-        let c1 = withSource () |> commit srcSetup
+        let c1 = withSource () |> commit benchRevision1
         let id = (List.head c1.experiments).id
         let c2 = remove id c1
         Assert.Empty(c2.experiments)
@@ -178,7 +161,7 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``an experiment description mentions the element, the variable, and the capture`` () =
-        let c1 = withSource () |> chooseMeasurement CaptureBoth |> commit srcSetup
+        let c1 = withSource () |> chooseMeasurement CaptureBoth |> commit benchRevision1
         let exp = List.head c1.experiments
         Assert.Contains("Light source", exp.description)
         Assert.Contains("Wavelength", exp.description)
@@ -189,71 +172,45 @@ module ExperimentProxyTests =
         let c = withSource () |> setRangePoints (Propagation.CurvePointCount 1)
         Assert.True(c.draft.range.points.value >= 2)
 
-    // ============================ step 025: the full-setup experiment (E1 / E2 / E3) ============================
+    // ============================ E1 / E2 / E3 over their setup revisions ============================
 
-    /// E1 = source + polarizer + sample + rotating polarizer + detector (the rotating polarizer varied).
+    /// E1 = source + polarizer + sample + rotating polarizer + detector on `Bench` revision 1, the rotating polarizer varied.
     let private e1 : Experiment =
         {
             id = ExperimentId 1
-            setup =
-                [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
-                    desc "s" "Sample #3" Sample glassPlateBinding
-                    desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
-                    desc "det" "Detector #5" Detector (BoundByEntryId PresetIds.detectorIntensity)
-                ]
-            varied = Some { elementId = el "lp2"; variable = VaryR1 }
+            setup = benchRevision1
+            varied = Some { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
             dataFileOpt = None
             sourceWaveLengthOpt = None
         }
 
-    /// E2 = the same WITHOUT a sample (captures that the polarizers are not ideal).
+    /// E2 = the same WITHOUT a sample, on `Bench` revision 2 (captures that the polarizers are not ideal).
     let private e2 : Experiment =
         { e1 with
             id = ExperimentId 2
-            setup =
-                [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
-                    desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
-                    desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
-                    desc "det" "Detector #4" Detector (BoundByEntryId PresetIds.detectorIntensity)
-                ] }
+            setup = benchRevision2
+            varied = Some { elementId = el "lp2"; label = ElementLabel "Linear polarizer #3"; variable = VaryR1 } }
 
     /// E3 = an empty dark line (nothing varied) — how much ambient light reaches the detector with no source.
     let private e3 : Experiment =
-        { id = ExperimentId 3; setup = []; varied = None; measurement = CaptureTransmitted; range = VariableRange.forVariable VaryR1; dataFileOpt = None; sourceWaveLengthOpt = None }
+        { id = ExperimentId 3; setup = darkRevision1; varied = None; measurement = CaptureTransmitted; range = VariableRange.forVariable VaryR1; dataFileOpt = None; sourceWaveLengthOpt = None }
 
     [<Fact>]
-    let ``E1 carries the ordered chain incl. the detector, with the varied polarizer identified within it`` () =
-        Assert.Equal<CatalogueKind list>(
-            [ LightSource; LinearPolarizer; Sample; LinearPolarizer; Detector ],
-            e1.setup |> List.map (fun d -> d.kind))
-        // the varied element resolves to a descriptor inside the setup
-        Assert.Equal(Some (el "lp2"), e1.varied |> Option.map (fun v -> v.elementId))
+    let ``E1 references its setup revision and names its varied polarizer with its label`` () =
+        Assert.Equal<SetupReference>(benchRevision1, e1.setup)
+        let expectedVaried : VariedElement = { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
+        Assert.Equal<VariedElement option>(Some expectedVaried, e1.varied)
         Assert.Equal(ElementLabel "Linear polarizer #4", e1.variedLabel)
-        // the detector is part of the chain and carries its kind (via its preset binding)
-        match e1.detectorDescriptorOpt with
-        | Some d ->
-            Assert.Equal(Detector, d.kind)
-            Assert.Equal(BoundByEntryId PresetIds.detectorIntensity, d.binding)
-        | None -> Assert.Fail "E1 lost its detector from the captured chain"
-
-    [<Fact>]
-    let ``E2 is constructible without a sample (source + two polarizers + detector)`` () =
-        Assert.DoesNotContain(Sample, e2.setup |> List.map (fun d -> d.kind))
-        Assert.Equal<CatalogueKind list>(
-            [ LightSource; LinearPolarizer; LinearPolarizer; Detector ],
-            e2.setup |> List.map (fun d -> d.kind))
 
     [<Fact>]
     let ``E3 is an empty dark line — nothing varied, still describable`` () =
-        Assert.Empty(e3.setup)
+        Assert.Equal<SetupReference>(darkRevision1, e3.setup)
         Assert.Equal(None, e3.varied)
         Assert.Equal(ElementLabel.blank, e3.variedLabel)
         Assert.Contains("Dark line", e3.description)
+        Assert.Contains("'Dark' revision 1", e3.description)
 
     [<Fact>]
     let ``E1 and E2 describe their varied element, variable and capture`` () =
@@ -270,108 +227,12 @@ module ExperimentProxyTests =
                 contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             }
         Assert.Equal("data/run1.csv", attachment.path.value)
-        let c = withSource () |> commit srcSetup
+        let c = withSource () |> commit benchRevision1
         let id = (List.head c.experiments).id
         Assert.Equal(None, (List.head c.experiments).dataFileOpt)
         let c2 = attachDataFile id attachment c
         let exp = c2.experiments |> List.find (fun e -> e.id = id)
         Assert.Equal(Some attachment, exp.dataFileOpt)
-
-    // ============================ spec 0050 S2.2: version bindings and explicit pins ============================
-
-    [<Fact>]
-    let ``versionRefs collects the versioned bindings of the setup (samples yes, presets no)`` () =
-        let bound = e1.versionRefs
-        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), bound)
-        // E2 has no sample, so it binds no version; a dark line binds nothing.
-        Assert.Empty(e2.versionRefs)
-        Assert.Empty(e3.versionRefs)
-
-    [<Fact>]
-    let ``an experiment references the library versions its setup binds, each once`` () : unit =
-        let sampleVersion : LibraryVersionRef =
-            {
-                entryId = SampleIds.glassPlate1mmId.toLibraryEntryId
-                version = VersionNumber.first
-            }
-        let sampleReference = EntryVersionReference sampleVersion
-        let sourceId =
-            match PresetIds.source600.tryToLibraryEntryId with
-            | Some id -> id
-            | None -> failwith "The shipped source must have a canonical GUID identity."
-        let sourceReference = EntryLatestReference sourceId
-        let sourceBinding = BoundByEntryId PresetIds.source600
-        let experiment =
-            {
-                e3 with
-                    setup =
-                        [
-                            desc "sample" "Sample #1" Sample glassPlateBinding
-                            desc "source-one" "Light source #2" LightSource sourceBinding
-                            desc "source-two" "Light source #3" LightSource sourceBinding
-                            desc "unbound" "Lens #4" Lens Unbound
-                        ]
-            }
-        Assert.Equal<EntryReference list>([ sampleReference; sourceReference ], experiment.libraryReferences)
-        Assert.Equal<EntryReference option>(Some sampleReference, glassPlateBinding.entryReferenceOpt)
-        Assert.Equal<EntryReference option>(Some sourceReference, sourceBinding.entryReferenceOpt)
-        Assert.Equal<EntryReference option>(None, Unbound.entryReferenceOpt)
-        Assert.Empty(e3.libraryReferences)
-
-        let nonGuidId = ElementValueId "not-a-library-guid"
-        let nonGuidBinding = BoundByEntryId nonGuidId
-        Assert.Equal<EntryReference option>(None, nonGuidBinding.entryReferenceOpt)
-
-        let nextSampleVersion : SampleVersionId =
-            {
-                sampleId = SampleIds.glassPlate1mmId
-                version = VersionNumber.first.next
-            }
-        let nextSampleBinding = BoundByVersion (SampleVersionRef nextSampleVersion)
-        let nextSampleReference =
-            EntryVersionReference
-                {
-                    sampleVersion with version = nextSampleVersion.version
-                }
-        let materialVersion : MaterialVersionId =
-            {
-                materialId = MaterialIds.glass152
-                version = VersionNumber.first.next
-            }
-        let materialBinding = BoundByVersion (MaterialVersionRef materialVersion)
-        let materialReference =
-            EntryVersionReference
-                {
-                    entryId = MaterialIds.glass152.toLibraryEntryId
-                    version = VersionNumber.first.next
-                }
-        let latestSampleId = SampleIds.glassPlate1mmId.toElementValueId
-        let latestSampleBinding = BoundByEntryId latestSampleId
-        let latestSampleReference = EntryLatestReference sampleVersion.entryId
-        let expanded =
-            {
-                experiment with
-                    setup =
-                        experiment.setup @
-                            [
-                                desc "sample-again" "Sample #5" Sample glassPlateBinding
-                                desc "sample-next" "Sample #6" Sample nextSampleBinding
-                                desc "material" "Sample #7" Sample materialBinding
-                                desc "material-again" "Sample #8" Sample materialBinding
-                                desc "sample-latest" "Sample #9" Sample latestSampleBinding
-                                desc "non-guid" "Light source #10" LightSource nonGuidBinding
-                            ]
-            }
-        Assert.Equal<EntryReference list>(
-            [ sampleReference; sourceReference; nextSampleReference; materialReference; latestSampleReference ],
-            expanded.libraryReferences)
-        let reversed =
-            {
-                expanded with setup = List.rev expanded.setup
-            }
-        Assert.Equal<EntryReference list>(
-            [ latestSampleReference; materialReference; nextSampleReference; sampleReference; sourceReference ],
-            reversed.libraryReferences)
 
     /// One copy into a kit holding `taken`, and the experiments it must answer (spec 0050 S6).
     type private RenumberingCase =
@@ -420,7 +281,7 @@ module ExperimentProxyTests =
             Assert.Equal<Experiment list>(unnumbered renumbering.incoming, unnumbered renumbered)
         Assert.Empty(Experiment.renumberedFor [ ExperimentId 1 ] [])
 
-    // ============================ spec 0050 S7.2: the physical items an experiment uses ============================
+    // ============================ spec 0050 S7.2, S8.2: the physical items an experiment uses ============================
 
     /// The draft's item, built from the shipped item model's resolved version, failing when `addTo` refuses it.
     let private itemOf (draft : ItemDraft) : Item =
@@ -477,62 +338,107 @@ module ExperimentProxyTests =
 
         itemOf draft
 
+    /// A main-beam slot of that kind at `x` metres along the table, bound to `valueIdOpt`, holding `content`.
+    let private slotAt
+        (id : string)
+        (kind : CatalogueKind)
+        (x : float<meter>)
+        (valueIdOpt : ElementValueId option)
+        (content : SlotContent)
+        : SetupSlot =
+        {
+            id = el id
+            placement =
+                {
+                    ElementPlacement.create kind { x = x; y = 0.0<meter> } with valueId = valueIdOpt
+                }
+            zoom = BeamLayout.ElementZoom 1.0
+            beam = BeamLayout.OnMainBeam
+            content = content
+        }
+
+    let private holdingItem (item : Item) : SlotContent = ItemInSlot (item.id, PlacementTurn)
+
+    /// A setup at its first revision holding these slots.
+    let private setupOf (name : string) (slots : SetupSlot list) : Setup =
+        {
+            name = SetupName name
+            revision = SetupRevision.first
+            slots = slots
+            history = []
+        }
+
     [<Fact>]
-    let ``the items an experiment uses are its explicit physical ids, each once`` () : unit =
+    let ``the items an experiment uses are those its setup revision's slots hold, each once`` () : unit =
         let items = [ laserItem; qzAItem; qzBItem; cplItem ]
         Assert.Equal<ItemModelInstance>(qzAItem.model, qzBItem.model)
         Assert.Equal<ItemModelInstance>(SampleInstance ((BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId).versionId, glassPlateVersion), qzBItem.model)
         Assert.NotEqual<ItemId>(qzAItem.id, qzBItem.id)
         Assert.NotEqual<Parameter list>(qzAItem.parameters, qzBItem.parameters)
 
-        let bench =
+        // `Bench` revision 2 holds Laser at the source and QZ-B at the sample; its revision 1 bound the same entries
+        // with no piece in any slot.
+        let boundSlots (laserContent : SlotContent) (plateContent : SlotContent) : SetupSlot list =
+            [
+                slotAt "src" LightSource -1.0<meter> (Some PresetIds.heNe633) laserContent
+                slotAt "qz" Sample -0.5<meter> (Some SampleIds.glassPlate1mmId.toElementValueId) plateContent
+                slotAt "lp" LinearPolarizer -0.25<meter> (Some PresetIds.polarizerLp) EmptySlotContent
+                slotAt "det" Detector 0.5<meter> (Some PresetIds.detectorIntensity) EmptySlotContent
+            ]
+        let bench : Setup =
+            {
+                name = SetupName "Bench"
+                revision = SetupRevision 2
+                slots = boundSlots (holdingItem laserItem) (holdingItem qzBItem)
+                history = [ { revision = SetupRevision 1; slots = boundSlots EmptySlotContent EmptySlotContent } ]
+            }
+        let twice =
+            setupOf "Twice" [ slotAt "qz" Sample -0.5<meter> None (holdingItem qzBItem); slotAt "qz-again" Sample 0.0<meter> None (holdingItem qzBItem) ]
+        let circular = setupOf "Circular" [ slotAt "cpl" CircularPolarizer -0.5<meter> None (holdingItem cplItem) ]
+        let dark = setupOf "Dark" []
+        let setups = [ bench; twice; circular; dark ]
+
+        let over (setup : SetupReference) (id : int) : Experiment =
             {
                 e3 with
-                    id = ExperimentId 21
-                    setup =
-                        [
-                            pieceAt laserItem "src" "Light source #1" LightSource (BoundByEntryId PresetIds.heNe633)
-                            pieceAt qzBItem "qz" "Sample #2" Sample glassPlateBinding
-                            desc "lp" "Linear polarizer #3" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
-                            desc "det" "Detector #4" Detector (BoundByEntryId PresetIds.detectorIntensity)
-                        ]
+                    id = ExperimentId id
+                    setup = setup
             }
+
+        let onBench = over bench.reference 21
 
         // QZ-A shares QZ-B's model, sample version and binding, and is still not used.
-        Assert.Equal<Result<Item list, ItemError>>(Ok [ laserItem; qzBItem ], Experiment.itemsUsedBy [ bench ] items)
+        Assert.Equal<Result<Item list, SetupError>>(Ok [ laserItem; qzBItem ], Experiment.itemsUsedBy [ onBench ] setups items)
 
-        let again =
-            {
-                bench with
-                    id = ExperimentId 22
-                    setup =
-                        [
-                            pieceAt qzBItem "qz" "Sample #1" Sample glassPlateBinding
-                            pieceAt qzBItem "qz-again" "Sample #2" Sample glassPlateBinding
-                        ]
-            }
+        let again = over twice.reference 22
+        Assert.Equal<Result<Item list, SetupError>>(Ok [ qzBItem ], Experiment.itemsUsedBy [ again ] setups items)
+        // Two experiments over the bench name Laser once.
+        Assert.Equal<Result<Item list, SetupError>>(Ok [ laserItem; qzBItem ], Experiment.itemsUsedBy [ onBench; over bench.reference 25 ] setups items)
+        Assert.Equal<Result<Item list, SetupError>>(Ok [ laserItem; qzBItem ], Experiment.itemsUsedBy [ again; onBench ] setups items)
+        // The items come in the order they are supplied, not the order the slots hold them.
+        Assert.Equal<Result<Item list, SetupError>>(
+            Ok [ qzBItem; laserItem ], Experiment.itemsUsedBy [ onBench ] setups [ cplItem; qzBItem; qzAItem; laserItem ])
 
-        Assert.Equal<Result<Item list, ItemError>>(Ok [ qzBItem ], Experiment.itemsUsedBy [ again ] items)
-        Assert.Equal<Result<Item list, ItemError>>(Ok [ laserItem; qzBItem ], Experiment.itemsUsedBy [ again; bench ] items)
-        // The items come in the order they are supplied, not the order the setups name them.
-        Assert.Equal<Result<Item list, ItemError>>(
-            Ok [ qzBItem; laserItem ], Experiment.itemsUsedBy [ bench ] [ cplItem; qzBItem; qzAItem; laserItem ])
-
-        // E1 binds the plate and the presets the items bind, yet assigns no piece, so it uses none.
-        Assert.Equal<Result<Item list, ItemError>>(Ok [], Experiment.itemsUsedBy [ e1; e3 ] items)
-        Assert.Equal<Result<Item list, ItemError>>(Ok [], Experiment.itemsUsedBy [] items)
+        // E1's revision binds the plate and the presets the items bind, yet holds no piece, so it uses none.
+        Assert.Equal<Result<Item list, SetupError>>(Ok [], Experiment.itemsUsedBy [ e1; e3 ] setups items)
+        Assert.Equal<Result<Item list, SetupError>>(Ok [], Experiment.itemsUsedBy [] setups items)
 
         // A standalone item model binds no preset or sample and is used by its id alone.
         Assert.Equal<EntryReference option>(None, cplItem.model.bindingReferenceOpt)
-        let circular =
-            {
-                e3 with
-                    id = ExperimentId 23
-                    setup = [ pieceAt cplItem "cpl" "Circular polarizer #1" CircularPolarizer Unbound ]
-            }
+        let onCircular = over circular.reference 23
+        Assert.Equal<Result<Item list, SetupError>>(Ok [ cplItem ], Experiment.itemsUsedBy [ onCircular ] setups items)
+        Assert.Equal<Result<Item list, SetupError>>(Ok [ laserItem; qzBItem; cplItem ], Experiment.itemsUsedBy [ onCircular; onBench ] setups items)
 
-        Assert.Equal<Result<Item list, ItemError>>(Ok [ cplItem ], Experiment.itemsUsedBy [ circular ] items)
-        Assert.Equal<Result<Item list, ItemError>>(Ok [ laserItem; qzBItem; cplItem ], Experiment.itemsUsedBy [ circular; bench ] items)
+        // A setup or revision the list lacks, or a piece the items lack, is its typed error, never an empty list.
+        match Experiment.itemsUsedBy [ onBench; over { name = SetupName "Gone"; revision = SetupRevision 1 } 26 ] setups items with
+        | Error (UnknownSetupErr reason) -> Assert.Contains("'Gone' revision 1", reason)
+        | other -> Assert.Fail($"expected UnknownSetupErr, got %A{other}")
+        match Experiment.itemsUsedBy [ over benchRevision1 27; over { bench.reference with revision = SetupRevision 3 } 28 ] setups items with
+        | Error (UnknownSetupRevisionErr reason) -> Assert.Contains("'Bench' revision 3", reason)
+        | other -> Assert.Fail($"expected UnknownSetupRevisionErr, got %A{other}")
+        match Experiment.itemsUsedBy [ onBench ] setups [ qzBItem ] with
+        | Error (SetupItemReferenceErr (UnknownKitItemErr reason)) -> Assert.Contains(laserItem.id.value.ToString(), reason)
+        | other -> Assert.Fail($"expected the missing Laser, got %A{other}")
 
     [<Fact>]
     let ``a missing physical item is refused instead of guessed from a shared preset`` () : unit =
@@ -548,93 +454,48 @@ module ExperimentProxyTests =
             itemOf draft
 
         let missing = ItemId (Guid.Parse "e15c7a93-4b08-4d2f-8e6a-5c9b3d1f7e28")
-        let polarizerBinding = BoundByEntryId PresetIds.polarizerLp
+        let polarizerBinding = Some PresetIds.polarizerLp
         Assert.Equal<ItemModelInstance>(PresetInstance ((BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId).versionId, PresetIds.polarizerLp), heldPolarizer.model)
 
+        // Both polarizer slots bind the one preset; only the held piece's id tells the second apart.
+        let bench =
+            setupOf
+                "Shared preset"
+                [
+                    slotAt "src" LightSource -1.0<meter> (Some PresetIds.heNe633) (holdingItem laserItem)
+                    slotAt "lp" LinearPolarizer -0.5<meter> polarizerBinding (ItemInSlot (missing, PlacementTurn))
+                    slotAt "lp-held" LinearPolarizer -0.25<meter> polarizerBinding (holdingItem heldPolarizer)
+                ]
         let dangling =
             {
                 e3 with
                     id = ExperimentId 24
-                    setup =
-                        [
-                            pieceAt laserItem "src" "Light source #1" LightSource (BoundByEntryId PresetIds.heNe633)
-                            {
-                                desc "lp" "Linear polarizer #2" LinearPolarizer polarizerBinding with itemIdOpt = Some missing
-                            }
-                            pieceAt heldPolarizer "lp-held" "Linear polarizer #3" LinearPolarizer polarizerBinding
-                        ]
+                    setup = bench.reference
             }
 
-        match Experiment.itemsUsedBy [ dangling ] [ laserItem; heldPolarizer; qzAItem ] with
-        | Error (UnknownKitItemErr reason) ->
+        match Experiment.itemsUsedBy [ dangling ] [ bench ] [ laserItem; heldPolarizer; qzAItem ] with
+        | Error (SetupItemReferenceErr (UnknownKitItemErr reason)) ->
             Assert.Contains(missing.value.ToString(), reason)
-            Assert.Contains("'Linear polarizer #2' (lp)", reason)
+            Assert.Contains("'Prep 1' (lp)", reason)
             Assert.Contains("E24", reason)
             Assert.DoesNotContain(heldPolarizer.id.value.ToString(), reason)
         | other -> Assert.Fail($"expected UnknownKitItemErr for the missing piece, got %A{other}")
 
-    [<Fact>]
-    let ``pinning an experiment's bound sample version BLOCKS removal of that sample`` () =
-        let bound = BuiltinCatalogue.sampleStore ()
-        for reference in e1.versionRefs do
-            match reference with
-            | SampleVersionRef version -> Assert.Equal<Result<unit, SampleError>>(Ok (), bound.pinSampleVersion version)
-            | MaterialVersionRef _ -> ()
-        match bound.removeSample SampleIds.glassPlate1mmId with
-        | Error (SampleVersionPinnedErr _) -> ()
-        | other -> Assert.Fail($"expected SampleVersionPinnedErr, got %A{other}")
-        let free = BuiltinCatalogue.sampleStore ()
-        match free.removeSample SampleIds.glassPlate1mmId with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok, got %A{other}")
+    // ============================ committing over the active setup revision ============================
 
     [<Fact>]
-    let ``editing a PINNED sample version mints the next version instead of rewriting it`` () =
-        let store = BuiltinCatalogue.sampleStore ()
-        for reference in e1.versionRefs do
-            match reference with
-            | SampleVersionRef version -> Assert.Equal<Result<unit, SampleError>>(Ok (), store.pinSampleVersion version)
-            | MaterialVersionRef _ -> ()
-        // Change the bound sample's physics (1 mm plate → the 2 mm plate's structure) under the SAME id.
-        let edited =
-            {
-                BuiltinCatalogue.sample SampleIds.glassPlate1mmId with
-                    structure = (BuiltinCatalogue.sample SampleIds.glassPlate2mmId).structure
-            }
-        match store.saveSample edited with
-        | Ok () ->
-            // v1 is frozen with the original physics …
-            match store.resolveVersion (SampleVersionId.firstOf SampleIds.glassPlate1mmId) with
-            | Ok (Some v1) -> Assert.Equal<SampleStructure>((BuiltinCatalogue.sample SampleIds.glassPlate1mmId).structure, v1.structure)
-            | other -> Assert.Fail($"expected the frozen v1, got %A{other}")
-            // … and v2 carries the edited physics as the new latest.
-            let v2Id = { sampleId = SampleIds.glassPlate1mmId; version = VersionNumber.first.next }
-            match store.resolveVersion v2Id with
-            | Ok (Some v2) -> Assert.Equal<SampleStructure>((BuiltinCatalogue.sample SampleIds.glassPlate2mmId).structure, v2.structure)
-            | other -> Assert.Fail($"expected a minted v2, got %A{other}")
-        | other -> Assert.Fail($"expected Ok on the versioning save, got %A{other}")
-
-    // ============================ step 025: committing captures the live chain ============================
-
-    [<Fact>]
-    let ``committing from a scene captures the ordered chain including the detector kind`` () =
-        // The bay picks the rotating polarizer to vary and commits the scene setup (E1's chain).
+    let ``committing references the setup revision and the varied slot with its label`` () =
+        // The bay picks the rotating polarizer to vary and commits over the table's setup revision.
         let c =
             ExperimentCollection.empty
             |> chooseElement (el "lp2") (ElementLabel "Linear polarizer #4") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
-            |> commit e1.setup
+            |> commit benchRevision2
         Assert.Equal(1, List.length c.experiments)
         let exp = List.head c.experiments
-        // the whole ordered chain is captured, detector included
-        Assert.Equal<CatalogueKind list>(
-            [ LightSource; LinearPolarizer; Sample; LinearPolarizer; Detector ],
-            exp.setup |> List.map (fun d -> d.kind))
-        Assert.Equal(Some (el "lp2"), exp.varied |> Option.map (fun v -> v.elementId))
-        Assert.Equal(Some VaryR1, exp.varied |> Option.map (fun v -> v.variable))
-        match exp.detectorDescriptorOpt with
-        | Some d -> Assert.Equal(BoundByEntryId PresetIds.detectorIntensity, d.binding)
-        | None -> Assert.Fail "the committed chain lost its detector"
-        Assert.Contains(SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId), exp.versionRefs)
+        Assert.Equal<SetupReference>(benchRevision2, exp.setup)
+        let expectedVaried : VariedElement = { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
+        Assert.Equal<VariedElement option>(Some expectedVaried, exp.varied)
+        Assert.Equal(ElementLabel "Linear polarizer #4", exp.variedLabel)
 
     // ============================ the mock proxy seam ============================
 
@@ -654,8 +515,8 @@ module ExperimentProxyTests =
         let only : Experiment =
             {
                 id = ExperimentId 7
-                setup = [ desc "stub-el" "Stub" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp) ]
-                varied = Some { elementId = el "stub-el"; variable = VaryR1 }
+                setup = benchRevision1
+                varied = Some { elementId = el "stub-el"; label = ElementLabel "Stub"; variable = VaryR1 }
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1
                 dataFileOpt = None

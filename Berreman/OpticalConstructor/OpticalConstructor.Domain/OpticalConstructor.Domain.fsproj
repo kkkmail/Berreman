@@ -111,19 +111,13 @@
              Facets/FacetBuckets, MaterialLibrary, ElementId (Library), DispersionModels
              and MaterialComplexityEditor above. -->
         <Compile Include="LibraryFacets.fs" />
-        <!-- Spec 0038 Part H (step 020): the entry-lifecycle foundation — VersionNumber,
-             the Material/Sample version ids, EntryLifecycle, the cross-store VersionRef,
-             and the ONE pure version-creation decision rule
-             (decideVersioning) the material/sample stores (steps 21/22) share. Pure and
-             Avalonia-free; depends only on MaterialLibrary (MaterialId) and ElementId's
-             Library (SampleId) above. -->
+        <!-- Spec 0038 Part H (step 020): the entry-lifecycle foundation — EntryLifecycle, PinState
+             and the ONE pure version-creation decision rule (decideVersioning) the stores and the
+             setups share. Pure and Avalonia-free. -->
         <Compile Include="Lifecycle.fs" />
-        <!-- Spec 0038 Part I (step 025): the Experiments domain — grown so an `Experiment` carries an
-             ordered `ElementDescriptor` setup (kind + placement/orientation summary + versioned
-             `VersionRef` binding, sample/source optional, detector included), an optional
-             per-experiment `DataAttachment`. Moved out of `ElementId.fs` to here because the
-             descriptor binding reuses the step-020 `VersionRef` (`Lifecycle.fs`, above); nothing between
-             `ElementId.fs` and here references `Experiments`, so the module name is unchanged. -->
+        <!-- Spec 0038 Part I (step 025); spec 0050 S8.2: the Experiments domain — an `Experiment`
+             references the kit setup revision it was recorded over, with an optional per-experiment
+             `DataAttachment`. -->
         <Compile Include="Experiments.fs" />
         <!-- Spec 0046: the Main-scene BEAM TREE — which beam each element sits on (main / the reflected
              ray of a partially-reflecting element), the layout walk over RayModel.crossElement, the

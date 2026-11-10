@@ -25,6 +25,7 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.App
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
@@ -49,11 +50,20 @@ module KitWindowTests =
             Dispatcher.UIThread.RunJobs()
         Assert.False(File.Exists(lockFile), "closing the constructor window must release its kit")
 
+    /// The dark line's setup, holding no slot (spec 0050 S8.2).
+    let private darkSetup : Setup =
+        {
+            name = SetupName "Dark"
+            revision = SetupRevision.first
+            slots = []
+            history = []
+        }
+
     /// The experiment `E1` the kit holds before a window opens it.
     let private storedExperiment : Experiments.Experiment =
         {
             id = Experiments.ExperimentId 1
-            setup = []
+            setup = darkSetup.reference
             varied = None
             measurement = Experiments.CaptureTransmitted
             range = Experiments.VariableRange.forVariable Experiments.VaryR1
@@ -539,11 +549,13 @@ module KitWindowTests =
                     window.Close()
                     Dispatcher.UIThread.RunJobs())
 
-    /// A kit made in a fresh folder holding `experiments`, then closed, so a fact can open it again (spec 0050 S6).
+    /// A kit made in a fresh folder holding the dark setup, recorded first, and `experiments`, then closed, so a fact can
+    /// open it again (spec 0050 S6, S8.2).
     let private closedKitHolding (ctx : AppContext) (experiments : Experiments.Experiment list) : KitFolder =
         let folder = TestAppScope.freshKitFolder owner
         let created = openedAt folder ReadWriteKitAccess ctx
         try
+            created.library.recordSetup darkSetup |> Result.defaultWith (fun error -> failwith error.describe)
             for experiment in experiments do
                 created.library.kit.proxy.writeExperiment experiment |> SceneTestFixture.kitSuccess
         finally created.library.kit.close () |> SceneTestFixture.kitSuccess
@@ -764,54 +776,62 @@ module KitWindowTests =
     /// A bench piece of the same preset under a third id, its parameters unlike either source piece's.
     let private benchLaser600 : Item = scaledLaser600 "22900000-0000-4000-8000-000000000005" "Laser600 bench" 0.25
 
-    /// Experiment `n` of one element, bound by `binding` and assigned the item.
-    let private assignedExperiment
-        (n : int)
+    /// Setup `name` of one rest-pose slot of that kind, bound to the entry and holding the item (spec 0050 S8.2).
+    let private setupHolding
+        (name : string)
         (element : string)
-        (label : string)
         (kind : Placement.CatalogueKind)
-        (binding : Experiments.ElementBinding)
+        (binding : Placement.ElementValueId)
         (item : Item)
-        : Experiments.Experiment =
+        : Setup =
+        let slot : SetupSlot =
+            {
+                id = Library.ElementId element
+                placement =
+                    {
+                        Placement.ElementPlacement.create kind Placement.TablePoint.origin with valueId = Some binding
+                    }
+                zoom = BeamLayout.ElementZoom 1.0
+                beam = BeamLayout.OnMainBeam
+                content = ItemInSlot (item.id, PlacementTurn)
+            }
         {
-            storedExperiment with
-                id = Experiments.ExperimentId n
-                setup =
-                    [
-                        {
-                            elementId = Library.ElementId element
-                            label = Experiments.ElementLabel label
-                            kind = kind
-                            placement = Experiments.PlacementSummary.ofPlacement (Placement.ElementPlacement.create kind Placement.TablePoint.origin)
-                            binding = binding
-                            itemIdOpt = Some item.id
-                        }
-                    ]
+            darkSetup with
+                name = SetupName name
+                slots = [ slot ]
         }
 
-    /// E1 binds the 600 nm source preset at its light source, where the copied Laser600 is assigned.
+    /// E1's `Laser bench` binds the 600 nm source preset at its light source, which holds the copied Laser600.
+    let private laserBench : Setup =
+        setupHolding "Laser bench" "copied-source" Placement.CatalogueKind.LightSource Library.PresetIds.source600 copiedLaser600
+
+    /// E2's `Plate bench` binds the 1 mm glass plate at its sample, which holds QZ.
+    let private plateBench : Setup =
+        setupHolding "Plate bench" "copied-plate" Placement.CatalogueKind.Sample Library.SampleIds.glassPlate1mmId.toElementValueId sourceQz
+
     let private itemE1 : Experiments.Experiment =
-        assignedExperiment
-            1
-            "copied-source"
-            "Light source #1"
-            Placement.CatalogueKind.LightSource
-            (Experiments.BoundByEntryId Library.PresetIds.source600)
-            copiedLaser600
+        {
+            storedExperiment with setup = laserBench.reference
+        }
 
-    /// E2 binds the 1 mm glass plate at version 1 at its sample, where QZ is assigned.
     let private itemE2 : Experiments.Experiment =
-        let plate = Lifecycle.SampleVersionRef (Library.SampleVersionId.firstOf Library.SampleIds.glassPlate1mmId)
-        assignedExperiment 2 "copied-plate" "Sample #1" Placement.CatalogueKind.Sample (Experiments.BoundByVersion plate) sourceQz
+        {
+            storedExperiment with
+                id = Experiments.ExperimentId 2
+                setup = plateBench.reference
+        }
 
-    /// The kit to copy from, made as step 228 makes it: the copied Laser600, its spare and QZ through `recordItem`, then
-    /// E1 and E2 through `recordExperiment`; closed, so the window opens it (spec 0050 S7.2).
+    /// The kit to copy from, made as step 228 makes it: the copied Laser600, its spare and QZ through `recordItem`, their
+    /// setups through `recordSetup`, then E1 and E2 through `recordExperiment`; closed, so the window opens it (spec 0050
+    /// S7.2, S8.2).
     let private itemSourceKit (ctx : AppContext) : KitFolder =
         let folder = TestAppScope.freshKitFolder owner
         let created = openedAt folder ReadWriteKitAccess ctx
         try
             for item in [ copiedLaser600; spareLaser600; sourceQz ] do
                 created.library.recordItem item |> libraryValue
+            for setup in [ laserBench; plateBench ] do
+                created.library.recordSetup setup |> libraryValue
             for experiment in [ itemE1; itemE2 ] do
                 created.library.recordExperiment experiment |> libraryValue
         finally created.library.kit.close () |> SceneTestFixture.kitSuccess
@@ -832,13 +852,14 @@ module KitWindowTests =
     let private itemFilesIn (folder : KitFolder) : string list =
         Directory.GetFiles(folder.value.value, "*.item-json") |> Array.map Path.GetFileName |> Array.sort |> List.ofArray
 
-    /// What a kit holds once closed and reopened read-only: its experiments, the items they resolve to through
-    /// `Experiment.itemsUsedBy`, and all its items (spec 0050 S7.2).
+    /// What a kit holds once closed and reopened read-only: its experiments, the items their setups' slots resolve to
+    /// through `Experiment.itemsUsedBy`, all its items and its setups (spec 0050 S7.2, S8.2).
     type private ReopenedKitCopy =
         {
             experiments : Experiments.Experiment list
-            resolved : Result<Item list, ItemError>
+            resolved : Result<Item list, SetupError>
             items : Item list
+            setups : Setup list
         }
 
     let private reopenedCopy (folder : KitFolder) : ReopenedKitCopy =
@@ -846,11 +867,13 @@ module KitWindowTests =
         try
             let experiments = later.proxy.readExperiments () |> SceneTestFixture.kitSuccess
             let items = later.proxy.readItems () |> SceneTestFixture.kitSuccess
+            let setups = later.proxy.readSetups () |> SceneTestFixture.kitSuccess
             let reopened : ReopenedKitCopy =
                 {
                     experiments = experiments
-                    resolved = Experiments.Experiment.itemsUsedBy experiments items
+                    resolved = Experiments.Experiment.itemsUsedBy experiments setups items
                     items = items
+                    setups = setups
                 }
             reopened
         finally later.close () |> SceneTestFixture.kitSuccess
@@ -989,7 +1012,8 @@ module KitWindowTests =
             let added = reopenedCopy target.folder
             match added.experiments, added.resolved with
             | [ copiedE1 ], Ok [ piece ] ->
-                Assert.Equal<ItemId option list>([ Some copiedLaser600.id ], copiedE1.setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+                Assert.Equal<Result<ItemId option list, SetupError>>(
+                    Ok [ Some copiedLaser600.id ], copiedE1.slotsIn added.setups |> Result.map (List.map (fun slot -> slot.content.itemOpt)))
                 Assert.Equal<Item>({ copiedLaser600 with label = ItemLabel "Laser600 (2)" }, piece)
             | experiments, _ -> Assert.Fail $"E1 must be copied alone and resolve the added piece, not {List.length experiments} experiment(s)"
             Assert.Equal<Set<ItemId>>(set [ ownLaser600.id; copiedLaser600.id ], added.items |> List.map (fun item -> item.id) |> set)
@@ -1004,7 +1028,8 @@ module KitWindowTests =
             let mapped = reopenedCopy bench.folder
             match mapped.experiments, mapped.resolved with
             | [ copiedE1 ], Ok [ piece ] ->
-                Assert.Equal<ItemId option list>([ Some benchLaser600.id ], copiedE1.setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+                Assert.Equal<Result<ItemId option list, SetupError>>(
+                    Ok [ Some benchLaser600.id ], copiedE1.slotsIn mapped.setups |> Result.map (List.map (fun slot -> slot.content.itemOpt)))
                 Assert.Equal<ItemId>(benchLaser600.id, piece.id)
                 Assert.Equal<Parameter list>(benchLaser600.parameters, piece.parameters)
                 for sourcePiece in [ copiedLaser600; spareLaser600 ] do

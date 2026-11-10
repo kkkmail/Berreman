@@ -549,6 +549,10 @@ This is a spec-driven, gated repository.
   transmitted Mueller matrix is FLUX-normalized (`Propagation.sampleMuellerSpun`) — the engine's
   Mueller matrices are |E|²-based, its T is flux. Only a TUNABLE source (`SourceTuning`) can have
   its wavelength varied, within its limits, or set per experiment (`sourceWaveLengthOpt`).
+- **The table is the active setup.** Its elements are the setup's slots (`Setups.fs`), the source
+  first; a slot holds a kit item or nothing, and a dial-mounted item records its raw dial reading.
+  An experiment references its setup by name and revision, and recording a changed table over a
+  revision an experiment references mints the next revision (`Lifecycle.decideVersioning`).
 - **The constructor is checked against the Analytics example scripts** (`FsxAcceptanceTests`,
   trait `fsx-acceptance`, ~1.5 min): each drives the headless app to build the script's table,
   exports the run through `ExperimentExportProxy`, and compares it with `Variables.calculate`.

@@ -10,9 +10,11 @@ module ExperimentCollectionStore =
 
         member this.value = let (CollectionName s) = this in s
 
-    /// A named, ordered collection preserving each experiment's setup and attachment.
+    /// A named, ordered collection preserving each experiment's setup reference and attachment, with the setups its
+    /// experiments reference, so their revisions resolve (spec 0050 S8.2).
     type ExperimentCollectionSnapshot =
         {
             name : CollectionName
             experiments : Experiments.Experiment list
+            setups : Setups.Setup list
         }

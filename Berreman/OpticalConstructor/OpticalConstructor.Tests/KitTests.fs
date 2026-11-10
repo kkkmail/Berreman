@@ -458,6 +458,7 @@ module KitTests =
                 | UnknownSetupSlotErr reason
                 | UnknownSlotItemErr reason
                 | IncompatibleSlotItemErr reason -> reason
+                | SetupItemReferenceErr error -> error.describe
 
             Assert.Contains(reason, error.describe)
 

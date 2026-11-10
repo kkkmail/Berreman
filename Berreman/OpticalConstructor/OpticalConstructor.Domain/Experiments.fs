@@ -1,36 +1,14 @@
 namespace OpticalConstructor.Domain
 
 open OpticalConstructor.Domain.Kit
-open Berreman.Geometry                              // Angle (the placement/orientation summary)
 open Berreman.Fields                                // WaveLength (a tunable source's set wavelength, spec 0046)
-open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission / ElementPlacement / TablePoint
-open OpticalConstructor.Domain.Library              // ElementId / DetectorKind / SampleVersionId / SampleId
+open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission
+open OpticalConstructor.Domain.Library              // ElementId
 open OpticalConstructor.Domain.LibraryEntryFiles
-open OpticalConstructor.Domain.Lifecycle           // VersionRef (step 020)
 open OpticalConstructor.Domain.Propagation         // SweptValue / CurvePointCount (a range's ends and points)
 
-/// Spec 0027 (028) / spec 0038 Part I (step 025) — the Experiments domain, redesigned around a
-/// multi-step, EDITABLE experiment built from the live setup:
-///   1. the SETUP is the scene itself — captured on commit as an ordered `ElementDescriptor` list
-///      (each descriptor: the catalogue kind, a placement/orientation summary, and the bound entry
-///      reference BY VERSION where versioned) with the varied element identified WITHIN the list;
-///   2. the user picks WHICH element to vary — and the element's CATALOGUE KIND determines what may
-///      be varied. This is DATA (`VariableParameter.allowedFor`), attached to the element through its kind, NOT
-///      hard-coded at the bay: a light source varies only its wavelength, a polarizer only its R1, a
-///      sample its R1 and R2 (for now), and other kinds nothing yet;
-///   3. the user picks what to CAPTURE (transmitted / reflected / both), sets the numeric range, and
-///      CONFIRMS, which ADDS the experiment to a collection that persists. Experiments can be EDITED
-///      (re-confirm updates in place — never duplicates) and REMOVED.
-/// Sample and light source are OPTIONAL (spec 0038 Part I): `E1 = LS+LP+S+LP(rotate)`,
-/// `E2 = LS+LP+LP(rotate)` (no sample), `E3 =` an empty dark line are all first-class. The detector
-/// kind is part of the chain and determines the expected data-file shape (consumed by step 34). Every
-/// primitive is elevated (the variable, the measurement, the id, the range, the bound-entry version
-/// reference and the data-file path are DUs / records, not bare strings / floats), and an experiment
-/// references its elements by serializable `ElementId` / `VersionRef`, so it survives save-load.
-///
-/// Moved out of `ElementId.fs` at step 025: the descriptor binding reuses the step-020 `VersionRef`
-/// (`Lifecycle.fs`, which compiles AFTER `ElementId.fs`), so the module compiles after `Lifecycle.fs`.
-/// The fully-qualified module name is unchanged, so every `open …Experiments` consumer is untouched.
+/// The editable experiments, each a run recorded over one revision of a kit setup: the varied slot, the capture and
+/// the range are the experiment's, the slots the setup's (spec 0028; spec 0038 Part I; spec 0050 S8.2).
 module Experiments =
 
     /// A quantity an experiment can vary on an element (spec 028). An elevated DU — not an enum / string.
@@ -143,41 +121,6 @@ module Experiments =
         /// Names an experiment's kit file by its identity, E<n> (spec 0050 S4.3).
         member this.fileStem : FileStem = FileStem.ofText $"E{this.value}"
 
-    /// Binds a versioned entry by its exact VersionRef, a preset by its stable id, or leaves it
-    /// unbound (spec 0038 Part I; spec 0050 S2.2). Store pinning is a separate explicit operation.
-    type ElementBinding =
-        | BoundByVersion of VersionRef
-        | BoundByEntryId of entryId : ElementValueId
-        | Unbound
-
-        /// The versioned reference this binding holds, if any (preset / unbound descriptors contribute none).
-        member this.versionRefOpt : VersionRef option =
-            match this with
-            | BoundByVersion versionRef -> Some versionRef
-            | BoundByEntryId _ | Unbound -> None
-
-        /// The bound exact version or latest GUID entry a kit snapshots, when present (spec 0050 S4.2).
-        member this.entryReferenceOpt : EntryReference option =
-            match this with
-            | BoundByVersion versionRef -> Some versionRef.entryReference
-            | BoundByEntryId entryId -> entryId.tryToLibraryEntryId |> Option.map EntryLatestReference
-            | Unbound -> None
-
-    /// A serializable snapshot of an element's placement / orientation captured on commit (spec 0038
-    /// Part I): the table position and the three rotation angles. Elevated fields only (`TablePoint`,
-    /// engine `Angle`), so the descriptor survives the live element's removal and a save-load without
-    /// holding an in-memory element reference. Built from the live `ElementPlacement` via `ofPlacement`.
-    type PlacementSummary =
-        {
-            position : TablePoint
-            r1 : Angle
-            r2 : Angle
-            r3 : Angle
-        }
-
-        static member ofPlacement (p : ElementPlacement) : PlacementSummary =
-            { position = p.placementPoint; r1 = p.r1; r2 = p.r2; r3 = p.r3 }
-
     /// An element's human label as an experiment captures it ("<kind> #<n>"), so a row outlives the element.
     type ElementLabel =
         | ElementLabel of string
@@ -187,42 +130,22 @@ module Experiments =
         /// No element chosen yet (a fresh draft, a dark line).
         static member blank : ElementLabel = ElementLabel ""
 
-    /// One element of an experiment's captured setup (spec 0038 Part I): its stable serializable id and a
-    /// human label (captured at commit-time so the row survives the element's later removal), its
-    /// catalogue kind, a placement/orientation summary, and the bound entry reference (by version where
-    /// versioned). The ordered list of these on an `Experiment` IS the setup — the light-traversal chain
-    /// including the detector, whose kind determines the expected data-file shape (§15.3, consumed by
-    /// step 34). `itemIdOpt` is the physical piece explicitly assigned at the element, apart from its library
-    /// `binding`; `None` means none was, and no model, preset, label or binding infers one (spec 0050 S7.2).
-    type ElementDescriptor =
-        {
-            elementId : ElementId
-            label : ElementLabel
-            kind : CatalogueKind
-            placement : PlacementSummary
-            binding : ElementBinding
-            itemIdOpt : ItemId option
-        }
-
-    /// The element an experiment varies, identified WITHIN the setup (spec 0038 Part I): its serializable
-    /// id (resolvable to a descriptor in `setup`) and the swept quantity. An experiment with NO varied
-    /// element (`Experiment.varied = None`) is a dark-line / calibration measurement (E3).
+    /// The slot an experiment varies, named by its id in the referenced setup revision, with its label as the experiment
+    /// captured it so a row outlives the slot; `Experiment.varied = None` is a dark line (spec 0038 Part I; spec 0050 S8.2).
     type VariedElement =
         {
             elementId : ElementId
+            label : ElementLabel
             variable : VariableParameter
         }
 
-    /// A fully-specified, editable experiment (spec 028 / spec 0038 Part I): the ordered `setup` captured
-    /// from the live scene (kind + placement/orientation summary + versioned binding per element, the
-    /// detector included), the varied element identified within that setup (`None` for a dark line), the
-    /// capture mode, the numeric range, and an optional attached measured-data file. The single
-    /// `elementId`/`elementLabel` pair of the old shape is GONE — the varied element is one entry of the
-    /// setup list.
+    /// A fully-specified, editable experiment: the setup revision it was recorded over, whose slots stay as they were
+    /// (editing a referenced setup mints its next revision), the varied slot (`None` for a dark line), the capture, the
+    /// range and an optional measured-data attachment (spec 0038 Part I; spec 0050 S8.2).
     type Experiment =
         {
             id : ExperimentId
-            setup : ElementDescriptor list
+            setup : SetupReference
             varied : VariedElement option
             measurement : MeasurementMode
             range : VariableRange
@@ -233,42 +156,21 @@ module Experiments =
             sourceWaveLengthOpt : WaveLength option
         }
 
-        /// The descriptor of the varied element within the setup (`None` for a dark line, or if the
-        /// varied id is somehow absent from the captured setup). The setup is a frozen snapshot including
-        /// the varied element, so for a well-formed experiment this always resolves.
-        member this.variedDescriptor : ElementDescriptor option =
-            match this.varied with
-            | Some v -> this.setup |> List.tryFind (fun d -> d.elementId = v.elementId)
-            | None -> None
-
-        /// The human label of the varied element (from its captured descriptor), or blank for a dark line.
+        /// The varied slot's label as the experiment captured it, or blank for a dark line (spec 0050 S8.2).
         member this.variedLabel : ElementLabel =
-            this.variedDescriptor |> Option.map (fun d -> d.label) |> Option.defaultValue ElementLabel.blank
-
-        /// The detector element of the chain, if the setup captured one — the descriptor whose kind is
-        /// `Detector`. Its binding (a protected-preset entry id) resolves through the Library to the
-        /// `DetectorKind` (Intensity vs Ellipsometer) that fixes the expected data-file shape (step 34).
-        member this.detectorDescriptorOpt : ElementDescriptor option =
-            this.setup |> List.tryFind (fun d -> d.kind = Detector)
+            match this.varied with
+            | Some varied -> varied.label
+            | None -> ElementLabel.blank
 
         /// A short, human-readable description (the collection row + readout use this). A varied
-        /// experiment names the swept element / quantity / range / capture; a dark line names its element
-        /// count and capture.
+        /// experiment names the swept element / quantity / range / capture; a dark line names its setup
+        /// revision and capture (spec 0050 S8.2).
         member this.description : string =
             match this.varied with
             | Some v ->
                 $"%s{this.variedLabel.value}: vary %s{v.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{v.variable.unitLabel} (%d{this.range.points.value} pts), capture %s{this.measurement.label}"
             | None ->
-                $"Dark line (%d{List.length this.setup} element(s)), capture %s{this.measurement.label}"
-
-        /// Every versioned reference the experiment's setup binds (spec 0038 Part I): each descriptor
-        /// binding projected to its `VersionRef` (preset / unbound descriptors contribute none).
-        member this.versionRefs : VersionRef list =
-            this.setup |> List.choose (fun d -> d.binding.versionRefOpt)
-
-        /// The library references a kit snapshots, once each in setup order (spec 0050 S4.2).
-        member this.libraryReferences : EntryReference list =
-            this.setup |> List.choose (fun descriptor -> descriptor.binding.entryReferenceOpt) |> List.distinct
+                $"Dark line on setup %s{this.setup.describe}, capture %s{this.measurement.label}"
 
         /// Copies into a kit holding `taken`, in order: a free id is kept, a clash takes the next of the highest id
         /// taken, incoming or given so far; only `id` changes (spec 0050 S6).
@@ -288,25 +190,6 @@ module Experiments =
                 id :: given, copied :: renumbered) ([], [])
             |> snd
             |> List.rev
-
-        /// The items the experiments' descriptors explicitly assign, once each in the supplied order; an assigned id
-        /// the items lack is refused, naming the element, never matched by preset or model (spec 0050 S7.2).
-        static member itemsUsedBy (experiments : Experiment list) (items : Item list) : Result<Item list, ItemError> =
-            let assigned : (Experiment * ElementDescriptor * ItemId) list =
-                experiments
-                |> List.collect (fun experiment ->
-                    experiment.setup
-                    |> List.choose (fun descriptor -> descriptor.itemIdOpt |> Option.map (fun id -> experiment, descriptor, id)))
-
-            let isHeld (id : ItemId) : bool = items |> List.exists (fun item -> item.id = id)
-
-            match assigned |> List.tryFind (fun (_, _, id) -> not (isHeld id)) with
-            | Some (experiment, descriptor, id) ->
-                let element = $"'{descriptor.label.value}' ({descriptor.elementId.value}) of {experiment.id.fileStem.value}"
-                Error (UnknownKitItemErr $"{id.value}, assigned at the element {element}")
-            | None ->
-                let used = assigned |> List.map (fun (_, _, id) -> id)
-                items |> List.filter (fun item -> List.contains item.id used) |> List.distinctBy (fun item -> item.id) |> Ok
 
     /// One experiment's versioned .experiment-json content (spec 0050 S4.3).
     type ExperimentFile =
@@ -434,19 +317,20 @@ module Experiments =
     let setRange (range : VariableRange) (c : ExperimentCollection) : ExperimentCollection =
         { c with draft = { c.draft with range = range } }
 
-    /// Confirm the draft (spec 028 step 3 / spec 0038 Part I), capturing the ordered `setup` the bay built
-    /// from the live scene (kind + placement/orientation summary + versioned binding per element, the
-    /// detector included). The varied element (`draft.elementId` + `draft.variable`) is identified within
-    /// that setup. When editing an existing experiment (`editingId = Some`) this UPDATES it in place,
-    /// preserving its attached data file; otherwise it APPENDS a new experiment — but only when the draft
+    /// Confirm the draft over the setup revision the table was recorded as (spec 028 step 3; spec 0050 S8.2), the
+    /// varied slot named with the draft's label. When editing an existing experiment (`editingId = Some`) this UPDATES
+    /// it in place, preserving its attached data file; otherwise it APPENDS a new experiment — but only when the draft
     /// identifies an element AND a variable (the bay gates this via `canCommit`; a dark-line experiment is
     /// constructed directly, not through the interactive draft). Leaves the draft EDITING the appended
     /// experiment so a follow-up confirm updates rather than duplicates.
-    let commit (setup : ElementDescriptor list) (c : ExperimentCollection) : ExperimentCollection =
-        // Qualify the first field so the {elementId; variable} literal resolves to `VariedElement` and not
-        // the also-in-scope `ExperimentDraft` (which shares both labels).
+    let commit (setup : SetupReference) (c : ExperimentCollection) : ExperimentCollection =
+        // Qualify the first field so the literal resolves to `VariedElement` and not the also-in-scope
+        // `ExperimentDraft` (which shares `elementId` and `variable`).
         let variedOpt =
-            Option.map2 (fun id variable -> { VariedElement.elementId = id; variable = variable }) c.draft.elementId c.draft.variable
+            Option.map2
+                (fun id variable -> { VariedElement.elementId = id; label = c.draft.elementLabel; variable = variable })
+                c.draft.elementId
+                c.draft.variable
         match c.draft.editingId with
         | Some existing ->
             let experiments =

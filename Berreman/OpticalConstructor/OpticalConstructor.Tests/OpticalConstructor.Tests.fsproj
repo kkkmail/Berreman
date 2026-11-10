@@ -142,7 +142,7 @@
         <!-- Spec 0038 Part H (step 020): the pure entry-lifecycle foundation — the shared
              version-creation rule (decideVersioning) enumerated over the pinned/unpinned ×
              physics-changed/identical × metadata-only decision table, plus the VersionNumber /
-             version-id / EntryLifecycle / VersionRef surface. Avalonia-free. -->
+             version-id / EntryLifecycle surface. Avalonia-free. -->
         <Compile Include="LifecycleTests.fs" />
         <!-- Spec 0050 S8.2: a setup through its kit file, preserving its slots, their items and
              its revisions; file replacement, an empty kit, unreadable or misnamed files and

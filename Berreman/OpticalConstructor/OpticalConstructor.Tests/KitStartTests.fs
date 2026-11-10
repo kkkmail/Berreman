@@ -172,7 +172,7 @@ module KitStartTests =
     let private sentExperiment : Experiments.Experiment =
         {
             id = Experiments.ExperimentId 1
-            setup = []
+            setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
             varied = None
             measurement = Experiments.CaptureTransmitted
             range = Experiments.VariableRange.forVariable Experiments.VaryR1

@@ -7,7 +7,6 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
@@ -15,10 +14,11 @@ open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Domain.Setups
 open KitContentRoundTripFixture
 
-/// Experiment files preserve full, sample-less and dark setups with data attachments in initialized
-/// kit folders under the test output directory (spec 0038 step 029; spec 0050 S4.2 and S4.3).
+/// Experiment files preserve full, sample-less and dark runs, their setup references and data attachments in
+/// initialized kit folders under the test output directory (spec 0038 step 029; spec 0050 S4.2, S4.3, S8.2).
 module ExperimentCollectionRoundTripTests =
 
     let private classFolder = FolderName "ExperimentCollectionRoundTripTests"
@@ -39,18 +39,17 @@ module ExperimentCollectionRoundTripTests =
 
     let private el (s : string) : ElementId = Library.ElementId s
 
-    let private placementOf (kind : CatalogueKind) : PlacementSummary =
-        PlacementSummary.ofPlacement (ElementPlacement.create kind TablePoint.origin)
-
-    /// A descriptor deliberately assigned no physical item.
-    let private desc (idStr : string) (label : string) (kind : CatalogueKind) (binding : ElementBinding) : ElementDescriptor =
+    /// A rest-pose slot of that kind, bound to `valueIdOpt`, holding no physical item.
+    let private emptySlot (idStr : string) (kind : CatalogueKind) (valueIdOpt : ElementValueId option) : SetupSlot =
         {
-            elementId = el idStr
-            label = ElementLabel label
-            kind = kind
-            placement = placementOf kind
-            binding = binding
-            itemIdOpt = None
+            id = el idStr
+            placement =
+                {
+                    ElementPlacement.create kind TablePoint.origin with valueId = valueIdOpt
+                }
+            zoom = BeamLayout.ElementZoom 1.0
+            beam = BeamLayout.OnMainBeam
+            content = EmptySlotContent
         }
 
     /// E1's two linear polarizers share one preset and are two physical pieces (spec 0050 S7.2).
@@ -58,29 +57,58 @@ module ExperimentCollectionRoundTripTests =
 
     let private lp2ItemId : ItemId = ItemId (Guid.Parse "92d4e8a1-6c3f-4b27-8e05-7f1a9c3b2d64")
 
-    let private pieceAt (itemId : ItemId) (descriptor : ElementDescriptor) : ElementDescriptor =
+    let private pieceAt (itemId : ItemId) (slot : SetupSlot) : SetupSlot =
         {
-            descriptor with itemIdOpt = Some itemId
+            slot with content = ItemInSlot (itemId, PlacementTurn)
         }
 
-    let private glassPlateBinding : ElementBinding =
-        BoundByVersion (SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId))
+    let private glassPlateValueId : ElementValueId = SampleIds.glassPlate1mmId.toElementValueId
+
+    /// `Bench` revision 1 is E1's full chain with its two pieces, revision 2 E2's sample-less chain (spec 0050 S8.2).
+    let private bench : Setup =
+        let fullChain : SetupRevisionRecord =
+            {
+                revision = SetupRevision 1
+                slots =
+                    [
+                        emptySlot "src" LightSource (Some PresetIds.source600)
+                        pieceAt lp1ItemId (emptySlot "lp1" LinearPolarizer (Some PresetIds.polarizerLp))
+                        emptySlot "s" Sample (Some glassPlateValueId)
+                        pieceAt lp2ItemId (emptySlot "lp2" LinearPolarizer (Some PresetIds.polarizerLp))
+                        emptySlot "det" Detector (Some PresetIds.detectorIntensity)
+                    ]
+            }
+        {
+            name = SetupName "Bench"
+            revision = SetupRevision 2
+            slots =
+                [
+                    emptySlot "src" LightSource (Some PresetIds.source600)
+                    emptySlot "lp1" LinearPolarizer (Some PresetIds.polarizerLp)
+                    emptySlot "lp2" LinearPolarizer (Some PresetIds.polarizerLp)
+                    emptySlot "det" Detector (Some PresetIds.detectorIntensity)
+                ]
+            history = [ fullChain ]
+        }
+
+    /// The dark line's setup holds no slot (spec 0050 S8.2).
+    let private dark : Setup =
+        {
+            name = SetupName "Dark"
+            revision = SetupRevision.first
+            slots = []
+            history = []
+        }
 
     let private e1 : Experiment =
         {
             id = ExperimentId 1
-            setup =
-                [
-                    desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
-                    pieceAt lp1ItemId (desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp))
-                    desc "s" "Sample #3" Sample glassPlateBinding
-                    pieceAt lp2ItemId (desc "lp2" "Linear polarizer #4" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp))
-                    desc "det" "Detector #5" Detector (BoundByEntryId PresetIds.detectorIntensity)
-                ]
+            setup = { bench.reference with revision = SetupRevision 1 }
             varied =
                 Some
                     {
                         elementId = el "lp2"
+                        label = ElementLabel "Linear polarizer #4"
                         variable = VaryR1
                     }
             measurement = CaptureTransmitted
@@ -93,13 +121,14 @@ module ExperimentCollectionRoundTripTests =
         {
             e1 with
                 id = ExperimentId 2
-                setup =
-                    [
-                        desc "src" "Light source #1" LightSource (BoundByEntryId PresetIds.source600)
-                        desc "lp1" "Linear polarizer #2" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
-                        desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId PresetIds.polarizerLp)
-                        desc "det" "Detector #4" Detector (BoundByEntryId PresetIds.detectorIntensity)
-                    ]
+                setup = bench.reference
+                varied =
+                    Some
+                        {
+                            elementId = el "lp2"
+                            label = ElementLabel "Linear polarizer #3"
+                            variable = VaryR1
+                        }
                 dataFileOpt = None
                 sourceWaveLengthOpt = None
         }
@@ -107,7 +136,7 @@ module ExperimentCollectionRoundTripTests =
     let private e3 : Experiment =
         {
             id = ExperimentId 3
-            setup = []
+            setup = dark.reference
             varied = None
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
@@ -116,34 +145,40 @@ module ExperimentCollectionRoundTripTests =
         }
 
     [<Fact>]
-    let ``a kit's experiment files round-trip E1 (full) / E2 (sample-less) / E3 (dark), preserving ordered setups, optional shapes and data attachments`` () : unit =
+    let ``a kit's experiment files round-trip E1 (full) / E2 (sample-less) / E3 (dark), preserving their setup references, optional shapes and data attachments`` () : unit =
         let folder, proxy = createContentTestKit classFolder
+        for setup in [ bench; dark ] do
+            proxy.writeSetup setup |> kitContentValue
         for experiment in [ e3; e1; e2 ] do
             proxy.writeExperiment experiment |> kitContentValue
 
         let reader = KitProxy.create folder
         let loaded = reader.readExperiments () |> kitContentValue
+        let setups = reader.readSetups () |> kitContentValue
+        let slotsOf (experiment : Experiment) : SetupSlot list =
+            experiment.slotsIn setups |> Result.defaultWith (fun error -> failwith error.describe)
         Assert.Equal<Experiment list>([ e1; e2; e3 ], loaded)
         for file in [ FileName "E1.experiment-json"; FileName "E2.experiment-json"; FileName "E3.experiment-json" ] do
             Assert.True(File.Exists((file.combine folder.value).value))
+        Assert.Equal<SetupReference list>(
+            [ { name = SetupName "Bench"; revision = SetupRevision 1 }; { name = SetupName "Bench"; revision = SetupRevision 2 }; { name = SetupName "Dark"; revision = SetupRevision 1 } ],
+            loaded |> List.map (fun experiment -> experiment.setup))
         Assert.Equal<CatalogueKind list>(
             [ LightSource; LinearPolarizer; Sample; LinearPolarizer; Detector ],
-            (List.item 0 loaded).setup |> List.map (fun descriptor -> descriptor.kind))
+            slotsOf (List.item 0 loaded) |> List.map (fun slot -> slot.placement.catalogueKind))
         Assert.Equal<CatalogueKind list>(
             [ LightSource; LinearPolarizer; LinearPolarizer; Detector ],
-            (List.item 1 loaded).setup |> List.map (fun descriptor -> descriptor.kind))
-        Assert.Empty((List.item 2 loaded).setup)
-        Assert.Contains(
-            SampleVersionRef (SampleVersionId.firstOf SampleIds.glassPlate1mmId),
-            (List.item 0 loaded).versionRefs)
-        Assert.Empty((List.item 1 loaded).versionRefs)
+            slotsOf (List.item 1 loaded) |> List.map (fun slot -> slot.placement.catalogueKind))
+        Assert.Empty(slotsOf (List.item 2 loaded))
+        Assert.Contains(Some glassPlateValueId, slotsOf (List.item 0 loaded) |> List.map (fun slot -> slot.placement.valueId))
+        Assert.DoesNotContain(Some glassPlateValueId, slotsOf (List.item 1 loaded) |> List.map (fun slot -> slot.placement.valueId))
         Assert.Equal(None, (List.item 2 loaded).varied)
         Assert.Equal<ItemId option list>(
             [ None; Some lp1ItemId; None; Some lp2ItemId; None ],
-            (List.item 0 loaded).setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+            slotsOf (List.item 0 loaded) |> List.map (fun slot -> slot.content.itemOpt))
         Assert.Equal<ItemId option list>(
             [ None; None; None; None ],
-            (List.item 1 loaded).setup |> List.map (fun descriptor -> descriptor.itemIdOpt))
+            slotsOf (List.item 1 loaded) |> List.map (fun slot -> slot.content.itemOpt))
         Assert.Equal<DataAttachment option list>(
             [ Some e1Attachment; None; Some e3Attachment ],
             loaded |> List.map (fun experiment -> experiment.dataFileOpt))
