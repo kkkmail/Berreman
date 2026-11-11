@@ -16,6 +16,39 @@ module KitFileJsonTests =
         | Ok value -> value
         | Error error -> failwith error.describe
 
+    /// A polarimeter's Mueller profile: tab, no header row, no byte-order mark, scan columns 1 in degrees and 2 in
+    /// radians as physical values, m00…m33 in 3 to 18 with the throughput in 19, the observable in 20 and the key in 21
+    /// (spec 0050 S9.2).
+    let private polarimeterProfile : ImportProfile =
+        let elementColumns = [ 3 .. 18 ] |> List.map DataColumnNumber
+        {
+            name = ImportProfileName "Polarimeter"
+            delimiter = TabDelimiter
+            header = NoHeaderRow
+            bom = ByteOrderMarkAbsent
+            roles =
+                {
+                    scan =
+                        [
+                            {
+                                column = DataColumnNumber 1
+                                valueUnit = DegreeColumnUnit
+                                reading = PhysicalScanValue
+                            }
+                            {
+                                column = DataColumnNumber 2
+                                valueUnit = RadianColumnUnit
+                                reading = PhysicalScanValue
+                            }
+                        ]
+                    reading = MuellerElementColumns (elementColumns, Some (DataColumnNumber 19))
+                    timestampOpt = None
+                    captureIndexOpt = None
+                    observableOpt = Some (DataColumnNumber 20)
+                    keyOpt = Some (DataColumnNumber 21)
+                }
+        }
+
     let private kitFile : KitFile =
         let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
         let name = KitName "Optics: QZ/LR — µ"
@@ -28,6 +61,7 @@ module KitFileJsonTests =
                 notes = KitNotes "Two lines\nof notes"
                 sendExclude = [ SendExcludeGlob "**/*.dng"; SendExcludeGlob "data/raw/big/**" ]
                 namingTemplate = NamingTemplate "{source:CPL1=CPL,LP1=LP}-({obj1}#{phi1})-{analyzer:CPL2=CPL}"
+                importProfiles = [ KitTests.labScanProfile; polarimeterProfile ]
         }
 
     let private editedKitFile (edit : JsonObject -> unit) : KitFileText =
@@ -54,9 +88,16 @@ module KitFileJsonTests =
 
         let node = (JsonNode.Parse text.value).AsObject()
         let keys = [ for KeyValue (key, _) in node -> key ]
-        Assert.Equal<string list>([ "author"; "created"; "id"; "modified"; "name"; "namingTemplate"; "notes"; "schemaVersion"; "sendExclude" ], keys)
+        Assert.Equal<string list>([ "author"; "created"; "id"; "importProfiles"; "modified"; "name"; "namingTemplate"; "notes"; "schemaVersion"; "sendExclude" ], keys)
         Assert.Contains("\"namingTemplate\": \"{source:CPL1=CPL,LP1=LP}-({obj1}#{phi1})-{analyzer:CPL2=CPL}\",", text.value)
         Assert.Equal<KitFileText>(text, readBack.fileText |> kitJsonValue)
+
+        let profiles = node["importProfiles"].AsArray()
+        let profileNames = [ for profile in profiles -> profile["name"].GetValue<string>() ]
+        let polarimeter = profiles[1]
+        let polarimeterDelimiter = polarimeter["delimiter"].GetValue<int>()
+        Assert.Equal<string list>([ "Lab scan"; "Polarimeter" ], profileNames)
+        Assert.Equal(3, polarimeterDelimiter)
 
         let emptyMetadata =
             {
@@ -64,6 +105,7 @@ module KitFileJsonTests =
                     author = KitAuthor ""
                     notes = KitNotes ""
                     sendExclude = []
+                    importProfiles = []
             }
         let emptyText = emptyMetadata.fileText |> kitJsonValue
         Assert.Equal<KitFile>(emptyMetadata, emptyText.parseKitFile |> kitJsonValue)
@@ -100,8 +142,12 @@ module KitFileJsonTests =
             | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
             | Ok _ -> Assert.Fail($"accepted a schema-invalid kit file: {text.value}")
 
-        for key in [ "schemaVersion"; "id"; "name"; "author"; "created"; "modified"; "notes"; "sendExclude"; "namingTemplate" ] do
+        for key in [ "schemaVersion"; "id"; "name"; "author"; "created"; "modified"; "notes"; "sendExclude"; "namingTemplate"; "importProfiles" ] do
             editedKitFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
+
+        let firstProfileOf (node : JsonObject) : JsonObject =
+            let profiles = node["importProfiles"].AsArray()
+            profiles[0].AsObject()
 
         let invalidEdits : (JsonObject -> unit) list =
             [
@@ -123,6 +169,8 @@ module KitFileJsonTests =
                 (fun node -> node["sendExclude"] <- JsonNode.Parse "[\"\"]")
                 (fun node -> node["sendExclude"] <- JsonNode.Parse "[1]")
                 (fun node -> node["namingTemplate"] <- JsonValue.Create 7)
+                (fun node -> (firstProfileOf node)["delimiter"] <- JsonValue.Create 0)
+                (fun node -> (firstProfileOf node).Remove "roles" |> ignore)
             ]
 
         for edit in invalidEdits do

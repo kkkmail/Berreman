@@ -2,18 +2,31 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://berreman/schema/kit.json",
   "title": "KitFile",
-  "description": "A kit's metadata and naming template, .kit-json (spec 0050 S4.1, S8.3). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
+  "description": "A kit's metadata, naming template and import profiles, .kit-json (spec 0050 S4.1, S8.3, S9.2). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
   "type": "object",
   "required": ["schemaVersion"],
   "properties": {
     "schemaVersion": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" }
+  },
+  "$defs": {
+    "columnNumber": {
+      "description": "A DataColumnNumber: a column of a lab file, counted from 1 (spec 0050 S9.2).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "optionalColumnNumber": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/columnNumber" }
+      ]
+    }
   },
   "if": {
     "required": ["schemaVersion"],
     "properties": { "schemaVersion": { "const": 1 } }
   },
   "then": {
-    "required": ["schemaVersion", "id", "name", "author", "created", "modified", "notes", "sendExclude", "namingTemplate"],
+    "required": ["schemaVersion", "id", "name", "author", "created", "modified", "notes", "sendExclude", "namingTemplate", "importProfiles"],
     "additionalProperties": false,
     "properties": {
       "schemaVersion": true,
@@ -27,7 +40,50 @@
         "type": "array",
         "items": { "type": "string", "minLength": 1 }
       },
-      "namingTemplate": { "type": "string" }
+      "namingTemplate": { "type": "string" },
+      "importProfiles": {
+        "description": "The lab's named mappings of its files' layout and columns (spec 0050 S9.2).",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["name", "delimiter", "header", "bom", "roles"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "pattern": "\\S" },
+            "delimiter": { "description": "A DataDelimiter tag.", "type": "integer", "minimum": 1, "maximum": 3 },
+            "header": { "description": "A HeaderRowChoice tag.", "type": "integer", "minimum": 1, "maximum": 2 },
+            "bom": { "description": "A ByteOrderMark tag.", "type": "integer", "minimum": 1, "maximum": 2 },
+            "roles": {
+              "type": "object",
+              "required": ["scan", "reading", "timestampOpt", "captureIndexOpt", "observableOpt", "keyOpt"],
+              "additionalProperties": false,
+              "properties": {
+                "scan": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["column", "valueUnit", "reading"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "column": { "$ref": "#/$defs/columnNumber" },
+                      "valueUnit": { "description": "A ScanColumnUnit tag.", "type": "integer", "minimum": 1, "maximum": 6 },
+                      "reading": { "description": "A ScanReading tag.", "type": "integer", "minimum": 1, "maximum": 2 }
+                    }
+                  }
+                },
+                "reading": {
+                  "description": "A ReadingColumns in the serializer's case form; the serializer binds its shape.",
+                  "type": "object"
+                },
+                "timestampOpt": { "$ref": "#/$defs/optionalColumnNumber" },
+                "captureIndexOpt": { "$ref": "#/$defs/optionalColumnNumber" },
+                "observableOpt": { "$ref": "#/$defs/optionalColumnNumber" },
+                "keyOpt": { "$ref": "#/$defs/optionalColumnNumber" }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

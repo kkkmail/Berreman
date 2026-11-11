@@ -492,6 +492,109 @@ module KitTests =
         let builtInNames = [ "Intensity series"; "Ellipsometric series"; "Phone ROI CSV"; "Mueller-matrix observations" ]
         Assert.Equal<ImportProfileName list>(builtInNames |> List.map ImportProfileName, ImportProfileName.builtIns)
 
+    /// A lab's signal profile: comma, a header row, no byte-order mark, scan column 1 in degrees as a physical value,
+    /// the signal in 2 with its σ in 3 and the experiment key in 4; `KitFileJsonTests` stores it too (spec 0050 S9.2).
+    let labScanProfile : ImportProfile =
+        {
+            name = ImportProfileName "Lab scan"
+            delimiter = CommaDelimiter
+            header = HeaderOnFirstRow
+            bom = ByteOrderMarkAbsent
+            roles =
+                {
+                    scan =
+                        [
+                            {
+                                column = DataColumnNumber 1
+                                valueUnit = DegreeColumnUnit
+                                reading = PhysicalScanValue
+                            }
+                        ]
+                    reading = SignalColumns (DataColumnNumber 2, Some (DataColumnNumber 3))
+                    timestampOpt = None
+                    captureIndexOpt = None
+                    observableOpt = None
+                    keyOpt = Some (DataColumnNumber 4)
+                }
+        }
+
+    [<Fact>]
+    let ``a profile name is refused when a built-in or a kit profile holds it, and a kit file appends a new profile`` () : unit =
+        let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
+        let name = KitName "Optics: QZ/LR"
+        let author = KitAuthor "Test author"
+        let instant = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc))
+        let kit = KitFile.create id name author instant
+        let phoneRoiProfile = { labScanProfile with name = ImportProfileName "Phone ROI CSV" }
+        let secondProfile = { labScanProfile with name = ImportProfileName "Lab scan, second bench" }
+
+        Assert.Empty(kit.importProfiles)
+
+        match kit.withImportProfile labScanProfile with
+        | Error error -> Assert.Fail(error.describe)
+        | Ok withLabScan ->
+            Assert.Equal<ImportProfile list>([ labScanProfile ], withLabScan.importProfiles)
+            Assert.Equal<KitFile>({ kit with importProfiles = [ labScanProfile ] }, withLabScan)
+
+            match withLabScan.withImportProfile labScanProfile with
+            | Error (DuplicateProfileNameErr reason) -> Assert.Contains("Lab scan", reason)
+            | Error error -> Assert.Fail($"expected DuplicateProfileNameErr: {error.describe}")
+            | Ok _ -> Assert.Fail "a kit file replaced the profile it holds"
+
+            match withLabScan.withImportProfile phoneRoiProfile with
+            | Error (BuiltInProfileNameErr reason) -> Assert.Contains("Phone ROI CSV", reason)
+            | Error error -> Assert.Fail($"expected BuiltInProfileNameErr: {error.describe}")
+            | Ok _ -> Assert.Fail "a kit file took a built-in profile's name"
+
+            match withLabScan.withImportProfile secondProfile with
+            | Ok withBoth -> Assert.Equal<ImportProfile list>([ labScanProfile; secondProfile ], withBoth.importProfiles)
+            | Error error -> Assert.Fail(error.describe)
+
+        for builtIn in ImportProfileName.builtIns do
+            match builtIn.availableAmong [] with
+            | Error (BuiltInProfileNameErr reason) -> Assert.Contains(builtIn.value, reason)
+            | Error error -> Assert.Fail($"expected BuiltInProfileNameErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"a new profile took the built-in name '{builtIn.value}'")
+
+        let lowerCase = ImportProfileName "lab scan"
+        Assert.Equal<Result<ImportProfileName, ImportProfileError>>(Ok lowerCase, lowerCase.availableAmong [ labScanProfile ])
+
+    [<Fact>]
+    let ``every import profile error renders its condition and its payload`` () : unit =
+        let cases : (ImportProfileError * string) list =
+            [
+                BlankProfileNameErr "'   '", "the import profile name is blank: '   '"
+                BuiltInProfileNameErr "'Phone ROI CSV'", "the name belongs to a built-in import profile: 'Phone ROI CSV'"
+                DuplicateProfileNameErr "'Lab scan'", "the kit already holds an import profile of that name: 'Lab scan'"
+                SignalColumnCountErr "signal in columns 2 and 3", "a signal mapping needs exactly one signal column: signal in columns 2 and 3"
+                MixedReadingColumnsErr "signal in 2, m00 in 3", "a mapping reads a signal or Mueller elements, not both: signal in 2, m00 in 3"
+                RepeatedRoleErr "the key in 4 and 5", "a role is given to two columns: the key in 4 and 5"
+                MuellerElementCountErr "m33 has no column", "a Mueller mapping needs each of m00…m33 once: m33 has no column"
+            ]
+
+        Assert.Equal(FSharpType.GetUnionCases(typeof<ImportProfileError>).Length, cases.Length)
+
+        for error, expected in cases do
+            Assert.Equal<string>(expected, error.describe)
+
+        let reasons =
+            cases
+            |> List.map (fun (error, _) ->
+                match error with
+                | BlankProfileNameErr reason
+                | BuiltInProfileNameErr reason
+                | DuplicateProfileNameErr reason
+                | SignalColumnCountErr reason
+                | MixedReadingColumnsErr reason
+                | RepeatedRoleErr reason
+                | MuellerElementCountErr reason -> reason)
+
+        for (error, _), reason in List.zip cases reasons do
+            Assert.Contains(reason, error.describe)
+
+        Assert.Equal(cases.Length, reasons |> List.distinct |> List.length)
+        Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+
     [<Fact>]
     let ``a setup name keeps its text, refuses a blank one and takes its file stem from the shared name rule`` () : unit =
         match SetupName.tryCreate "CPL-(QZ#45-LR#45)-CPL" with

@@ -327,6 +327,76 @@ module Kit =
         /// The column's position among a row's cells, counted from 0 (spec 0050 S9.2).
         member this.index : int = let (DataColumnNumber number) = this in number - 1
 
+    /// A column of a scan variable's values; a profile's scan columns, in column order, give the experiment's scan
+    /// quantities in order (spec 0050 S9.2).
+    type ScanColumn =
+        {
+            column : DataColumnNumber
+            valueUnit : ScanColumnUnit
+            reading : ScanReading
+        }
+
+    /// What each row of a lab file measured: a detector signal and its σ, or the sixteen elements m00…m33 in row order
+    /// and the absolute throughput when the elements are normalized (spec 0050 S9.2; 001 §K).
+    type ReadingColumns =
+        | SignalColumns of signal : DataColumnNumber * sigmaOpt : DataColumnNumber option
+        | MuellerElementColumns of elements : DataColumnNumber list * throughputOpt : DataColumnNumber option
+
+    /// Every role a lab file's column holds: the scan variables, the reading, the capture's timestamp and index, the
+    /// observable (T or R) and the experiment key that splits one file into experiments (spec 0050 S9.2, S9.3; 001 §K).
+    type ColumnRoles =
+        {
+            scan : ScanColumn list
+            reading : ReadingColumns
+            timestampOpt : DataColumnNumber option
+            captureIndexOpt : DataColumnNumber option
+            observableOpt : DataColumnNumber option
+            keyOpt : DataColumnNumber option
+        }
+
+    /// Why an import profile or its name was refused, the name or the columns in the reason (spec 0050 S9.2).
+    type ImportProfileError =
+        | BlankProfileNameErr of reason : string
+        | BuiltInProfileNameErr of reason : string
+        | DuplicateProfileNameErr of reason : string
+        | SignalColumnCountErr of reason : string
+        | MixedReadingColumnsErr of reason : string
+        | RepeatedRoleErr of reason : string
+        | MuellerElementCountErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | BlankProfileNameErr reason -> $"the import profile name is blank: {reason}"
+            | BuiltInProfileNameErr reason -> $"the name belongs to a built-in import profile: {reason}"
+            | DuplicateProfileNameErr reason -> $"the kit already holds an import profile of that name: {reason}"
+            | SignalColumnCountErr reason -> $"a signal mapping needs exactly one signal column: {reason}"
+            | MixedReadingColumnsErr reason -> $"a mapping reads a signal or Mueller elements, not both: {reason}"
+            | RepeatedRoleErr reason -> $"a role is given to two columns: {reason}"
+            | MuellerElementCountErr reason -> $"a Mueller mapping needs each of m00…m33 once: {reason}"
+
+    /// One named mapping of a lab file's layout and columns, kept in the kit file; the four built-in profiles are code
+    /// and never stored (spec 0050 S9.2; 001 §K).
+    type ImportProfile =
+        {
+            name : ImportProfileName
+            delimiter : DataDelimiter
+            header : HeaderRowChoice
+            bom : ByteOrderMark
+            roles : ColumnRoles
+        }
+
+    type ImportProfileName with
+
+        /// The one naming rule of a new profile: a built-in's name, or one a held profile has (compared ordinally), is
+        /// refused (spec 0050 S9.2).
+        member this.availableAmong (profiles : ImportProfile list) : Result<ImportProfileName, ImportProfileError> =
+            if ImportProfileName.builtIns |> List.contains this then
+                Error (BuiltInProfileNameErr $"'{this.value}'")
+            elif profiles |> List.exists (fun profile -> profile.name = this) then
+                Error (DuplicateProfileNameErr $"'{this.value}'")
+            else
+                Ok this
+
     /// The kit's naming template as its text; its grammar is NamingTemplates.fs's (spec 0050 S8.3).
     type NamingTemplate =
         | NamingTemplate of string
@@ -336,7 +406,7 @@ module Kit =
         /// 001 §J's template: every new kit's and the reference pipeline's labels' (spec 0050 S8.3).
         static member standard : NamingTemplate = NamingTemplate "{source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}"
 
-    /// The kit file's metadata, using the caller's identity and clock instant (spec 0050 S4.1, S8.3).
+    /// The kit file's metadata, using the caller's identity and clock instant (spec 0050 S4.1, S8.3, S9.2).
     type KitFile =
         {
             schemaVersion : FileSchemaVersion
@@ -348,6 +418,7 @@ module Kit =
             notes : KitNotes
             sendExclude : SendExcludeGlob list
             namingTemplate : NamingTemplate
+            importProfiles : ImportProfile list
         }
 
         static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
@@ -367,7 +438,14 @@ module Kit =
                 notes = KitNotes ""
                 sendExclude = []
                 namingTemplate = NamingTemplate.standard
+                importProfiles = []
             }
+
+        /// Appends a profile under a name no built-in or held profile has; a saved profile is never replaced, because an
+        /// experiment names it (spec 0050 S9.2; 001 §K).
+        member this.withImportProfile (profile : ImportProfile) : Result<KitFile, ImportProfileError> =
+            profile.name.availableAmong this.importProfiles
+            |> Result.map (fun _ -> { this with importProfiles = this.importProfiles @ [ profile ] })
 
     /// A folder that is or becomes a kit (spec 0050 S4.1).
     type KitFolder =
