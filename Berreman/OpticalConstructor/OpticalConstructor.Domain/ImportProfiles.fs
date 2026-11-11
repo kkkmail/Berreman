@@ -430,3 +430,80 @@ module ImportProfiles =
                     }
 
                 Ok roles
+
+    /// What a lab file's bytes and first lines suggest for its layout, which the wizard shows and the user changes
+    /// (spec 0050 S9.2; 001 §K).
+    type LabFileSniff =
+        {
+            bom : ByteOrderMark
+            delimiter : DataDelimiter
+            header : HeaderRowChoice
+        }
+
+    /// One cell of a lab file's preview, a column name or a row's cell as shown (spec 0050 S9.2).
+    type PreviewCell =
+        | PreviewCell of string
+
+        member this.value : string = let (PreviewCell text) = this in text
+
+    /// One row of a lab file's preview, its cells in column order (spec 0050 S9.2).
+    type PreviewRow =
+        | PreviewRow of PreviewCell list
+
+        member this.cells : PreviewCell list = let (PreviewRow cells) = this in cells
+
+    /// A lab file's column names and first rows as a layout reads them (spec 0050 S9.2; 001 §O).
+    type LabFilePreview =
+        {
+            columnNames : PreviewCell list
+            rows : PreviewRow list
+        }
+
+    type LabFileSource with
+
+        /// The layout suggested by the file's mark and its first ten non-empty lines: the first delimiter that splits
+        /// them all into one count of two or more cells, else a comma, and a header when the first line reads no number,
+        /// or reads text over the second line's number. It touches no disk (spec 0050 S9.2).
+        member this.sniffedLayout : LabFileSniff =
+            let lines =
+                this.content.kitFileText.value.Split('\n')
+                |> Array.map (fun line -> if line.EndsWith('\r') then line.Substring(0, line.Length - 1) else line)
+                |> Array.filter (fun line -> not (String.IsNullOrWhiteSpace line))
+                |> Array.truncate 10
+                |> Array.toList
+
+            let cellsOf (delimiter : DataDelimiter) (line : string) : string list = line.Split(delimiter.character) |> Array.toList
+
+            let splitsEvenly (delimiter : DataDelimiter) : bool =
+                match lines |> List.map (fun line -> List.length (cellsOf delimiter line)) |> List.distinct with
+                | [ count ] -> count >= 2
+                | _ -> false
+
+            let delimiter = DataDelimiter.all |> List.tryFind splitsEvenly |> Option.defaultValue CommaDelimiter
+
+            let readsNumber (cell : string) : bool =
+                match Double.TryParse(cell, NumberStyles.Float, CultureInfo.InvariantCulture) with
+                | true, _ -> true
+                | false, _ -> false
+
+            let header =
+                match lines |> List.map (cellsOf delimiter) with
+                | first :: rest ->
+                    let below = List.tryHead rest |> Option.defaultValue []
+
+                    let textOverNumber =
+                        first
+                        |> List.mapi (fun index cell -> not (readsNumber cell) && (List.tryItem index below |> Option.exists readsNumber))
+                        |> List.contains true
+
+                    if textOverNumber || not (List.exists readsNumber first) then HeaderOnFirstRow else NoHeaderRow
+                | [] -> HeaderOnFirstRow
+
+            let sniff : LabFileSniff =
+                {
+                    bom = this.content.byteOrderMark
+                    delimiter = delimiter
+                    header = header
+                }
+
+            sniff

@@ -1,7 +1,9 @@
 namespace OpticalConstructor.Tests
 
 open System.Globalization
+open System.Text
 open Xunit
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
@@ -358,3 +360,45 @@ module LabFileImportTests =
         match phoneRoi.mapText (KitFileText (string (char 0xFEFF) + phoneRoiHeader + "\n")) with
         | Error (EmptyDataFileErr _) -> ()
         | other -> Assert.Fail($"expected EmptyDataFileErr for the header alone, got %A{other}")
+
+    /// `line`'s cells split at its commas, as a preview shows them.
+    let private previewCellsOf (line : string) : PreviewCell list = line.Split(',') |> Array.map PreviewCell |> Array.toList
+
+    let private previewOf (result : Result<LabFilePreview, ExperimentDataError>) : LabFilePreview =
+        match result with
+        | Ok preview -> preview
+        | Error error -> failwith $"the preview was refused: %A{error}"
+
+    [<Fact>]
+    let ``the preview shows a lab file's columns and first rows as the mapping reads them`` () : unit =
+        // Step 303's Phone ROI text as the wizard reads it: its bytes, byte-order mark included, through the one decode.
+        let picked = Encoding.UTF8.GetBytes phoneRoiText.value |> FileByteContent
+        let text = picked.kitFileText
+        let captureLines =
+            [
+                "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,100,5000,10.0,11.0,12.0,869.5"
+                "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,100,5000,20.0,21.0,22.0,912.25"
+            ]
+
+        let withHeader = previewOf (text.previewWith CommaDelimiter HeaderOnFirstRow)
+        Assert.Equal<PreviewCell list>(previewCellsOf phoneRoiHeader, withHeader.columnNames)
+        Assert.Equal<PreviewRow list>(captureLines |> List.map (previewCellsOf >> PreviewRow), withHeader.rows)
+
+        // The header is read as a row of its own, and the columns are numbered.
+        let columnCount = (previewCellsOf phoneRoiHeader).Length
+        let withoutHeader = previewOf (text.previewWith CommaDelimiter NoHeaderRow)
+        Assert.Equal<PreviewCell list>([ for n in 1 .. columnCount -> PreviewCell $"Column {n}" ], withoutHeader.columnNames)
+        Assert.Equal<PreviewRow list>(phoneRoiHeader :: captureLines |> List.map (previewCellsOf >> PreviewRow), withoutHeader.rows)
+
+        // Cells are shown trimmed, as the mapping reads them; only the first twenty data rows are shown.
+        let thirtyRows = KitFileText ("phi , I\n" + String.concat "" [ for row in 1 .. 30 -> $"{row}, 0.5\n" ])
+        let firstTwenty = previewOf (thirtyRows.previewWith CommaDelimiter HeaderOnFirstRow)
+        Assert.Equal<PreviewCell list>([ PreviewCell "phi"; PreviewCell "I" ], firstTwenty.columnNames)
+        Assert.Equal<PreviewRow list>([ for row in 1 .. 20 -> PreviewRow [ PreviewCell $"{row}"; PreviewCell "0.5" ] ], firstTwenty.rows)
+
+        match (KitFileText "").previewWith CommaDelimiter HeaderOnFirstRow with
+        | Error (EmptyDataFileErr _) -> ()
+        | other -> Assert.Fail($"expected EmptyDataFileErr for an empty text, got %A{other}")
+
+        // The CSV reader's refusal of a row short of its header passes through.
+        assertMalformed "comma" ((KitFileText "phi,I\n0\n").previewWith CommaDelimiter HeaderOnFirstRow)

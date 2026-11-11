@@ -150,9 +150,10 @@ module KitFolderStore =
             try
                 // A reader must not block another opener's atomic move or release (spec 0050 step 0129).
                 use stream = new FileStream(this.value, FileMode.Open, FileAccess.Read, FileShare.Read ||| FileShare.Delete)
-                use reader = new StreamReader(stream, Encoding.UTF8, true)
-                let text = KitFileText (reader.ReadToEnd ())
-                Some text.parseLockHolder
+                use buffer = new MemoryStream()
+                stream.CopyTo buffer
+                let bytes = buffer.ToArray() |> FileByteContent
+                Some bytes.kitFileText.parseLockHolder
             with
             | :? FileNotFoundException
             | :? DirectoryNotFoundException -> None

@@ -17,8 +17,8 @@ open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Storage.MuellerDataStore
 
 /// The Mueller-matrix observation file, which the app writes and the `Mueller-matrix observations` profile reads back
-/// (001 §Q AT-2), a kit profile's column mapping of any delimited lab file, and the one read of a lab file through any
-/// profile (spec 0050 S9.2; 001 §K).
+/// (001 §Q AT-2), a kit profile's column mapping of any delimited lab file and its preview, and the one read of a lab
+/// file through any profile (spec 0050 S9.2; 001 §K).
 module LabFileImport =
 
     /// The observation file's columns in order, the one place its header is written (spec 0050 S9.2).
@@ -200,6 +200,31 @@ module LabFileImport =
                 match rows |> List.map (fun (lineNumber, line) -> rowOf lineNumber line) |> Softellect.Sys.Rop.unzip with
                 | observations, [] -> Ok observations
                 | _, error :: _ -> Error error
+
+        /// The text's column names and first twenty data rows through the mappings' one read, each cell trimmed as a
+        /// mapping reads it: the header's cells, else `Column <n>` for each column of the widest row shown. An empty text
+        /// is `EmptyDataFileErr`, and the read's refusal passes through (spec 0050 S9.2).
+        member this.previewWith (delimiter : DataDelimiter) (header : HeaderRowChoice) : Result<LabFilePreview, ExperimentDataError> =
+            let shownOf (cell : DataFileCell) : PreviewCell = PreviewCell (cell.value.Trim())
+
+            labFileRows delimiter header this
+            |> Result.map (fun (headerOpt, rows) ->
+                let shown = List.truncate 20 rows
+
+                let columnNames =
+                    match headerOpt with
+                    | Some cells -> cells |> List.map shownOf
+                    | None ->
+                        let width = shown |> List.map List.length |> List.fold max 0
+                        [ for n in 1 .. width -> PreviewCell $"Column {n}" ]
+
+                let preview : LabFilePreview =
+                    {
+                        columnNames = columnNames
+                        rows = shown |> List.map (List.map shownOf >> PreviewRow)
+                    }
+
+                preview)
 
     type ImportProfile with
 

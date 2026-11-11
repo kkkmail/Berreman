@@ -1,7 +1,9 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Text
 open Xunit
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
@@ -529,3 +531,46 @@ module ImportProfileTests =
         assertValidation
             (Error (MalformedDataFileErr "the import profile maps no key column to select 'K1' by"))
             (unkeyed.selectedBy (KeyedDataRows k1))
+
+    // ============================ spec 0050 S9.2: what a picked lab file suggests ============================
+
+    /// A picked lab file whose bytes are `prefix`, then `text` in UTF-8.
+    let private pickedLabFile (prefix : byte[]) (text : string) : LabFileSource =
+        {
+            file = FileName "C:/lab/picked.csv"
+            content = Array.append prefix (Encoding.UTF8.GetBytes text) |> FileByteContent
+        }
+
+    let private sniffOf (bom : ByteOrderMark) (delimiter : DataDelimiter) (header : HeaderRowChoice) : LabFileSniff =
+        { bom = bom; delimiter = delimiter; header = header }
+
+    [<Fact>]
+    let ``sniffing suggests the delimiter, the header and the byte-order mark of a lab file`` () : unit =
+        let phoneRoi =
+            pickedLabFile
+                [| 0xEFuy; 0xBBuy; 0xBFuy |]
+                ("experiment,capture_index,captured_at,description,avg_total\n"
+                 + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,869.5\n"
+                 + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,912.25\n")
+
+        Assert.Equal<LabFileSniff>(sniffOf ByteOrderMarkPresent CommaDelimiter HeaderOnFirstRow, phoneRoi.sniffedLayout)
+
+        // Ordinal: a culture-aware comparison ignores a leading U+FEFF, so it would pass a text that kept the mark.
+        Assert.StartsWith("experiment,", phoneRoi.content.kitFileText.value, StringComparison.Ordinal)
+
+        Assert.Equal<LabFileSniff>(
+            sniffOf ByteOrderMarkAbsent SemicolonDelimiter NoHeaderRow, (pickedLabFile [||] "0;1.5\n20;1.25\n").sniffedLayout)
+
+        Assert.Equal<LabFileSniff>(
+            sniffOf ByteOrderMarkAbsent TabDelimiter HeaderOnFirstRow, (pickedLabFile [||] "phi\tI\n0\t0.5\n").sniffedLayout)
+
+        Assert.Equal<LabFileSniff>(
+            sniffOf ByteOrderMarkAbsent CommaDelimiter HeaderOnFirstRow, (pickedLabFile [||] "one column\n").sniffedLayout)
+
+        // A header may name a number, when a text stands over the second line's number.
+        Assert.Equal<LabFileSniff>(
+            sniffOf ByteOrderMarkAbsent CommaDelimiter HeaderOnFirstRow, (pickedLabFile [||] "phi,633\n0,0.5\n").sniffedLayout)
+
+        // Ten non-empty lines decide, each without its CR, so the note on the eleventh splits nothing.
+        let longRun = "phi;I\r\n\r\n" + String.concat "" [ for row in 1 .. 9 -> $"{row};0.5\r\n" ] + "end of run\r\n"
+        Assert.Equal<LabFileSniff>(sniffOf ByteOrderMarkAbsent SemicolonDelimiter HeaderOnFirstRow, (pickedLabFile [||] longRun).sniffedLayout)

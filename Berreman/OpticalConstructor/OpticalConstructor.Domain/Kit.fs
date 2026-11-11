@@ -2,6 +2,7 @@ namespace OpticalConstructor.Domain
 
 open System
 open System.Globalization
+open System.Text
 open Softellect.Sys.Primitives
 open Berreman.Geometry
 open OpticalConstructor.Domain.Placement
@@ -540,6 +541,11 @@ module Kit =
 
         member this.value : string = let (KitFileText text) = this in text
 
+        /// Removes only the leading UTF-8 byte-order mark from decoded text (spec 0050 S4.1).
+        member this.withoutByteOrderMark : KitFileText =
+            if this.value.StartsWith('\uFEFF') then KitFileText (this.value.Substring 1)
+            else this
+
     /// A lab file as read, with the SHA-256 of its bytes as stored (spec 0050 001 §E).
     type KitDataFile =
         {
@@ -627,6 +633,21 @@ module Kit =
             file : FileName
             content : FileByteContent
         }
+
+    type FileByteContent with
+
+        /// The bytes as UTF-8 with a leading byte-order mark dropped: the kit's one decode (spec 0050 S4.1; S4.2; S9.2).
+        member this.kitFileText : KitFileText =
+            let text = KitFileText (Encoding.UTF8.GetString this.value)
+            text.withoutByteOrderMark
+
+        /// `ByteOrderMarkPresent` when the bytes start with the UTF-8 mark EF BB BF, which the decode drops (spec 0050 S9.2).
+        member this.byteOrderMark : ByteOrderMark =
+            let bytes = this.value
+            let mark = Encoding.UTF8.GetPreamble()
+
+            if bytes.Length >= mark.Length && Array.sub bytes 0 mark.Length = mark then ByteOrderMarkPresent
+            else ByteOrderMarkAbsent
 
     /// Whether attached bytes are unchanged, changed since attach, or missing (spec 0050 S4.2).
     type DataAttachmentStatus =

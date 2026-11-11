@@ -113,23 +113,11 @@ module KitFolders =
                         None))
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
 
-    type KitFileText with
-
-        /// Removes only the leading UTF-8 byte-order mark from decoded text (spec 0050 S4.1).
-        member this.withoutByteOrderMark : KitFileText =
-            if this.value.StartsWith('\uFEFF') then KitFileText (this.value.Substring 1)
-            else this
-
     type private InMemoryKitFileStamp =
         | InMemoryKitMetadataStamp of KitFile
         | InMemoryKitTextStamp of KitFileText
 
     type FileByteContent with
-
-        /// Decodes UTF-8 text and removes only a leading byte-order mark (spec 0050 S4.1; S4.2).
-        member this.kitFileText : KitFileText =
-            let text = KitFileText (Encoding.UTF8.GetString this.value)
-            text.withoutByteOrderMark
 
         /// Describes a kit file with the hash of its stored bytes (spec 0050 S4.1; S4.2).
         member this.kitDataFile (path : KitRelativePath) : KitDataFile =
