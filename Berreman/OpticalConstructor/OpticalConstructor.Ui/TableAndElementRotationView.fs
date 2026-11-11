@@ -4195,36 +4195,29 @@ type BeamLayout.PlacedElement with
             | None -> 0.0
         IncidenceAngle.create (Angle.degree (degrees * 1.0<deg>))
 
-/// One step of a detector's light path as a run builds it (spec 0046): the same for the whole sweep, or
-/// evaluated at each swept value, so a sample is re-solved only when something it depends on varies (spec 0050 S8.1).
+/// One step of a detector's light path as a run builds it (spec 0046): the same for a whole scan block, or evaluated at
+/// each point's settings, so a sample is re-solved only when something it depends on varies (spec 0050 S8.1, S9.1).
 type private StepBuilder =
     | FixedStep of ExperimentRun.RunStep
-    | SweptStep of (float -> Result<ExperimentRun.RunStep, ItemEvaluationError>)
+    | SweptStep of (Experiments.ScanSetting list -> Result<ExperimentRun.RunStep, ItemEvaluationError>)
 
-/// The run behind an experiment's chart (spec 0046): each captured branch's detector reads `runEmission`, the source item's
-/// own light else the default, through the path's polarizers, samples and slot items in light order, the varied one swept;
-/// λ stays the bound preset's (`boundSource`, which `withItem` binds for a source item) (spec 0050 S8.1, S8.2).
-let chartForRun
-    (model : TableAndElementRotationModel)
-    (chosen : Library.ElementId)
-    (variable : Experiments.VariableParameter)
-    (measurement : Experiments.MeasurementMode)
-    (range : Experiments.VariableRange)
-    (label : Experiments.ElementLabel)
-    (sourceWaveLengthOpt : WaveLength option) : ExperimentChart.ExperimentChart =
-    match model.elements |> List.tryFindIndex (fun e -> e.id = chosen) with
-    | None -> ExperimentChart.emptyExperimentChart
-    | Some variedIndex ->
-    let variedElement = List.item variedIndex model.elements
+/// One drawn scan block (spec 0050 S9.1): its series, what its detectors read, and the title and description a scan of
+/// that block's x axis alone shows.
+type private ScanBlockChart =
+    {
+        blockSeries : ExperimentControls.ChartSeries list
+        kinds : Library.DetectorKind list
+        variable : Experiments.VariableParameter
+        title : ControlCaption
+        description : ControlCaption
+    }
+
+/// The chart of a scan (spec 0046; spec 0050 S8.1, S8.2, S9.1): per block, each captured branch's detector reads `runEmission`
+/// through its path in light order, one series per value of the other axes over the last axis; one block of one axis is the
+/// one-variable chart, and the first block that cannot be drawn shows why in its place.
+let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.ExperimentScan) : ExperimentChart.ExperimentChart =
     let layout = model.sceneLayout
-    let w0 = operatingWaveLength model sourceWaveLengthOpt
-    let n = max 2 range.points.value
-    let lo, hi =
-        match variable with
-        | Experiments.VaryR2 ->
-            max 0.0 (min range.min.value range.max.value), min Propagation.r2SweepMaxDegrees.value (max range.min.value range.max.value)
-        | Experiments.VaryR1 | Experiments.VaryDialReading | Experiments.VaryWaveLength -> range.min.value, range.max.value
-    let xs = [ for k in 0 .. n - 1 -> lo + (hi - lo) * float k / float (n - 1) ]
+    let w0 = operatingWaveLength model scan.sourceWaveLengthOpt
     let indexOf (id : Library.ElementId) : int option = model.elements |> List.tryFindIndex (fun e -> e.id = id)
     let boundOf (e : Setups.SetupSlot) : Library.LibraryEntry option =
         match e.placement.valueId with
@@ -4234,36 +4227,68 @@ let chartForRun
             | Error _ -> None
         | None -> None
     let sweptAngle (x : float) : Angle = Angle.degree (x * 1.0<deg>)
-    // The varied slot's R1 at a swept x: a dial-mounted item's reading x at its physical angle, else x itself, as a slot
-    // with no dial reads its R1 (`SetupSlot.turnAngle`) (spec 0050 S9.1; 001 §I).
-    let variedRotationAt : float -> Angle =
-        match variable, variedElement.tryFindDialMounted model.kitItems with
-        | Experiments.VaryDialReading, Some (item, sign) -> fun x -> sign.physicalAngleOf item.dialZeroAngle (sweptAngle x)
-        | Experiments.VaryDialReading, None
-        | (Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength), _ -> sweptAngle
-    // One path step → its builder (or nothing: the source, a mirror, a lens, an unbound element). A slot holding an item
-    // is read from `slotItems`, which never holds the source's: that item emits (spec 0050 S8.2).
-    let builderFor (slotItems : Map<Library.ElementId, Item * ItemModelChoice>) (step : BeamLayout.PathStep) : Result<StepBuilder option, ItemEvaluationError> =
+    // An incidence axis stays computable: its range held to [0, r2SweepMaxDegrees], low end first (spec 0046).
+    let computable (axis : Experiments.ScanAxis) : Experiments.ScanAxis =
+        match axis.variable with
+        | Experiments.VaryR2 ->
+            let range = axis.range
+            {
+                axis with
+                    range =
+                        {
+                            range with
+                                min = Propagation.SweptValue (max 0.0 (min range.min.value range.max.value))
+                                max = Propagation.SweptValue (min Propagation.r2SweepMaxDegrees.value (max range.min.value range.max.value))
+                        }
+            }
+        | Experiments.VaryR1 | Experiments.VaryDialReading | Experiments.VaryWaveLength -> axis
+    // The point's setting on that element over one of those variables, the innermost axis first (spec 0050 S9.1).
+    let settingOn (settings : Experiments.ScanSetting list) (id : Library.ElementId) (variables : Experiments.VariableParameter list) : Experiments.ScanSetting option =
+        settings |> List.tryFindBack (fun setting -> setting.elementId = id && List.contains setting.variable variables)
+    let waveLengthAt (settings : Experiments.ScanSetting list) : WaveLength =
+        match settings |> List.tryFindBack (fun setting -> setting.variable = Experiments.VaryWaveLength) with
+        | Some setting -> WaveLength.nm (setting.value.value * 1.0<nm>)
+        | None -> w0
+    // One path step → its builder (or nothing: the source, a mirror, a lens, an unbound element), swept when an axis of the
+    // block is on it or varies the wavelength. A slot holding an item is read from `slotItems`, which never holds the
+    // source's: that item emits (spec 0050 S8.2, S9.1).
+    let builderFor
+        (axes : Experiments.ScanAxis list)
+        (slotItems : Map<Library.ElementId, Item * ItemModelChoice>)
+        (step : BeamLayout.PathStep)
+        : Result<StepBuilder option, ItemEvaluationError> =
         match indexOf step.element with
         | None -> Ok None
         | Some j ->
             let e = List.item j model.elements
-            let isVaried = (e.id = chosen)
+            let touched = axes |> List.exists (fun axis -> axis.elementId = e.id || axis.variable = Experiments.VaryWaveLength)
             let branch =
                 match step.branch with
                 | BeamTree.TransmittedBeam -> Propagation.BranchTransmitted
                 | BeamTree.ReflectedBeam -> Propagation.BranchReflected
-            // At its drawn R1 and incidence and the point's wavelength, the varied one swept (spec 0050 S8.1, S8.2).
+            // A dial-mounted item's reading turns it to its physical angle, any other rotation setting to the value itself,
+            // as a slot with no dial reads its R1 (`SetupSlot.turnAngle`); else its drawn R1 (spec 0050 S9.1; 001 §I).
+            let dialOpt = e.tryFindDialMounted model.kitItems
+            let rotationAt (settings : Experiments.ScanSetting list) : Angle =
+                match settingOn settings e.id [ Experiments.VaryR1; Experiments.VaryDialReading ] with
+                | Some setting ->
+                    match setting.variable, dialOpt with
+                    | Experiments.VaryDialReading, Some (item, sign) -> sign.physicalAngleOf item.dialZeroAngle (sweptAngle setting.value.value)
+                    | Experiments.VaryDialReading, None
+                    | (Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength), _ -> sweptAngle setting.value.value
+                | None -> e.placement.r1
+            // At its drawn incidence and R1 and the operating wavelength, each unless the point sets it (spec 0050 S8.1, S9.1).
             let sweptOrFixed (bound : BoundOpticalElement) (stepOf : MuellerMatrix -> ExperimentRun.RunStep) : Result<StepBuilder, ItemEvaluationError> =
                 let incidence0 = (List.item j layout.elements).incidenceOn e.placement
                 let stepAt (incidence : IncidenceAngle) (rotation : Angle) (w : WaveLength) : Result<ExperimentRun.RunStep, ItemEvaluationError> =
                     let orientation : ElementOrientation = { rotation = rotation; incidence = incidence; branch = branch }
                     bound.muellerAt orientation w |> Result.map stepOf
-                match variable with
-                | Experiments.VaryWaveLength -> Ok (SweptStep (fun x -> stepAt incidence0 e.placement.r1 (WaveLength.nm (x * 1.0<nm>))))
-                | Experiments.VaryR2 when isVaried -> Ok (SweptStep (fun x -> stepAt (IncidenceAngle.create (sweptAngle x)) e.placement.r1 w0))
-                | Experiments.VaryR1 | Experiments.VaryDialReading when isVaried -> Ok (SweptStep (fun x -> stepAt incidence0 (variedRotationAt x) w0))
-                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> stepAt incidence0 e.placement.r1 w0 |> Result.map FixedStep
+                let incidenceAt (settings : Experiments.ScanSetting list) : IncidenceAngle =
+                    match settingOn settings e.id [ Experiments.VaryR2 ] with
+                    | Some setting -> IncidenceAngle.create (sweptAngle setting.value.value)
+                    | None -> incidence0
+                if touched then Ok (SweptStep (fun settings -> stepAt (incidenceAt settings) (rotationAt settings) (waveLengthAt settings)))
+                else stepAt incidence0 e.placement.r1 w0 |> Result.map FixedStep
             match Map.tryFind e.id slotItems, e.placement.catalogueKind, boundOf e with
             | Some (item, choice), kind, _ ->
                 // The item's own model over its own values, bound once; an object in a sample slot (spec 0050 S8.2).
@@ -4276,174 +4301,254 @@ let chartForRun
                 |> Result.map Some
             | None, (LinearPolarizer | CircularPolarizer), Some (Library.PolarizerItem p) ->
                 let preset = BoundPolarizerPreset p.behavior
-                let elementAt (rotation : Angle) : Result<ExperimentRun.RunStep, ItemEvaluationError> =
+                let elementAt (rotation : Angle) (w : WaveLength) : Result<ExperimentRun.RunStep, ItemEvaluationError> =
                     let orientation : ElementOrientation = { rotation = rotation; incidence = IncidenceAngle.normal; branch = branch }
-                    preset.muellerAt orientation w0 |> Result.map ExperimentRun.ElementStep
-                match variable with
-                | Experiments.VaryR1 | Experiments.VaryDialReading when isVaried -> Ok (Some (SweptStep (fun x -> elementAt (variedRotationAt x))))
-                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading | Experiments.VaryWaveLength ->
-                    elementAt e.placement.r1 |> Result.map (fun fixedStep -> Some (FixedStep fixedStep))
+                    preset.muellerAt orientation w |> Result.map ExperimentRun.ElementStep
+                if touched then Ok (Some (SweptStep (fun settings -> elementAt (rotationAt settings) (waveLengthAt settings))))
+                else elementAt e.placement.r1 w0 |> Result.map (fun fixedStep -> Some (FixedStep fixedStep))
             | None, Sample, Some (Library.SampleItem sample) ->
-                // Bound once per path step, so its materials resolve once for the whole sweep.
+                // Bound once per path step, so its materials resolve once for the whole block.
                 BoundOpticalElement.ofStackSample model.materials (ParameterValues.defaultsOf sample.parameterAxes) sample
                 |> Result.bind (fun bound -> sweptOrFixed bound ExperimentRun.ObjectStep)
                 |> Result.map Some
             | _ -> Ok None
-    let buildersFor (slotItems : Map<Library.ElementId, Item * ItemModelChoice>) (path : BeamLayout.PathStep list) : Result<StepBuilder list, ItemEvaluationError> =
-        path |> List.map (builderFor slotItems) |> ItemEvaluation.sequenced |> Result.map (List.choose id)
-    let stepsAt (builders : StepBuilder list) (x : float) : Result<ExperimentRun.RunStep list, ItemEvaluationError> =
+    let buildersFor
+        (axes : Experiments.ScanAxis list)
+        (slotItems : Map<Library.ElementId, Item * ItemModelChoice>)
+        (path : BeamLayout.PathStep list)
+        : Result<StepBuilder list, ItemEvaluationError> =
+        path |> List.map (builderFor axes slotItems) |> ItemEvaluation.sequenced |> Result.map (List.choose id)
+    let stepsAt (builders : StepBuilder list) (settings : Experiments.ScanSetting list) : Result<ExperimentRun.RunStep list, ItemEvaluationError> =
         builders
         |> List.map (fun b ->
             match b with
             | FixedStep step -> Ok step
-            | SweptStep f -> f x)
+            | SweptStep f -> f settings)
         |> ItemEvaluation.sequenced
-    // A varied slot holding an item has something to vary, whatever its library binding (spec 0050 S8.2).
-    let variedIsBound = Option.isSome variedElement.content.itemOpt || Option.isSome (boundOf variedElement)
-    let detectors = model.captureDetectors chosen
-    let captured =
-        measurement.capturedBranches
-        |> List.choose (fun (branch, tag) ->
-            detectors |> List.tryFind (fun (b, _) -> b = branch) |> Option.map (fun (_, j) -> tag, j))
-    // The items the slots on the captured paths hold, resolved before any point is read; the source's item emits, so it
-    // is no step (spec 0050 S8.2).
-    let slotItems : Result<Map<Library.ElementId, Item * ItemModelChoice>, SetupError> =
-        captured
-        |> List.collect (fun (_, j) -> (List.item j.value layout.elements).path)
-        |> List.choose (fun step -> indexOf step.element |> Option.map (fun k -> List.item k model.elements))
-        |> List.distinctBy (fun slot -> slot.id)
-        |> List.choose (fun slot ->
-            match slot.placement.catalogueKind, slot.content with
-            | LightSource, _
-            | _, Setups.EmptySlotContent -> None
-            | (LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), Setups.ItemInSlot (itemId, _) ->
-                Some (slot.id, itemId))
-        |> List.fold (fun held (slotId, itemId) ->
-            held |> Result.bind (fun items -> model.resolveSlotItem itemId |> Result.map (fun resolved -> Map.add slotId resolved items))) (Ok Map.empty)
-    let xLabel =
+    let xLabelOf (variable : Experiments.VariableParameter) : string =
         match variable with
         | Experiments.VaryR1 -> "Rotation R1 (°)"
         | Experiments.VaryR2 -> "Incidence angle R2 (°)"
         | Experiments.VaryDialReading -> "Dial reading (°)"
         | Experiments.VaryWaveLength -> "Wavelength (nm)"
-    let kinds = captured |> List.map (fun (_, j) -> model.detectorKindAt j) |> List.distinct
-    let yLabel =
+    let yLabelOf (kinds : Library.DetectorKind list) : ControlCaption =
         match kinds with
-        | [ Library.Ellipsometer ] -> "Ψ, Δ (°)"
-        | [ Library.Intensity ] | [] -> "Intensity (S₀)"
-        | _ -> "Intensity (S₀); Ψ, Δ (°)"
-    let quantity =
-        match kinds with
-        | [ Library.Ellipsometer ] -> "Ellipsometric Ψ/Δ"
-        | _ -> "Intensity"
-    let title =
-        match variable, variedElement.placement.catalogueKind, kinds with
-        | Experiments.VaryR1, (LinearPolarizer | CircularPolarizer), [ Library.Intensity ] -> "Rotating analyzer (Malus)"
-        | Experiments.VaryR1, _, _ -> $"%s{quantity} vs rotation R1"
-        | Experiments.VaryR2, _, _ -> $"%s{quantity} vs incidence"
-        | Experiments.VaryDialReading, _, _ -> $"%s{quantity} vs dial reading"
-        | Experiments.VaryWaveLength, _, _ -> $"%s{quantity} vs wavelength"
-    let varyText =
-        match variable with
-        | Experiments.VaryR1 -> $"the rotation R1 over %g{lo}…%g{hi}°"
-        | Experiments.VaryR2 -> $"the incidence angle R2 over %g{lo}…%g{hi}°"
-        | Experiments.VaryDialReading -> $"the dial reading over %g{lo}…%g{hi}°"
-        | Experiments.VaryWaveLength -> $"the wavelength over %g{lo}…%g{hi} nm"
-    let description =
-        let sourceText =
-            match variable with
-            | Experiments.VaryWaveLength -> "Source swept"
-            | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> $"Source %g{w0.nanometers} nm"
-        let detectorText =
-            captured
-            |> List.map (fun (tag, j) -> $"{tag.value}: {(model.detectorKindAt j).readsText}")
-            |> String.concat ", "
-        $"%s{sourceText}; varied element: %s{label.value}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
-    // The rotate-R1 intensity run needs polarized light: with no polarizer on the path there is nothing a
-    // rotation could change — the typed status, never a synthesized curve (spec 0038 step 018). A polarizer slot holding
-    // an item is a polarizer (spec 0050 S8.2).
-    let noPolarizerOnPath =
-        captured
-        |> List.forall (fun (_, j) ->
-            (List.item j.value layout.elements).path
-            |> List.forall (fun step ->
-                match indexOf step.element |> Option.map (fun k -> List.item k model.elements) with
-                | Some slot ->
-                    match slot.placement.catalogueKind, slot.content, boundOf slot with
-                    | (LinearPolarizer | CircularPolarizer), Setups.ItemInSlot _, _
-                    | _, _, Some (Library.PolarizerItem _) -> false
-                    | _ -> true
-                | None -> true))
-    match variable, kinds, captured with
-    | _, _, [] -> ExperimentChart.emptyExperimentChart
-    | (Experiments.VaryR1 | Experiments.VaryDialReading), [ Library.Intensity ], _ when noPolarizerOnPath ->
-        { ExperimentChart.emptyExperimentChart with title = ControlCaption noAnalyzerTitle; description = ControlCaption noAnalyzerStatus }
-    | _ when not variedIsBound && variedElement.placement.catalogueKind <> LightSource -> ExperimentChart.emptyExperimentChart
-    | _ ->
-        // An evaluation error, or a source's or slot's item the kit or the stores lack, is told on the chart (spec 0050
-        // S8.1, S8.2).
-        let cannotEvaluate (reason : ControlCaption) : ExperimentChart.ExperimentChart =
-            { ExperimentChart.emptyExperimentChart with title = ControlCaption "The run cannot be evaluated"; description = reason }
-        // The source leads the light, so its emission is read before the slots' items (spec 0050 S8.2).
-        match model.runEmission, slotItems with
-        | Error reason, _ -> cannotEvaluate reason
-        | Ok _, Error error -> cannotEvaluate (ControlCaption error.describe)
-        | Ok emission, Ok items ->
-            let evaluated =
-                captured
-                |> List.map (fun (tag, j) ->
-                    let kind = model.detectorKindAt j
-                    buildersFor items (List.item j.value layout.elements).path
-                    |> Result.bind (fun builders ->
-                        xs
-                        |> List.map (fun x -> stepsAt builders x |> Result.map (fun steps -> x, ExperimentRun.read kind emission steps))
-                        |> ItemEvaluation.sequenced)
-                    |> Result.map (fun readings -> tag, kind, readings))
-                |> ItemEvaluation.sequenced
-            match evaluated with
-            | Error (SampleMaterialErr err) ->
-                {
-                    ExperimentChart.emptyExperimentChart with
-                        title = ControlCaption "Sample materials failed to resolve"
-                        description = err.runFailureCaption
-                }
-            | Error (MissingParameterValueErr _ | ParameterOutOfRangeErr _ | NotALightSourceErr _ | NotAnOpticalElementErr _ | UnmodelledBranchErr _ | CutPlateSolveErr _ as error) ->
-                cannotEvaluate (ControlCaption error.describe)
-            | Ok runs ->
-                let seriesList =
-                    runs
-                    |> List.collect (fun (tag, kind, readings) ->
-                        match kind with
-                        | Library.Intensity ->
-                            [ series (measurement.seriesCaption tag (ControlCaption "Intensity"))
-                                  (readings |> List.map (fun (x, r) -> { ExperimentControls.ChartPoint.x = x; y = (match r with ExperimentRun.IntensityReading i -> i.value | ExperimentRun.EllipsometricReading _ -> nan) })) ]
-                        | Library.Ellipsometer ->
-                            let pd (pick : Analytics.AnalysisFunctions.PsiDelta -> Angle) : ExperimentControls.ChartPoint list =
-                                readings |> List.map (fun (x, r) -> { ExperimentControls.ChartPoint.x = x; y = (match r with ExperimentRun.EllipsometricReading v -> (pick v).degrees | ExperimentRun.IntensityReading _ -> nan) })
-                            [ series (measurement.seriesCaption tag (ControlCaption "Ψ")) (pd (fun v -> v.psi))
-                              series (measurement.seriesCaption tag (ControlCaption "Δ")) (pd (fun v -> v.delta)) ])
-                {
-                    ExperimentChart.ExperimentChart.series = seriesList
-                    xLabel = ControlCaption xLabel
-                    yLabel = ControlCaption yLabel
-                    title = ControlCaption title
-                    description = ControlCaption description
-                    xAxisKind =
+        | [ Library.Ellipsometer ] -> ControlCaption "Ψ, Δ (°)"
+        | [ Library.Intensity ] | [] -> ControlCaption "Intensity (S₀)"
+        | _ -> ControlCaption "Intensity (S₀); Ψ, Δ (°)"
+    // One block: nothing without an axis or a drawable varied element, else its series or the status that replaces them.
+    let chartOfBlock (blockTags : string list) (block : Experiments.ScanBlock) : Result<ScanBlockChart option, ExperimentChart.ExperimentChart> =
+        let axes = block.axes |> List.map computable
+        match List.rev axes with
+        | [] -> Ok None
+        | xAxis :: outerReversed ->
+            match indexOf xAxis.elementId with
+            | None -> Ok None
+            | Some variedIndex ->
+                let outer = List.rev outerReversed
+                let variedElement = List.item variedIndex model.elements
+                let variable = xAxis.variable
+                let measurement = block.capture
+                let lo, hi = xAxis.range.min.value, xAxis.range.max.value
+                // A varied slot holding an item has something to vary, whatever its library binding (spec 0050 S8.2).
+                let variedIsBound = Option.isSome variedElement.content.itemOpt || Option.isSome (boundOf variedElement)
+                let detectors = model.captureDetectors xAxis.elementId
+                let captured =
+                    measurement.capturedBranches
+                    |> List.choose (fun (branch, tag) ->
+                        detectors |> List.tryFind (fun (b, _) -> b = branch) |> Option.map (fun (_, j) -> tag, j))
+                // The items the slots on the captured paths hold, resolved before any point is read; the source's item
+                // emits, so it is no step (spec 0050 S8.2).
+                let slotItems : Result<Map<Library.ElementId, Item * ItemModelChoice>, SetupError> =
+                    captured
+                    |> List.collect (fun (_, j) -> (List.item j.value layout.elements).path)
+                    |> List.choose (fun step -> indexOf step.element |> Option.map (fun k -> List.item k model.elements))
+                    |> List.distinctBy (fun slot -> slot.id)
+                    |> List.choose (fun slot ->
+                        match slot.placement.catalogueKind, slot.content with
+                        | LightSource, _
+                        | _, Setups.EmptySlotContent -> None
+                        | (LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), Setups.ItemInSlot (itemId, _) ->
+                            Some (slot.id, itemId))
+                    |> List.fold (fun held (slotId, itemId) ->
+                        held |> Result.bind (fun items -> model.resolveSlotItem itemId |> Result.map (fun resolved -> Map.add slotId resolved items))) (Ok Map.empty)
+                let kinds = captured |> List.map (fun (_, j) -> model.detectorKindAt j) |> List.distinct
+                let quantity =
+                    match kinds with
+                    | [ Library.Ellipsometer ] -> "Ellipsometric Ψ/Δ"
+                    | _ -> "Intensity"
+                let title : ControlCaption =
+                    match variable, variedElement.placement.catalogueKind, kinds with
+                    | Experiments.VaryR1, (LinearPolarizer | CircularPolarizer), [ Library.Intensity ] -> ControlCaption "Rotating analyzer (Malus)"
+                    | Experiments.VaryR1, _, _ -> ControlCaption $"%s{quantity} vs rotation R1"
+                    | Experiments.VaryR2, _, _ -> ControlCaption $"%s{quantity} vs incidence"
+                    | Experiments.VaryDialReading, _, _ -> ControlCaption $"%s{quantity} vs dial reading"
+                    | Experiments.VaryWaveLength, _, _ -> ControlCaption $"%s{quantity} vs wavelength"
+                let varyText =
+                    match variable with
+                    | Experiments.VaryR1 -> $"the rotation R1 over %g{lo}…%g{hi}°"
+                    | Experiments.VaryR2 -> $"the incidence angle R2 over %g{lo}…%g{hi}°"
+                    | Experiments.VaryDialReading -> $"the dial reading over %g{lo}…%g{hi}°"
+                    | Experiments.VaryWaveLength -> $"the wavelength over %g{lo}…%g{hi} nm"
+                let description : ControlCaption =
+                    let sourceText =
                         match variable with
-                        | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> ExperimentChart.AngularXAxis
-                        | Experiments.VaryWaveLength -> ExperimentChart.NonAngularXAxis
-                }
-
-/// The chart for an EXPLICIT experiment configuration at the source's own wavelength setting (`chartForRun`
-/// with no per-run setting).
-let chartForParams
-    (model : TableAndElementRotationModel)
-    (chosen : Library.ElementId)
-    (variable : Experiments.VariableParameter)
-    (measurement : Experiments.MeasurementMode)
-    (range : Experiments.VariableRange)
-    (label : Experiments.ElementLabel) : ExperimentChart.ExperimentChart =
-    chartForRun model chosen variable measurement range label None
+                        | Experiments.VaryWaveLength -> "Source swept"
+                        | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> $"Source %g{w0.nanometers} nm"
+                    let detectorText =
+                        captured
+                        |> List.map (fun (tag, j) -> $"{tag.value}: {(model.detectorKindAt j).readsText}")
+                        |> String.concat ", "
+                    ControlCaption
+                        $"%s{sourceText}; varied element: %s{xAxis.label.value}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
+                // The rotate-R1 intensity run needs polarized light: with no polarizer on the path there is nothing a
+                // rotation could change — the typed status, never a synthesized curve (spec 0038 step 018). A polarizer
+                // slot holding an item is a polarizer (spec 0050 S8.2).
+                let noPolarizerOnPath =
+                    captured
+                    |> List.forall (fun (_, j) ->
+                        (List.item j.value layout.elements).path
+                        |> List.forall (fun step ->
+                            match indexOf step.element |> Option.map (fun k -> List.item k model.elements) with
+                            | Some slot ->
+                                match slot.placement.catalogueKind, slot.content, boundOf slot with
+                                | (LinearPolarizer | CircularPolarizer), Setups.ItemInSlot _, _
+                                | _, _, Some (Library.PolarizerItem _) -> false
+                                | _ -> true
+                            | None -> true))
+                match variable, kinds, captured with
+                | _, _, [] -> Ok None
+                | (Experiments.VaryR1 | Experiments.VaryDialReading), [ Library.Intensity ], _ when noPolarizerOnPath ->
+                    Error { ExperimentChart.emptyExperimentChart with title = ControlCaption noAnalyzerTitle; description = ControlCaption noAnalyzerStatus }
+                | _ when not variedIsBound && variedElement.placement.catalogueKind <> LightSource -> Ok None
+                | _ ->
+                    // An evaluation error, or a source's or slot's item the kit or the stores lack, is told on the chart
+                    // (spec 0050 S8.1, S8.2).
+                    let cannotEvaluate (reason : ControlCaption) : ExperimentChart.ExperimentChart =
+                        { ExperimentChart.emptyExperimentChart with title = ControlCaption "The run cannot be evaluated"; description = reason }
+                    // Each value of the outer axes, as the block's own product orders them (spec 0050 S9.1).
+                    let groups : Experiments.ScanSetting list list =
+                        let outerBlock : Experiments.ScanBlock = { axes = outer; capture = measurement }
+                        outerBlock.points |> List.map (fun point -> point.settings)
+                    let xSettings : Experiments.ScanSetting list =
+                        xAxis.range.sweptValues
+                        |> List.map (fun value -> { Experiments.ScanSetting.elementId = xAxis.elementId; variable = variable; value = value })
+                    // A series' name: the one-variable name, then its group's settings and the block's tag (spec 0050 S9.1).
+                    let named (group : Experiments.ScanSetting list) (name : ControlCaption) : ControlCaption =
+                        let settingTexts =
+                            List.map2
+                                (fun (axis : Experiments.ScanAxis) (setting : Experiments.ScanSetting) ->
+                                    $"%s{axis.label.value}: %s{axis.variable.label} %g{setting.value.value}%s{axis.variable.unitLabel}")
+                                outer
+                                group
+                        match settingTexts @ blockTags with
+                        | [] -> name
+                        | parts ->
+                            let joined = String.concat ", " parts
+                            ControlCaption $"{name.value} — {joined}"
+                    // The source leads the light, so its emission is read before the slots' items (spec 0050 S8.2).
+                    match model.runEmission, slotItems with
+                    | Error reason, _ -> Error (cannotEvaluate reason)
+                    | Ok _, Error error -> Error (cannotEvaluate (ControlCaption error.describe))
+                    | Ok emission, Ok items ->
+                        let evaluated =
+                            captured
+                            |> List.map (fun (tag, j) ->
+                                buildersFor axes items (List.item j.value layout.elements).path
+                                |> Result.map (fun builders -> tag, model.detectorKindAt j, builders))
+                            |> ItemEvaluation.sequenced
+                            |> Result.bind (fun branches ->
+                                groups
+                                |> List.map (fun group ->
+                                    branches
+                                    |> List.map (fun (tag, kind, builders) ->
+                                        xSettings
+                                        |> List.map (fun xSetting ->
+                                            stepsAt builders (group @ [ xSetting ])
+                                            |> Result.map (fun steps -> xSetting.value.value, ExperimentRun.read kind emission steps))
+                                        |> ItemEvaluation.sequenced
+                                        |> Result.map (fun readings -> tag, kind, readings))
+                                    |> ItemEvaluation.sequenced
+                                    |> Result.map (fun runs -> group, runs))
+                                |> ItemEvaluation.sequenced)
+                        match evaluated with
+                        | Error (SampleMaterialErr err) ->
+                            Error
+                                {
+                                    ExperimentChart.emptyExperimentChart with
+                                        title = ControlCaption "Sample materials failed to resolve"
+                                        description = err.runFailureCaption
+                                }
+                        | Error (MissingParameterValueErr _ | ParameterOutOfRangeErr _ | NotALightSourceErr _ | NotAnOpticalElementErr _ | UnmodelledBranchErr _ | CutPlateSolveErr _ as error) ->
+                            Error (cannotEvaluate (ControlCaption error.describe))
+                        | Ok groupRuns ->
+                            let seriesList =
+                                groupRuns
+                                |> List.collect (fun (group, runs) ->
+                                    runs
+                                    |> List.collect (fun (tag, kind, readings) ->
+                                        let caption (reading : ControlCaption) : ControlCaption = named group (measurement.seriesCaption tag reading)
+                                        match kind with
+                                        | Library.Intensity ->
+                                            [ series (caption (ControlCaption "Intensity"))
+                                                  (readings |> List.map (fun (x, r) -> { ExperimentControls.ChartPoint.x = x; y = (match r with ExperimentRun.IntensityReading i -> i.value | ExperimentRun.EllipsometricReading _ -> nan) })) ]
+                                        | Library.Ellipsometer ->
+                                            let pd (pick : Analytics.AnalysisFunctions.PsiDelta -> Angle) : ExperimentControls.ChartPoint list =
+                                                readings |> List.map (fun (x, r) -> { ExperimentControls.ChartPoint.x = x; y = (match r with ExperimentRun.EllipsometricReading v -> (pick v).degrees | ExperimentRun.IntensityReading _ -> nan) })
+                                            [ series (caption (ControlCaption "Ψ")) (pd (fun v -> v.psi))
+                                              series (caption (ControlCaption "Δ")) (pd (fun v -> v.delta)) ]))
+                            let drawn : ScanBlockChart =
+                                {
+                                    blockSeries = seriesList
+                                    kinds = kinds
+                                    variable = variable
+                                    title = title
+                                    description = description
+                                }
+                            Ok (Some drawn)
+    let blockTagged = List.length scan.blocks > 1
+    let blockCharts =
+        scan.blocks
+        |> List.mapi (fun k block -> chartOfBlock (if blockTagged then [ $"block %d{k + 1}" ] else []) block)
+    match blockCharts |> List.tryPick (fun blockChart -> match blockChart with Error status -> Some status | Ok _ -> None) with
+    | Some status -> status
+    | None ->
+        match blockCharts |> List.choose (fun blockChart -> match blockChart with Ok drawnOpt -> drawnOpt | Error _ -> None) with
+        | [] -> ExperimentChart.emptyExperimentChart
+        | first :: _ as drawn ->
+            let variables = drawn |> List.map (fun block -> block.variable) |> List.distinct
+            let description : ControlCaption =
+                match scan.blocks with
+                | [ block ] when List.length block.axes = 1 -> first.description
+                | _ ->
+                    // The scan as its experiment names it, which reads only the blocks of a scan with an axis (spec 0050 S9.1).
+                    let named : Experiments.Experiment =
+                        {
+                            id = Experiments.ExperimentId 0
+                            name = Experiments.ExperimentName ""
+                            setup = ({ name = SetupName ""; revision = SetupRevision.first } : SetupReference)
+                            scan = scan
+                            role = Experiments.ScienceRun
+                            sessionOpt = None
+                            notes = Experiments.ExperimentNotes ""
+                            dataOpt = None
+                        }
+                    let sourceText =
+                        match List.contains Experiments.VaryWaveLength (scan.axes |> List.map (fun axis -> axis.variable)) with
+                        | true -> "Source swept"
+                        | false -> $"Source %g{w0.nanometers} nm"
+                    ControlCaption $"%s{sourceText}; %s{named.description}."
+            {
+                ExperimentChart.ExperimentChart.series = drawn |> List.collect (fun block -> block.blockSeries)
+                xLabel = ControlCaption (variables |> List.map xLabelOf |> String.concat " / ")
+                yLabel = yLabelOf (drawn |> List.collect (fun block -> block.kinds) |> List.distinct)
+                title = first.title
+                description = description
+                xAxisKind =
+                    match List.contains Experiments.VaryWaveLength variables with
+                    | true -> ExperimentChart.NonAngularXAxis
+                    | false -> ExperimentChart.AngularXAxis
+            }
 
 type TableAndElementRotationModel with
 
@@ -4467,26 +4572,22 @@ type TableAndElementRotationModel with
     member model.experimentResult : ExperimentChart.ExperimentChart =
         if not model.experimentChartVisible then ExperimentChart.emptyExperimentChart
         else
-            // Spec 0046: the draft runs with the capture the detectors allow; with none there is no chart.
-            let draft = model.experimentCollection.draft
-            match draft.elementId, draft.variable, model.draftCapture with
-            | Some chosen, Some variable, Some capture -> chartForRun model chosen variable capture draft.range draft.elementLabel draft.sourceWaveLengthOpt
-            | _ -> ExperimentChart.emptyExperimentChart
+            // Spec 0046: the draft runs with the capture the detectors allow; with none there is no chart. Spec 0050 S9.1:
+            // its whole scan, the last block read on that capture as ExpCommit records it.
+            match model.draftCapture with
+            | Some capture ->
+                match (Experiments.chooseMeasurement capture model.experimentCollection).draft.scanOpt with
+                | Some scan -> chartForRun model scan
+                | None -> ExperimentChart.emptyExperimentChart
+            | None -> ExperimentChart.emptyExperimentChart
 
-/// The chart of a COLLECTED experiment, the per-row "View" action (spec 0038 Part I, Part L 037): a scan of one block of
-/// one axis over its setup revision's slot (spec 0050 S8.2, S9.1); any other scan, or a gated-off inverse chart surface, is
-/// EMPTY until step 293 draws every scan.
+/// The chart of a COLLECTED experiment, the per-row "View" action (spec 0038 Part I, Part L 037): its scan over its setup
+/// revision's slots (spec 0050 S8.2, S9.1); EMPTY while the inverse chart surface is gated off.
 let chartForExperiment (model : TableAndElementRotationModel) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
     if not model.experimentChartVisible then ExperimentChart.emptyExperimentChart
-    else
-        match exp.scan.blocks with
-        | [ block ] ->
-            match block.axes with
-            | [ axis ] -> chartForRun model axis.elementId axis.variable block.capture axis.range axis.label exp.scan.sourceWaveLengthOpt
-            | _ -> ExperimentChart.emptyExperimentChart
-        | _ -> ExperimentChart.emptyExperimentChart
+    else chartForRun model exp.scan
 
-// Spec 0027: wire the forward-referenced hooks (defined once `chartForParams` exists) so a double-click /
+// Spec 0027: wire the forward-referenced hooks (defined once `experimentResult` exists) so a double-click /
 // "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
 // behind a non-empty chart; never reached under the headless `ui-smoke` gate's frame render). Spec 0046: the
 // export hook reads the same draft run.

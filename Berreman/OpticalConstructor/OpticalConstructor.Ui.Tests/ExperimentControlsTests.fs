@@ -658,6 +658,150 @@ module ExperimentControlsTests =
                         abs (dialPoint.y - referencePoint.y) <= 1.0e-12,
                         $"reading {dialPoint.x:R}: the dial scan read {dialPoint.y:R}, the fixed analyzer at {referencePoint.x:R}° {referencePoint.y:R}")))
 
+    // ============ spec 0050 S9.1 — the chart draws the whole scan ============
+
+    /// The uniaxial film, its optic axis in its plane, so its spin R1 changes what it passes and reflects.
+    let private uniaxialFilmId : ElementValueId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.uniaxialId)).entryId
+
+    /// The uniaxial film between a linear polarizer at R1 0° and two detectors: the seeded one on its transmitted beam and
+    /// one on its reflected ray.
+    let private polarizerFilmTable () : TableAndElementRotationModel =
+        SceneTestFixture.mainScene ()
+        |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        |> updateTableAndElementRotation (AddElement Sample)
+        |> bind 3 uniaxialFilmId
+        |> updateTableAndElementRotation (AddElement Detector)
+        |> (fun m -> m |> updateTableAndElementRotation (PlaceOnBeam ((elem 4 m).id, BeamLayout.OnReflectedBeamOf (elem 3 m).id)))
+
+    /// The draft varying the film on `variable` over `lo` … `hi` in that many points.
+    let private filmOver
+        (variable : ExperimentControls.VariableChoice)
+        (lo : ExperimentControls.ExperimentRangeEnd)
+        (hi : ExperimentControls.ExperimentRangeEnd)
+        (points : ExperimentControls.ExperimentPointCount)
+        (table : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        table
+        |> updateTableAndElementRotation (ExpChooseElement (elem 3 table).id)
+        |> updateTableAndElementRotation (ExpChooseVariable variable)
+        |> updateTableAndElementRotation (ExpSetRangeMin lo)
+        |> updateTableAndElementRotation (ExpSetRangeMax hi)
+        |> updateTableAndElementRotation (ExpSetRangePoints points)
+
+    /// The film's R2 over 20…60° in 3 points, Add variable, then its R1 over 0…90° in 2 points, capturing both branches.
+    let private twoVariableDraft (table : TableAndElementRotationModel) : TableAndElementRotationModel =
+        table
+        |> filmOver ExperimentControls.VaryR2 (ExperimentControls.ExperimentRangeEnd 20.0) (ExperimentControls.ExperimentRangeEnd 60.0) (ExperimentControls.ExperimentPointCount 3)
+        |> updateTableAndElementRotation ExpAddScanAxis
+        |> filmOver ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 90.0) (ExperimentControls.ExperimentPointCount 2)
+        |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
+
+    let private seriesNames (chart : ExperimentChart.ExperimentChart) : string list = chart.series |> List.map (fun s -> s.name.value)
+
+    [<Fact>]
+    let ``a two-variable scan draws one series per value of its outer variable, read on each captured branch`` () =
+        let table = polarizerFilmTable ()
+        let polarizer, film = (elem 2 table).id, (elem 3 table).id
+        // The reflected detector's light leaves the polarizer by T and the film by R; the seeded one's leaves both by T.
+        let objectsOn (detector : int) (model : TableAndElementRotationModel) : (Library.ElementId * BeamTree.BeamBranch) list =
+            (List.item detector model.sceneLayout.elements).path
+            |> List.filter (fun step -> step.element = polarizer || step.element = film)
+            |> List.map (fun step -> step.element, step.branch)
+        Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.TransmittedBeam ], objectsOn 1 table)
+        Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.ReflectedBeam ], objectsOn 4 table)
+        let drafted = twoVariableDraft table
+        let label = (List.head drafted.experimentCollection.draft.outerAxes).label.value
+        Assert.Equal("Sample #4", label)
+        let chart = drafted.experimentResult
+        let incidences = [ 20.0; 40.0; 60.0 ]
+        Assert.Equal<string list>(
+            [ for incidence in incidences do
+                  for branch in [ "T"; "R" ] -> $"Intensity ({branch}) — {label}: Incidence R2 %g{incidence}°" ],
+            seriesNames chart)
+        Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
+        Assert.Equal("Intensity (S₀)", chart.yLabel.value)
+        Assert.Equal(ExperimentChart.AngularXAxis, chart.xAxisKind)
+        for s in chart.series do
+            Assert.Equal<float list>([ 0.0; 90.0 ], s.points |> List.map (fun p -> p.x))
+        // The inner variable really varies the run: the film's in-plane optic axis turns with its spin.
+        Assert.True(
+            chart.series |> List.exists (fun s -> abs ((List.item 0 s.points).y - (List.item 1 s.points).y) > 1.0e-6),
+            "no series changes between R1 0° and 90°")
+
+        // Each group is the one-variable draft of R1 over 0…90° with the film turned to that incidence.
+        for incidence in incidences do
+            let turned =
+                { table with selection = ElementSelected (SceneElementIndex 3) }
+                |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees incidence))
+            Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.ReflectedBeam ], objectsOn 4 turned)
+            let reference =
+                turned
+                |> filmOver ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 90.0) (ExperimentControls.ExperimentPointCount 2)
+                |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
+            let referenceChart = reference.experimentResult
+            Assert.Equal<string list>([ "Intensity (T)"; "Intensity (R)" ], seriesNames referenceChart)
+            for referenceSeries in referenceChart.series do
+                let name = $"{referenceSeries.name.value} — {label}: Incidence R2 %g{incidence}°"
+                let drawn = chart.series |> List.find (fun s -> s.name.value = name)
+                Assert.Equal<float list>(referenceSeries.points |> List.map (fun p -> p.x), drawn.points |> List.map (fun p -> p.x))
+                for p, q in List.zip drawn.points referenceSeries.points do
+                    Assert.True(abs (p.y - q.y) <= 1.0e-12, $"{name} at R1 {p.x:R}: the scan read {p.y:R}, the turned film {q.y:R}")
+
+    [<Fact>]
+    let ``a collected multi-block experiment's chart holds every block's series`` () =
+        let table = polarizerFilmTable ()
+        let firstBlock =
+            table
+            |> filmOver ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 67.5) (ExperimentControls.ExperimentPointCount 4)
+            |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+        let committed =
+            firstBlock
+            |> updateTableAndElementRotation ExpAddScanBlock
+            |> twoVariableDraft
+            |> updateTableAndElementRotation ExpCommit
+        let experiment = Assert.Single committed.experimentCollection.experiments
+        Assert.Equal<Experiments.MeasurementMode list>(
+            [ Experiments.CaptureTransmitted; Experiments.CaptureBoth ], experiment.scan.blocks |> List.map (fun block -> block.capture))
+        Assert.Equal<int list>([ 1; 2 ], experiment.scan.blocks |> List.map (fun block -> List.length block.axes))
+        let chart = chartForExperiment committed experiment
+        Assert.Equal(7, List.length chart.series)
+        let first = List.head chart.series
+        let others = List.tail chart.series
+
+        // The first block's one series is its one-variable chart's, tagged with its block.
+        let oneVariable = Assert.Single firstBlock.experimentResult.series
+        Assert.Equal($"{oneVariable.name.value} — block 1", first.name.value)
+        Assert.Equal<float list>([ 0.0; 22.5; 45.0; 67.5 ], first.points |> List.map (fun p -> p.x))
+        Assert.Equal<ExperimentControls.ChartPoint list>(oneVariable.points, first.points)
+
+        // The second block's six are the two-variable draft's, each name ending with its block.
+        let twoVariable = (twoVariableDraft table).experimentResult
+        Assert.Equal<string list>(seriesNames twoVariable |> List.map (fun name -> $"{name}, block 2"), others |> List.map (fun s -> s.name.value))
+        for drawn, draft in List.zip others twoVariable.series do
+            Assert.Equal<ExperimentControls.ChartPoint list>(draft.points, drawn.points)
+        Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
+        Assert.Equal(firstBlock.experimentResult.title, chart.title)
+        Assert.Contains(experiment.description, chart.description.value)
+
+    [<Fact>]
+    let ``the export of a two-variable draft carries every series of its chart`` () =
+        let store = ExperimentExport.createInMemoryExperimentExport ()
+        let drafted = { twoVariableDraft (polarizerFilmTable ()) with experimentExport = store.proxy }
+        let chart = drafted.experimentResult
+        Assert.Equal(6, List.length chart.series)
+        let exported = updateTableAndElementRotation ExportExperimentData drafted
+        Assert.Equal<ControlCaption option>(Some (ControlCaption $"Exported 6 series ({chart.title.value})."), exported.exportStatus)
+        match store.exported () with
+        | [ run ] ->
+            Assert.Equal(chart.title.value, run.title.value)
+            Assert.Equal(chart.xLabel.value, run.xLabel.value)
+            Assert.Equal(chart.description.value, run.description.value)
+            Assert.Equal<string list>(seriesNames chart, run.series |> List.map (fun s -> s.name.value))
+            Assert.Equal<(float * float) list list>(
+                chart.series |> List.map (fun s -> s.points |> List.map (fun p -> p.x, p.y)),
+                run.series |> List.map (fun s -> s.points |> List.map (fun p -> p.x, p.y)))
+        | other -> Assert.Fail($"expected one exported run, got %d{List.length other}")
+
     // ============ spec 0050 S8.2 — the source slot's item is the run's source ============
 
     /// The HeNe preset on the shipped source item model (step 210).

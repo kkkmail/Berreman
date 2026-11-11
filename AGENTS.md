@@ -545,8 +545,9 @@ This is a spec-driven, gated repository.
   every element on the path acts in light order through its Mueller matrix from `ItemEvaluation`
   (a polarizer at its R1, every sample at its drawn incidence and spin for the branch the path
   leaves it by), and the source emits its own Stokes state times its intensity scale, by default
-  unpolarized with the unit scale after the first polarizer. The sample's
-  transmitted Mueller matrix is FLUX-normalized (`Propagation.sampleMuellerSpun`) — the engine's
+  unpolarized with the unit scale after the first polarizer. An experiment's chart is its scan's:
+  one series per value of the outer axes and captured branch, over the last axis of each block. The
+  sample's transmitted Mueller matrix is FLUX-normalized (`Propagation.sampleMuellerSpun`) — the engine's
   Mueller matrices are |E|²-based, its T is flux. Only a TUNABLE source (`SourceTuning`) can have
   its wavelength varied, within its limits, or set per experiment (`sourceWaveLengthOpt`).
 - **The table is the active setup.** Its elements are the setup's slots (`Setups.fs`), the source
