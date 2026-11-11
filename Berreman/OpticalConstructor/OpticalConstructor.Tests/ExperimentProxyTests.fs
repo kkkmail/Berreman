@@ -127,6 +127,180 @@ module ExperimentProxyTests =
         cases |> List.iter (fun (error, expected) -> Assert.Equal(expected, error.describe))
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
 
+    // ============================ spec 0050 S9.1: an experiment's scan ============================
+
+    // Test-local slots a scan varies (spec 0050 S9.1).
+    let private sample : ElementId = el "sample"
+    let private analyzer : ElementId = el "analyzer"
+
+    /// The plate's incidence over 20…60° in 3 points, A2's outer axis (001 §Q AT-2).
+    let private plateIncidence : ScanAxis =
+        {
+            elementId = sample
+            label = ElementLabel "Sample #1"
+            variable = VaryR2
+            range =
+                {
+                    min = Propagation.SweptValue 20.0
+                    max = Propagation.SweptValue 60.0
+                    points = Propagation.CurvePointCount 3
+                }
+        }
+
+    /// The plate's azimuth over 0…90° in 2 points, A2's inner axis.
+    let private plateAzimuthPair : ScanAxis =
+        {
+            plateIncidence with
+                variable = VaryR1
+                range =
+                    {
+                        min = Propagation.SweptValue 0.0
+                        max = Propagation.SweptValue 90.0
+                        points = Propagation.CurvePointCount 2
+                    }
+        }
+
+    /// The plate's four azimuths 0…67.5°, A1's one axis.
+    let private plateAzimuths : ScanAxis =
+        {
+            plateAzimuthPair with
+                range =
+                    {
+                        min = Propagation.SweptValue 0.0
+                        max = Propagation.SweptValue 67.5
+                        points = Propagation.CurvePointCount 4
+                    }
+        }
+
+    /// A2's design: incidence × azimuth, each configuration read in T then R.
+    let private incidenceByAzimuthBoth : ScanBlock =
+        {
+            axes = [ plateIncidence; plateAzimuthPair ]
+            capture = CaptureBoth
+        }
+
+    /// A1's design: the four azimuths read in T.
+    let private azimuthsInT : ScanBlock =
+        {
+            axes = [ plateAzimuths ]
+            capture = CaptureTransmitted
+        }
+
+    [<Fact>]
+    let ``a range sweeps its points evenly from its minimum to its maximum`` () : unit =
+        // The dial 0…360 in steps of 20 (001 §K).
+        let dial : VariableRange =
+            {
+                min = Propagation.SweptValue 0.0
+                max = Propagation.SweptValue 360.0
+                points = Propagation.CurvePointCount 19
+            }
+        Assert.Equal<Propagation.SweptValue list>([ for step in 0 .. 18 -> Propagation.SweptValue (20.0 * float step) ], dial.sweptValues)
+
+        let falling : VariableRange =
+            {
+                min = Propagation.SweptValue 89.0
+                max = Propagation.SweptValue 0.0
+                points = Propagation.CurvePointCount 3
+            }
+        Assert.Equal<Propagation.SweptValue list>(
+            [ Propagation.SweptValue 89.0; Propagation.SweptValue 44.5; Propagation.SweptValue 0.0 ], falling.sweptValues)
+
+        // One point is read as two, as chartForRun reads it: the range's two ends.
+        let single : VariableRange =
+            {
+                falling with points = Propagation.CurvePointCount 1
+            }
+        Assert.Equal<Propagation.SweptValue list>([ Propagation.SweptValue 89.0; Propagation.SweptValue 0.0 ], single.sweptValues)
+
+    [<Fact>]
+    let ``a scan block's points are the product of its axes, the first outermost, each read on the block's capture`` () : unit =
+        let points = incidenceByAzimuthBoth.points
+        Assert.Equal<Propagation.SweptValue list list>(
+            [
+                [ Propagation.SweptValue 20.0; Propagation.SweptValue 0.0 ]
+                [ Propagation.SweptValue 20.0; Propagation.SweptValue 90.0 ]
+                [ Propagation.SweptValue 40.0; Propagation.SweptValue 0.0 ]
+                [ Propagation.SweptValue 40.0; Propagation.SweptValue 90.0 ]
+                [ Propagation.SweptValue 60.0; Propagation.SweptValue 0.0 ]
+                [ Propagation.SweptValue 60.0; Propagation.SweptValue 90.0 ]
+            ],
+            points |> List.map (fun point -> point.settings |> List.map (fun setting -> setting.value)))
+        Assert.All(points, fun point ->
+            Assert.Equal<ElementId list>([ sample; sample ], point.settings |> List.map (fun setting -> setting.elementId))
+            Assert.Equal<VariableParameter list>([ VaryR2; VaryR1 ], point.settings |> List.map (fun setting -> setting.variable))
+            Assert.Equal(CaptureBoth, point.capture))
+
+        let first : ScanPoint =
+            {
+                settings =
+                    [
+                        { elementId = sample; variable = VaryR2; value = Propagation.SweptValue 20.0 }
+                        { elementId = sample; variable = VaryR1; value = Propagation.SweptValue 0.0 }
+                    ]
+                capture = CaptureBoth
+            }
+        Assert.Equal<ScanPoint>(first, List.head points)
+
+        // A block of no axis is one point with no setting: a dark line.
+        let noAxis : ScanBlock =
+            {
+                axes = []
+                capture = CaptureReflected
+            }
+        Assert.Equal<ScanPoint list>([ { settings = []; capture = CaptureReflected } ], noAxis.points)
+
+    [<Fact>]
+    let ``a scan is its blocks' points in order, so one experiment joins two designs`` () : unit =
+        // The optic-axis plate: A1's azimuths read in T, then A2's incidence × azimuth read in T and R (001 §Q AT-2).
+        let plate : ExperimentScan =
+            {
+                blocks = [ azimuthsInT; incidenceByAzimuthBoth ]
+                sourceWaveLengthOpt = None
+            }
+        let points = plate.points
+        Assert.Equal(10, points.Length)
+        Assert.Equal<MeasurementMode list>(
+            List.replicate 4 CaptureTransmitted @ List.replicate 6 CaptureBoth, points |> List.map (fun point -> point.capture))
+        Assert.Equal<ScanPoint list>(azimuthsInT.points @ incidenceByAzimuthBoth.points, points)
+        Assert.Equal<Propagation.SweptValue list list>(
+            [
+                [ Propagation.SweptValue 0.0 ]
+                [ Propagation.SweptValue 22.5 ]
+                [ Propagation.SweptValue 45.0 ]
+                [ Propagation.SweptValue 67.5 ]
+            ],
+            points |> List.take 4 |> List.map (fun point -> point.settings |> List.map (fun setting -> setting.value)))
+        Assert.Equal<ScanAxis list>([ plateAzimuths; plateIncidence; plateAzimuthPair ], plate.axes)
+        Assert.Equal<string list>(
+            [
+                "Sample #1: vary Rotation R1 over 0…67.5 ° (4 pts)"
+                "Sample #1: vary Incidence R2 over 20…60 ° (3 pts)"
+                "Sample #1: vary Rotation R1 over 0…90 ° (2 pts)"
+            ],
+            plate.axes |> List.map (fun axis -> axis.describe))
+
+        // Today's experiment: one block of one axis, keeping the tunable source's wavelength.
+        let analyzerTurn : ScanAxis =
+            {
+                elementId = analyzer
+                label = ElementLabel "Linear polarizer #4"
+                variable = VaryR1
+                range = VariableRange.forVariable VaryR1
+            }
+        let heNeLine = Berreman.Fields.WaveLength.nm 632.8<nm>
+        let expectedOneAxis : ExperimentScan =
+            {
+                blocks = [ { axes = [ analyzerTurn ]; capture = CaptureTransmitted } ]
+                sourceWaveLengthOpt = Some heNeLine
+            }
+        Assert.Equal<ExperimentScan>(expectedOneAxis, ExperimentScan.oneAxis analyzerTurn CaptureTransmitted (Some heNeLine))
+
+        let dark = ExperimentScan.darkLine CaptureTransmitted
+        Assert.Equal<ScanPoint list>([ { settings = []; capture = CaptureTransmitted } ], dark.points)
+        Assert.Empty(dark.axes)
+        Assert.Equal<Berreman.Fields.WaveLength option>(None, dark.sourceWaveLengthOpt)
+
     // ============================ the editable collection (choose / commit / edit / remove) ============================
 
     /// A collection with the source picked (λ variable, both capture allowed) — the common editing start.

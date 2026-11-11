@@ -108,6 +108,14 @@ module Experiments =
             | VaryR2 -> { min = SweptValue 0.0; max = SweptValue 89.0; points = CurvePointCount 91 }
             | VaryWaveLength -> { min = SweptValue 200.0; max = SweptValue 800.0; points = CurvePointCount 91 }
 
+        /// `max 2 points` values evenly spaced from `min` to `max`, both ends included: the grid `chartForRun` draws, in its
+        /// arithmetic order so every number is kept (spec 0050 S9.1).
+        member this.sweptValues : SweptValue list =
+            let n = max 2 this.points.value
+            let lo = this.min.value
+            let hi = this.max.value
+            [ for k in 0 .. n - 1 -> SweptValue (lo + (hi - lo) * float k / float (n - 1)) ]
+
     /// A stable identity for an experiment in the collection (a monotonic int — deterministic, so add /
     /// edit / remove are unit-testable without a Guid clock).
     type ExperimentId =
@@ -232,6 +240,93 @@ module Experiments =
         /// No element chosen yet (a fresh draft, a dark line).
         static member blank : ElementLabel = ElementLabel ""
 
+    /// One quantity of one slot over its range, the slot's label as the experiment captured it (spec 0050 S9.1).
+    type ScanAxis =
+        {
+            elementId : ElementId
+            label : ElementLabel
+            variable : VariableParameter
+            range : VariableRange
+        }
+
+        /// `<label>: vary <variable> over <min>…<max> <unit> (<points> pts)`: an experiment description's varied text
+        /// (spec 0050 S9.1).
+        member this.describe : string =
+            $"%s{this.label.value}: vary %s{this.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{this.variable.unitLabel} (%d{this.range.points.value} pts)"
+
+    /// One axis of a scan at one of its values (spec 0050 S9.1).
+    type ScanSetting =
+        {
+            elementId : ElementId
+            variable : VariableParameter
+            value : SweptValue
+        }
+
+    /// One configuration: each axis of its block at one value, read on the block's capture (spec 0050 S9.1).
+    type ScanPoint =
+        {
+            settings : ScanSetting list
+            capture : MeasurementMode
+        }
+
+    /// A product of axes read on one capture; a block of no axis is a dark line (spec 0050 S9.1, 001 §K).
+    type ScanBlock =
+        {
+            axes : ScanAxis list
+            capture : MeasurementMode
+        }
+
+        /// The product of the axes' swept values, the first axis outermost, each point on the block's capture: a capture
+        /// of both branches is the innermost observable, as A2 reads T then R (spec 0050 S9.1, 001 §Q AT-2).
+        member this.points : ScanPoint list =
+            List.foldBack
+                (fun (axis : ScanAxis) (inner : ScanSetting list list) ->
+                    [
+                        for value in axis.range.sweptValues do
+                            let setting : ScanSetting =
+                                {
+                                    elementId = axis.elementId
+                                    variable = axis.variable
+                                    value = value
+                                }
+                            for rest in inner -> setting :: rest
+                    ])
+                this.axes
+                [ [] ]
+            |> List.map (fun (settings : ScanSetting list) ->
+                {
+                    settings = settings
+                    capture = this.capture
+                })
+
+    /// What an experiment varies, block after block, and the wavelength a tunable source is set to while no axis varies
+    /// it, spec 0046's `sourceWaveLengthOpt` (spec 0050 S9.1).
+    type ExperimentScan =
+        {
+            blocks : ScanBlock list
+            sourceWaveLengthOpt : WaveLength option
+        }
+
+        /// The blocks' points, block after block (spec 0050 S9.1).
+        member this.points : ScanPoint list = this.blocks |> List.collect (fun block -> block.points)
+
+        /// The blocks' axes, block after block (spec 0050 S9.1).
+        member this.axes : ScanAxis list = this.blocks |> List.collect (fun block -> block.axes)
+
+        /// One block of that one axis: a single-variable experiment (spec 0050 S9.1).
+        static member oneAxis (axis : ScanAxis) (capture : MeasurementMode) (sourceWaveLengthOpt : WaveLength option) : ExperimentScan =
+            {
+                blocks = [ { axes = [ axis ]; capture = capture } ]
+                sourceWaveLengthOpt = sourceWaveLengthOpt
+            }
+
+        /// One block of no axis, at the source's own wavelength: a dark line (spec 0050 S9.1).
+        static member darkLine (capture : MeasurementMode) : ExperimentScan =
+            {
+                blocks = [ { axes = []; capture = capture } ]
+                sourceWaveLengthOpt = None
+            }
+
     /// The slot an experiment varies, named by its id in the referenced setup revision, with its label as the experiment
     /// captured it so a row outlives the slot; `Experiment.varied = None` is a dark line (spec 0038 Part I; spec 0050 S8.2).
     type VariedElement =
@@ -266,11 +361,18 @@ module Experiments =
 
         /// A short, human-readable description (the collection row + readout use this). A varied
         /// experiment names the swept element / quantity / range / capture; a dark line names its setup
-        /// revision and capture (spec 0050 S8.2).
+        /// revision and capture (spec 0050 S8.2); the varied text is its axis's `describe` (spec 0050 S9.1).
         member this.description : string =
             match this.varied with
             | Some v ->
-                $"%s{this.variedLabel.value}: vary %s{v.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{v.variable.unitLabel} (%d{this.range.points.value} pts), capture %s{this.measurement.label}"
+                let axis : ScanAxis =
+                    {
+                        elementId = v.elementId
+                        label = v.label
+                        variable = v.variable
+                        range = this.range
+                    }
+                $"%s{axis.describe}, capture %s{this.measurement.label}"
             | None ->
                 $"Dark line on setup %s{this.setup.describe}, capture %s{this.measurement.label}"
 
