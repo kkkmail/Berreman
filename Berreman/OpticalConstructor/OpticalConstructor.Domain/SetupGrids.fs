@@ -158,3 +158,104 @@ module SetupGrids =
                             Setup.create name slots known |> Result.map (fun setup -> earlier @ [ setup ])))
 
             this.ticked |> List.fold setupOf (Ok [])
+
+    /// One slot's options as the grid panel edits them: the items tried in it and the R1 angles each is tried at (spec
+    /// 0050 S8.4; 001 §J).
+    type GridSlotDraft =
+        {
+            slot : Library.ElementId
+            items : ItemId list
+            angles : Angle list
+        }
+
+    /// The drafts with `edited` in its slot's place, else after them; one left with no item and no angle is dropped, so
+    /// an undone edit leaves the drafts as they were (spec 0050 S8.4).
+    let private withSlotDraft (drafts : GridSlotDraft list) (edited : GridSlotDraft) : GridSlotDraft list =
+        let placed : GridSlotDraft list =
+            if drafts |> List.exists (fun draft -> draft.slot = edited.slot) then
+                drafts |> List.map (fun draft -> if draft.slot = edited.slot then edited else draft)
+            else
+                drafts @ [ edited ]
+
+        placed |> List.filter (fun draft -> not (List.isEmpty draft.items && List.isEmpty draft.angles))
+
+    /// The grid panel's edits: each edited slot's draft, first edited first, and the combinations the user unticked
+    /// (spec 0050 S8.4; 001 §J).
+    type SetupGridDraft =
+        {
+            slots : GridSlotDraft list
+            unticked : GridCombination list
+        }
+
+        /// No slot edited and nothing unticked (spec 0050 S8.4).
+        static member empty : SetupGridDraft = { slots = []; unticked = [] }
+
+        /// The slot's draft, or one with no item and no angle (spec 0050 S8.4).
+        member this.slotDraft (slot : Library.ElementId) : GridSlotDraft =
+            match this.slots |> List.tryFind (fun draft -> draft.slot = slot) with
+            | Some draft -> draft
+            | None -> { slot = slot; items = []; angles = [] }
+
+        /// The item tried in the slot after its others, or no longer tried when it is (spec 0050 S8.4).
+        member this.withItemToggled (slot : Library.ElementId) (item : ItemId) : SetupGridDraft =
+            let draft = this.slotDraft slot
+
+            let items : ItemId list =
+                if List.contains item draft.items then
+                    draft.items |> List.filter (fun held -> held <> item)
+                else
+                    draft.items @ [ item ]
+
+            { this with slots = withSlotDraft this.slots { draft with items = items } }
+
+        /// The slot's items also tried at the angle, listed once (spec 0050 S8.4).
+        member this.withGridAngle (slot : Library.ElementId) (angle : Angle) : SetupGridDraft =
+            let draft = this.slotDraft slot
+
+            if List.contains angle draft.angles then
+                this
+            else
+                { this with slots = withSlotDraft this.slots { draft with angles = draft.angles @ [ angle ] } }
+
+        /// The slot's items no longer tried at the angle (spec 0050 S8.4).
+        member this.withoutGridAngle (slot : Library.ElementId) (angle : Angle) : SetupGridDraft =
+            let draft = this.slotDraft slot
+            let angles : Angle list = draft.angles |> List.filter (fun held -> held <> angle)
+            { this with slots = withSlotDraft this.slots { draft with angles = angles } }
+
+        /// The combination unticked after the others, or ticked again when it is unticked (spec 0050 S8.4).
+        member this.withCombinationToggled (combination : GridCombination) : SetupGridDraft =
+            if List.contains combination this.unticked then
+                { this with unticked = this.unticked |> List.filter (fun held -> held <> combination) }
+            else
+                { this with unticked = this.unticked @ [ combination ] }
+
+        /// The grid in light order, one axis per slot whose draft holds an item, each item at each angle or the slot's
+        /// R1; `SetupGrid.create` unticks the impossible, then the draft's unticks it lists (spec 0050 S8.3, S8.4).
+        member this.gridOver
+            (table : SetupSlot list)
+            (items : Item list)
+            (choiceOf : Item -> ItemModelChoice option)
+            : SetupGrid =
+            let axisOf (roled : RoledSlot) : SlotOptions option =
+                let draft = this.slotDraft roled.slot.id
+
+                let angles : Angle list =
+                    match draft.angles with
+                    | [] -> [ roled.slot.placement.r1 ]
+                    | listed -> listed
+
+                match draft.items with
+                | [] -> None
+                | tried ->
+                    let choiceAt (item : ItemId) (angle : Angle) : SlotChoice = { itemOpt = Some item; r1 = angle }
+                    let choices = tried |> List.collect (fun item -> angles |> List.map (choiceAt item))
+                    let axis : SlotOptions = { slot = roled.slot.id; choices = choices }
+                    Some axis
+
+            let grid = SetupGrid.create (SetupSlot.inLightOrder table |> List.choose axisOf) table items choiceOf
+            let listed = grid.combinations
+
+            this.unticked
+            |> List.filter (fun combination -> List.contains combination listed)
+            |> List.fold (fun (made : SetupGrid) combination -> made.untick combination) grid

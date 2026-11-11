@@ -288,3 +288,95 @@ module SetupGridTests =
         match refusalOf offTable with
         | UnknownSetupSlotErr reason -> Assert.Contains("'sampleB'", reason)
         | other -> Assert.Fail($"expected UnknownSetupSlotErr, got {other.describe}")
+
+    /// Spec 0050 S8.4: the grid panel's edits, made through the draft alone.
+    let private withItems (slot : SetupSlot) (tried : Item list) (draft : SetupGridDraft) : SetupGridDraft =
+        tried |> List.fold (fun (made : SetupGridDraft) item -> made.withItemToggled slot.id item.id) draft
+
+    let private withAngles (slot : SetupSlot) (angles : Angle list) (draft : SetupGridDraft) : SetupGridDraft =
+        angles |> List.fold (fun (made : SetupGridDraft) angle -> made.withGridAngle slot.id angle) draft
+
+    [<Fact>]
+    let ``a grid draft tries each ticked item of a slot at each of its angles, its slots in light order`` () : unit =
+        // lpB turned, so the R1 its choice is tried at is told apart from the 0° the samples are tried at.
+        let lpBTurned : SetupSlot = { lpB with placement = { lpB.placement with r1 = Angle.degree 30.0<deg> } }
+        let turnedTable = table |> List.map (fun slot -> if slot.id = lpB.id then lpBTurned else slot)
+        let at45 = Angle.degree 45.0<deg>
+
+        let draft =
+            SetupGridDraft.empty
+            |> withItems lpB [ cpl2 ]
+            |> withItems sampleA [ qz; lr ]
+            |> withAngles sampleA [ zero; at45 ]
+
+        let lpBDraft : GridSlotDraft = { slot = lpB.id; items = [ cpl2.id ]; angles = [] }
+        let sampleADraft : GridSlotDraft = { slot = sampleA.id; items = [ qz.id; lr.id ]; angles = [ zero; at45 ] }
+        Assert.Equal<GridSlotDraft list>([ lpBDraft; sampleADraft ], draft.slots)
+
+        let grid = draft.gridOver turnedTable kitItems choiceOf
+        let samples = [ holdingAt qz zero; holdingAt qz at45; holdingAt lr zero; holdingAt lr at45 ]
+        let cpl2AtR1 = holdingAt cpl2 lpBTurned.placement.r1
+        Assert.Equal<SlotOptions list>([ axisOf sampleA samples; axisOf lpB [ cpl2AtR1 ] ], grid.axes)
+
+        let expected : GridCombination list = samples |> List.map (fun sample -> combinationOf [ sampleA, sample; lpB, cpl2AtR1 ])
+        Assert.Equal<GridCombination list>(expected, grid.combinations)
+        Assert.Equal<GridCombination list>(expected, grid.ticked)
+        Assert.Empty(grid.unticked)
+
+    [<Fact>]
+    let ``ticking an item or adding an angle twice changes nothing more, removing undoes it, and a slot with no item is no axis`` () : unit =
+        let qzOnce = SetupGridDraft.empty.withItemToggled sampleA.id qz.id
+        Assert.Equal<ItemId list>([ qz.id ], (qzOnce.slotDraft sampleA.id).items)
+        Assert.Equal<SetupGridDraft>(SetupGridDraft.empty, qzOnce.withItemToggled sampleA.id qz.id)
+
+        let at0 = SetupGridDraft.empty.withGridAngle sampleA.id zero
+        let at0Twice = at0.withGridAngle sampleA.id zero
+        Assert.Equal<Angle list>([ zero ], (at0Twice.slotDraft sampleA.id).angles)
+        Assert.Equal<SetupGridDraft>(at0, at0Twice)
+
+        let noAngle = at0Twice.withoutGridAngle sampleA.id zero
+        Assert.Empty((noAngle.slotDraft sampleA.id).angles)
+        Assert.Equal<SetupGridDraft>(SetupGridDraft.empty, noAngle)
+
+        // An angle with no item tries nothing: sampleA is no axis, beside lpB's.
+        let angleOnly = at0.gridOver table kitItems choiceOf
+        Assert.Empty(angleOnly.axes)
+        let besideLpB = (at0.withItemToggled lpB.id cpl2.id).gridOver table kitItems choiceOf
+        Assert.Equal<SlotOptions list>([ axisOf lpB [ holdingAt cpl2 lpB.placement.r1 ] ], besideLpB.axes)
+
+        let sampleB = Library.ElementId "sampleB"
+        let offTable = SetupGridDraft.empty.withItemToggled sampleB qz.id
+        Assert.Equal<ItemId list>([ qz.id ], (offTable.slotDraft sampleB).items)
+        Assert.Empty((offTable.gridOver table kitItems choiceOf).axes)
+
+        let untouched : GridSlotDraft = { slot = lpA.id; items = []; angles = [] }
+        Assert.Equal<GridSlotDraft>(untouched, qzOnce.slotDraft lpA.id)
+
+    [<Fact>]
+    let ``a draft's unticked combinations stay unticked beside the impossible ones while they are listed`` () : unit =
+        let draft = SetupGridDraft.empty |> withItems sampleA [ qz; ghost ]
+        let qzOne = combinationOf [ sampleA, holdingAt qz sampleA.placement.r1 ]
+        let ghostOne = combinationOf [ sampleA, holdingAt ghost sampleA.placement.r1 ]
+        let gridOf (edited : SetupGridDraft) : SetupGrid = edited.gridOver table kitItems choiceOf
+
+        let fresh = gridOf draft
+        Assert.Equal<GridCombination list>([ qzOne; ghostOne ], fresh.combinations)
+        Assert.Equal<GridCombination list>([ ghostOne ], fresh.unticked)
+        Assert.Equal<GridCombination list>([ qzOne ], fresh.ticked)
+
+        let qzLeftOut = draft.withCombinationToggled qzOne
+        Assert.Equal<GridCombination list>([ qzOne ], qzLeftOut.unticked)
+        Assert.Equal<GridCombination list>([ ghostOne; qzOne ], (gridOf qzLeftOut).unticked)
+        Assert.Empty((gridOf qzLeftOut).ticked)
+
+        // An untick of a combination the grid already leaves out is not listed twice.
+        let ghostLeftOut = qzLeftOut.withCombinationToggled ghostOne
+        Assert.Equal<GridCombination list>([ ghostOne; qzOne ], (gridOf ghostLeftOut).unticked)
+
+        let qzBack = qzLeftOut.withCombinationToggled qzOne
+        Assert.Equal<SetupGridDraft>(draft, qzBack)
+        Assert.Equal<GridCombination list>([ qzOne ], (gridOf qzBack).ticked)
+
+        let qzGone = qzLeftOut.withItemToggled sampleA.id qz.id
+        Assert.Equal<GridCombination list>([ ghostOne ], (gridOf qzGone).combinations)
+        Assert.Equal<GridCombination list>([ ghostOne ], (gridOf qzGone).unticked)
