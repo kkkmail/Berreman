@@ -2,6 +2,7 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.Globalization
+open Microsoft.FSharp.Reflection
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
@@ -419,6 +420,77 @@ module KitTests =
 
         Assert.Equal<ImportProfileName>(intensity, OpticalConstructor.Domain.Library.Intensity.builtInProfile)
         Assert.Equal<ImportProfileName>(ellipsometric, OpticalConstructor.Domain.Library.Ellipsometer.builtInProfile)
+
+    /// A closed set's `all` is `cases` in order, every case of the union, tagged 1 to n and read back by `tryOfWire`,
+    /// with 0 and n + 1 refused, and each case renders its text (spec 0050 S9.2).
+    let private assertClosedSet<'Tag when 'Tag : equality>
+        (all : 'Tag list)
+        (tagOf : 'Tag -> int)
+        (tryOfWire : int -> 'Tag option)
+        (textOf : 'Tag -> string)
+        (cases : ('Tag * string) list)
+        : unit =
+        let count = List.length cases
+        Assert.Equal<'Tag list>(cases |> List.map fst, all)
+        Assert.Equal(count, FSharpType.GetUnionCases(typeof<'Tag>).Length)
+        Assert.Equal<int list>([ 1 .. count ], all |> List.map tagOf)
+
+        for case, text in cases do
+            Assert.Equal<'Tag option>(Some case, tryOfWire (tagOf case))
+            Assert.Equal<string>(text, textOf case)
+
+        for tag in [ 0; count + 1 ] do
+            Assert.Equal<'Tag option>(None, tryOfWire tag)
+
+    [<Fact>]
+    let ``the closed sets of an import profile round-trip their disk tags and render their texts`` () : unit =
+        [ CommaDelimiter, "comma"; SemicolonDelimiter, "semicolon"; TabDelimiter, "tab" ]
+        |> assertClosedSet DataDelimiter.all (fun delimiter -> delimiter.value) DataDelimiter.tryOfWire (fun delimiter -> delimiter.text)
+
+        [ HeaderOnFirstRow, "first row is a header"; NoHeaderRow, "no header row" ]
+        |> assertClosedSet HeaderRowChoice.all (fun header -> header.value) HeaderRowChoice.tryOfWire (fun header -> header.text)
+
+        [ ByteOrderMarkPresent, "byte-order mark"; ByteOrderMarkAbsent, "no byte-order mark" ]
+        |> assertClosedSet ByteOrderMark.all (fun mark -> mark.value) ByteOrderMark.tryOfWire (fun mark -> mark.text)
+
+        [
+            DegreeColumnUnit, "°"
+            RadianColumnUnit, "rad"
+            NanometerColumnUnit, "nm"
+            MicrometerColumnUnit, "µm"
+            ElectronVoltColumnUnit, "eV"
+            WavenumberColumnUnit, "cm⁻¹"
+        ]
+        |> assertClosedSet ScanColumnUnit.all (fun columnUnit -> columnUnit.value) ScanColumnUnit.tryOfWire (fun columnUnit -> columnUnit.text)
+
+        [ RawDialReading, "raw dial reading"; PhysicalScanValue, "physical value" ]
+        |> assertClosedSet ScanReading.all (fun reading -> reading.value) ScanReading.tryOfWire (fun reading -> reading.text)
+
+        Assert.Equal(',', CommaDelimiter.character)
+        Assert.Equal(';', SemicolonDelimiter.character)
+        Assert.Equal('\t', TabDelimiter.character)
+
+        let spectralUnits : (ScanColumnUnit * OpticalConstructor.Domain.Units.UnitOfMeasure option) list =
+            [
+                DegreeColumnUnit, None
+                RadianColumnUnit, None
+                NanometerColumnUnit, Some OpticalConstructor.Domain.Units.Nanometer
+                MicrometerColumnUnit, Some OpticalConstructor.Domain.Units.Micrometer
+                ElectronVoltColumnUnit, Some OpticalConstructor.Domain.Units.ElectronVolt
+                WavenumberColumnUnit, Some OpticalConstructor.Domain.Units.Wavenumber
+            ]
+
+        for columnUnit, expected in spectralUnits do
+            Assert.Equal<OpticalConstructor.Domain.Units.UnitOfMeasure option>(expected, columnUnit.spectralUnitOpt)
+
+        for below in [ 0; -1 ] do
+            Assert.Equal<DataColumnNumber option>(None, DataColumnNumber.tryCreate below)
+        Assert.Equal<DataColumnNumber option>(Some (DataColumnNumber 1), DataColumnNumber.tryCreate 1)
+        Assert.Equal(0, (DataColumnNumber 1).index)
+        Assert.Equal(2, (DataColumnNumber 3).index)
+
+        let builtInNames = [ "Intensity series"; "Ellipsometric series"; "Phone ROI CSV"; "Mueller-matrix observations" ]
+        Assert.Equal<ImportProfileName list>(builtInNames |> List.map ImportProfileName, ImportProfileName.builtIns)
 
     [<Fact>]
     let ``a setup name keeps its text, refuses a blank one and takes its file stem from the shared name rule`` () : unit =

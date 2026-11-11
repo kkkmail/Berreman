@@ -115,6 +115,218 @@ module Kit =
 
         member this.value : string = let (SendExcludeGlob text) = this in text
 
+    /// The name a kit's import profile is stored and picked under (spec 0050 S9.1; S9.2 keeps the profiles in `.kit-json`).
+    type ImportProfileName =
+        | ImportProfileName of string
+
+        member this.value : string = let (ImportProfileName text) = this in text
+
+        /// The text as given; an empty or white-space text names no profile (spec 0050 S9.1).
+        static member tryCreate (text : string) : ImportProfileName option =
+            if String.IsNullOrWhiteSpace text then None else Some (ImportProfileName text)
+
+        /// The built-in profile over `DataFileText.parseIntensitySeries`, an X,Y intensity file (spec 0050 S9.1).
+        static member intensitySeries : ImportProfileName = ImportProfileName "Intensity series"
+
+        /// The built-in profile over `DataFileText.parseEllipsometricSeries`, a λ, Ψ, Δ file (spec 0050 S9.1).
+        static member ellipsometricSeries : ImportProfileName = ImportProfileName "Ellipsometric series"
+
+        /// The built-in profile over `DataFileText.parseMuellerCsv` (`MuellerDataStore.fs`), a phone's ROI capture CSV
+        /// (spec 0050 S9.2).
+        static member phoneRoiCsv : ImportProfileName = ImportProfileName "Phone ROI CSV"
+
+        /// The built-in profile over the Mueller-matrix observation file (spec 0050 S9.2).
+        static member muellerObservations : ImportProfileName = ImportProfileName "Mueller-matrix observations"
+
+        /// The four built-in profiles (spec 0050 S9.2).
+        static member builtIns : ImportProfileName list =
+            [
+                ImportProfileName.intensitySeries
+                ImportProfileName.ellipsometricSeries
+                ImportProfileName.phoneRoiCsv
+                ImportProfileName.muellerObservations
+            ]
+
+    /// The character between a row's cells in a lab file; its disk tag is an int, 1 to 3 in case order
+    /// (spec 0050 S9.2).
+    type DataDelimiter =
+        | CommaDelimiter
+        | SemicolonDelimiter
+        | TabDelimiter
+
+        member this.value : int =
+            match this with
+            | CommaDelimiter -> 1
+            | SemicolonDelimiter -> 2
+            | TabDelimiter -> 3
+
+        /// The delimiter a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S9.2).
+        static member tryOfWire (tag : int) : DataDelimiter option =
+            match tag with
+            | 1 -> Some CommaDelimiter
+            | 2 -> Some SemicolonDelimiter
+            | 3 -> Some TabDelimiter
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | CommaDelimiter -> "comma"
+            | SemicolonDelimiter -> "semicolon"
+            | TabDelimiter -> "tab"
+
+        /// Every delimiter in tag order (spec 0050 S9.2).
+        static member all : DataDelimiter list = [ CommaDelimiter; SemicolonDelimiter; TabDelimiter ]
+
+        member this.character : char =
+            match this with
+            | CommaDelimiter -> ','
+            | SemicolonDelimiter -> ';'
+            | TabDelimiter -> '\t'
+
+    /// Whether a lab file's first row names its columns; its disk tag is an int, 1 to 2 in case order (spec 0050 S9.2).
+    type HeaderRowChoice =
+        | HeaderOnFirstRow
+        | NoHeaderRow
+
+        member this.value : int =
+            match this with
+            | HeaderOnFirstRow -> 1
+            | NoHeaderRow -> 2
+
+        /// The choice a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S9.2).
+        static member tryOfWire (tag : int) : HeaderRowChoice option =
+            match tag with
+            | 1 -> Some HeaderOnFirstRow
+            | 2 -> Some NoHeaderRow
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | HeaderOnFirstRow -> "first row is a header"
+            | NoHeaderRow -> "no header row"
+
+        /// Both choices in tag order (spec 0050 S9.2).
+        static member all : HeaderRowChoice list = [ HeaderOnFirstRow; NoHeaderRow ]
+
+    /// Whether the lab's files start with the UTF-8 byte-order mark; the kit drops it before any read (step 128), so
+    /// the profile keeps it for the wizard and the files the app writes. Its disk tag is an int, 1 to 2 (spec 0050 S9.2).
+    type ByteOrderMark =
+        | ByteOrderMarkPresent
+        | ByteOrderMarkAbsent
+
+        member this.value : int =
+            match this with
+            | ByteOrderMarkPresent -> 1
+            | ByteOrderMarkAbsent -> 2
+
+        /// The mark a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S9.2).
+        static member tryOfWire (tag : int) : ByteOrderMark option =
+            match tag with
+            | 1 -> Some ByteOrderMarkPresent
+            | 2 -> Some ByteOrderMarkAbsent
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | ByteOrderMarkPresent -> "byte-order mark"
+            | ByteOrderMarkAbsent -> "no byte-order mark"
+
+        /// Both cases in tag order (spec 0050 S9.2).
+        static member all : ByteOrderMark list = [ ByteOrderMarkPresent; ByteOrderMarkAbsent ]
+
+    /// The unit a scan column's numbers are in; its disk tag is an int, 1 to 6 in case order (spec 0050 S9.2).
+    type ScanColumnUnit =
+        | DegreeColumnUnit
+        | RadianColumnUnit
+        | NanometerColumnUnit
+        | MicrometerColumnUnit
+        | ElectronVoltColumnUnit
+        | WavenumberColumnUnit
+
+        member this.value : int =
+            match this with
+            | DegreeColumnUnit -> 1
+            | RadianColumnUnit -> 2
+            | NanometerColumnUnit -> 3
+            | MicrometerColumnUnit -> 4
+            | ElectronVoltColumnUnit -> 5
+            | WavenumberColumnUnit -> 6
+
+        /// The unit a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S9.2).
+        static member tryOfWire (tag : int) : ScanColumnUnit option =
+            match tag with
+            | 1 -> Some DegreeColumnUnit
+            | 2 -> Some RadianColumnUnit
+            | 3 -> Some NanometerColumnUnit
+            | 4 -> Some MicrometerColumnUnit
+            | 5 -> Some ElectronVoltColumnUnit
+            | 6 -> Some WavenumberColumnUnit
+            | _ -> None
+
+        /// A spectral unit's symbol is its `Units.UnitOfMeasure.abbreviation`, the one place it is written
+        /// (spec 0050 S9.2).
+        member this.text : string =
+            match this with
+            | DegreeColumnUnit -> "°"
+            | RadianColumnUnit -> "rad"
+            | NanometerColumnUnit -> Units.Nanometer.abbreviation
+            | MicrometerColumnUnit -> Units.Micrometer.abbreviation
+            | ElectronVoltColumnUnit -> Units.ElectronVolt.abbreviation
+            | WavenumberColumnUnit -> Units.Wavenumber.abbreviation
+
+        /// Every unit in tag order (spec 0050 S9.2).
+        static member all : ScanColumnUnit list =
+            [ DegreeColumnUnit; RadianColumnUnit; NanometerColumnUnit; MicrometerColumnUnit; ElectronVoltColumnUnit; WavenumberColumnUnit ]
+
+        /// The spectral unit of a wavelength, energy or wavenumber column; an angle column has none (spec 0050 S9.2).
+        member this.spectralUnitOpt : Units.UnitOfMeasure option =
+            match this with
+            | DegreeColumnUnit
+            | RadianColumnUnit -> None
+            | NanometerColumnUnit -> Some Units.Nanometer
+            | MicrometerColumnUnit -> Some Units.Micrometer
+            | ElectronVoltColumnUnit -> Some Units.ElectronVolt
+            | WavenumberColumnUnit -> Some Units.Wavenumber
+
+    /// Whether a scan column holds the reading on an item's dial or the physical value (001 §I: experiments record raw
+    /// dial readings); its disk tag is an int, 1 to 2 in case order (spec 0050 S9.2).
+    type ScanReading =
+        | RawDialReading
+        | PhysicalScanValue
+
+        member this.value : int =
+            match this with
+            | RawDialReading -> 1
+            | PhysicalScanValue -> 2
+
+        /// The reading a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S9.2).
+        static member tryOfWire (tag : int) : ScanReading option =
+            match tag with
+            | 1 -> Some RawDialReading
+            | 2 -> Some PhysicalScanValue
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | RawDialReading -> "raw dial reading"
+            | PhysicalScanValue -> "physical value"
+
+        /// Both readings in tag order (spec 0050 S9.2).
+        static member all : ScanReading list = [ RawDialReading; PhysicalScanValue ]
+
+    /// A column of a lab file, counted from 1 as a lab counts it (spec 0050 S9.2).
+    type DataColumnNumber =
+        | DataColumnNumber of int
+
+        member this.value : int = let (DataColumnNumber number) = this in number
+
+        /// The number as given; below 1 names no column (spec 0050 S9.2).
+        static member tryCreate (number : int) : DataColumnNumber option =
+            if number < 1 then None else Some (DataColumnNumber number)
+
+        /// The column's position among a row's cells, counted from 0 (spec 0050 S9.2).
+        member this.index : int = let (DataColumnNumber number) = this in number - 1
+
     /// The kit's naming template as its text; its grammar is NamingTemplates.fs's (spec 0050 S8.3).
     type NamingTemplate =
         | NamingTemplate of string
@@ -366,22 +578,6 @@ module Kit =
                 path = this.path
                 contentHash = this.contentHash
             }
-
-    /// The name a kit's import profile is stored and picked under (spec 0050 S9.1; S9.2 keeps the profiles in `.kit-json`).
-    type ImportProfileName =
-        | ImportProfileName of string
-
-        member this.value : string = let (ImportProfileName text) = this in text
-
-        /// The text as given; an empty or white-space text names no profile (spec 0050 S9.1).
-        static member tryCreate (text : string) : ImportProfileName option =
-            if String.IsNullOrWhiteSpace text then None else Some (ImportProfileName text)
-
-        /// The built-in profile over `DataFileText.parseIntensitySeries`, an X,Y intensity file (spec 0050 S9.1).
-        static member intensitySeries : ImportProfileName = ImportProfileName "Intensity series"
-
-        /// The built-in profile over `DataFileText.parseEllipsometricSeries`, a λ, Ψ, Δ file (spec 0050 S9.1).
-        static member ellipsometricSeries : ImportProfileName = ImportProfileName "Ellipsometric series"
 
     /// One value of an import profile's experiment-key column (spec 0050 S9.1; 001 §K).
     type DataRowKey =

@@ -16,6 +16,7 @@ open Berreman.Dispersion
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Library
@@ -227,6 +228,11 @@ module CanonicalJsonTests =
         assertWrittenAsTag<PublishedGyrationLaw> (fun law -> law.value)
         assertWrittenAsTag<KitStar> (fun star -> star.value)
         assertWrittenAsTag<ExperimentRole> (fun role -> role.value)
+        assertWrittenAsTag<DataDelimiter> (fun delimiter -> delimiter.value)
+        assertWrittenAsTag<HeaderRowChoice> (fun header -> header.value)
+        assertWrittenAsTag<ByteOrderMark> (fun mark -> mark.value)
+        assertWrittenAsTag<ScanColumnUnit> (fun columnUnit -> columnUnit.value)
+        assertWrittenAsTag<ScanReading> (fun reading -> reading.value)
 
         for star, tag in [ StarredKit, 1; UnstarredKit, 2 ] do
             let json = toJson star
@@ -236,6 +242,17 @@ module CanonicalJsonTests =
 
         Assert.Equal<string>("3", toJson DarkRun)
         Assert.Equal<ExperimentRole>(DarkRun, ofJson<ExperimentRole> "3")
+
+        Assert.Equal<string>("2", toJson SemicolonDelimiter)
+        Assert.Equal<DataDelimiter>(SemicolonDelimiter, ofJson<DataDelimiter> "2")
+        Assert.Equal<string>("2", toJson NoHeaderRow)
+        Assert.Equal<HeaderRowChoice>(NoHeaderRow, ofJson<HeaderRowChoice> "2")
+        Assert.Equal<string>("1", toJson ByteOrderMarkPresent)
+        Assert.Equal<ByteOrderMark>(ByteOrderMarkPresent, ofJson<ByteOrderMark> "1")
+        Assert.Equal<string>("6", toJson WavenumberColumnUnit)
+        Assert.Equal<ScanColumnUnit>(WavenumberColumnUnit, ofJson<ScanColumnUnit> "6")
+        Assert.Equal<string>("1", toJson RawDialReading)
+        Assert.Equal<ScanReading>(RawDialReading, ofJson<ScanReading> "1")
 
         let schema : EntrySchema = { kind = SourceEntryKind; version = FileSchemaVersion 1 }
         let json = toJson schema
@@ -251,6 +268,8 @@ module CanonicalJsonTests =
         Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "\"MaterialEntryKind\"" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<KitStar> "3" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<ExperimentRole> "8" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<DataDelimiter> "4" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<ScanColumnUnit> "7" |> ignore) |> ignore
 
         // No file holds a role before step 288, so the role rides an anonymous record through the readers' seam.
         let roleText = JsonText "{ \"schemaVersion\": 1, \"role\": 8 }"

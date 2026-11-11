@@ -13,6 +13,7 @@ open Berreman.Dispersion
 open Softellect.Sys
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Storage.Errors
@@ -180,7 +181,9 @@ module CanonicalJson =
     /// serialize as plain strings. A `Complex` is `[re, im]` (`ComplexConverter`) and a real matrix its
     /// rows (`RealMatrixConverter`), as an entry file holds them (001 §B). The closed sets with an int tag
     /// (`LibraryEntryKind`, `TabulatedInterpolation`, `PublishedIndexLaw`, `PublishedGyrationLaw`, the kit
-    /// history's `KitStar`, step 166, and a run's `ExperimentRole`, S9.1) are that int (`ClosedSetTagConverter`, step 28).
+    /// history's `KitStar`, step 166, a run's `ExperimentRole`, S9.1, and an import profile's `DataDelimiter`,
+    /// `HeaderRowChoice`, `ByteOrderMark`, `ScanColumnUnit` and `ScanReading`, S9.2) are that int
+    /// (`ClosedSetTagConverter`, step 28).
     let options : JsonSerializerOptions =
         let o = JsonSerializerOptions(WriteIndented = true)
         o.Converters.Add(ComplexConverter())
@@ -196,6 +199,11 @@ module CanonicalJson =
         o.Converters.Add(ClosedSetTagConverter<PublishedGyrationLaw>((fun law -> law.value), PublishedGyrationLaw.tryOfWire))
         o.Converters.Add(ClosedSetTagConverter<KitStar>((fun star -> star.value), KitStar.tryOfWire))
         o.Converters.Add(ClosedSetTagConverter<ExperimentRole>((fun role -> role.value), ExperimentRole.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<DataDelimiter>((fun delimiter -> delimiter.value), DataDelimiter.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<HeaderRowChoice>((fun header -> header.value), HeaderRowChoice.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ByteOrderMark>((fun mark -> mark.value), ByteOrderMark.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ScanColumnUnit>((fun columnUnit -> columnUnit.value), ScanColumnUnit.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ScanReading>((fun reading -> reading.value), ScanReading.tryOfWire))
         let fsharpOptions =
             JsonFSharpOptions
                 .Default()
