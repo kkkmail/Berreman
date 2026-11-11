@@ -342,8 +342,9 @@ module Experiments =
             role : ExperimentRole
             sessionOpt : SessionName option
             notes : ExperimentNotes
-            /// The measured-data kit-relative path and its recorded hash (spec 0050 S4.2).
-            dataFileOpt : DataAttachment option
+            /// The measured data: a kit file read through an import profile, and the rows that are this run's (spec 0050
+            /// S4.2, S9.1).
+            dataOpt : MappedAttachment option
         }
 
         /// The collection row's and readout's text: one block of no axis is a dark line on its setup revision; otherwise
@@ -635,7 +636,7 @@ module Experiments =
                         role = ScienceRun
                         sessionOpt = None
                         notes = ExperimentNotes.none
-                        dataFileOpt = None
+                        dataOpt = None
                     }
                 { c with
                     experiments = c.experiments @ [ exp ]
@@ -656,15 +657,15 @@ module Experiments =
         else
             c
 
-    /// Binds one kit-relative measured-data path and hash, replacing any attachment; an unknown id is unchanged
-    /// (spec 0038 Part I; spec 0050 S4.2).
-    let attachDataFile (id : ExperimentId) (attachment : DataAttachment) (c : ExperimentCollection) : ExperimentCollection =
+    /// Binds one mapped data attachment, replacing any; an unknown id is unchanged (spec 0038 Part I; spec 0050 S4.2,
+    /// S9.1).
+    let attachDataFile (id : ExperimentId) (data : MappedAttachment) (c : ExperimentCollection) : ExperimentCollection =
         let experiments =
             c.experiments
             |> List.map (fun e ->
                 if e.id = id then
                     {
-                        e with dataFileOpt = Some attachment
+                        e with dataOpt = Some data
                     }
                 else
                     e)

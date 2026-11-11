@@ -822,7 +822,7 @@ module LauncherTests =
                 role = ScienceRun
                 sessionOpt = None
                 notes = ExperimentNotes.none
-                dataFileOpt = None
+                dataOpt = None
             }
         try kit.library.kit.proxy.writeExperiment experiment |> SceneTestFixture.kitSuccess
         finally kit.library.kit.close () |> SceneTestFixture.kitSuccess

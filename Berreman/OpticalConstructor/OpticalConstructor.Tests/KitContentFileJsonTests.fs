@@ -49,7 +49,13 @@ module KitContentFileJsonTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = Some attachment
+            dataOpt =
+                Some
+                    {
+                        attachment = attachment
+                        profile = ImportProfileName.intensitySeries
+                        rows = AllDataRows
+                    }
         }
 
     let private e3 : Experiment =
@@ -61,7 +67,7 @@ module KitContentFileJsonTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = None
+            dataOpt = None
         }
 
     /// E1 as a calibration of day 1 with notes, over two blocks: the sample's incidence × azimuth read in T and R, then
@@ -104,6 +110,20 @@ module KitContentFileJsonTests =
                 notes = ExperimentNotes "LR was re-seated"
         }
 
+    /// E1 whose data is mapped by a kit's own profile to the rows of one experiment key (spec 0050 S9.1).
+    let private e1KeyedRows : Experiment =
+        {
+            e1 with
+                dataOpt =
+                    e1.dataOpt
+                    |> Option.map (fun data ->
+                        {
+                            data with
+                                profile = ImportProfileName "Phone ROI CSV"
+                                rows = KeyedDataRows (DataRowKey "CPL-(QZ#45)-CPL")
+                        })
+        }
+
     let private editedExperimentFile (edit : JsonObject -> unit) : KitFileText =
         let text = e1.experimentFile.fileText |> kitContentJsonValue
         let node = (JsonNode.Parse text.value).AsObject()
@@ -124,7 +144,7 @@ module KitContentFileJsonTests =
     let ``an experiment file round-trips through its canonical text`` () : unit =
         let expectedVersion = FileSchemaVersion 1
 
-        for experiment in [ e1; e3; e1TwoBlocks ] do
+        for experiment in [ e1; e3; e1TwoBlocks; e1KeyedRows ] do
             let file = experiment.experimentFile
             let text = file.fileText |> kitContentJsonValue
             let readBack = text.parseExperimentFile |> kitContentJsonValue
@@ -176,7 +196,7 @@ module KitContentFileJsonTests =
         for key in [ "schemaVersion"; "experiment" ] do
             editedExperimentFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
 
-        for key in [ "id"; "name"; "setup"; "scan"; "role"; "sessionOpt"; "notes"; "dataFileOpt" ] do
+        for key in [ "id"; "name"; "setup"; "scan"; "role"; "sessionOpt"; "notes"; "dataOpt" ] do
             editedExperimentFile (fun node -> node["experiment"].AsObject().Remove key |> ignore)
             |> assertSchemaInvalid
 
@@ -208,11 +228,13 @@ module KitContentFileJsonTests =
                 (fun node -> node["experiment"]["sessionOpt"] <- JsonValue.Create "")
                 (fun node -> node["experiment"]["sessionOpt"] <- JsonValue.Create "   ")
                 (fun node -> node["experiment"]["notes"] <- null)
-                (fun node -> node.["experiment"].["dataFileOpt"].["contentHash"] <- JsonValue.Create "abc")
-                (fun node -> node.["experiment"].["dataFileOpt"].["path"] <- JsonValue.Create "")
-                (fun node -> node.["experiment"].["dataFileOpt"].["notes"] <- JsonValue.Create "unexpected")
-                (fun node -> (node["experiment"]["dataFileOpt"]).AsObject().Remove "path" |> ignore)
-                (fun node -> (node["experiment"]["dataFileOpt"]).AsObject().Remove "contentHash" |> ignore)
+                (fun node -> node.["experiment"].["dataOpt"].["attachment"].["contentHash"] <- JsonValue.Create "abc")
+                (fun node -> node.["experiment"].["dataOpt"].["attachment"].["path"] <- JsonValue.Create "")
+                (fun node -> node.["experiment"].["dataOpt"].["attachment"].["notes"] <- JsonValue.Create "unexpected")
+                (fun node -> node.["experiment"].["dataOpt"].["attachment"].AsObject().Remove "path" |> ignore)
+                (fun node -> node.["experiment"].["dataOpt"].["attachment"].AsObject().Remove "contentHash" |> ignore)
+                (fun node -> node.["experiment"].["dataOpt"].["profile"] <- JsonValue.Create "")
+                (fun node -> (node["experiment"]["dataOpt"]).AsObject().Remove "rows" |> ignore)
             ]
 
         for edit in invalidEdits do

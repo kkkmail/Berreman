@@ -897,7 +897,7 @@ module SetupModelTests =
                 Assert.Equal<Library.ElementId list>([ held.polarizer ], experiment.scan.axes |> List.map (fun axis -> axis.elementId))
                 Assert.Equal<Experiments.VariableParameter list>(Option.toList draft.variable, experiment.scan.axes |> List.map (fun axis -> axis.variable))
                 Assert.Equal<Experiments.VariableRange list>([ draft.range ], experiment.scan.axes |> List.map (fun axis -> axis.range))
-                Assert.Equal<DataAttachment option>(None, experiment.dataFileOpt)
+                Assert.Equal<MappedAttachment option>(None, experiment.dataOpt)
             Assert.Equal<Experiments.Experiment list>(experiments, generated.experimentCollection.experiments)
 
             Assert.Equal<Setups.SetupSlot list>(chosen.elements, generated.elements)

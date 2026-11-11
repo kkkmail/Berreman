@@ -118,7 +118,13 @@ module ExperimentCollectionRoundTripTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = Some e1Attachment
+            dataOpt =
+                Some
+                    {
+                        attachment = e1Attachment
+                        profile = ImportProfileName.intensitySeries
+                        rows = AllDataRows
+                    }
         }
 
     let private e2 : Experiment =
@@ -128,7 +134,7 @@ module ExperimentCollectionRoundTripTests =
                 name = (ExperimentId 2).defaultName
                 setup = bench.reference
                 scan = ExperimentScan.oneAxis (analyzerTurn (ElementLabel "Linear polarizer #3")) CaptureTransmitted None
-                dataFileOpt = None
+                dataOpt = None
         }
 
     let private e3 : Experiment =
@@ -140,7 +146,13 @@ module ExperimentCollectionRoundTripTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = Some e3Attachment
+            dataOpt =
+                Some
+                    {
+                        attachment = e3Attachment
+                        profile = ImportProfileName.intensitySeries
+                        rows = AllDataRows
+                    }
         }
 
     [<Fact>]
@@ -180,7 +192,7 @@ module ExperimentCollectionRoundTripTests =
             slotsOf (List.item 1 loaded) |> List.map (fun slot -> slot.content.itemOpt))
         Assert.Equal<DataAttachment option list>(
             [ Some e1Attachment; None; Some e3Attachment ],
-            loaded |> List.map (fun experiment -> experiment.dataFileOpt))
+            loaded |> List.map (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.attachment)))
 
         // Spec 0050 S4.3: identity order differs from filename order, and stem matching ignores case.
         let tenth =

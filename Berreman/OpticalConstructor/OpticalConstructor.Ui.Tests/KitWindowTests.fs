@@ -71,7 +71,7 @@ module KitWindowTests =
             role = Experiments.ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = None
+            dataOpt = None
         }
 
     /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, Create setup and Save

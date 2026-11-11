@@ -497,7 +497,15 @@ module KitContentFiles =
                     result |> Result.bind (fun written ->
                         let copy =
                             {
-                                experiment with dataFileOpt = experiment.dataFileOpt |> Option.bind (fun attachment -> Map.tryFind attachment.path moved)
+                                experiment with
+                                    dataOpt =
+                                        experiment.dataOpt
+                                        |> Option.bind (fun data ->
+                                            Map.tryFind data.attachment.path moved
+                                            |> Option.map (fun attachment ->
+                                                {
+                                                    data with attachment = attachment
+                                                }))
                             }
                         this.proxy.writeExperiment copy
                         |> Result.mapError KitLibraryKitErr
@@ -546,7 +554,7 @@ module KitContentFiles =
                         resolveMappedOnto plan.mappedOnto heldSnapshots
                         |> Result.bind (fun () -> lackedSnapshots plan.setups plan.added heldSnapshots))
                     |> Result.bind (fun snapshots ->
-                        let dataPaths = plan.experiments |> List.choose (fun experiment -> experiment.dataFileOpt |> Option.map (fun attachment -> attachment.path))
+                        let dataPaths = plan.experiments |> List.choose (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.attachment.path))
                         let photoPaths = plan.added |> List.choose (fun item -> item.photoOpt)
                         readLabFiles (dataPaths @ photoPaths)
                         |> Result.bind (fun files ->

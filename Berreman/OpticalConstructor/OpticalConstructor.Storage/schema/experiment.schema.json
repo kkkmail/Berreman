@@ -19,7 +19,7 @@
       "schemaVersion": true,
       "experiment": {
         "type": "object",
-        "required": ["id", "name", "setup", "scan", "role", "sessionOpt", "notes", "dataFileOpt"],
+        "required": ["id", "name", "setup", "scan", "role", "sessionOpt", "notes", "dataOpt"],
         "additionalProperties": false,
         "properties": {
           "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
@@ -61,16 +61,29 @@
             ]
           },
           "notes": { "type": "string" },
-          "dataFileOpt": {
+          "dataOpt": {
+            "description": "The measured data: a kit file, the import profile it is read through and the rows that are the run's (spec 0050 S9.1).",
             "oneOf": [
               { "type": "null" },
               {
                 "type": "object",
-                "required": ["path", "contentHash"],
+                "required": ["attachment", "profile", "rows"],
                 "additionalProperties": false,
                 "properties": {
-                  "path": { "type": "string", "minLength": 1 },
-                  "contentHash": { "$ref": "https://berreman/schema/library-common.json#/$defs/contentHash" }
+                  "attachment": {
+                    "type": "object",
+                    "required": ["path", "contentHash"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "path": { "type": "string", "minLength": 1 },
+                      "contentHash": { "$ref": "https://berreman/schema/library-common.json#/$defs/contentHash" }
+                    }
+                  },
+                  "profile": { "type": "string", "pattern": "\\S" },
+                  "rows": {
+                    "description": "A DataRowSelection in the serializer's case form: AllDataRows is its name, KeyedDataRows an object; the serializer binds its shape.",
+                    "type": ["string", "object"]
+                  }
                 }
               }
             ]

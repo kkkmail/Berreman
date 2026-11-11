@@ -78,7 +78,7 @@ module KitWindowModelTests =
             role = Experiments.ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = None
+            dataOpt = None
         }
 
     /// A shell that records every folder it is asked to show and every window close it is asked for.
@@ -720,13 +720,21 @@ module KitWindowModelTests =
             e2 : Experiments.Experiment
         }
 
-    /// A dark line, no element varied (spec 0038 Part I), attaching the data file when one is given.
-    let private darkLine (id : Experiments.ExperimentId) (dataFileOpt : DataAttachment option) : Experiments.Experiment =
+    /// A dark line, no element varied (spec 0038 Part I), attaching the data file when one is given, read as an intensity
+    /// series over every row (spec 0050 S9.1).
+    let private darkLine (id : Experiments.ExperimentId) (attachmentOpt : DataAttachment option) : Experiments.Experiment =
         {
             storedExperiment with
                 id = id
                 name = id.defaultName
-                dataFileOpt = dataFileOpt
+                dataOpt =
+                    attachmentOpt
+                    |> Option.map (fun attachment ->
+                        {
+                            attachment = attachment
+                            profile = ImportProfileName.intensitySeries
+                            rows = AllDataRows
+                        })
         }
 
     /// `Copy source` beside the fact's kit folder, made through its library, then closed with the app cache its lock

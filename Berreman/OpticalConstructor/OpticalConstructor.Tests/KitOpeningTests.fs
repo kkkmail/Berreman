@@ -73,7 +73,7 @@ module KitOpeningTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = None
+            dataOpt = None
         }
 
     [<Fact>]

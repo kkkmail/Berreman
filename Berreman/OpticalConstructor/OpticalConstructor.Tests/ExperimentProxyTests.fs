@@ -444,7 +444,7 @@ module ExperimentProxyTests =
                 role = ScienceRun
                 sessionOpt = None
                 notes = ExperimentNotes.none
-                dataFileOpt = None
+                dataOpt = None
             }
         Assert.Equal<Experiment list>([ expected ], committed.experiments)
         Assert.Equal<ExperimentScan option>(Some expected.scan, committed.draft.scanOpt)
@@ -573,7 +573,7 @@ module ExperimentProxyTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = None
+            dataOpt = None
         }
 
     /// E2 = the same WITHOUT a sample, on `Bench` revision 2 (captures that the polarizers are not ideal).
@@ -618,12 +618,19 @@ module ExperimentProxyTests =
                 contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             }
         Assert.Equal("data/run1.csv", attachment.path.value)
+        // Spec 0050 S9.1: the attachment is bound mapped through its import profile to a row selection.
+        let data : MappedAttachment =
+            {
+                attachment = attachment
+                profile = ImportProfileName.intensitySeries
+                rows = AllDataRows
+            }
         let c = withSource () |> commitOver benchRevision1
         let id = (List.head c.experiments).id
-        Assert.Equal(None, (List.head c.experiments).dataFileOpt)
-        let c2 = attachDataFile id attachment c
+        Assert.Equal(None, (List.head c.experiments).dataOpt)
+        let c2 = attachDataFile id data c
         let exp = c2.experiments |> List.find (fun e -> e.id = id)
-        Assert.Equal(Some attachment, exp.dataFileOpt)
+        Assert.Equal(Some data, exp.dataOpt)
 
     /// One copy into a kit holding `taken`, and the experiments it must answer (spec 0050 S6).
     type private RenumberingCase =
@@ -930,7 +937,17 @@ module ExperimentProxyTests =
                 contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             }
         // E1 holds a data file, so a new experiment holding none shows the draft's edited experiment lends it nothing.
-        let held : Experiment = { e1 with dataFileOpt = Some attachment }
+        let held : Experiment =
+            {
+                e1 with
+                    dataOpt =
+                        Some
+                            {
+                                attachment = attachment
+                                profile = ImportProfileName.intensitySeries
+                                rows = AllDataRows
+                            }
+            }
         let editing =
             ExperimentCollection.ofLoaded [ held ]
             |> edit held.id
@@ -951,7 +968,7 @@ module ExperimentProxyTests =
                 role = ScienceRun
                 sessionOpt = None
                 notes = ExperimentNotes.none
-                dataFileOpt = None
+                dataOpt = None
             }
         let targets : ExperimentTarget list =
             [
@@ -998,7 +1015,7 @@ module ExperimentProxyTests =
                 role = ScienceRun
                 sessionOpt = None
                 notes = ExperimentNotes.none
-                dataFileOpt = None
+                dataOpt = None
             }
         let stub : ExperimentProxy =
             {

@@ -31,6 +31,7 @@ open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.NamingTemplates
+open OpticalConstructor.Domain.ExperimentDataLoad
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
@@ -1908,16 +1909,16 @@ type MeasuredData.ExperimentDataError with
         | MeasuredData.DataRangeMismatchErr _
         | MeasuredData.DataUnitsMismatchErr _ -> AttachedFileValidationError error.caption
 
-/// Validates the attachment in the shape of the detector the experiment's setup revision holds; a revision the kit's
-/// setups lack is the validation's failure (spec 0038 Part L; spec 0050 S8.2).
+/// Reads the mapped file through its profile and validates it against the detector the experiment's setup revision
+/// holds; a revision the kit's setups lack is the validation's failure (spec 0038 Part L; spec 0050 S8.2, S9.1).
 let private validateExperimentAttachment
     (model : TableAndElementRotationModel)
     (experiment : Experiments.Experiment)
-    (attachment : DataAttachment)
+    (data : MappedAttachment)
     : ExperimentFileStatus =
     match experiment.slotsIn model.kitSetups with
     | Ok slots ->
-        match ExperimentDataLoad.loadAndValidate model.library model.experimentData slots experiment attachment with
+        match ExperimentDataLoad.loadAndValidate model.library model.experimentData slots experiment data with
         | Ok series -> DataFileValidated series.pointCount
         | Error error -> error.fileStatus
     | Error error -> AttachedFileValidationError (ControlCaption error.describe)
@@ -1949,13 +1950,13 @@ let private withKitContent
     let statuses =
         experiments
         |> List.choose (fun experiment ->
-            match experiment.dataFileOpt with
-            | Some attachment ->
+            match experiment.dataOpt with
+            | Some data ->
                 let status =
-                    match loaded.experimentData.attachmentStatus attachment with
-                    | Ok AttachedDataUnchanged -> validateExperimentAttachment loaded experiment attachment
+                    match loaded.experimentData.attachmentStatus data.attachment with
+                    | Ok AttachedDataUnchanged -> validateExperimentAttachment loaded experiment data
                     | Ok (AttachedDataChanged _) -> DataFileChangedSinceAttach
-                    | Ok AttachedDataMissing -> DataFileMissingFromKit attachment.path.toControlCaption
+                    | Ok AttachedDataMissing -> DataFileMissingFromKit data.attachment.path.toControlCaption
                     | Error error -> AttachedFileParseError error.caption
                 Some (experiment.id, status)
             | None -> None)
@@ -2778,7 +2779,19 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 }
             | Ok attachment ->
                 // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
-                let collection = Experiments.attachDataFile experimentId attachment model.experimentCollection
+                // Spec 0050 S9.1: it is read through its detector's built-in profile, every row the run's.
+                let slots =
+                    model.experimentCollection.experiments
+                    |> List.tryFind (fun e -> e.id = experimentId)
+                    |> Option.bind (fun held -> held.slotsIn model.kitSetups |> Result.toOption)
+                    |> Option.defaultValue []
+                let data : MappedAttachment =
+                    {
+                        attachment = attachment
+                        profile = (ExperimentDataLoad.detectorKindOf model.library slots).builtInProfile
+                        rows = AllDataRows
+                    }
+                let collection = Experiments.attachDataFile experimentId data model.experimentCollection
                 match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
                 | Some experiment ->
                     let library : KitLibraryContext =
@@ -2788,7 +2801,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         }
                     match library.recordExperiment experiment with
                     | Ok () ->
-                        let status = validateExperimentAttachment model experiment attachment
+                        let status = validateExperimentAttachment model experiment data
                         {
                             model with
                                 experimentCollection = collection
@@ -5016,8 +5029,8 @@ let private attachDataFileButton (availability : ControlAvailability) (dispatch 
 /// name, and the typed parse / validation status (shown only once a file has been attached).
 let private dataFileRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
     let attachedText =
-        match experiment.dataFileOpt with
-        | Some attachment -> $"file: {attachment.path.value}"
+        match experiment.dataOpt with
+        | Some data -> $"file: {data.attachment.path.value} ({data.profile.value})"
         | None -> "no file attached"
     let statusText =
         match model.experimentDataStatus |> Map.tryFind experiment.id with

@@ -112,9 +112,8 @@ module ExperimentDataProxyTests =
         | Error (MalformedDataFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for an unknown ellipsometric path, got %A{other}")
 
-    [<Fact>]
-    let ``loading data validates a one-axis scan as before and refuses an X,Y file for a multi-variable scan`` () : unit =
-        let library = BuiltinCatalogue.library ()
+    /// An intensity detector bound to the Built-in intensity preset: the slots a loaded experiment resolves to.
+    let private intensityDetectorSlots : Setups.SetupSlot list =
         let detectorSlot : Setups.SetupSlot =
             {
                 id = Library.ElementId "det"
@@ -127,40 +126,56 @@ module ExperimentDataProxyTests =
                 beam = BeamLayout.OnMainBeam
                 content = Setups.EmptySlotContent
             }
-        let slots = [ detectorSlot ]
+        [ detectorSlot ]
+
+    let private intensityAttachment : DataAttachment =
+        {
+            path = KitRelativePath "data/run-intensity.csv"
+            contentHash = attachmentHash
+        }
+
+    /// The canned intensity file read as an intensity series over every row (spec 0050 S9.1).
+    let private intensityData : MappedAttachment =
+        {
+            attachment = intensityAttachment
+            profile = ImportProfileName.intensitySeries
+            rows = AllDataRows
+        }
+
+    let private sweepOver (lo : float) (hi : float) : ScanAxis =
+        {
+            elementId = Library.ElementId "src"
+            label = ElementLabel "Light source #1"
+            variable = VaryWaveLength
+            range =
+                {
+                    min = Propagation.SweptValue lo
+                    max = Propagation.SweptValue hi
+                    points = Propagation.CurvePointCount 5
+                }
+        }
+
+    /// Step 288's one-axis experiment: 300…700 nm holds every abscissa of the canned series, 400, 500 and 600 nm.
+    let private oneAxis : Experiment =
+        {
+            id = ExperimentId 1
+            name = (ExperimentId 1).defaultName
+            setup = { name = SetupName "Bench"; revision = SetupRevision 1 }
+            scan = ExperimentScan.oneAxis (sweepOver 300.0 700.0) CaptureTransmitted None
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
+            dataOpt = Some intensityData
+        }
+
+    [<Fact>]
+    let ``loading data validates a one-axis scan as before and refuses an X,Y file for a multi-variable scan`` () : unit =
+        let library = BuiltinCatalogue.library ()
+        let slots = intensityDetectorSlots
         Assert.Equal<Library.DetectorKind>(Library.Intensity, ExperimentDataLoad.detectorKindOf library slots)
 
-        let attachment : DataAttachment =
-            {
-                path = KitRelativePath "data/run-intensity.csv"
-                contentHash = attachmentHash
-            }
-        let sweepOver (lo : float) (hi : float) : ScanAxis =
-            {
-                elementId = Library.ElementId "src"
-                label = ElementLabel "Light source #1"
-                variable = VaryWaveLength
-                range =
-                    {
-                        min = Propagation.SweptValue lo
-                        max = Propagation.SweptValue hi
-                        points = Propagation.CurvePointCount 5
-                    }
-            }
-        // 300…700 nm holds every abscissa of the canned series: 400, 500 and 600 nm.
-        let oneAxis : Experiment =
-            {
-                id = ExperimentId 1
-                name = (ExperimentId 1).defaultName
-                setup = { name = SetupName "Bench"; revision = SetupRevision 1 }
-                scan = ExperimentScan.oneAxis (sweepOver 300.0 700.0) CaptureTransmitted None
-                role = ScienceRun
-                sessionOpt = None
-                notes = ExperimentNotes.none
-                dataFileOpt = Some attachment
-            }
         let load (experiment : Experiment) : Result<MeasuredSeries, ExperimentDataError> =
-            ExperimentDataLoad.loadAndValidate library (seededMock ()) slots experiment attachment
+            ExperimentDataLoad.loadAndValidate library (seededMock ()) slots experiment intensityData
         Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(Ok (IntensityData intensityFixture), load oneAxis)
 
         // As before, the one axis's range is the check: 450…700 nm misses the 400 nm abscissa.
@@ -183,6 +198,47 @@ module ExperimentDataProxyTests =
             }
         Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(
             Error (DataRangeMismatchErr "an X,Y data file holds one variable, and the scan varies 2 in 1 block(s)"), load twoAxes)
+
+    [<Fact>]
+    let ``loading data reads it through its import profile and refuses a profile or a row selection the X,Y files cannot serve`` () : unit =
+        let library = BuiltinCatalogue.library ()
+        let load (proxy : ExperimentDataProxy) (data : MappedAttachment) : Result<MeasuredSeries, ExperimentDataError> =
+            ExperimentDataLoad.loadAndValidate library proxy intensityDetectorSlots { oneAxis with dataOpt = Some data } data
+
+        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(Ok (IntensityData intensityFixture), load (seededMock ()) intensityData)
+
+        // Spec 0050 S9.1: the profile, not the detector, picks the reader; an ellipsometric series under an intensity
+        // detector is the validation's units mismatch.
+        let ellipsometricData : MappedAttachment =
+            {
+                attachment =
+                    {
+                        intensityAttachment with path = KitRelativePath "data/run-ellipsometric.csv"
+                    }
+                profile = ImportProfileName.ellipsometricSeries
+                rows = AllDataRows
+            }
+        match load (seededMock ()) ellipsometricData with
+        | Error (DataUnitsMismatchErr reason) -> Assert.Contains("ellipsometric", reason)
+        | other -> Assert.Fail($"expected DataUnitsMismatchErr for an ellipsometric series, got %A{other}")
+
+        // An unavailable profile and a key selection read nothing.
+        let readsNothing : ExperimentDataProxy =
+            {
+                seededMock () with
+                    tryLoadIntensity = fun _ -> failwith "a refused mapping must not load intensity data"
+                    tryLoadEllipsometric = fun _ -> failwith "a refused mapping must not load ellipsometric data"
+            }
+        let phoneRoi =
+            match ImportProfileName.tryCreate "Phone ROI CSV" with
+            | Some profile -> profile
+            | None -> failwith "a non-blank profile name must be kept"
+        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(
+            Error (MalformedDataFileErr "the import profile 'Phone ROI CSV' is not available"),
+            load readsNothing { intensityData with profile = phoneRoi })
+        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(
+            Error (MalformedDataFileErr "data/run-intensity.csv: an X,Y data file has no key column to select 'CPL-(QZ#45)-CPL' by"),
+            load readsNothing { intensityData with rows = KeyedDataRows (DataRowKey "CPL-(QZ#45)-CPL") })
 
     [<Fact>]
     let ``an ExperimentDataProxy compares by reference (the Elmish-required equality)`` () =

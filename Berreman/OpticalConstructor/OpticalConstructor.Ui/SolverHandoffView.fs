@@ -83,10 +83,11 @@ type Experiments.Experiment with
             |> ControlCaption
         | Error error -> ControlCaption error.describe
 
-    /// The attached data file's kit-relative path, or a note that none is attached.
+    /// The attached data file's kit-relative path and its import profile, or a note that none is attached (spec 0050
+    /// S9.1).
     member private this.handoffFileCaption : ControlCaption =
-        match this.dataFileOpt with
-        | Some attachment -> attachment.path.toControlCaption
+        match this.dataOpt with
+        | Some data -> ControlCaption $"{data.attachment.path.value} ({data.profile.value})"
         | None -> ControlCaption "(no file attached)"
 
 /// The basic validation, in order and with no solver math: the setup revision resolves among `setups` and every slot but
@@ -113,10 +114,10 @@ let validateExperiment
             let names = unbound |> List.map (fun roled -> roled.role.text) |> String.concat ", "
             UnspecifiedElements (ControlCaption $"every element except the sample must be specified; still unbound: {names}")
         | [] ->
-            match experiment.dataFileOpt with
+            match experiment.dataOpt with
             | None -> MissingDataFile (ControlCaption "no measured-data file is attached to this experiment")
-            | Some attachment ->
-                match ExperimentDataLoad.loadAndValidate library dataProxy slots experiment attachment with
+            | Some data ->
+                match ExperimentDataLoad.loadAndValidate library dataProxy slots experiment data with
                 | Ok series -> HandoffReady series.pointCount
                 | Error ((MeasuredData.MalformedDataFileErr _ | MeasuredData.EmptyDataFileErr _) as err) -> DataFileParseError err.caption
                 | Error ((MeasuredData.DataRangeMismatchErr _ | MeasuredData.DataUnitsMismatchErr _) as err) -> DataFileValidationError err.caption

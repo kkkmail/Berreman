@@ -166,7 +166,7 @@ module KitLibraryTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = None
+            dataOpt = None
         }
 
     let private recordingClosure () : LibraryEntryEnvelope list =

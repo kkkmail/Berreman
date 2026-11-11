@@ -94,18 +94,29 @@ module SolverHandoffWindowTests =
         // the same-named union CASE in expression position (the step-037 shadowing gotcha).
         { exp with id = Experiments.ExperimentId n; name = (Experiments.ExperimentId n).defaultName }
 
-    let private withFile (name : string) (exp : Experiments.Experiment) : Experiments.Experiment =
+    /// The experiment with `data/<name>` read through `profile` over every row (spec 0050 S9.1).
+    let private withMappedFile (profile : ImportProfileName) (name : string) (exp : Experiments.Experiment) : Experiments.Experiment =
         let attachment : DataAttachment =
             {
                 path = KitRelativePath $"data/{name}"
                 contentHash = attachmentHash
             }
         {
-            exp with dataFileOpt = Some attachment
+            exp with
+                dataOpt =
+                    Some
+                        {
+                            attachment = attachment
+                            profile = profile
+                            rows = AllDataRows
+                        }
         }
 
+    let private withFile (name : string) (exp : Experiments.Experiment) : Experiments.Experiment =
+        withMappedFile ImportProfileName.intensitySeries name exp
+
     let private noFile (exp : Experiments.Experiment) : Experiments.Experiment =
-        { exp with dataFileOpt = None }
+        { exp with dataOpt = None }
 
     // ---- mock ExperimentDataProxy shapes ------------------------------------------------------------
 
@@ -239,7 +250,7 @@ module SolverHandoffWindowTests =
     [<Fact>]
     let ``the detector kind selects the ellipsometric load path`` () =
         let library, setups, exp0 = baseExperiment (Some PresetIds.source600) (Some PresetIds.detectorEllipsometer)
-        let exp = exp0 |> withFile "ellipso.csv"
+        let exp = exp0 |> withMappedFile ImportProfileName.ellipsometricSeries "ellipso.csv"
         let ellipsometric =
             match (MeasuredData.DataFileText "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110").parseEllipsometricSeries with
             | Ok series -> series

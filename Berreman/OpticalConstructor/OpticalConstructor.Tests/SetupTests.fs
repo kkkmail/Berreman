@@ -196,7 +196,7 @@ module SetupTests =
                 role = Experiments.ScienceRun
                 sessionOpt = None
                 notes = ExperimentNotes.none
-                dataFileOpt = None
+                dataOpt = None
             }
 
         let onFirst = over { name = SetupName "Bench"; revision = SetupRevision.first } 1

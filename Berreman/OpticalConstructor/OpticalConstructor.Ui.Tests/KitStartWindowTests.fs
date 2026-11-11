@@ -687,7 +687,7 @@ module KitStartWindowTests =
             role = Experiments.ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = None
+            dataOpt = None
         }
 
     /// A sent kit's kit file, and the zip it was sent into (spec 0050 S6).

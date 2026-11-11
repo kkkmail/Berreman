@@ -137,7 +137,10 @@ module InverseConstructorTests =
         | Some (DataFileValidated (MeasuredData.MeasuredPointCount 3)) -> ()
         | other -> Assert.Fail($"expected DataFileValidated (MeasuredData.MeasuredPointCount 3), got %A{other}")
         let exp = List.head m1.experimentCollection.experiments
-        Assert.Equal<string option>(Some "data/measured.csv", exp.dataFileOpt |> Option.map (fun attachment -> attachment.path.value))
+        Assert.Equal<string option>(Some "data/measured.csv", exp.dataOpt |> Option.map (fun data -> data.attachment.path.value))
+        // Spec 0050 S9.1: an attach reads the file through the intensity detector's built-in profile, every row the run's.
+        Assert.Equal<ImportProfileName option>(Some (ImportProfileName "Intensity series"), exp.dataOpt |> Option.map (fun data -> data.profile))
+        Assert.Equal<DataRowSelection option>(Some AllDataRows, exp.dataOpt |> Option.map (fun data -> data.rows))
 
     [<Fact>]
     let ``attaching a malformed intensity file records a typed parse-error status`` () =
@@ -203,7 +206,7 @@ module InverseConstructorTests =
             }
         let model, expId = withIntensityExperiment { inverse () with experimentData = refusingProxy }
         let failed = model |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
-        Assert.Equal<DataAttachment option>(None, (List.head failed.experimentCollection.experiments).dataFileOpt)
+        Assert.Equal<MappedAttachment option>(None, (List.head failed.experimentCollection.experiments).dataOpt)
         Assert.Equal(model.experimentCollection, failed.experimentCollection)
         match Map.tryFind expId failed.experimentDataStatus with
         | Some (DataFileAttachFailed reason as status) ->
@@ -241,7 +244,7 @@ module InverseConstructorTests =
         Assert.Equal(1, List.length mLoaded.experimentCollection.experiments)
         Assert.Equal<Experiments.Experiment list>(mSaved.experimentCollection.experiments, mLoaded.experimentCollection.experiments)
         let loaded = List.head mLoaded.experimentCollection.experiments
-        Assert.Equal<string option>(Some "data/run.csv", loaded.dataFileOpt |> Option.map (fun attachment -> attachment.path.value))
+        Assert.Equal<string option>(Some "data/run.csv", loaded.dataOpt |> Option.map (fun data -> data.attachment.path.value))
         Assert.Equal<Setup list>(mSaved.kitSetups, mLoaded.kitSetups)
         Assert.True(Result.isOk (loaded.slotsIn mLoaded.kitSetups), "the reopened experiment's setup must reopen with it")
         mLoaded.kit.close () |> SceneTestFixture.kitSuccess
@@ -260,8 +263,8 @@ module InverseConstructorTests =
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation ExpCommit
         let attachment =
-            match (List.head saved.experimentCollection.experiments).dataFileOpt with
-            | Some attached -> attached
+            match (List.head saved.experimentCollection.experiments).dataOpt with
+            | Some attached -> attached.attachment
             | None -> failwith "the saved experiment must carry its attachment"
         let unattachedId = (List.last saved.experimentCollection.experiments).id
         Assert.NotEqual(expId, unattachedId)
@@ -327,7 +330,7 @@ module InverseConstructorTests =
         let saved =
             withSecond
             |> updateTableAndElementRotation (AttachDataFileTo (secondId, secondFile))
-        let attachments = saved.experimentCollection.experiments |> List.choose (fun experiment -> experiment.dataFileOpt)
+        let attachments = saved.experimentCollection.experiments |> List.choose (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.attachment))
         Assert.Equal<KitRelativePath list>([ firstPath; secondPath ], attachments |> List.map (fun attachment -> attachment.path))
         let currentHash = ContentHash "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
         let inspected = ResizeArray<DataAttachment>()
@@ -388,8 +391,8 @@ module InverseConstructorTests =
         let attached = model |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
         Assert.NotEqual<string>(before, File.ReadAllText filePath.value)
         let experiment = List.head attached.experimentCollection.experiments
-        match experiment.dataFileOpt with
-        | Some attachment -> Assert.Equal("data/measured.csv", attachment.path.value)
+        match experiment.dataOpt with
+        | Some data -> Assert.Equal("data/measured.csv", data.attachment.path.value)
         | None -> Assert.Fail("The kit file must carry the new attachment.")
         Assert.Equal<Experiments.Experiment list>(attached.experimentCollection.experiments, attached.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
         let edited =

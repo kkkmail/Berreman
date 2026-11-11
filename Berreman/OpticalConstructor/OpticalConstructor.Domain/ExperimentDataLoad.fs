@@ -8,8 +8,8 @@ open OpticalConstructor.Domain.Setups                  // SetupSlot
 open OpticalConstructor.Domain.MeasuredData            // MeasuredSeries / validateAgainstExperiment / ExperimentDataError
 open OpticalConstructor.Domain.ExperimentData          // ExperimentDataProxy
 
-/// Loads a kit attachment in the shape of the detector the experiment's setup slots hold and validates its range,
-/// through injected proxies (spec 0038 Part L step 037; spec 0050 S4.2, S8.2).
+/// Loads a kit attachment through its import profile and validates it against the detector the experiment's setup slots
+/// hold and its range, through injected proxies (spec 0038 Part L step 037; spec 0050 S4.2, S8.2, S9.1).
 module ExperimentDataLoad =
 
     /// The detector kind the first `Detector` slot's binding resolves to through the Library, which fixes the expected
@@ -26,27 +26,41 @@ module ExperimentDataLoad =
             | None -> Intensity
         | None -> Intensity
 
-    /// Loads the attachment in the shape of the detector among the resolved `slots` and validates it against the scan's
-    /// one axis, or a dark line's R1 default range; any other scan reads nothing and is `DataRangeMismatchErr`, an X,Y
-    /// file holding one variable (spec 0038 Part L step 037; spec 0050 S4.2, S8.2, S9.1).
+    type DetectorKind with
+
+        /// The built-in import profile a file attached under this detector is read through (spec 0050 S9.1).
+        member this.builtInProfile : ImportProfileName =
+            match this with
+            | Intensity -> ImportProfileName.intensitySeries
+            | Ellipsometer -> ImportProfileName.ellipsometricSeries
+
+    /// Reads the mapped file through its import profile and validates it against the detector among the resolved `slots`
+    /// and the scan's one axis, or a dark line's R1 default range. An unavailable profile, a key selection or any other
+    /// scan reads nothing and is refused typed: an X,Y file holds one variable and no key column (spec 0038 Part L step
+    /// 037; spec 0050 S4.2, S8.2, S9.1).
     let loadAndValidate
         (library : LibraryProxy)
         (dataProxy : ExperimentDataProxy)
         (slots : SetupSlot list)
         (experiment : Experiment)
-        (attachment : DataAttachment)
+        (data : MappedAttachment)
         : Result<MeasuredSeries, ExperimentDataError> =
+        let readByProfile () : Result<MeasuredSeries, ExperimentDataError> =
+            let readerOpt : (DataAttachment -> Result<MeasuredSeries, ExperimentDataError>) option =
+                if data.profile = ImportProfileName.intensitySeries then
+                    Some (dataProxy.tryLoadIntensity >> Result.map IntensityData)
+                elif data.profile = ImportProfileName.ellipsometricSeries then
+                    Some (dataProxy.tryLoadEllipsometric >> Result.map EllipsometricData)
+                else
+                    None
+            match readerOpt, data.rows with
+            | None, _ -> Error (MalformedDataFileErr $"the import profile '{data.profile.value}' is not available")
+            | Some _, KeyedDataRows key ->
+                Error (MalformedDataFileErr $"{data.attachment.path.value}: an X,Y data file has no key column to select '{key.value}' by")
+            | Some read, AllDataRows -> read data.attachment
+
         let validateOver (varied : VariableParameter option) (range : VariableRange) : Result<MeasuredSeries, ExperimentDataError> =
-            let detector = detectorKindOf library slots
-            match detector with
-            | Intensity ->
-                dataProxy.tryLoadIntensity attachment
-                |> Result.map IntensityData
-                |> Result.bind (validateAgainstExperiment varied range detector)
-            | Ellipsometer ->
-                dataProxy.tryLoadEllipsometric attachment
-                |> Result.map EllipsometricData
-                |> Result.bind (validateAgainstExperiment varied range detector)
+            readByProfile () |> Result.bind (validateAgainstExperiment varied range (detectorKindOf library slots))
 
         match experiment.scan.blocks with
         | [ { axes = [ axis ] } ] -> validateOver (Some axis.variable) axis.range

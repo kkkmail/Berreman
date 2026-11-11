@@ -7,6 +7,7 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ExperimentDataLoad
 
 module KitTests =
 
@@ -398,6 +399,26 @@ module KitTests =
         Assert.Equal<DataAttachmentStatus>(AttachedDataChanged changedHash, attachment.statusAgainst (Some changedFile))
         Assert.Equal<DataAttachmentStatus>(AttachedDataMissing, attachment.statusAgainst None)
         Assert.Equal<ContentHash>(originalHash, attachment.contentHash)
+
+    [<Fact>]
+    let ``an import profile name refuses a blank text, a row selection names every row or one key, and the two built-in names are the X,Y parsers'`` () : unit =
+        let intensity = ImportProfileName "Intensity series"
+        let ellipsometric = ImportProfileName "Ellipsometric series"
+
+        Assert.Equal<ImportProfileName option>(Some (ImportProfileName "Phone ROI CSV"), ImportProfileName.tryCreate "Phone ROI CSV")
+        for blank in [ ""; "  " ] do
+            Assert.Equal<ImportProfileName option>(None, ImportProfileName.tryCreate blank)
+        Assert.Equal<ImportProfileName>(intensity, ImportProfileName.intensitySeries)
+        Assert.Equal<ImportProfileName>(ellipsometric, ImportProfileName.ellipsometricSeries)
+
+        let keyed = KeyedDataRows (DataRowKey "CPL-(QZ#45)-CPL")
+        Assert.NotEqual<DataRowSelection>(AllDataRows, keyed)
+        match keyed with
+        | KeyedDataRows key -> Assert.Equal("CPL-(QZ#45)-CPL", key.value)
+        | AllDataRows -> Assert.Fail "a key selection must name its key"
+
+        Assert.Equal<ImportProfileName>(intensity, OpticalConstructor.Domain.Library.Intensity.builtInProfile)
+        Assert.Equal<ImportProfileName>(ellipsometric, OpticalConstructor.Domain.Library.Ellipsometer.builtInProfile)
 
     [<Fact>]
     let ``a setup name keeps its text, refuses a blank one and takes its file stem from the shared name rule`` () : unit =

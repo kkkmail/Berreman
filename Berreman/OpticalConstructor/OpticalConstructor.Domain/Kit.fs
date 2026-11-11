@@ -367,6 +367,43 @@ module Kit =
                 contentHash = this.contentHash
             }
 
+    /// The name a kit's import profile is stored and picked under (spec 0050 S9.1; S9.2 keeps the profiles in `.kit-json`).
+    type ImportProfileName =
+        | ImportProfileName of string
+
+        member this.value : string = let (ImportProfileName text) = this in text
+
+        /// The text as given; an empty or white-space text names no profile (spec 0050 S9.1).
+        static member tryCreate (text : string) : ImportProfileName option =
+            if String.IsNullOrWhiteSpace text then None else Some (ImportProfileName text)
+
+        /// The built-in profile over `DataFileText.parseIntensitySeries`, an X,Y intensity file (spec 0050 S9.1).
+        static member intensitySeries : ImportProfileName = ImportProfileName "Intensity series"
+
+        /// The built-in profile over `DataFileText.parseEllipsometricSeries`, a λ, Ψ, Δ file (spec 0050 S9.1).
+        static member ellipsometricSeries : ImportProfileName = ImportProfileName "Ellipsometric series"
+
+    /// One value of an import profile's experiment-key column (spec 0050 S9.1; 001 §K).
+    type DataRowKey =
+        | DataRowKey of string
+
+        member this.value : string = let (DataRowKey text) = this in text
+
+    /// Which rows of a data file are an experiment's: every row, or those whose key column holds the key, so one file
+    /// serves many experiments (spec 0050 S9.1; 001 §K).
+    type DataRowSelection =
+        | AllDataRows
+        | KeyedDataRows of key : DataRowKey
+
+    /// An experiment's data: the kit file, the import profile it is read through and the rows that are the experiment's
+    /// (spec 0050 S9.1; 001 §K).
+    type MappedAttachment =
+        {
+            attachment : DataAttachment
+            profile : ImportProfileName
+            rows : DataRowSelection
+        }
+
     /// Why an item, its label, its model binding or one of its parameters was refused, named in the reason
     /// (spec 0050 S7.1).
     type ItemError =

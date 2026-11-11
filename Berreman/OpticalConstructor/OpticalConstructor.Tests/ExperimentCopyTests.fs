@@ -262,7 +262,8 @@ module ExperimentCopyTests =
 
     let private standardSetups : Setup list = [ benchSetup; plateSetup; darkSetup ]
 
-    let private darkLine (id : ExperimentId) (dataFileOpt : DataAttachment option) : Experiment =
+    /// A dark line over `Dark`, its attachment read as an intensity series over every row (spec 0050 S9.1).
+    let private darkLine (id : ExperimentId) (attachmentOpt : DataAttachment option) : Experiment =
         {
             id = id
             name = id.defaultName
@@ -271,8 +272,30 @@ module ExperimentCopyTests =
             role = ScienceRun
             sessionOpt = None
             notes = ExperimentNotes.none
-            dataFileOpt = dataFileOpt
+            dataOpt =
+                attachmentOpt
+                |> Option.map (fun attachment ->
+                    {
+                        attachment = attachment
+                        profile = ImportProfileName.intensitySeries
+                        rows = AllDataRows
+                    })
         }
+
+    /// The experiment's data file, its profile and rows unchanged, as a copy records it.
+    let private reattached (attachment : DataAttachment) (experiment : Experiment) : Experiment =
+        {
+            experiment with
+                dataOpt =
+                    experiment.dataOpt
+                    |> Option.map (fun data ->
+                        {
+                            data with attachment = attachment
+                        })
+        }
+
+    let private attachmentOf (experiment : Experiment) : DataAttachment option =
+        experiment.dataOpt |> Option.map (fun data -> data.attachment)
 
     /// E1 runs over `Bench` and attaches the run.
     let private experimentE1 (run : DataAttachment) : Experiment =
@@ -411,7 +434,7 @@ module ExperimentCopyTests =
                 contentHash = hashOf runText
             }
         let e1 = recordedAs (ExperimentId 1) recorded
-        Assert.Equal<DataAttachment option>(Some run, e1.dataFileOpt)
+        Assert.Equal<DataAttachment option>(Some run, attachmentOf e1)
         let closure = closureOfE1 ()
         Assert.Equal<LibraryEntryEnvelope list>(bySnapshotName closure, bySnapshotName (copiedClosureOfE1 ()))
 
@@ -520,10 +543,7 @@ module ExperimentCopyTests =
         let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
 
         Assert.Equal<DataAttachment list>([ suffixed ], report.dataFiles)
-        let copiedE1 =
-            {
-                e1 with dataFileOpt = Some suffixed
-            }
+        let copiedE1 = reattached suffixed e1
         Assert.Equal<Result<Experiment list, KitError>>(Ok [ copiedE1 ], target.context.proxy.readExperiments ())
         let heldFile : KitDataFile =
             {
@@ -550,15 +570,12 @@ module ExperimentCopyTests =
                 path = runPath
                 contentHash = hashOf rewrittenText
             }
-        Assert.NotEqual<DataAttachment option>(Some rewritten, e1.dataFileOpt)
+        Assert.NotEqual<DataAttachment option>(Some rewritten, attachmentOf e1)
 
         let rewrittenReport = fresh.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
 
         Assert.Equal<DataAttachment list>([ rewritten ], rewrittenReport.dataFiles)
-        let rewrittenE1 =
-            {
-                e1 with dataFileOpt = Some rewritten
-            }
+        let rewrittenE1 = reattached rewritten e1
         Assert.Equal<Result<Experiment list, KitError>>(Ok [ rewrittenE1 ], fresh.context.proxy.readExperiments ())
         assertSetupsHeld fresh [ rewrittenE1 ]
 
@@ -576,7 +593,7 @@ module ExperimentCopyTests =
             }
         let e1 = recordedAs (ExperimentId 1) recorded
         let e5 = recordedAs (ExperimentId 5) recorded
-        Assert.Equal<DataAttachment option list>([ Some run; Some run ], [ e1.dataFileOpt; e5.dataFileOpt ])
+        Assert.Equal<DataAttachment option list>([ Some run; Some run ], [ attachmentOf e1; attachmentOf e5 ])
 
         let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1; ExperimentId 5 ] [] |> expectCopyOk
 
@@ -587,6 +604,54 @@ module ExperimentCopyTests =
             |> List.filter (fun path -> path.value.StartsWith("data/", StringComparison.Ordinal))
         Assert.Equal<KitRelativePath list>([ KitRelativePath "data/raw"; runPath ], dataPaths)
         assertSetupsHeld target [ e1; e5 ]
+
+    [<Fact>]
+    let ``a copy keeps each copied experiment's import profile and row selection`` () : unit =
+        let clock = steppingClock ()
+        let phoneRoi = ImportProfileName "Phone ROI CSV"
+        let keyedK1 = KeyedDataRows (DataRowKey "K1")
+        // Spec 0050 S9.1: E1's data is the rows keyed K1 of its file, read through the kit's own profile.
+        let keyedE1 (experiment : Experiment) : Experiment =
+            if experiment.id = ExperimentId 1 then
+                {
+                    experiment with
+                        dataOpt =
+                            experiment.dataOpt
+                            |> Option.map (fun data ->
+                                {
+                                    data with
+                                        profile = phoneRoi
+                                        rows = keyedK1
+                                })
+                }
+            else
+                experiment
+        let source, recorded = sourceHolding (fun run other -> standardExperiments run other |> List.map keyedE1) clock
+        let target = emptyTarget ReadWriteKitAccess clock
+        target.folder.placeLabFile runPath (KitFileText "wavelength,intensity\n600,0.9\n") |> expectKitOk
+        let suffixed : DataAttachment =
+            {
+                path = KitRelativePath "data/raw/run 1 (2).csv"
+                contentHash = hashOf runText
+            }
+        let e1 = recordedAs (ExperimentId 1) recorded
+        let expected : MappedAttachment =
+            {
+                attachment = suffixed
+                profile = phoneRoi
+                rows = keyedK1
+            }
+
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        Assert.Equal<DataAttachment list>([ suffixed ], report.dataFiles)
+        let copiedE1 =
+            {
+                e1 with dataOpt = Some expected
+            }
+        Assert.Equal<Experiment list>([ copiedE1 ], report.experiments)
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ copiedE1 ], target.context.proxy.readExperiments ())
+        assertSetupsHeld target [ copiedE1 ]
 
     [<Fact>]
     let ``a snapshot the kit already holds is kept and not written again`` () : unit =
