@@ -518,3 +518,93 @@ module SetupTests =
         // B's slots with the dial reading changed hold other content, so B is not matched.
         let otherReading = [ src; { dialSlot with content = ItemInSlot (dialLp.id, DialTurn (Angle.degree (-25.0<deg>))) }; det ]
         Assert.Equal<SetupSwap>(CreateSwappedSetup (created otherReading), Setup.swapTarget otherReading held fresh)
+
+    // ================================ spec 0050 S8.4: the slot bar's chips ================================
+
+    let private circularPolarizerChoice : ItemModelChoice =
+        LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+
+    let private fixedLp2 : Item =
+        itemOf (ItemId (Guid.Parse "5a6b7c8d-9eaf-4b0c-91d2-3e4f5a6b7c96")) (ItemLabel "LP2") linearPolarizerChoice FixedMounting
+
+    let private cpl1 : Item =
+        itemOf (ItemId (Guid.Parse "6b7c8d9e-af0b-4c1d-a2e3-4f5a6b7c8da7")) (ItemLabel "CPL1") circularPolarizerChoice FixedMounting
+
+    /// The glass plate on a dial that reads backwards, its zero at 10°.
+    let private plateOnDial : Item =
+        itemOf (ItemId (Guid.Parse "7c8d9eaf-0b1c-4d2e-b3f4-5a6b7c8d9eb8")) (ItemLabel "QZd") glassPlateChoice (DialMounted DialNegative)
+        |> withDialZero (Angle.degree 10.0<deg>)
+
+    /// Made over the LP preset, so it would fit a polarizer slot, but `choiceOf` resolves no model for it.
+    let private ghost : Item =
+        itemOf (ItemId (Guid.Parse "8d9eaf0b-1c2d-4e3f-84a5-6b7c8d9eafc9")) (ItemLabel "Ghost") linearPolarizerChoice FixedMounting
+
+    /// Each item's model as the library resolves it; none for `ghost`.
+    let private choiceOf (item : Item) : ItemModelChoice option =
+        let resolved : (ItemId * ItemModelChoice) list =
+            [
+                laser.id, heNeChoice
+                fixedLp.id, linearPolarizerChoice
+                fixedLp2.id, linearPolarizerChoice
+                cpl1.id, circularPolarizerChoice
+                plate.id, glassPlateChoice
+                plateOnDial.id, glassPlateChoice
+            ]
+
+        resolved |> List.tryFind (fun (id, _) -> id = item.id) |> Option.map snd
+
+    [<Fact>]
+    let ``a slot lists the kit's items that fit it, in their order`` () : unit =
+        let kitItems = [ laser; fixedLp; plate; cpl1; ghost; fixedLp2 ]
+
+        Assert.Equal<Item list>([ fixedLp; cpl1; fixedLp2 ], lpA.fittingItems kitItems choiceOf)
+        Assert.Equal<Item list>([ plate ], sampleA.fittingItems kitItems choiceOf)
+        Assert.Equal<Item list>([ laser ], src.fittingItems kitItems choiceOf)
+        Assert.Empty(det.fittingItems kitItems choiceOf)
+
+    [<Fact>]
+    let ``a typed letter picks the next fitting item whose label starts with it, wrapping, and never the slot's own`` () : unit =
+        let fitting = [ fixedLp; cpl1; fixedLp2 ]
+
+        let typed (text : string) : PickLetter =
+            match PickLetter.tryCreate text with
+            | Some letter -> letter
+            | None -> failwith $"'{text}' types no letter"
+
+        let holdingLp1 = assigned fixedLp linearPolarizerChoice lpA
+        let holdingLp2 = assigned fixedLp2 linearPolarizerChoice lpA
+        let holdingCpl1 = assigned cpl1 circularPolarizerChoice lpA
+
+        let picks : (SetupSlot * string * Item option) list =
+            [
+                holdingLp1, "l", Some fixedLp2
+                holdingLp1, "c", Some cpl1
+                // The last LP wraps round to the first.
+                holdingLp2, "L", Some fixedLp
+                lpA, "l", Some fixedLp
+                // CPL1 is the only label starting with C, and a letter never picks the slot's own item.
+                holdingCpl1, "c", None
+                holdingLp1, "x", None
+                lpA, "x", None
+            ]
+
+        for slot, text, expected in picks do
+            Assert.Equal<Item option>(expected, slot.pickedByLetter (typed text) fitting)
+
+        for text in [ "q"; "qz" ] do
+            Assert.Equal<PickLetter option>(Some (PickLetter 'Q'), PickLetter.tryCreate text)
+
+        for text in [ ""; " "; "-" ] do
+            Assert.Equal<PickLetter option>(None, PickLetter.tryCreate text)
+
+    [<Fact>]
+    let ``an object's angle is its dial reading, or its R1`` () : unit =
+        // On a backwards dial zeroed at 10°, R1 30° reads 10° − 30° = −20° (step 258); the drawn R1 stays 30°.
+        let onDial = assigned plateOnDial glassPlateChoice (turnedTo (Angle.degree 30.0<deg>) sampleA)
+        assertAngle (Angle.degree (-20.0<deg>)) onDial.turnAngle
+        assertAngle (Angle.degree 30.0<deg>) onDial.placement.r1
+
+        let fixedPlate = assigned plate glassPlateChoice (turnedTo (Angle.degree 45.0<deg>) sampleA)
+        assertAngle (Angle.degree 45.0<deg>) fixedPlate.turnAngle
+
+        assertAngle (Angle.degree 15.0<deg>) (turnedTo (Angle.degree 15.0<deg>) sampleA).turnAngle

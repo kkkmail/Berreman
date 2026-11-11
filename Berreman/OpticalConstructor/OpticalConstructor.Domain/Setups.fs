@@ -445,3 +445,56 @@ module Setups =
                 | None ->
                     let used = assigned |> List.map (fun (_, _, id) -> id)
                     items |> List.filter (fun item -> List.contains item.id used) |> List.distinctBy (fun item -> item.id) |> Ok)
+
+    /// A letter typed on a slot's chip, upper-cased; letters pick the slot's item (spec 0050 S8.4; 001 §J "letters
+    /// pick").
+    type PickLetter =
+        | PickLetter of char
+
+        member this.value : char = let (PickLetter letter) = this in letter
+
+        /// The text's first character upper-cased in the invariant culture, or none when the text is empty or starts
+        /// with neither a letter nor a digit (spec 0050 S8.4).
+        static member tryCreate (text : string) : PickLetter option =
+            match Seq.tryHead text with
+            | Some first when System.Char.IsLetterOrDigit first -> Some (PickLetter (System.Char.ToUpperInvariant first))
+            | Some _
+            | None -> None
+
+    type SetupSlot with
+
+        /// The angle the slot's chip shows and a name writes: a dial-mounted item's raw reading, else the placement's R1
+        /// (spec 0050 S8.2, S8.4; 001 §I).
+        member this.turnAngle : Angle =
+            match this.content with
+            | ItemInSlot (_, DialTurn reading) -> reading
+            | ItemInSlot (_, PlacementTurn)
+            | EmptySlotContent -> this.placement.r1
+
+        /// The items, in their order, whose model `choiceOf` resolves and `withItem` accepts here, so the chip lists
+        /// exactly what `SwapSlot` accepts (spec 0050 S8.4; 001 §J "each dropdown lists compatible items only").
+        member this.fittingItems (items : Item list) (choiceOf : Item -> ItemModelChoice option) : Item list =
+            items
+            |> List.choose (fun item ->
+                choiceOf item
+                |> Option.bind (fun choice -> this.withItem item choice |> Result.toOption)
+                |> Option.map (fun _ -> item))
+
+        /// The fitting item a typed letter picks: of those whose label starts with it, the next after the slot's own,
+        /// wrapping, else the first; none when no label starts with it or the pick is the slot's own (spec 0050 S8.4).
+        member this.pickedByLetter (letter : PickLetter) (fitting : Item list) : Item option =
+            let starting = fitting |> List.filter (fun item -> PickLetter.tryCreate item.label.value = Some letter)
+            let heldOpt = this.content.itemOpt
+
+            let pickOpt : Item option =
+                match heldOpt |> Option.bind (fun held -> starting |> List.tryFindIndex (fun item -> item.id = held)) with
+                | Some at ->
+                    match List.skip (at + 1) starting with
+                    | next :: _ -> Some next
+                    | [] -> List.tryHead starting
+                | None -> List.tryHead starting
+
+            match pickOpt with
+            | Some pick when Some pick.id = heldOpt -> None
+            | Some _
+            | None -> pickOpt

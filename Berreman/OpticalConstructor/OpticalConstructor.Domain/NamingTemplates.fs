@@ -427,8 +427,8 @@ module NamingTemplates =
     type NamingTemplate with
 
         /// The values the template takes from the slots in light order: a slot's item of `items` under its placeholder's
-        /// first alias of that label ignoring case, else its label; an object's dial reading, else its R1 (S8.2; 001 §I);
-        /// and the note. A missing slot, an empty one and an item `items` lacks give none (spec 0050 S8.3; 001 §J).
+        /// first alias of that label ignoring case, else its label; an object's `turnAngle` (S8.4; 001 §I); and the note.
+        /// A missing slot, an empty one and an item `items` lacks give none (spec 0050 S8.3; 001 §J).
         member this.nameReadingOf (slots : SetupSlot list) (items : Item list) (noteOpt : NamePart option) : Result<NameReading, NamingTemplateError> =
             let lightOrder = SetupSlot.inLightOrder slots
 
@@ -439,12 +439,6 @@ module NamingTemplates =
                     roled.slot.content.itemOpt
                     |> Option.bind (fun id -> items |> List.tryFind (fun item -> item.id = id))
                     |> Option.map (fun item -> roled.slot, item))
-
-            let angleIn (slot : SetupSlot) : Angle =
-                match slot.content with
-                | ItemInSlot (_, DialTurn reading) -> reading
-                | ItemInSlot (_, PlacementTurn)
-                | EmptySlotContent -> slot.placement.r1
 
             let partOf (value : TemplateValue) (item : Item) : NamePart =
                 let labels (alias : NameAlias) : bool =
@@ -465,7 +459,7 @@ module NamingTemplates =
                         | None -> read
                     | AnglePlaceholder position ->
                         match tryFindHeld (ObjectSlotRole position) with
-                        | Some (slot, _) -> { read with angles = read.angles @ [ { position = position; angle = angleIn slot } ] }
+                        | Some (slot, _) -> { read with angles = read.angles @ [ { position = position; angle = slot.turnAngle } ] }
                         | None -> read
                     | NotePlaceholder -> { read with noteOpt = noteOpt }
 
