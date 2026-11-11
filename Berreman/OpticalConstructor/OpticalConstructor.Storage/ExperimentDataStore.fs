@@ -5,50 +5,49 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.MeasuredData
+open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.ExperimentData
+open OpticalConstructor.Storage.LabFileImport
 
-/// Reads measured data through its kit; reading a picked file's bytes is its only direct IO
-/// (spec 0038 step 036; spec 0050 S4.2).
+/// Reads an attachment through its kit, the kit file's import profiles and its row selection; reading a picked file's
+/// bytes is its only direct IO (spec 0038 step 036; spec 0050 S4.2, S9.2).
 [<RequireQualifiedAccess>]
 module ExperimentDataStore =
 
-    /// Which measured-data file a load reads, as its failure names it.
-    type private DataFileKind =
-        | IntensityDataFile
-        | EllipsometricDataFile
+    type FileName with
 
-        member this.text : string =
-            match this with
-            | IntensityDataFile -> "intensity"
-            | EllipsometricDataFile -> "ellipsometric"
+        /// The picked file's absolute name and bytes, read whole, or `KitIoErr` (spec 0050 S4.2, S9.2).
+        member private this.pickedLabFile : Result<LabFileSource, KitError> =
+            try
+                let source : LabFileSource =
+                    {
+                        file = this
+                        content = FileByteContent (File.ReadAllBytes this.value)
+                    }
+                Ok source
+            with error -> Error (KitIoErr $"could not read the picked data file '{this.value}': {error.Message}")
 
-    let private loadThrough
-        (kit : KitProxy)
-        (parse : DataFileText -> Result<'Series, ExperimentDataError>)
-        (kind : DataFileKind)
-        (attachment : DataAttachment)
-        : Result<'Series, ExperimentDataError> =
-        match kit.readDataFile attachment.path with
-        | Error error -> Error (MalformedDataFileErr $"could not read the {kind.text} data file '{attachment.path.value}': {error.describe}")
-        | Ok file -> parse file.text.dataFileText
-
-    /// Attaches picked files and parses measured data through the supplied kit (spec 0050 S4.2).
+    /// Reads and attaches picked files, and reads attachments through their import profiles, through the supplied kit
+    /// (spec 0050 S4.2, S9.2).
     let createFileBacked (kit : KitProxy) : ExperimentDataProxy =
         {
-            attachDataFile =
-                fun file ->
-                    let read =
-                        try Ok (FileByteContent (File.ReadAllBytes file.value))
-                        with error -> Error (KitIoErr $"could not read the picked data file '{file.value}': {error.Message}")
-                    read
-                    |> Result.bind (fun content ->
-                        let source : LabFileSource =
-                            {
-                                file = file
-                                content = content
-                            }
-                        kit.attachLabFile KitDataFolder.root source)
+            readPickedFile = fun file -> file.pickedLabFile
+            attachDataFile = fun file -> file.pickedLabFile |> Result.bind (kit.attachLabFile KitDataFolder.root)
             attachmentStatus = kit.attachmentStatus
-            tryLoadIntensity = loadThrough kit (fun text -> text.parseIntensitySeries) IntensityDataFile
-            tryLoadEllipsometric = loadThrough kit (fun text -> text.parseEllipsometricSeries) EllipsometricDataFile
+            readMapped =
+                fun (data : MappedAttachment) ->
+                    let unread (error : KitError) : ExperimentDataError =
+                        MalformedDataFileErr
+                            $"could not read the data file '{data.attachment.path.value}' for the import profile '{data.profile.value}': {error.describe}"
+
+                    kit.readKitFile ()
+                    |> Result.mapError unread
+                    |> Result.bind (fun kitFile ->
+                        match ChosenImportProfile.tryOfName kitFile.importProfiles data.profile with
+                        | None -> Error (MalformedDataFileErr $"the import profile '{data.profile.value}' is not available")
+                        | Some profile ->
+                            kit.readDataFile data.attachment.path
+                            |> Result.mapError unread
+                            |> Result.bind (fun file -> profile.mapText file.text)
+                            |> Result.bind (fun points -> points.selectedBy data.rows))
         }

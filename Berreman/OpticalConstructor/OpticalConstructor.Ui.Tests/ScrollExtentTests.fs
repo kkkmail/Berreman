@@ -251,10 +251,10 @@ module ScrollExtentTests =
             }
         let noData : ExperimentData.ExperimentDataProxy =
             {
+                readPickedFile = fun _ -> Error (Kit.KitIoErr "no picked files in the layout fixture")
                 attachDataFile = fun _ -> Error (Kit.KitIoErr "no data files in the layout fixture")
                 attachmentStatus = fun _ -> Ok Kit.AttachedDataMissing
-                tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFileErr "none")
-                tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "none")
+                readMapped = fun _ -> Error (MeasuredData.MalformedDataFileErr "none")
             }
         assertReachable "Chart" (fun () -> ChartWindow(chart))
         assertReachable "Handoff" (fun () ->

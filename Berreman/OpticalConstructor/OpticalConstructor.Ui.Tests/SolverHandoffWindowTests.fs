@@ -123,10 +123,17 @@ module SolverHandoffWindowTests =
     let private intensitySeries (points : (float * float) list) : MeasuredData.IntensitySeries =
         { points = points |> List.map (fun (x, i) -> { x = MeasuredData.MeasuredAbscissa x; intensity = MeasuredData.MeasuredIntensity i }) }
 
+    /// The series as the mapped points an X,Y built-in reads it to (spec 0050 S9.2).
+    let private intensityPoints
+        (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>)
+        : Result<ImportProfiles.MappedPoints, MeasuredData.ExperimentDataError> =
+        result |> Result.map (MeasuredData.IntensityData >> ImportProfiles.SeriesPoints)
+
     /// An intensity load proxy that answers by the attached path — so ONE proxy serves a collection
     /// whose experiments each attach a different file (valid / out-of-range / …).
     let private mockIntensityByPath (byPath : Map<KitRelativePath, Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>>) : ExperimentData.ExperimentDataProxy =
         {
+            readPickedFile = fun file -> Error (KitIoErr $"the mock reads no picked file '{file.value}'")
             attachDataFile =
                 fun file ->
                     Ok
@@ -135,24 +142,23 @@ module SolverHandoffWindowTests =
                             contentHash = attachmentHash
                         }
             attachmentStatus = fun _ -> Ok AttachedDataUnchanged
-            tryLoadIntensity =
-                fun (attachment : DataAttachment) ->
-                    match byPath |> Map.tryFind attachment.path with
-                    | Some r -> r
-                    | None -> Error (MeasuredData.MalformedDataFileErr $"no mock intensity registered for '%s{attachment.path.value}'")
-            tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data")
+            readMapped =
+                fun (data : MappedAttachment) ->
+                    match byPath |> Map.tryFind data.attachment.path with
+                    | Some r -> intensityPoints r
+                    | None -> Error (MeasuredData.MalformedDataFileErr $"no mock intensity registered for '%s{data.attachment.path.value}'")
         }
 
     let private mockIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
         {
             mockIntensityByPath Map.empty with
-                tryLoadIntensity = fun _ -> result
+                readMapped = fun _ -> intensityPoints result
         }
 
     let private mockEllipsometric (result : Result<MeasuredData.EllipsometricSeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
         {
             mockIntensity (Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")) with
-                tryLoadEllipsometric = fun _ -> result
+                readMapped = fun _ -> result |> Result.map (MeasuredData.EllipsometricData >> ImportProfiles.SeriesPoints)
         }
 
     let private recordingIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : int ref * ExperimentData.ExperimentDataProxy =
@@ -160,10 +166,10 @@ module SolverHandoffWindowTests =
         let proxy : ExperimentData.ExperimentDataProxy =
             {
                 mockIntensity result with
-                    tryLoadIntensity =
+                    readMapped =
                         fun _ ->
                             calls.Value <- calls.Value + 1
-                            result
+                            intensityPoints result
             }
         calls, proxy
 

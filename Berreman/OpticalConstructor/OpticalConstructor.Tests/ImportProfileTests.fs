@@ -15,7 +15,8 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.ImportProfiles
 
 /// The built-in import profiles, the profile an experiment names, the points a profile maps a file to, the wizard's one
-/// rule from column choices to roles and the one validation of mapped points (spec 0050 S9.2).
+/// rule from column choices to roles, the one validation of mapped points and an experiment's rows of them
+/// (spec 0050 S9.2).
 module ImportProfileTests =
 
     let private scanCellOf (valueUnit : ScanColumnUnit) (magnitude : Units.UnitMagnitude) : ScanCell =
@@ -473,3 +474,58 @@ module ImportProfileTests =
         for detector in [ Library.Intensity; Library.Ellipsometer ] do
             for scan in [ turnScan; darkLine; plateScan; waveLengthScan ] do
                 assertValidation (Ok observations) (observations.validatedFor detector scan)
+
+    // ============================ spec 0050 S9.2: an experiment's rows of a data file ============================
+
+    [<Fact>]
+    let ``a row selection keeps every row or the rows of one key`` () : unit =
+        let k1 = DataRowKey "K1"
+        let k2 = DataRowKey "K2"
+        let k3 = DataRowKey "K3"
+
+        // Phone ROI rows labelled K1, K2, K1.
+        let firstK1Capture = { captureAt (CaptureIndex 1) (Angle.degree 0.0<deg>) with experiment = MuellerExperimentLabel "K1" }
+        let k2Capture = { captureAt (CaptureIndex 2) (Angle.degree 45.0<deg>) with experiment = MuellerExperimentLabel "K2" }
+        let secondK1Capture = { captureAt (CaptureIndex 3) (Angle.degree 90.0<deg>) with experiment = MuellerExperimentLabel "K1" }
+        let captures = CapturePoints [ firstK1Capture; k2Capture; secondK1Capture ]
+
+        let k1Observation = observationOf k1
+        let observations = ObservationPoints [ k1Observation; observationOf k2 ]
+
+        // `Lab scan` rows, one scan column and a signal with its σ.
+        let labScanRow (keyOpt : DataRowKey option) (magnitude : Units.UnitMagnitude) : MappedRow =
+            {
+                keyOpt = keyOpt
+                scan = [ scanCellOf DegreeColumnUnit magnitude ]
+                reading = SignalReading (MeasuredIntensity 0.5, Some (MeasuredSigma 0.01))
+                timestampOpt = None
+                captureIndexOpt = None
+                observableOpt = None
+            }
+
+        let k1Row = labScanRow (Some k1) (Units.UnitMagnitude 0.0)
+        let labRows = ColumnPoints [ k1Row; labScanRow (Some k2) (Units.UnitMagnitude 20.0) ]
+
+        for points in [ captures; observations; labRows ] do
+            assertValidation (Ok points) (points.selectedBy AllDataRows)
+
+        assertValidation (Ok (CapturePoints [ firstK1Capture; secondK1Capture ])) (captures.selectedBy (KeyedDataRows k1))
+        assertValidation (Ok (ObservationPoints [ k1Observation ])) (observations.selectedBy (KeyedDataRows k1))
+        assertValidation (Ok (ColumnPoints [ k1Row ])) (labRows.selectedBy (KeyedDataRows k1))
+
+        for points in [ captures; observations; labRows ] do
+            assertValidation (Error (EmptyDataFileErr "no row of the data file holds the key 'K3'")) (points.selectedBy (KeyedDataRows k3))
+
+        // An X,Y series holds no key column, and neither does a mapping whose rows hold no key.
+        let series =
+            SeriesPoints (IntensityData { points = [ { x = MeasuredAbscissa 0.0; intensity = MeasuredIntensity 1.0 } ] })
+
+        assertValidation (Ok series) (series.selectedBy AllDataRows)
+        assertValidation
+            (Error (MalformedDataFileErr "an X,Y data file has no key column to select 'K1' by"))
+            (series.selectedBy (KeyedDataRows k1))
+
+        let unkeyed = ColumnPoints [ labScanRow None (Units.UnitMagnitude 0.0); labScanRow None (Units.UnitMagnitude 20.0) ]
+        assertValidation
+            (Error (MalformedDataFileErr "the import profile maps no key column to select 'K1' by"))
+            (unkeyed.selectedBy (KeyedDataRows k1))

@@ -62,8 +62,15 @@ module InverseConstructorTests =
     let private intensitySeries (points : (float * float) list) : MeasuredData.IntensitySeries =
         { points = points |> List.map (fun (x, i) -> { x = MeasuredData.MeasuredAbscissa x; intensity = MeasuredData.MeasuredIntensity i }) }
 
+    /// The series as the mapped points an X,Y built-in reads it to (spec 0050 S9.2).
+    let private intensityPoints
+        (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>)
+        : Result<ImportProfiles.MappedPoints, MeasuredData.ExperimentDataError> =
+        result |> Result.map (MeasuredData.IntensityData >> ImportProfiles.SeriesPoints)
+
     let private mockIntensity (result : Result<MeasuredData.IntensitySeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
         {
+            readPickedFile = fun file -> Error (KitIoErr $"the mock reads no picked file '{file.value}'")
             attachDataFile =
                 fun file ->
                     Ok
@@ -72,14 +79,13 @@ module InverseConstructorTests =
                             contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                         }
             attachmentStatus = fun _ -> Ok AttachedDataUnchanged
-            tryLoadIntensity = fun _ -> result
-            tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFileErr "the mock has no ellipsometric data")
+            readMapped = fun _ -> intensityPoints result
         }
 
     let private mockEllipsometric (result : Result<MeasuredData.EllipsometricSeries, MeasuredData.ExperimentDataError>) : ExperimentData.ExperimentDataProxy =
         {
             mockIntensity (Error (MeasuredData.MalformedDataFileErr "the mock has no intensity data")) with
-                tryLoadEllipsometric = fun _ -> result
+                readMapped = fun _ -> result |> Result.map (MeasuredData.EllipsometricData >> ImportProfiles.SeriesPoints)
         }
 
     /// Commits one R2 intensity experiment in the supplied inverse model (spec 0050 S4.3).
@@ -170,7 +176,7 @@ module InverseConstructorTests =
     [<Fact>]
     let ``the detector kind selects the ellipsometric load path`` () =
         // Bind the detector to the ellipsometer, commit an experiment, then attach an ellipsometric
-        // file — the load must go through `tryLoadEllipsometric` and validate as an ellipsometric shape.
+        // file — the load must read it through the ellipsometric built-in profile and validate it as an ellipsometric shape.
         let ellipsometric =
             match (MeasuredData.DataFileText "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110").parseEllipsometricSeries with
             | Ok series -> series
@@ -207,8 +213,7 @@ module InverseConstructorTests =
                         fun file ->
                             Assert.Equal(picked, file)
                             Error attachError
-                    tryLoadIntensity = fun _ -> failwith "an attachment failure must not load intensity data"
-                    tryLoadEllipsometric = fun _ -> failwith "an attachment failure must not load ellipsometric data"
+                    readMapped = fun _ -> failwith "an attachment failure must not read data"
             }
         let model, expId = withIntensityExperiment { inverse () with experimentData = refusingProxy }
         let failed = model |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
@@ -288,10 +293,10 @@ module InverseConstructorTests =
                             fun attached ->
                                 inspected.Add attached
                                 Ok AttachedDataUnchanged
-                        tryLoadIntensity =
-                            fun attached ->
-                                loadedAttachments.Add attached
-                                result
+                        readMapped =
+                            fun (data : MappedAttachment) ->
+                                loadedAttachments.Add data.attachment
+                                intensityPoints result
                 }
             let opened = openFolder folder saved.catalogueImports
             let loaded = saved.loadKit { opened with experimentData = loadingProxy }
@@ -352,8 +357,7 @@ module InverseConstructorTests =
                             if attachment.path = firstPath then Ok (AttachedDataChanged currentHash)
                             elif attachment.path = secondPath then Ok AttachedDataMissing
                             else failwith "only the saved attachments may be inspected"
-                    tryLoadIntensity = fun _ -> failwith "changed or missing data must not be validated"
-                    tryLoadEllipsometric = fun _ -> failwith "changed or missing data must not be validated"
+                    readMapped = fun _ -> failwith "changed or missing data must not be validated"
             }
         saved.kit.close () |> SceneTestFixture.kitSuccess
         let opened = openFolder folder saved.catalogueImports

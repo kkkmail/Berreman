@@ -11,8 +11,8 @@ open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 
-/// The built-in import profiles, the profile an experiment names, the points a profile maps a lab file to, and their one
-/// validation against an experiment's scan and detector (spec 0050 S9.2; 001 §K).
+/// The built-in import profiles, the profile an experiment names, the points a profile maps a lab file to, their one
+/// validation against an experiment's scan and detector, and an experiment's rows of them (spec 0050 S9.2; 001 §K).
 module ImportProfiles =
 
     /// One cell of a lab file's row, as its file wrote it (spec 0050 S9.2).
@@ -281,6 +281,29 @@ module ImportProfiles =
                 match problemOpt with
                 | Some problem -> Error problem
                 | None -> Ok this
+
+        /// The experiment's rows of the points: every point, or the captures, observations and mapped rows of its key;
+        /// a series or rows without a key cannot be selected by one, and no row of the key is an empty file (spec 0050
+        /// S9.2; 001 §K).
+        member this.selectedBy (rows : DataRowSelection) : Result<MappedPoints, ExperimentDataError> =
+            match rows with
+            | AllDataRows -> Ok this
+            | KeyedDataRows key ->
+                let kept (selected : 'Point list) (points : 'Point list -> MappedPoints) : Result<MappedPoints, ExperimentDataError> =
+                    match selected with
+                    | [] -> Error (EmptyDataFileErr $"no row of the data file holds the key '{key.value}'")
+                    | _ -> Ok (points selected)
+
+                match this with
+                | SeriesPoints _ -> Error (MalformedDataFileErr $"an X,Y data file has no key column to select '{key.value}' by")
+                | CapturePoints captures ->
+                    kept (captures |> List.filter (fun capture -> capture.experiment.value = key.value)) CapturePoints
+                | ObservationPoints observations ->
+                    kept (observations |> List.filter (fun observation -> observation.key = key)) ObservationPoints
+                | ColumnPoints mapped ->
+                    match mapped |> List.choose (fun row -> row.keyOpt) with
+                    | [] -> Error (MalformedDataFileErr $"the import profile maps no key column to select '{key.value}' by")
+                    | _ -> kept (mapped |> List.filter (fun row -> row.keyOpt = Some key)) ColumnPoints
 
     /// A Mueller element m<i><j> at 4i + j, 0 to 15 (spec 0050 S9.2).
     type MuellerElementIndex =

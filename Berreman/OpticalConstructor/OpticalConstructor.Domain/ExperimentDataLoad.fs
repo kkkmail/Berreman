@@ -6,7 +6,7 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles       // ContentHash
 open OpticalConstructor.Domain.Placement               // CatalogueKind.Detector
 open OpticalConstructor.Domain.Setups                  // SetupSlot
-open OpticalConstructor.Domain.MeasuredData            // MeasuredSeries / ExperimentDataError
+open OpticalConstructor.Domain.MeasuredData            // MeasuredPointCount / ExperimentDataError
 open OpticalConstructor.Domain.ImportProfiles          // MappedPoints
 open OpticalConstructor.Domain.ExperimentData          // ExperimentDataProxy
 
@@ -36,9 +36,9 @@ module ExperimentDataLoad =
             | Intensity -> ImportProfileName.intensitySeries
             | Ellipsometer -> ImportProfileName.ellipsometricSeries
 
-    /// Reads the mapped file through its import profile and validates its points against the detector among the resolved
-    /// `slots` and the experiment's scan. An unavailable profile or a key selection reads nothing and is refused typed: an
-    /// X,Y file holds no key column (spec 0038 Part L step 037; spec 0050 S4.2, S8.2, S9.1, S9.2).
+    /// Reads the attachment's points through the proxy, its import profile and its row selection, and validates them
+    /// against the detector among the resolved `slots` and the experiment's scan (spec 0038 Part L step 037; spec 0050
+    /// S4.2, S8.2, S9.1, S9.2).
     let loadAndValidate
         (library : LibraryProxy)
         (dataProxy : ExperimentDataProxy)
@@ -46,21 +46,8 @@ module ExperimentDataLoad =
         (experiment : Experiment)
         (data : MappedAttachment)
         : Result<MappedPoints, ExperimentDataError> =
-        let readerOpt : (DataAttachment -> Result<MeasuredSeries, ExperimentDataError>) option =
-            if data.profile = ImportProfileName.intensitySeries then
-                Some (dataProxy.tryLoadIntensity >> Result.map IntensityData)
-            elif data.profile = ImportProfileName.ellipsometricSeries then
-                Some (dataProxy.tryLoadEllipsometric >> Result.map EllipsometricData)
-            else
-                None
-
-        match readerOpt, data.rows with
-        | None, _ -> Error (MalformedDataFileErr $"the import profile '{data.profile.value}' is not available")
-        | Some _, KeyedDataRows key ->
-            Error (MalformedDataFileErr $"{data.attachment.path.value}: an X,Y data file has no key column to select '{key.value}' by")
-        | Some read, AllDataRows ->
-            read data.attachment
-            |> Result.bind (fun series -> (SeriesPoints series).validatedFor (detectorKindOf library slots) experiment.scan)
+        dataProxy.readMapped data
+        |> Result.bind (fun points -> points.validatedFor (detectorKindOf library slots) experiment.scan)
 
     /// An experiment's data status: no data, mapped, validated with its points, changed since attach or out of range
     /// (spec 0050 S9.1; 001 §K, §E).

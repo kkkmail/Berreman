@@ -11,7 +11,7 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.ExperimentDataLoad
 open OpticalConstructor.Domain.ImportProfiles
 
-/// Exact measured-data attachment signatures over a canned kit-path map (spec 0038 step 035; spec 0050 S4.2).
+/// Exact measured-data attachment signatures over a canned kit-path map (spec 0038 step 035; spec 0050 S4.2, S9.2).
 module ExperimentDataProxyTests =
 
     let private attachmentHash : ContentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -31,11 +31,22 @@ module ExperimentDataProxyTests =
         | Ok s -> s
         | Error e -> failwith $"the canned ellipsometric fixture unexpectedly failed to parse: %A{e}"
 
+    /// The bytes the mock answers for its one picked file, a byte-order mark and an X,Y line.
+    let private pickedBytes : FileByteContent = FileByteContent [| 0xEFuy; 0xBBuy; 0xBFuy; byte 'X'; byte ','; byte 'Y'; byte '\n' |]
+
+    let private pickedFile : FileName = FileName "C:/outside/run-intensity.csv"
+
+    /// Answers `readMapped` by the attachment's path and `readPickedFile` by the picked file's name (spec 0050 S9.2).
     let private makeMock
-        (intensityByPath : Map<KitRelativePath, IntensitySeries>)
-        (ellipsometricByPath : Map<KitRelativePath, EllipsometricSeries>)
+        (pointsByPath : Map<KitRelativePath, MappedPoints>)
+        (bytesByFile : Map<FileName, FileByteContent>)
         : ExperimentDataProxy =
         {
+            readPickedFile =
+                fun (file : FileName) ->
+                    match Map.tryFind file bytesByFile with
+                    | Some content -> Ok { file = file; content = content }
+                    | None -> Error (KitIoErr $"the mock has no canned bytes for the picked file '{file.value}'")
             attachDataFile =
                 fun file ->
                     Ok
@@ -44,61 +55,77 @@ module ExperimentDataProxyTests =
                             contentHash = attachmentHash
                         }
             attachmentStatus = fun _ -> Ok AttachedDataUnchanged
-            tryLoadIntensity =
-                fun (attachment : DataAttachment) ->
-                    match Map.tryFind attachment.path intensityByPath with
-                    | Some s -> Ok s
-                    | None -> Error (MalformedDataFileErr $"the mock has no canned intensity series for path '{attachment.path.value}'")
-            tryLoadEllipsometric =
-                fun (attachment : DataAttachment) ->
-                    match Map.tryFind attachment.path ellipsometricByPath with
-                    | Some s -> Ok s
-                    | None -> Error (MalformedDataFileErr $"the mock has no canned ellipsometric series for path '{attachment.path.value}'")
+            readMapped =
+                fun (data : MappedAttachment) ->
+                    match Map.tryFind data.attachment.path pointsByPath with
+                    | Some points -> Ok points
+                    | None -> Error (MalformedDataFileErr $"the mock has no canned points for path '{data.attachment.path.value}'")
         }
 
-    /// A mock seeded with one intensity file and one ellipsometric file at distinct paths.
+    /// A mock seeded with one intensity file and one ellipsometric file at distinct paths, and one picked file.
     let private seededMock () : ExperimentDataProxy =
         makeMock
-            (Map.ofList [ KitRelativePath "data/run-intensity.csv", intensityFixture ])
-            (Map.ofList [ KitRelativePath "data/run-ellipsometric.csv", ellipsometricFixture ])
+            (Map.ofList
+                [
+                    KitRelativePath "data/run-intensity.csv", SeriesPoints (IntensityData intensityFixture)
+                    KitRelativePath "data/run-ellipsometric.csv", SeriesPoints (EllipsometricData ellipsometricFixture)
+                ])
+            (Map.ofList [ pickedFile, pickedBytes ])
+
+    let private intensityAttachment : DataAttachment =
+        {
+            path = KitRelativePath "data/run-intensity.csv"
+            contentHash = attachmentHash
+        }
+
+    /// The canned intensity file read as an intensity series over every row (spec 0050 S9.1).
+    let private intensityData : MappedAttachment =
+        {
+            attachment = intensityAttachment
+            profile = ImportProfileName.intensitySeries
+            rows = AllDataRows
+        }
+
+    /// The canned ellipsometric file read as an ellipsometric series over every row (spec 0050 S9.1).
+    let private ellipsometricData : MappedAttachment =
+        {
+            attachment = { intensityAttachment with path = KitRelativePath "data/run-ellipsometric.csv" }
+            profile = ImportProfileName.ellipsometricSeries
+            rows = AllDataRows
+        }
 
     // ============================ the ExperimentDataProxy seam ============================
 
     [<Fact>]
-    let ``a mock ExperimentDataProxy loads canned intensity and ellipsometric series through their exact signatures`` () =
+    let ``a mock ExperimentDataProxy reads canned mapped points and picked files through its exact signature`` () =
         let proxy = seededMock ()
 
         // Pin the EXACT signatures the acceptance names by binding each field to an explicitly-typed
-        // local: the compiler rejects the file if either field drifts from its declared shape.
-        let loadIntensity : DataAttachment -> Result<IntensitySeries, ExperimentDataError> = proxy.tryLoadIntensity
-        let loadEllipsometric : DataAttachment -> Result<EllipsometricSeries, ExperimentDataError> = proxy.tryLoadEllipsometric
-
-        let intensityAttachment : DataAttachment =
-            {
-                path = KitRelativePath "data/run-intensity.csv"
-                contentHash = attachmentHash
-            }
-        let ellipsometricAttachment : DataAttachment =
-            {
-                path = KitRelativePath "data/run-ellipsometric.csv"
-                contentHash = attachmentHash
-            }
+        // local: the compiler rejects the file if any field drifts from its declared shape.
+        let readPicked : FileName -> Result<LabFileSource, KitError> = proxy.readPickedFile
         let attach : FileName -> Result<DataAttachment, KitError> = proxy.attachDataFile
         let status : DataAttachment -> Result<DataAttachmentStatus, KitError> = proxy.attachmentStatus
-        let picked = FileName "C:/outside/run-intensity.csv"
-        Assert.Equal<Result<DataAttachment, KitError>>(Ok intensityAttachment, attach picked)
+        let read : MappedAttachment -> Result<MappedPoints, ExperimentDataError> = proxy.readMapped
+
+        Assert.Equal<Result<DataAttachment, KitError>>(Ok intensityAttachment, attach pickedFile)
         Assert.Equal<Result<DataAttachmentStatus, KitError>>(Ok AttachedDataUnchanged, status intensityAttachment)
 
-        match loadIntensity intensityAttachment with
-        | Ok series -> Assert.Equal<IntensitySeries>(intensityFixture, series)
-        | Error e -> Assert.Fail($"expected the canned intensity series, got %A{e}")
+        match readPicked pickedFile with
+        | Ok source ->
+            Assert.Equal(pickedFile, source.file)
+            Assert.Equal<byte>(pickedBytes.value, source.content.value)
+        | Error e -> Assert.Fail($"expected the canned picked file, got {e.describe}")
 
-        match loadEllipsometric ellipsometricAttachment with
-        | Ok series -> Assert.Equal<EllipsometricSeries>(ellipsometricFixture, series)
-        | Error e -> Assert.Fail($"expected the canned ellipsometric series, got %A{e}")
+        match read intensityData with
+        | Ok (SeriesPoints (IntensityData series)) -> Assert.Equal<IntensitySeries>(intensityFixture, series)
+        | other -> Assert.Fail($"expected the canned intensity series, got %A{other}")
+
+        match read ellipsometricData with
+        | Ok (SeriesPoints (EllipsometricData series)) -> Assert.Equal<EllipsometricSeries>(ellipsometricFixture, series)
+        | other -> Assert.Fail($"expected the canned ellipsometric series, got %A{other}")
 
     [<Fact>]
-    let ``an unknown path yields a typed ExperimentDataError from both fields, never a throw`` () =
+    let ``an unknown path yields a typed ExperimentDataError, never a throw`` () =
         let proxy = seededMock ()
         let unknown : DataAttachment =
             {
@@ -106,13 +133,17 @@ module ExperimentDataProxyTests =
                 contentHash = attachmentHash
             }
 
-        match proxy.tryLoadIntensity unknown with
+        match proxy.readMapped { intensityData with attachment = unknown } with
         | Error (MalformedDataFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for an unknown intensity path, got %A{other}")
 
-        match proxy.tryLoadEllipsometric unknown with
+        match proxy.readMapped { ellipsometricData with attachment = unknown } with
         | Error (MalformedDataFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for an unknown ellipsometric path, got %A{other}")
+
+        match proxy.readPickedFile (FileName "C:/outside/nowhere.csv") with
+        | Error (KitIoErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (KitIoErr _) for an unknown picked file, got %A{other}")
 
     /// An intensity detector bound to the Built-in intensity preset: the slots a loaded experiment resolves to.
     let private intensityDetectorSlots : Setups.SetupSlot list =
@@ -129,20 +160,6 @@ module ExperimentDataProxyTests =
                 content = Setups.EmptySlotContent
             }
         [ detectorSlot ]
-
-    let private intensityAttachment : DataAttachment =
-        {
-            path = KitRelativePath "data/run-intensity.csv"
-            contentHash = attachmentHash
-        }
-
-    /// The canned intensity file read as an intensity series over every row (spec 0050 S9.1).
-    let private intensityData : MappedAttachment =
-        {
-            attachment = intensityAttachment
-            profile = ImportProfileName.intensitySeries
-            rows = AllDataRows
-        }
 
     let private sweepOver (lo : float) (hi : float) : ScanAxis =
         {
@@ -202,45 +219,18 @@ module ExperimentDataProxyTests =
             Error (DataRangeMismatchErr "an X,Y data file holds one variable, and the scan varies 2 in 1 block(s)"), load twoAxes)
 
     [<Fact>]
-    let ``loading data reads it through its import profile and refuses a profile or a row selection the X,Y files cannot serve`` () : unit =
+    let ``loading data validates the points the attachment's profile maps`` () : unit =
         let library = BuiltinCatalogue.library ()
         let load (proxy : ExperimentDataProxy) (data : MappedAttachment) : Result<MappedPoints, ExperimentDataError> =
             ExperimentDataLoad.loadAndValidate library proxy intensityDetectorSlots { oneAxis with dataOpt = Some data } data
 
         Assert.Equal<Result<MappedPoints, ExperimentDataError>>(Ok (SeriesPoints (IntensityData intensityFixture)), load (seededMock ()) intensityData)
 
-        // Spec 0050 S9.1: the profile, not the detector, picks the reader; an ellipsometric series under an intensity
+        // Spec 0050 S9.1, S9.2: the profile, not the detector, maps the file; an ellipsometric series under an intensity
         // detector is the validation's units mismatch.
-        let ellipsometricData : MappedAttachment =
-            {
-                attachment =
-                    {
-                        intensityAttachment with path = KitRelativePath "data/run-ellipsometric.csv"
-                    }
-                profile = ImportProfileName.ellipsometricSeries
-                rows = AllDataRows
-            }
         match load (seededMock ()) ellipsometricData with
         | Error (DataUnitsMismatchErr reason) -> Assert.Contains("ellipsometric", reason)
         | other -> Assert.Fail($"expected DataUnitsMismatchErr for an ellipsometric series, got %A{other}")
-
-        // An unavailable profile and a key selection read nothing.
-        let readsNothing : ExperimentDataProxy =
-            {
-                seededMock () with
-                    tryLoadIntensity = fun _ -> failwith "a refused mapping must not load intensity data"
-                    tryLoadEllipsometric = fun _ -> failwith "a refused mapping must not load ellipsometric data"
-            }
-        let phoneRoi =
-            match ImportProfileName.tryCreate "Phone ROI CSV" with
-            | Some profile -> profile
-            | None -> failwith "a non-blank profile name must be kept"
-        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(
-            Error (MalformedDataFileErr "the import profile 'Phone ROI CSV' is not available"),
-            load readsNothing { intensityData with profile = phoneRoi })
-        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(
-            Error (MalformedDataFileErr "data/run-intensity.csv: an X,Y data file has no key column to select 'CPL-(QZ#45)-CPL' by"),
-            load readsNothing { intensityData with rows = KeyedDataRows (DataRowKey "CPL-(QZ#45)-CPL") })
 
     [<Fact>]
     let ``the data badge follows the attachment, its file's hash and its validation`` () : unit =
