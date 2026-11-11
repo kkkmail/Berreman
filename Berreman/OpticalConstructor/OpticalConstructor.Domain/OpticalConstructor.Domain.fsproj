@@ -192,6 +192,7 @@
              no reference to the OpticalProperties project. -->
         <Compile Include="MuellerInverse.fs" />
         <Compile Include="ItemEvaluation.fs" />
+        <Compile Include="ImportProfiles.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -225,6 +225,7 @@
         <Compile Include="NamingTemplateTests.fs" />
         <Compile Include="SetupGridTests.fs" />
         <Compile Include="ExperimentModelTests.fs" />
+        <Compile Include="ImportProfileTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
