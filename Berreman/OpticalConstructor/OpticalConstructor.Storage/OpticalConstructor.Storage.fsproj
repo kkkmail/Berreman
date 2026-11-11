@@ -54,6 +54,7 @@
              disk-read edge (createFileBacked). Reads the CSV text at the boundary and delegates to the
              pure parser; depends only on the Domain project reference (Angle + MuellerReconstruction). -->
         <Compile Include="MuellerDataStore.fs" />
+        <Compile Include="LabFileImport.fs" />
         <Compile Include="Storage.fs" />
     </ItemGroup>
 

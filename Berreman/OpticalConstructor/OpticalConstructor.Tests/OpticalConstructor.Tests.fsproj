@@ -226,6 +226,7 @@
         <Compile Include="SetupGridTests.fs" />
         <Compile Include="ExperimentModelTests.fs" />
         <Compile Include="ImportProfileTests.fs" />
+        <Compile Include="LabFileImportTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
