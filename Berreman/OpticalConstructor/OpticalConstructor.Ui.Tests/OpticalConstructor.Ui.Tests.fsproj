@@ -198,6 +198,7 @@
              changes nothing. -->
         <Compile Include="LibraryWindowTests.fs" />
         <Compile Include="ImportDialogTests.fs" />
+        <Compile Include="ImportWizardTests.fs" />
         <!-- Spec 0046: the Library's light-source editor, its Library verbs, and a source bound on the table. -->
         <Compile Include="LightSourceEditorTests.fs" />
         <!-- Spec 0046: the constructor's numbers against the Analytics example scripts (driven headless). -->
