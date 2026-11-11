@@ -1066,6 +1066,10 @@ type TableAndElementRotationMsg =
     | ExpSetRangeMin of ExperimentControls.ExperimentRangeEnd
     | ExpSetRangeMax of ExperimentControls.ExperimentRangeEnd
     | ExpSetRangePoints of ExperimentControls.ExperimentPointCount
+    /// Add variable: the edited axis joins the draft's current block and the editor takes the next (spec 0050 S9.1).
+    | ExpAddScanAxis
+    /// Add block: the draft's current block closes on the capture the detectors allow and a new one starts (spec 0050 S9.1).
+    | ExpAddScanBlock
     /// Spec 0046: set a TUNABLE source's wavelength for the draft run (clamped to its limits).
     | ExpSetSourceWaveLength of ExperimentControls.BayNanometers
     /// Spec 0046: export the draft's computed run through the `experimentExport` seam.
@@ -2702,6 +2706,17 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | None -> model
     | ExportExperimentData -> exportDraftRun model
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n.curvePointCount model.experimentCollection }
+    // Spec 0050 S9.1: the scan is built in the draft and written only by a commit, so a read-only kit takes both.
+    | ExpAddScanAxis -> { model with experimentCollection = model.experimentCollection.addScanAxis }
+    | ExpAddScanBlock ->
+        // The closed block is read on the detectors' capture, as ExpCommit reads the last; no axis or capture, no change.
+        match model.experimentCollection.draft.axisOpt, model.draftCapture with
+        | Some _, Some capture ->
+            {
+                model with experimentCollection = (Experiments.chooseMeasurement capture model.experimentCollection).addScanBlock
+            }
+        | Some _, None
+        | None, _ -> model
     | ExpCommit ->
         guardKitWrite model (fun () ->
             // Spec 0046: the detectors' allowed measurement. Spec 0050 S8.2: the table is recorded as the active setup,
