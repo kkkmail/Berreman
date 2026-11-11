@@ -14,9 +14,11 @@ open OpticalConstructor.Domain.PropagationReadouts
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Storage.MuellerDataStore
 
 /// The Mueller-matrix observation file, which the app writes and the `Mueller-matrix observations` profile reads back
-/// (001 §Q AT-2), and a kit profile's column mapping of any delimited lab file (spec 0050 S9.2; 001 §K).
+/// (001 §Q AT-2), a kit profile's column mapping of any delimited lab file, and the one read of a lab file through any
+/// profile (spec 0050 S9.2; 001 §K).
 module LabFileImport =
 
     /// The observation file's columns in order, the one place its header is written (spec 0050 S9.2).
@@ -339,3 +341,26 @@ module LabFileImport =
                         match rows |> List.mapi (fun index cells -> rowOf (index + 1) cells) |> Softellect.Sys.Rop.unzip with
                         | mapped, [] -> Ok mapped
                         | _, error :: _ -> Error error)
+
+    type ChosenImportProfile with
+
+        /// The lab file read through this profile: a built-in answers its parser's points and refusals unchanged, Phone
+        /// ROI's on the data channel, and a kit profile its column mapping's (spec 0050 S9.2; 001 §K, §R).
+        member this.mapText (text : KitFileText) : Result<MappedPoints, ExperimentDataError> =
+            match this with
+            | BuiltInProfileChoice IntensitySeriesProfile ->
+                text.dataFileText.parseIntensitySeries |> Result.map (IntensityData >> SeriesPoints)
+            | BuiltInProfileChoice EllipsometricSeriesProfile ->
+                text.dataFileText.parseEllipsometricSeries |> Result.map (EllipsometricData >> SeriesPoints)
+            | BuiltInProfileChoice PhoneRoiCsvProfile ->
+                // A text parse never answers the two archive cases; they are mapped so the match stays total.
+                text.dataFileText.parseMuellerCsv
+                |> Result.map CapturePoints
+                |> Result.mapError (fun error ->
+                    match error with
+                    | MalformedRowErr reason -> MalformedDataFileErr reason
+                    | EmptyFileErr reason -> EmptyDataFileErr reason
+                    | ArchiveUnreadableErr (_, reason) -> MalformedDataFileErr reason
+                    | DataSetMissingErr (_, archive) -> MalformedDataFileErr archive.value)
+            | BuiltInProfileChoice MuellerObservationProfile -> text.parseMuellerObservations |> Result.map ObservationPoints
+            | KitProfileChoice profile -> profile.mapText text |> Result.map ColumnPoints

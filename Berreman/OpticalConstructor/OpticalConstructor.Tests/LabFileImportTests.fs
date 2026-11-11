@@ -12,10 +12,11 @@ open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.PropagationReadouts
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Storage.MuellerDataStore
 open OpticalConstructor.Storage.LabFileImport
 
-/// The Mueller-matrix observation file the app writes and the `Mueller-matrix observations` profile reads, and a kit
-/// profile's column mapping of a lab file (spec 0050 S9.2).
+/// The Mueller-matrix observation file the app writes and the `Mueller-matrix observations` profile reads, a kit
+/// profile's column mapping of a lab file, and the one read of a lab file through any profile (spec 0050 S9.2).
 module LabFileImportTests =
 
     /// The header the slice fixes, written out here as the oracle the writer is held to.
@@ -205,32 +206,34 @@ module LabFileImportTests =
         | Ok rows -> rows
         | Error error -> failwith $"the lab file was refused: %A{error}"
 
+    let private labScanText : KitFileText =
+        KitFileText "phi,I,sigma,exp\n0,0.5,0.01,CPL-(QZ#45)-CPL\n20,0.25,0.01,\"LP-(AIR#0)-LP\"\n"
+
+    /// `labScanText`'s two rows as `labScanProfile` maps them.
+    let private labScanRows : MappedRow list =
+        [
+            {
+                keyOpt = Some (DataRowKey "CPL-(QZ#45)-CPL")
+                scan = [ { column = labScanColumn; magnitude = Units.UnitMagnitude 0.0 } ]
+                reading = SignalReading (MeasuredIntensity 0.5, Some (MeasuredSigma 0.01))
+                timestampOpt = None
+                captureIndexOpt = None
+                observableOpt = None
+            }
+            {
+                keyOpt = Some (DataRowKey "LP-(AIR#0)-LP")
+                scan = [ { column = labScanColumn; magnitude = Units.UnitMagnitude 20.0 } ]
+                reading = SignalReading (MeasuredIntensity 0.25, Some (MeasuredSigma 0.01))
+                timestampOpt = None
+                captureIndexOpt = None
+                observableOpt = None
+            }
+        ]
+
     [<Fact>]
     let ``a column mapping reads each row's scan values, signal, σ and key`` () : unit =
-        let rows =
-            mappedRows labScanProfile (KitFileText "phi,I,sigma,exp\n0,0.5,0.01,CPL-(QZ#45)-CPL\n20,0.25,0.01,\"LP-(AIR#0)-LP\"\n")
-
-        let expected : MappedRow list =
-            [
-                {
-                    keyOpt = Some (DataRowKey "CPL-(QZ#45)-CPL")
-                    scan = [ { column = labScanColumn; magnitude = Units.UnitMagnitude 0.0 } ]
-                    reading = SignalReading (MeasuredIntensity 0.5, Some (MeasuredSigma 0.01))
-                    timestampOpt = None
-                    captureIndexOpt = None
-                    observableOpt = None
-                }
-                {
-                    keyOpt = Some (DataRowKey "LP-(AIR#0)-LP")
-                    scan = [ { column = labScanColumn; magnitude = Units.UnitMagnitude 20.0 } ]
-                    reading = SignalReading (MeasuredIntensity 0.25, Some (MeasuredSigma 0.01))
-                    timestampOpt = None
-                    captureIndexOpt = None
-                    observableOpt = None
-                }
-            ]
-
-        Assert.Equal<MappedRow list>(expected, rows)
+        let rows = mappedRows labScanProfile labScanText
+        Assert.Equal<MappedRow list>(labScanRows, rows)
 
     [<Fact>]
     let ``a semicolon file without a header maps its Mueller elements and throughput`` () : unit =
@@ -282,5 +285,76 @@ module LabFileImportTests =
         | other -> Assert.Fail($"expected MalformedDataFileErr for a row short of the header, got %A{other}")
 
         match labScanProfile.mapText (KitFileText "phi,I,sigma,exp\n") with
+        | Error (EmptyDataFileErr _) -> ()
+        | other -> Assert.Fail($"expected EmptyDataFileErr for the header alone, got %A{other}")
+
+    /// The ten-column header of `MuellerReconstructionTests.muellerCsvFixture`, the Phone ROI capture file.
+    let private phoneRoiHeader : string =
+        "experiment,capture_index,captured_at,description,iso,exposure_ns,avg_R,avg_G,avg_B,avg_total"
+
+    /// `muellerCsvFixture`'s text: a byte-order mark, the header and two captures.
+    let private phoneRoiText : KitFileText =
+        KitFileText (
+            string (char 0xFEFF)
+            + phoneRoiHeader
+            + "\n"
+            + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,100,5000,10.0,11.0,12.0,869.5\n"
+            + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,100,5000,20.0,21.0,22.0,912.25\n")
+
+    /// `profile` reads `text` as `expected`, and the failure shows both reads in full.
+    let private assertReads (expected : Result<MappedPoints, ExperimentDataError>) (profile : ChosenImportProfile) (text : KitFileText) : unit =
+        let actual = profile.mapText text
+
+        if actual <> expected then
+            Assert.Fail($"'{profile.name.value}' read %A{actual}, and %A{expected} was expected")
+
+    [<Fact>]
+    let ``each built-in profile reads its fixture exactly as its parser did`` () : unit =
+        // `MeasuredDataTests`' good intensity, 4-column ellipsometric and malformed X,Y texts.
+        let intensityText = KitFileText "angle_deg,intensity\n0.0,1.0\n45.0,0.5\n90.0,0.0"
+        let ellipsometricText = KitFileText "wavelength_nm,psi_deg,delta_deg,aoi_deg\n633,25,90,70"
+        let malformedText = KitFileText "x,y\n1.0,2.0\nfoo,3.0\n4.0,5.0"
+        let observationText = writtenText ()
+
+        let intensity = intensityText.dataFileText.parseIntensitySeries
+        let ellipsometric = ellipsometricText.dataFileText.parseEllipsometricSeries
+        let malformed = malformedText.dataFileText.parseIntensitySeries
+        let observed = observationText.parseMuellerObservations
+
+        // Each parser's own answer is checked first, so no equality below holds over two refusals by accident.
+        match intensity, ellipsometric, malformed, observed with
+        | Ok series, Ok ellipsometricSeries, Error (MalformedDataFileErr _), Ok observations ->
+            Assert.Equal(3, List.length series.points)
+            Assert.Equal(1, List.length ellipsometricSeries.points)
+            Assert.Equal(2, List.length observations)
+        | other -> Assert.Fail($"the parsers did not answer their fixtures as their own tests read them: %A{other}")
+
+        assertReads (Result.map (IntensityData >> SeriesPoints) intensity) (BuiltInProfileChoice IntensitySeriesProfile) intensityText
+        assertReads (Result.map (EllipsometricData >> SeriesPoints) ellipsometric) (BuiltInProfileChoice EllipsometricSeriesProfile) ellipsometricText
+        assertReads (Result.map (IntensityData >> SeriesPoints) malformed) (BuiltInProfileChoice IntensitySeriesProfile) malformedText
+        assertReads (Result.map ObservationPoints observed) (BuiltInProfileChoice MuellerObservationProfile) observationText
+
+        match phoneRoiText.dataFileText.parseMuellerCsv with
+        | Ok rows ->
+            Assert.Equal(2, List.length rows)
+            assertReads (Ok (CapturePoints rows)) (BuiltInProfileChoice PhoneRoiCsvProfile) phoneRoiText
+        | Error error -> Assert.Fail($"the Phone ROI text was refused: %A{error}")
+
+    [<Fact>]
+    let ``a kit profile reads through its column mapping`` () : unit =
+        assertReads (Ok (ColumnPoints labScanRows)) (KitProfileChoice labScanProfile) labScanText
+
+    [<Fact>]
+    let ``the Phone ROI profile maps the parser's errors onto the data channel`` () : unit =
+        let phoneRoi = BuiltInProfileChoice PhoneRoiCsvProfile
+        let withoutAvgTotal = phoneRoiHeader.Replace(",avg_total", "")
+        Assert.DoesNotContain("avg_total", withoutAvgTotal)
+
+        let withoutAvgTotalText =
+            KitFileText (withoutAvgTotal + "\n" + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,100,5000,10.0,11.0,12.0\n")
+
+        assertMalformed "avg_total" (phoneRoi.mapText withoutAvgTotalText)
+
+        match phoneRoi.mapText (KitFileText (string (char 0xFEFF) + phoneRoiHeader + "\n")) with
         | Error (EmptyDataFileErr _) -> ()
         | other -> Assert.Fail($"expected EmptyDataFileErr for the header alone, got %A{other}")

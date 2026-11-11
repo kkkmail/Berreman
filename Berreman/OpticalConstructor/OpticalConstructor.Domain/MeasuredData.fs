@@ -15,15 +15,8 @@ open OpticalConstructor.Domain.Experiments
 /// never a throw. The disk read that yields the text lives at the edge (a future `ExperimentDataProxy`, §15.4);
 /// this module is referentially transparent, so every test drives it from an in-memory string.
 ///
-/// Two STRICT schema-v1 shapes, one per detector kind (spec §4 / step 25 `DetectorKind`):
-///   - INTENSITY: first row is labels (ignored); then comma-separated `X,Y` rows in invariant culture.
-///     The X column MEANS whatever the experiment's varied parameter says (wavelength in nm, or R1/R2 in
-///     degrees) — so it stays a meaning-agnostic `MeasuredAbscissa` at parse time and only
-///     `validateAgainstExperiment` interprets it against the experiment.
-///   - ELLIPSOMETRIC: header `wavelength_nm,psi_deg,delta_deg` with an OPTIONAL `aoi_deg`; one file per
-///     experiment.
-/// Deliberately NOT in scope (future parsers, NOT schema changes): NO delimiter sniffing, NO unit
-/// heuristics, NO N/C/S or Mueller-element imports.
+/// `parseIntensitySeries` and `parseEllipsometricSeries` are the bodies of the `Intensity series` and
+/// `Ellipsometric series` import profiles (spec 0050 S9.2).
 ///
 /// `validateAgainstExperiment` checks a parsed series against the step-25 experiment's varied parameter,
 /// range, and detector kind and returns a typed range / units mismatch — a LOUD error, never a silent
