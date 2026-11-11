@@ -121,6 +121,71 @@ module Experiments =
         /// Names an experiment's kit file by its identity, E<n> (spec 0050 S4.3).
         member this.fileStem : FileStem = FileStem.ofText $"E{this.value}"
 
+    /// What a recorded run is for; its disk tag is an int, 1 to 7 in case order (spec 0050 S9.1, 001 §K).
+    type ExperimentRole =
+        | ScienceRun
+        | CalibrationRun
+        | DarkRun
+        | DriftCheckRun
+        | DiagnosticRun
+        | IgnoredRun
+        | PlannedRun
+
+        member this.value : int =
+            match this with
+            | ScienceRun -> 1
+            | CalibrationRun -> 2
+            | DarkRun -> 3
+            | DriftCheckRun -> 4
+            | DiagnosticRun -> 5
+            | IgnoredRun -> 6
+            | PlannedRun -> 7
+
+        /// The role a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S9.1).
+        static member tryOfWire (tag : int) : ExperimentRole option =
+            match tag with
+            | 1 -> Some ScienceRun
+            | 2 -> Some CalibrationRun
+            | 3 -> Some DarkRun
+            | 4 -> Some DriftCheckRun
+            | 5 -> Some DiagnosticRun
+            | 6 -> Some IgnoredRun
+            | 7 -> Some PlannedRun
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | ScienceRun -> "Science"
+            | CalibrationRun -> "Calibration"
+            | DarkRun -> "Dark"
+            | DriftCheckRun -> "Drift check"
+            | DiagnosticRun -> "Diagnostic"
+            | IgnoredRun -> "Ignored"
+            | PlannedRun -> "Planned"
+
+        /// Every role in tag order (spec 0050 S9.1).
+        static member all : ExperimentRole list =
+            [ ScienceRun; CalibrationRun; DarkRun; DriftCheckRun; DiagnosticRun; IgnoredRun; PlannedRun ]
+
+    /// The measurement session a run belongs to when the user sets it by hand; S11.1's study splits the rest at
+    /// its Diagnostic runs (spec 0050 S9.1).
+    type SessionName =
+        | SessionName of string
+
+        member this.value : string = let (SessionName text) = this in text
+
+        /// The text as given; an empty or white-space text names no session (spec 0050 S9.1).
+        static member tryCreate (text : string) : SessionName option =
+            if System.String.IsNullOrWhiteSpace text then None else Some (SessionName text)
+
+    /// A reviewer's free-text notes on a recorded run; they live in its file (spec 0050 S9.1, 001 §E).
+    type ExperimentNotes =
+        | ExperimentNotes of string
+
+        member this.value : string = let (ExperimentNotes text) = this in text
+
+        static member none : ExperimentNotes = ExperimentNotes ""
+
     /// An element's human label as an experiment captures it ("<kind> #<n>"), so a row outlives the element.
     type ElementLabel =
         | ElementLabel of string

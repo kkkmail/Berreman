@@ -13,9 +13,11 @@ open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Dispersion
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.KitHistory
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
@@ -224,12 +226,16 @@ module CanonicalJsonTests =
         assertWrittenAsTag<PublishedIndexLaw> (fun law -> law.value)
         assertWrittenAsTag<PublishedGyrationLaw> (fun law -> law.value)
         assertWrittenAsTag<KitStar> (fun star -> star.value)
+        assertWrittenAsTag<ExperimentRole> (fun role -> role.value)
 
         for star, tag in [ StarredKit, 1; UnstarredKit, 2 ] do
             let json = toJson star
             use doc = JsonDocument.Parse json
             Assert.Equal(tag, doc.RootElement.GetInt32())
             Assert.Equal<KitStar>(star, ofJson<KitStar> json)
+
+        Assert.Equal<string>("3", toJson DarkRun)
+        Assert.Equal<ExperimentRole>(DarkRun, ofJson<ExperimentRole> "3")
 
         let schema : EntrySchema = { kind = SourceEntryKind; version = FileSchemaVersion 1 }
         let json = toJson schema
@@ -244,3 +250,10 @@ module CanonicalJsonTests =
         Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "0" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "\"MaterialEntryKind\"" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<KitStar> "3" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<ExperimentRole> "8" |> ignore) |> ignore
+
+        // No file holds a role before step 288, so the role rides an anonymous record through the readers' seam.
+        let roleText = JsonText "{ \"schemaVersion\": 1, \"role\": 8 }"
+        match parseVersionedText<{| schemaVersion : FileSchemaVersion; role : ExperimentRole |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) roleText with
+        | Error (MalformedJsonErr reason) -> Assert.Contains(nameof ExperimentRole, reason)
+        | other -> Assert.Fail($"the role tag 8: expected MalformedJsonErr, got %A{other}")

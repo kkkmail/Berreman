@@ -71,6 +71,25 @@ module ExperimentProxyTests =
         Assert.Equal(CaptureReflected, MeasurementMode.ofEmission (FlatMirror.defaultEmission))
         Assert.Equal(CaptureBoth, MeasurementMode.ofEmission (Sample.defaultEmission))
 
+    // ============================ spec 0050 S9.1: a run's role, session and notes ============================
+
+    [<Fact>]
+    let ``an experiment role round-trips its wire tag and renders its text`` () : unit =
+        let roles = [ ScienceRun; CalibrationRun; DarkRun; DriftCheckRun; DiagnosticRun; IgnoredRun; PlannedRun ]
+        Assert.Equal<int list>([ 1 .. 7 ], roles |> List.map (fun role -> role.value))
+        Assert.Equal<ExperimentRole option list>(roles |> List.map Some, roles |> List.map (fun role -> ExperimentRole.tryOfWire role.value))
+        Assert.Equal<ExperimentRole option>(None, ExperimentRole.tryOfWire 0)
+        Assert.Equal<ExperimentRole option>(None, ExperimentRole.tryOfWire 8)
+        Assert.Equal<string list>([ "Science"; "Calibration"; "Dark"; "Drift check"; "Diagnostic"; "Ignored"; "Planned" ], roles |> List.map (fun role -> role.text))
+        Assert.Equal<ExperimentRole list>(roles, ExperimentRole.all)
+
+    [<Fact>]
+    let ``a session name keeps its text and refuses a blank one, and notes are free text`` () : unit =
+        Assert.Equal<SessionName option>(Some (SessionName "Day 1 (morning)"), SessionName.tryCreate "Day 1 (morning)")
+        Assert.Equal<SessionName option>(None, SessionName.tryCreate "")
+        Assert.Equal<SessionName option>(None, SessionName.tryCreate "   ")
+        Assert.Equal<string>("", ExperimentNotes.none.value)
+
     // ============================ the editable collection (choose / commit / edit / remove) ============================
 
     /// A collection with the source picked (λ variable, both capture allowed) — the common editing start.
