@@ -941,6 +941,8 @@ module Kit =
         | UnknownSetupSlotErr of reason : string
         | UnknownSlotItemErr of reason : string
         | IncompatibleSlotItemErr of reason : string
+        /// One item in two slots, as one physical piece is in one place (spec 0050 S8.3; 001 §I).
+        | SlotItemTwiceErr of reason : string
         /// A slot names an item the kit's items lack (spec 0050 S8.2, S7.2).
         | SetupItemReferenceErr of ItemError
 
@@ -953,6 +955,7 @@ module Kit =
             | UnknownSetupSlotErr reason -> $"the table has no such slot: {reason}"
             | UnknownSlotItemErr reason -> $"the item is not available: {reason}"
             | IncompatibleSlotItemErr reason -> $"the item does not fit the slot: {reason}"
+            | SlotItemTwiceErr reason -> $"the item is in two slots: {reason}"
             | SetupItemReferenceErr error -> $"a slot's item could not be resolved: {error.describe}"
 
     /// A setup's name, kept as given; its `<name>.setup-json` stem follows the shared name rule (spec 0050 S8.2;

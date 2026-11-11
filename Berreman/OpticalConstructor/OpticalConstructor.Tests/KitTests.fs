@@ -455,6 +455,7 @@ module KitTests =
                 UnknownSetupSlotErr "element 12", "the table has no such slot: element 12"
                 UnknownSlotItemErr "item QZ9", "the item is not available: item QZ9"
                 IncompatibleSlotItemErr "LP1 in a sample slot", "the item does not fit the slot: LP1 in a sample slot"
+                SlotItemTwiceErr "'CPL1' in 'lpA' and 'lpB'", "the item is in two slots: 'CPL1' in 'lpA' and 'lpB'"
             ]
 
         for error, expected in cases do
@@ -469,10 +470,11 @@ module KitTests =
                 | UnknownSetupRevisionErr reason
                 | UnknownSetupSlotErr reason
                 | UnknownSlotItemErr reason
-                | IncompatibleSlotItemErr reason -> reason
+                | IncompatibleSlotItemErr reason
+                | SlotItemTwiceErr reason -> reason
                 | SetupItemReferenceErr error -> error.describe
 
             Assert.Contains(reason, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(7, descriptions |> List.distinct |> List.length)
+        Assert.Equal(8, descriptions |> List.distinct |> List.length)
