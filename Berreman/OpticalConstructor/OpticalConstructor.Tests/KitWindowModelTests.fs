@@ -757,10 +757,26 @@ module KitWindowModelTests =
         source
 
     /// The copy source holding the dark setup, E1, a dark line, and E2, which attaches `measured.csv` from outside the
-    /// kit through `attachLabFile` (spec 0050 S6, S8.2).
-    let private copySourceUnder (factFolder : FolderName) (imports : CatalogueImportContext) : CopySourceKit =
+    /// kit through `attachLabFile`, read as an intensity series, or through the kit file's own profile when one is given
+    /// (spec 0050 S6, S8.2, S9.2).
+    let private copySourceMappedUnder
+        (profileOpt : ImportProfile option)
+        (factFolder : FolderName)
+        (imports : CatalogueImportContext)
+        : CopySourceKit =
         sourceKitUnder factFolder imports (fun folder library ->
             let proxy = library.kit.proxy
+            let e2Profile =
+                match profileOpt with
+                | Some profile ->
+                    library.kit.saveKitFile
+                        {
+                            library.kit.kitFile with importProfiles = [ profile ]
+                        }
+                    |> kitValue
+                    |> ignore
+                    profile.name
+                | None -> ImportProfileName.intensitySeries
             library.recordSetup darkSetup |> openedValue
             let picked = (FileName "measured.csv").combine factFolder
             File.WriteAllText(picked.value, "x,intensity\n0,1\n45,0.5\n")
@@ -770,15 +786,22 @@ module KitWindowModelTests =
                     content = FileByteContent (File.ReadAllBytes picked.value)
                 }
             let attachment = proxy.attachLabFile KitDataFolder.root lab |> kitValue
+            let attached = darkLine (Experiments.ExperimentId 2) (Some attachment)
             let made : CopySourceKit =
                 {
                     sourceFolder = folder
                     e1 = darkLine (Experiments.ExperimentId 1) None
-                    e2 = darkLine (Experiments.ExperimentId 2) (Some attachment)
+                    e2 =
+                        {
+                            attached with dataOpt = attached.dataOpt |> Option.map (fun data -> { data with profile = e2Profile })
+                        }
                 }
             proxy.writeExperiment made.e1 |> kitValue
             proxy.writeExperiment made.e2 |> kitValue
             made)
+
+    let private copySourceUnder (factFolder : FolderName) (imports : CatalogueImportContext) : CopySourceKit =
+        copySourceMappedUnder None factFolder imports
 
     /// The `.oc` app cache of a kit folder.
     let private appCacheOf (folder : KitFolder) : string = Path.Combine(folder.value.value, ".oc")
@@ -815,7 +838,8 @@ module KitWindowModelTests =
     [<Fact>]
     let ``copying the chosen experiments brings them into the kit and the window, and closes the source`` () : unit =
         withFactFolder (fun factFolder folder imports ->
-            let source = copySourceUnder factFolder imports
+            // Spec 0050 S9.2: E2's data is read through the source kit's own `Lab scan`, which the copy brings.
+            let source = copySourceMappedUnder (Some KitTests.labScanProfile) factFolder imports
             let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
             try created.library.kit.proxy.writeItem windowCpl1 |> kitValue
             finally created.library.kit.close () |> kitValue
@@ -842,7 +866,11 @@ module KitWindowModelTests =
                 Assert.Empty(model.kitSetups)
                 Assert.Equal<Setups.Setup list>([ darkSetup ], copied.kitSetups)
                 Assert.Equal<string list>([ "Dark.setup-json" ], rootFilesIn folder "*.setup-json")
-                Assert.Equal<KitContext>(model.kit, copied.kit)
+                Assert.Empty(model.kit.kitFile.importProfiles)
+                Assert.Equal<ImportProfile list>([ KitTests.labScanProfile ], copied.kit.kitFile.importProfiles)
+                let stored = copied.kit.proxy.readKitFile () |> kitValue
+                Assert.Equal<ImportProfile list>([ KitTests.labScanProfile ], stored.importProfiles)
+                Assert.Equal<KitContext>({ model.kit with kitFile = stored }, copied.kit)
                 Assert.Equal<Map<FileName, FileByteContent>>(sourceBefore, folderBytes source.sourceFolder)
                 let checkedChanges = copied |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
                 Assert.Empty(checkedChanges.kitChanges)

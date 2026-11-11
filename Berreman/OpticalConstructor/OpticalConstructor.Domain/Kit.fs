@@ -1319,3 +1319,10 @@ module Kit =
 
         member this.describe : string =
             $"'{this.name.value}' revision {this.revision.value.ToString(CultureInfo.InvariantCulture)}"
+
+    type ImportProfileName with
+
+        /// The first free name by `FileStem.firstFreeText`, the one suffix sequence items, setups and experiments use, so a
+        /// copied profile never takes a name the kit holds (spec 0050 S9.2).
+        member this.nextFreeAmong (taken : ImportProfileName list) : ImportProfileName =
+            ImportProfileName (FileStem.firstFreeText this.value (taken |> List.map (fun held -> held.value)))

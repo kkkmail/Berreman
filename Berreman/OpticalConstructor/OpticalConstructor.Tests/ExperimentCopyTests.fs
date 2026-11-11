@@ -106,6 +106,38 @@ module ExperimentCopyTests =
         kit.context.close () |> expectKitOk
         openCopyKit kit.folder ReadOnlyKitAccess clock
 
+    /// The kit once its kit file is saved holding the profiles too (spec 0050 S9.2).
+    let private withProfiles (profiles : ImportProfile list) (kit : CopyKit) : CopyKit =
+        let kitFile = kit.context.kitFile
+        let saved =
+            kit.context.saveKitFile
+                {
+                    kitFile with importProfiles = kitFile.importProfiles @ profiles
+                }
+            |> expectKitOk
+        {
+            kit with context = saved
+        }
+
+    /// The kit's context, adding to `writes` each kit file write as `None` and each content file write as its kind.
+    let private watchingWrites (writes : ResizeArray<KitFileKind option>) (kit : CopyKit) : KitContext =
+        let proxy = kit.context.proxy
+        {
+            kit.context with
+                proxy =
+                    {
+                        proxy with
+                            writeKitFile =
+                                fun kitFile ->
+                                    writes.Add None
+                                    proxy.writeKitFile kitFile
+                            writeKindFile =
+                                fun kind stem text ->
+                                    writes.Add (Some kind)
+                                    proxy.writeKindFile kind stem text
+                    }
+        }
+
     let private heldBy (kit : CopyKit) : HeldContent =
         let paths = kit.folder.paths ()
         {
@@ -447,6 +479,8 @@ module ExperimentCopyTests =
                 setups = [ benchSetup ]
                 dataFiles = [ run ]
                 snapshots = copiedClosureOfE1 () |> List.map (fun envelope -> envelope.libraryVersionRef)
+                profiles = []
+                kitFile = target.context.kitFile
             }
         Assert.Equal<ExperimentCopyReport>(expected, report)
         let kitPaths =
@@ -652,6 +686,73 @@ module ExperimentCopyTests =
         Assert.Equal<Experiment list>([ copiedE1 ], report.experiments)
         Assert.Equal<Result<Experiment list, KitError>>(Ok [ copiedE1 ], target.context.proxy.readExperiments ())
         assertSetupsHeld target [ copiedE1 ]
+
+    [<Fact>]
+    let ``a copy brings the kit profiles its experiments use, reusing an equal one and renaming a different one`` () : unit =
+        let clock = steppingClock ()
+        let labScan = KitTests.labScanProfile
+        let profileOf (experiment : Experiment) : ImportProfileName option = experiment.dataOpt |> Option.map (fun data -> data.profile)
+        let mappedBy (name : ImportProfileName) (experiment : Experiment) : Experiment =
+            {
+                experiment with dataOpt = experiment.dataOpt |> Option.map (fun data -> { data with profile = name })
+            }
+        // Spec 0050 S9.2: E1's data is read through the source kit's own `Lab scan`, E3's as an intensity series.
+        let recordedSource, recorded =
+            sourceHolding
+                (fun run other ->
+                    standardExperiments run other
+                    |> List.map (fun experiment -> if experiment.id = ExperimentId 1 then mappedBy labScan.name experiment else experiment))
+                clock
+        recordedSource.context.close () |> expectKitOk
+        let source = reopened (openCopyKit recordedSource.folder ReadWriteKitAccess clock |> withProfiles [ labScan ]) clock
+        Assert.Equal<ImportProfile list>([ labScan ], source.context.kitFile.importProfiles)
+        let e1 = recordedAs (ExperimentId 1) recorded
+        let e3 = recordedAs (ExperimentId 3) recorded
+        Assert.Equal<ImportProfileName option list>([ Some labScan.name; Some ImportProfileName.intensitySeries ], [ profileOf e1; profileOf e3 ])
+
+        // The target's own `Lab scan` reads the σ from column 5: the source's is added as `Lab scan (2)` before any setup
+        // or experiment is written, and E1 follows it.
+        let otherLabScan =
+            {
+                labScan with roles = { labScan.roles with reading = SignalColumns (DataColumnNumber 2, Some (DataColumnNumber 5)) }
+            }
+        let other = emptyTarget ReadWriteKitAccess clock |> withProfiles [ otherLabScan ]
+        let otherWrites = ResizeArray<KitFileKind option>()
+
+        let otherReport = (watchingWrites otherWrites other).copyExperimentsFrom source.context [ ExperimentId 1; ExperimentId 3 ] [] |> expectCopyOk
+
+        let renamedLabScan =
+            {
+                labScan with name = ImportProfileName "Lab scan (2)"
+            }
+        Assert.Equal<ImportProfile list>([ renamedLabScan ], otherReport.profiles)
+        let stored = other.context.proxy.readKitFile () |> expectKitOk
+        Assert.Equal<ImportProfile list>([ otherLabScan; renamedLabScan ], stored.importProfiles)
+        Assert.Equal<KitFile>(stored, otherReport.kitFile)
+        let followed = mappedBy renamedLabScan.name e1
+        Assert.Equal<Experiment list>([ followed; e3 ], otherReport.experiments)
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ followed; e3 ], other.context.proxy.readExperiments ())
+        let order = List.ofSeq otherWrites
+        Assert.Equal<KitFileKind option list>([ None ], order |> List.filter (fun write -> write = None))
+        let kitFileAt = order |> List.findIndex (fun write -> write = None)
+        let firstRecordAt = order |> List.findIndex (fun write -> write = Some SetupKitFile || write = Some ExperimentKitFile)
+        Assert.True(kitFileAt < firstRecordAt, "the kit file must hold the added profile before a setup or experiment is written")
+        assertSetupsHeld other otherReport.experiments
+
+        // The target's `Lab scan` is the source's: nothing is added, the kit file is not written and E1 keeps its name.
+        let same = emptyTarget ReadWriteKitAccess clock |> withProfiles [ labScan ]
+        let held = same.context.kitFile
+        let sameWrites = ResizeArray<KitFileKind option>()
+
+        let sameReport = (watchingWrites sameWrites same).copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        Assert.Empty(sameReport.profiles)
+        Assert.Empty(sameWrites |> Seq.filter (fun write -> write = None))
+        Assert.Equal<KitFile>(held, sameReport.kitFile)
+        Assert.Equal<Result<KitFile, KitError>>(Ok held, same.context.proxy.readKitFile ())
+        Assert.Equal<Experiment list>([ e1 ], sameReport.experiments)
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ e1 ], same.context.proxy.readExperiments ())
+        assertSetupsHeld same [ e1 ]
 
     [<Fact>]
     let ``a snapshot the kit already holds is kept and not written again`` () : unit =

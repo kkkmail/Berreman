@@ -3335,9 +3335,13 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         |> Result.mapError KitLibraryKitErr)
                 match copied with
                 | Ok (report, (experiments, items, setups)) ->
-                    // Spec 0050 S6, S7.2, S8.2: as a reload sets it (step 187), over the kit's items and setups as the copy
-                    // left them.
-                    let shown = withKitContent model.kit experiments items setups model
+                    // Spec 0050 S6, S7.2, S8.2, S9.2: as a reload sets it (step 187), over the kit file, items and setups as
+                    // the copy left them.
+                    let copiedKit =
+                        {
+                            model.kit with kitFile = report.kitFile
+                        }
+                    let shown = withKitContent copiedKit experiments items setups model
                     let copiedCount = List.length report.experiments
                     let sourceName = copySource.source.kitFile.name
                     let told =

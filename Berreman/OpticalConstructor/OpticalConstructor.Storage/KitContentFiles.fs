@@ -4,6 +4,7 @@ open System
 open Softellect.Sys.Logging
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
@@ -241,24 +242,30 @@ module KitContentFiles =
             setups : Setup list
             dataFiles : DataAttachment list
             snapshots : LibraryVersionRef list
+            /// Each import profile the copy added to the kit file, as added (spec 0050 S9.2).
+            profiles : ImportProfile list
+            /// The kit file as the copy left it (spec 0050 S9.2).
+            kitFile : KitFile
         }
 
-    /// A copy's item mapping: the items it adds, the held items its rows map onto, the kept experiments, and the setups
-    /// they reference with every slot's item mapped onto its target (spec 0050 S7.2, S8.2).
+    /// A copy's item mapping: the items it adds, the held items its rows map onto, the kept experiments, the setups
+    /// they reference with every slot's item mapped onto its target, and the import profiles it adds (spec 0050 S7.2,
+    /// S8.2, S9.2).
     type private ExperimentCopyPlan =
         {
             added : Item list
             mappedOnto : Item list
             experiments : Experiment list
             setups : Setup list
+            profiles : ImportProfile list
         }
 
     type KitContext with
 
         /// Copies the chosen source experiments with the setups they reference and the items those use, each mapped by its
-        /// row or default or added, the data and photos they reference and the source snapshots this kit lacks, renumbered
-        /// and renamed on a clash. Everything is read before anything is written, the source only read; the first failure
-        /// stops the copy (spec 0050 S6, S7.2, S8.2, S9.1).
+        /// row or default or added, the data and photos they reference, the kit profiles their data is mapped by and the
+        /// source snapshots this kit lacks, renumbered and renamed on a clash. Everything is read before anything is
+        /// written, the source only read; the first failure stops the copy (spec 0050 S6, S7.2, S8.2, S9.1, S9.2).
         member this.copyExperimentsFrom
             (source : KitContext)
             (ids : ExperimentId list)
@@ -352,6 +359,7 @@ module KitContentFiles =
                                         mappedOnto = mappedOnto
                                         experiments = kept
                                         setups = mappedSetups
+                                        profiles = []
                                     })))))
 
             // A mapped setup the kit holds as it is is not written again; one whose name's file the kit or an earlier copied
@@ -445,6 +453,52 @@ module KitContentFiles =
                     Experiment.renumberedFor (held |> List.map (fun experiment -> experiment.id)) kept
                     |> Experiment.renamedFor (held |> List.map (fun experiment -> experiment.name)))
 
+            // The source kit's profiles the experiments' data is mapped by, in first-use order: one held under its name with
+            // equal content is reused, one with other content is added under the next free name and its experiments follow
+            // it, any other is added as it is. One added before counts as held, so no two share a name (spec 0050 S9.2).
+            let placeProfiles (plan : ExperimentCopyPlan) : ExperimentCopyPlan =
+                let used =
+                    plan.experiments
+                    |> List.choose (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.profile))
+                    |> List.distinct
+                    |> List.choose (fun name ->
+                        match ChosenImportProfile.tryOfName source.kitFile.importProfiles name with
+                        | Some (KitProfileChoice profile) -> Some profile
+                        | Some (BuiltInProfileChoice _)
+                        | None -> None)
+                let addedProfiles, renames =
+                    used
+                    |> List.fold (fun (given : ImportProfile list, renames : Map<ImportProfileName, ImportProfileName>) profile ->
+                        let held = this.kitFile.importProfiles @ given
+                        match held |> List.tryFind (fun heldProfile -> heldProfile.name = profile.name) with
+                        | Some heldProfile when heldProfile = profile -> given, renames
+                        | Some _ ->
+                            let free = profile.name.nextFreeAmong (held |> List.map (fun heldProfile -> heldProfile.name))
+                            let renamed =
+                                {
+                                    profile with name = free
+                                }
+                            given @ [ renamed ], Map.add profile.name free renames
+                        | None -> given @ [ profile ], renames) ([], Map.empty)
+                let following (experiment : Experiment) : Experiment =
+                    {
+                        experiment with
+                            dataOpt =
+                                experiment.dataOpt
+                                |> Option.map (fun data ->
+                                    match Map.tryFind data.profile renames with
+                                    | Some name ->
+                                        {
+                                            data with profile = name
+                                        }
+                                    | None -> data)
+                    }
+                {
+                    plan with
+                        experiments = plan.experiments |> List.map following
+                        profiles = addedProfiles
+                }
+
             let writeSnapshots (snapshots : LibraryEntryEnvelope list) : Result<LibraryVersionRef list, KitLibraryError> =
                 snapshots
                 |> List.fold (fun result envelope ->
@@ -512,8 +566,20 @@ module KitContentFiles =
                         |> Result.map (fun () -> copy :: written))) (Ok [])
                 |> Result.map List.rev
 
-            // Snapshots, lab files, items and setups come first, so a written setup or experiment never references a file
-            // the kit lacks (spec 0050 S6, S7.2, S8.2).
+            // The kit file as saved with the added profiles, else as it is, unwritten (spec 0050 S9.2).
+            let saveProfiles (profiles : ImportProfile list) : Result<KitFile, KitLibraryError> =
+                match profiles with
+                | [] -> Ok this.kitFile
+                | _ ->
+                    this.saveKitFile
+                        {
+                            this.kitFile with importProfiles = this.kitFile.importProfiles @ profiles
+                        }
+                    |> Result.mapError KitLibraryKitErr
+                    |> Result.map (fun saved -> saved.kitFile)
+
+            // Snapshots, lab files, the added profiles, items and setups come first, so a written setup or experiment never
+            // references a file or profile the kit lacks (spec 0050 S6, S7.2, S8.2, S9.2).
             let writeAll
                 (snapshots : LibraryEntryEnvelope list)
                 (files : (KitRelativePath * LabFileSource) list)
@@ -524,21 +590,25 @@ module KitContentFiles =
                     copyDataFiles files
                     |> Result.bind (fun copied ->
                         let moved = Map.ofList copied
-                        writeItems moved plan.added
-                        |> Result.bind (fun items ->
-                            writeSetups plan.setups
-                            |> Result.bind (fun setups ->
-                                writeExperiments moved plan.experiments
-                                |> Result.map (fun experiments ->
-                                    let report : ExperimentCopyReport =
-                                        {
-                                            experiments = experiments
-                                            items = items
-                                            setups = setups
-                                            dataFiles = copied |> List.map snd
-                                            snapshots = written
-                                        }
-                                    report)))))
+                        saveProfiles plan.profiles
+                        |> Result.bind (fun kitFile ->
+                            writeItems moved plan.added
+                            |> Result.bind (fun items ->
+                                writeSetups plan.setups
+                                |> Result.bind (fun setups ->
+                                    writeExperiments moved plan.experiments
+                                    |> Result.map (fun experiments ->
+                                        let report : ExperimentCopyReport =
+                                            {
+                                                experiments = experiments
+                                                items = items
+                                                setups = setups
+                                                dataFiles = copied |> List.map snd
+                                                snapshots = written
+                                                profiles = plan.profiles
+                                                kitFile = kitFile
+                                            }
+                                        report))))))
 
             match this.access with
             | ReadOnlyKitAccess -> Error (KitLibraryKitErr (KitReadOnlyErr "copyExperimentsFrom"))
@@ -562,7 +632,8 @@ module KitContentFiles =
                             |> Result.bind (fun placed ->
                                 renumber placed.experiments
                                 |> Result.bind (fun renumbered ->
-                                    writeAll snapshots files
+                                    let numbered =
                                         {
                                             placed with experiments = renumbered
-                                        })))))
+                                        }
+                                    writeAll snapshots files (placeProfiles numbered))))))

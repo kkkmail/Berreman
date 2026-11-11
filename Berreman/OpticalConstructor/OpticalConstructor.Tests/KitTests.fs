@@ -560,6 +560,13 @@ module KitTests =
         Assert.Equal<Result<ImportProfileName, ImportProfileError>>(Ok lowerCase, lowerCase.availableAmong [ labScanProfile ])
 
     [<Fact>]
+    let ``a profile name takes the first free suffix among the taken ones`` () : unit =
+        let labScan = ImportProfileName "Lab scan"
+        Assert.Equal<ImportProfileName>(labScan, labScan.nextFreeAmong [])
+        Assert.Equal<ImportProfileName>(ImportProfileName "Lab scan (2)", labScan.nextFreeAmong [ labScan ])
+        Assert.Equal<ImportProfileName>(ImportProfileName "Lab scan (3)", labScan.nextFreeAmong [ labScan; ImportProfileName "LAB SCAN (2)" ])
+
+    [<Fact>]
     let ``every import profile error renders its condition and its payload`` () : unit =
         let cases : (ImportProfileError * string) list =
             [
