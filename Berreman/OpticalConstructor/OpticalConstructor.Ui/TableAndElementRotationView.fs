@@ -1089,6 +1089,8 @@ type TableAndElementRotationMsg =
     | SwapSlot of Library.ElementId * ItemId
     /// Every ticked combination of the grid over the table, as setups and experiments of the kit (spec 0050 S8.3; 001 §P).
     | GenerateSetupGrid of SetupGrids.SetupGrid
+    /// A new experiment of the draft over the active setup (spec 0050 S8.4; 001 §P `RecordExperiment`).
+    | RecordExperiment
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
     | SwitchConstructorMode of ConstructorMode
     /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
@@ -2103,6 +2105,17 @@ type TableAndElementRotationModel with
     member model.tableWrittenOver (active : Setups.Setup) : Setups.Setup =
         active.revisedWith model.recordedSlots (active.pinFor model.experimentCollection.experiments)
 
+    /// The table as the setup it is recorded as: the active one written over, else a new setup under the kit's template
+    /// name of the table or S8.2's first free `Setup <n>`, made free among the held setups (spec 0050 S8.2, S8.3).
+    member model.tableSetup : Result<Setups.Setup, KitLibraryError> =
+        match model.activeSetupOpt with
+        | Some active -> Ok (model.tableWrittenOver active)
+        | None ->
+            let taken = model.kitSetups |> List.map (fun held -> held.name)
+            let slots = model.recordedSlots
+            let name = model.kit.kitFile.namingTemplate.setupNameAmong slots model.kitItems taken (SetupName.firstFree taken)
+            Setups.Setup.create name slots model.kitSetups |> Result.mapError KitLibrarySetupErr
+
     /// The model once `setup` is recorded in the kit: it replaces its name's among `kitSetups`, kept in ordinal name
     /// order, and is the active setup (spec 0050 S8.2).
     member model.withSetupRecorded (setup : Setups.Setup) : TableAndElementRotationModel =
@@ -2238,6 +2251,70 @@ let private slotAssigned
 /// The table with `filled` in its slot's place (spec 0050 S8.2).
 let private withSlotFilled (filled : Setups.SetupSlot) (slots : Setups.SetupSlot list) : Setups.SetupSlot list =
     slots |> List.map (fun slot -> if slot.id = filled.id then filled else slot)
+
+/// Records each write in order, the model holding each once it is written; the first failed write stops the run with
+/// the model as written so far (spec 0050 S8.3).
+let private writtenInOrder
+    (record : 'Written -> Result<unit, KitLibraryError>)
+    (held : TableAndElementRotationModel -> 'Written -> TableAndElementRotationModel)
+    (writes : 'Written list)
+    (model : TableAndElementRotationModel)
+    : Result<TableAndElementRotationModel, TableAndElementRotationModel * KitLibraryError> =
+    writes
+    |> List.fold (fun written write ->
+        written
+        |> Result.bind (fun current ->
+            match record write with
+            | Ok () -> Ok (held current write)
+            | Error error -> Error (current, error))) (Ok model)
+
+/// The model once `setup`, the table's, is recorded as the active setup; the active setup unchanged writes nothing
+/// (spec 0050 S8.2, S8.4).
+let private withTableRecorded (setup : Setups.Setup) (model : TableAndElementRotationModel) : Result<TableAndElementRotationModel, KitLibraryError> =
+    let library : KitLibraryContext =
+        {
+            kit = model.kit
+            imports = model.catalogueImports
+        }
+    let recorded =
+        match model.activeSetupOpt with
+        | Some active when active = setup -> Ok ()
+        | Some _
+        | None -> library.recordSetup setup
+    recorded |> Result.map (fun () -> model.withSetupRecorded setup)
+
+/// The model once each of `committed`'s `experiments` is recorded in order, the collection taking `committed`'s draft
+/// and each in its id's place or appended; the first failed write stops, keeping those before it (spec 0050 S8.2–S8.4).
+let private withExperimentsRecorded
+    (committed : Experiments.ExperimentCollection)
+    (experiments : Experiments.Experiment list)
+    (model : TableAndElementRotationModel)
+    : Result<TableAndElementRotationModel, TableAndElementRotationModel * KitLibraryError> =
+    let library : KitLibraryContext =
+        {
+            kit = model.kit
+            imports = model.catalogueImports
+        }
+    let experimentHeld (current : TableAndElementRotationModel) (experiment : Experiments.Experiment) : TableAndElementRotationModel =
+        let experiments = current.experimentCollection.experiments
+        let placed =
+            if experiments |> List.exists (fun held -> held.id = experiment.id) then
+                experiments |> List.map (fun held -> if held.id = experiment.id then experiment else held)
+            else
+                experiments @ [ experiment ]
+        {
+            current with
+                experimentCollection =
+                    {
+                        committed with experiments = placed
+                    }
+        }
+    writtenInOrder library.recordExperiment experimentHeld experiments model
+
+/// The experiments `committed` holds and `held` does not, in order: those its commit appended (spec 0050 S8.3, S8.4).
+let private appendedOver (held : Experiments.ExperimentCollection) (committed : Experiments.ExperimentCollection) : Experiments.Experiment list =
+    let heldIds = held.experiments |> List.map (fun experiment -> experiment.id)
+    committed.experiments |> List.filter (fun experiment -> not (List.contains experiment.id heldIds))
 
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
@@ -2525,26 +2602,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             // reference; the collection, the setups and the active setup change only once both are recorded.
             match model.draftCapture with
             | Some capture ->
-                let library : KitLibraryContext =
-                    {
-                        kit = model.kit
-                        imports = model.catalogueImports
-                    }
                 let notSaved (error : KitLibraryError) : TableAndElementRotationModel =
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     }
-                // Spec 0050 S8.3: a new setup takes the kit's template name of the table, else S8.2's first free
-                // `Setup <n>`, either made free among the held setups, so `create` takes it.
-                let tableSetup : Result<Setups.Setup, KitLibraryError> =
-                    match model.activeSetupOpt with
-                    | Some active -> Ok (model.tableWrittenOver active)
-                    | None ->
-                        let taken = model.kitSetups |> List.map (fun held -> held.name)
-                        let slots = model.recordedSlots
-                        let name = model.kit.kitFile.namingTemplate.setupNameAmong slots model.kitItems taken (SetupName.firstFree taken)
-                        Setups.Setup.create name slots model.kitSetups |> Result.mapError KitLibrarySetupErr
-                match tableSetup with
+                match model.tableSetup with
                 | Error error -> notSaved error
                 | Ok setup ->
                     let collection = Experiments.chooseMeasurement capture model.experimentCollection
@@ -2553,17 +2615,13 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     else
                         match committed.draft.editingId |> Option.bind (fun id -> committed.experiments |> List.tryFind (fun experiment -> experiment.id = id)) with
                         | Some experiment ->
-                            let setupRecorded =
-                                match model.activeSetupOpt with
-                                | Some active when active = setup -> Ok ()
-                                | Some _
-                                | None -> library.recordSetup setup
-                            match setupRecorded |> Result.bind (fun () -> library.recordExperiment experiment) with
-                            | Ok () ->
+                            let recorded =
+                                withTableRecorded setup model
+                                |> Result.bind (fun tabled -> withExperimentsRecorded committed [ experiment ] tabled |> Result.mapError snd)
+                            match recorded with
+                            | Ok written ->
                                 {
-                                    model.withSetupRecorded setup with
-                                        experimentCollection = committed
-                                        kitStatus = None
+                                    written with kitStatus = None
                                 }
                             | Error error -> notSaved error
                         | None -> model
@@ -2769,41 +2827,21 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         imports = model.catalogueImports
                     }
                 let fresh = setups |> List.distinct |> List.filter (fun setup -> not (List.contains setup model.kitSetups))
-                let heldIds = model.experimentCollection.experiments |> List.map (fun experiment -> experiment.id)
                 let committed =
                     match model.draftCapture with
                     | Some capture ->
                         Experiments.chooseMeasurement capture model.experimentCollection
                         |> Experiments.commitOverSetups (setups |> List.map (fun setup -> setup.reference))
                     | None -> model.experimentCollection
-                let appended = committed.experiments |> List.filter (fun experiment -> not (List.contains experiment.id heldIds))
-                let writtenInOrder
-                    (record : 'Written -> Result<unit, KitLibraryError>)
-                    (held : TableAndElementRotationModel -> 'Written -> TableAndElementRotationModel)
-                    (state : Result<TableAndElementRotationModel, TableAndElementRotationModel * KitLibraryError>)
-                    (writes : 'Written list)
-                    : Result<TableAndElementRotationModel, TableAndElementRotationModel * KitLibraryError> =
-                    writes
-                    |> List.fold (fun written write ->
-                        written
-                        |> Result.bind (fun current ->
-                            match record write with
-                            | Ok () -> Ok (held current write)
-                            | Error error -> Error (current, error))) state
+                let appended = appendedOver model.experimentCollection committed
                 let setupHeld (current : TableAndElementRotationModel) (setup : Setups.Setup) : TableAndElementRotationModel =
                     {
                         current.withSetupRecorded setup with activeSetupOpt = current.activeSetupOpt
                     }
-                let experimentHeld (current : TableAndElementRotationModel) (experiment : Experiments.Experiment) : TableAndElementRotationModel =
-                    {
-                        current with
-                            experimentCollection =
-                                {
-                                    committed with experiments = current.experimentCollection.experiments @ [ experiment ]
-                                }
-                    }
-                let setupsWritten = writtenInOrder library.recordSetup setupHeld (Ok model) fresh
-                match writtenInOrder library.recordExperiment experimentHeld setupsWritten appended with
+                let recorded =
+                    writtenInOrder library.recordSetup setupHeld fresh model
+                    |> Result.bind (withExperimentsRecorded committed appended)
+                match recorded with
                 | Ok generated ->
                     let made = setups |> List.distinct |> List.length
                     {
@@ -2814,6 +2852,40 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         written with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     })
+    // Spec 0050 S8.4: the table is recorded as ExpCommit records it, then the draft is appended over that setup, never
+    // editing the draft's own; a draft that cannot be committed or that no detector captures writes nothing.
+    | RecordExperiment ->
+        guardKitWrite model (fun () ->
+            let notSaved (error : KitLibraryError) (kept : TableAndElementRotationModel) : TableAndElementRotationModel =
+                {
+                    kept with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                }
+            if not model.experimentCollection.canCommit then
+                {
+                    model with
+                        kitStatus = Some (ControlCaption "Not recorded — choose the element and the variable to vary in the Experiments bay first.")
+                }
+            else
+                match model.draftCapture with
+                | None ->
+                    {
+                        model with kitStatus = Some (ControlCaption "Not recorded — no detector captures this table.")
+                    }
+                | Some capture ->
+                    match model.tableSetup |> Result.bind (fun setup -> withTableRecorded setup model |> Result.map (fun tabled -> tabled, setup)) with
+                    | Error error -> notSaved error model
+                    | Ok (tabled, setup) ->
+                        let committed =
+                            Experiments.chooseMeasurement capture tabled.experimentCollection
+                            |> Experiments.commitOverSetups [ setup.reference ]
+                        let appended = appendedOver tabled.experimentCollection committed
+                        match withExperimentsRecorded committed appended tabled with
+                        | Ok recorded ->
+                            let ids = appended |> List.map (fun experiment -> experiment.id.fileStem.value) |> String.concat ", "
+                            {
+                                recorded with kitStatus = Some (ControlCaption $"Recorded {ids} over {setup.reference.describe}.")
+                            }
+                        | Error (kept, error) -> notSaved error kept)
     // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
     | SwitchConstructorMode mode ->
         {

@@ -24,8 +24,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// The constructor's setup messages over a kit opened read-write: CreateSetup records the table as a kit setup,
 /// SaveSetup writes it over the active one, ActivateSetup draws one, the window keeping its view, snap mode and pivot,
 /// AssignSlot puts a kit item into a slot, SwapSlot makes the table the setup holding the swapped item, and a commit
-/// records the table as the active setup its experiment references, a new one named by the kit's naming template
-/// (spec 0050 S8.2, S8.3; 001 §P).
+/// records the table as the active setup its experiment references, a new one named by the kit's naming template, and
+/// RecordExperiment appends one more over it each time (spec 0050 S8.2–S8.4; 001 §P).
 module SetupModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -995,3 +995,147 @@ module SetupModelTests =
                 Assert.Equal<Experiments.ExperimentCollection>(drawn.experimentCollection, refused.experimentCollection)
                 Assert.Equal<Setups.SetupSlot list>(drawn.elements, refused.elements)
                 Assert.Equal<Setups.Setup option>(drawn.activeSetupOpt, refused.activeSetupOpt)))
+
+    // Spec 0050 S8.4: the direct problem, several experiments over one setup.
+
+    /// The draft's range with its maximum at 180°.
+    let private narrowed (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        model |> updateTableAndElementRotation (ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd 180.0))
+
+    [<Fact>]
+    let ``RecordExperiment appends a new experiment over the active setup each time, so one setup holds several experiments`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer model
+            let created = placed |> createdAs "Bench"
+            let bench = Assert.Single(created.kitSetups)
+            Assert.Equal<SetupReference>({ name = SetupName "Bench"; revision = SetupRevision.first }, bench.reference)
+            let benchFile = Path.Combine(folder.value.value, "Bench.setup-json")
+            let benchBytes = File.ReadAllBytes benchFile
+            let chosen = created |> updateTableAndElementRotation (ExpChooseElement polarizer)
+            let firstRange = chosen.experimentCollection.draft.range
+
+            let first = chosen |> updateTableAndElementRotation RecordExperiment
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E1 over 'Bench' revision 1."), first.kitStatus)
+            let changed = narrowed first
+            let secondRange = changed.experimentCollection.draft.range
+            Assert.NotEqual<Experiments.VariableRange>(firstRange, secondRange)
+            let second = changed |> updateTableAndElementRotation RecordExperiment
+
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
+            match second.kit.proxy.readExperiments () |> kitValue with
+            | [ e1; e2 ] ->
+                Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ], [ e1.id; e2.id ])
+                Assert.Equal<SetupReference list>([ bench.reference; bench.reference ], [ e1.setup; e2.setup ])
+                Assert.Equal<Experiments.VariableRange>(firstRange, e1.range)
+                Assert.Equal<Experiments.VariableRange>(secondRange, e2.range)
+                Assert.Equal<Experiments.Experiment list>([ e1; e2 ], second.experimentCollection.experiments)
+            | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
+            Assert.Equal<string list>([ "Bench.setup-json" ], setupFilesIn folder)
+            Assert.Equal<byte[]>(benchBytes, File.ReadAllBytes benchFile)
+            Assert.Equal<Setups.Setup list>([ bench ], second.kitSetups)
+            Assert.Equal<Setups.Setup option>(Some bench, second.activeSetupOpt)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Bench' revision 1."), second.kitStatus)
+            Assert.Equal<Experiments.ExperimentId option>(None, second.experimentCollection.draft.editingId))
+
+    [<Fact>]
+    let ``RecordExperiment over a draft that edits an experiment appends another and leaves the edited one as it was`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer model
+            let first =
+                placed
+                |> createdAs "Bench"
+                |> updateTableAndElementRotation (ExpChooseElement polarizer)
+                |> updateTableAndElementRotation RecordExperiment
+            let e1 = Assert.Single(first.experimentCollection.experiments)
+            let e1File = Path.Combine(folder.value.value, "E1.experiment-json")
+            let e1Bytes = File.ReadAllBytes e1File
+            let editing = first |> updateTableAndElementRotation (ExpEdit e1.id) |> narrowed
+            Assert.Equal<Experiments.ExperimentId option>(Some e1.id, editing.experimentCollection.draft.editingId)
+            let changedRange = editing.experimentCollection.draft.range
+            Assert.NotEqual<Experiments.VariableRange>(e1.range, changedRange)
+
+            let second = editing |> updateTableAndElementRotation RecordExperiment
+
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
+            Assert.Equal<byte[]>(e1Bytes, File.ReadAllBytes e1File)
+            match second.kit.proxy.readExperiments () |> kitValue with
+            | [ storedE1; e2 ] ->
+                Assert.Equal<Experiments.Experiment>(e1, storedE1)
+                Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 2, e2.id)
+                Assert.Equal<Experiments.VariableRange>(changedRange, e2.range)
+                Assert.Equal<SetupReference>(e1.setup, e2.setup)
+                Assert.Equal<Experiments.Experiment list>([ e1; e2 ], second.experimentCollection.experiments)
+            | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Bench' revision 1."), second.kitStatus)
+            Assert.Equal<Experiments.ExperimentId option>(None, second.experimentCollection.draft.editingId))
+
+    [<Fact>]
+    let ``RecordExperiment records the table as ExpCommit does: a first setup for a table that is no setup yet, and the next revision over one an experiment references`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer model
+            Assert.Equal<Setups.Setup option>(None, placed.activeSetupOpt)
+
+            let first =
+                placed
+                |> updateTableAndElementRotation (ExpChooseElement polarizer)
+                |> updateTableAndElementRotation RecordExperiment
+
+            let revision1 : SetupReference = { name = SetupName "Setup 1"; revision = SetupRevision.first }
+            Assert.Equal<string list>([ "Setup 1.setup-json" ], setupFilesIn folder)
+            Assert.Equal<string list>([ "E1.experiment-json" ], experimentFilesIn folder)
+            let setup1 = Assert.Single(first.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<SetupReference>(revision1, setup1.reference)
+            Assert.Equal<Setups.SetupSlot list>(placed.elements, setup1.slots)
+            let e1 = Assert.Single(first.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<SetupReference>(revision1, e1.setup)
+            Assert.Equal<Setups.Setup option>(Some setup1, first.activeSetupOpt)
+            Assert.Equal<Setups.Setup list>([ setup1 ], first.kitSetups)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E1 over 'Setup 1' revision 1."), first.kitStatus)
+
+            // The add selected the polarizer, so the turn is its own.
+            let rotated = turned first
+            Assert.NotEqual<Setups.SetupSlot list>(first.elements, rotated.elements)
+            let second = rotated |> updateTableAndElementRotation RecordExperiment
+
+            Assert.Equal<string list>([ "Setup 1.setup-json" ], setupFilesIn folder)
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
+            let revised = Assert.Single(second.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<SetupRevision>(SetupRevision 2, revised.revision)
+            Assert.Equal<Setups.SetupSlot list>(rotated.elements, revised.slots)
+            let firstRecord : Setups.SetupRevisionRecord =
+                {
+                    revision = SetupRevision.first
+                    slots = first.elements
+                }
+            Assert.Equal<Setups.SetupRevisionRecord list>([ firstRecord ], revised.history)
+            match second.kit.proxy.readExperiments () |> kitValue with
+            | [ storedE1; e2 ] ->
+                Assert.Equal<SetupReference>(revision1, storedE1.setup)
+                Assert.Equal<SetupReference>({ name = SetupName "Setup 1"; revision = SetupRevision 2 }, e2.setup)
+            | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
+            Assert.Equal<Setups.Setup option>(Some revised, second.activeSetupOpt)
+            Assert.Equal<Setups.Setup list>([ revised ], second.kitSetups)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Setup 1' revision 2."), second.kitStatus))
+
+    [<Fact>]
+    let ``RecordExperiment without a chosen element and variable is told and writes nothing`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, _ = withPolarizer model
+            let cleared = placed |> updateTableAndElementRotation ExpNew
+            Assert.False(cleared.experimentCollection.canCommit)
+            let before = kitFileBytes folder
+
+            let refused = cleared |> updateTableAndElementRotation RecordExperiment
+
+            match refused.kitStatus with
+            | Some status -> Assert.StartsWith("Not recorded", status.value)
+            | None -> Assert.Fail "a draft that cannot be recorded must be told in the kit status"
+            Assert.Equal<ControlCaption option>(
+                Some (ControlCaption "Not recorded — choose the element and the variable to vary in the Experiments bay first."),
+                refused.kitStatus)
+            Assert.Empty(experimentFilesIn folder)
+            Assert.Empty(setupFilesIn folder)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+            Assert.Equal<Experiments.ExperimentCollection>(cleared.experimentCollection, refused.experimentCollection)
+            Assert.Equal<Setups.Setup list>(cleared.kitSetups, refused.kitSetups)
+            Assert.Equal<Setups.Setup option>(cleared.activeSetupOpt, refused.activeSetupOpt))

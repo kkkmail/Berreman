@@ -223,6 +223,8 @@ module KitWindowModelTests =
                         ready
                         |> updateTableAndElementRotation (SetNamingTemplateText (ControlCaption "{obj1}"))
                         |> updateTableAndElementRotation SaveNamingTemplate
+                        // Spec 0050 S8.4: a recorded experiment is refused as a commit is.
+                        ready |> updateTableAndElementRotation RecordExperiment
                     ]
                 for answer in refused do
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)
