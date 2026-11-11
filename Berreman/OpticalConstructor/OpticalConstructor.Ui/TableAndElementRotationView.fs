@@ -623,6 +623,8 @@ type TableAndElementRotationModel =
         activeSetupOpt : Setups.Setup option
         /// The kit's items in label order, as the kit last read or wrote them (spec 0050 S6, S7.1).
         kitItems : Item list
+        /// The slot whose chip's list is open, `None` while every chip is closed (spec 0050 S8.4).
+        slotChipOpenOpt : Library.ElementId option
         /// The flow strip's step the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
         flowStep : ConstructorFlowStep
         /// The item-model store the add form offers (spec 0050 S7.2, step 209).
@@ -793,6 +795,7 @@ let initWith
         kitSetups = []
         activeSetupOpt = None
         kitItems = []
+        slotChipOpenOpt = None
         // Spec 0050 S7.2: a window opens on the table and its Add bay, as before the strip.
         flowStep = SetupsFlowStep
         itemModels = ItemModels.ItemModelProxy.createInMemory ()
@@ -1091,6 +1094,8 @@ type TableAndElementRotationMsg =
     | GenerateSetupGrid of SetupGrids.SetupGrid
     /// A new experiment of the draft over the active setup (spec 0050 S8.4; 001 §P `RecordExperiment`).
     | RecordExperiment
+    /// Opens that slot's chip list, or closes it when it is the open one (spec 0050 S8.4).
+    | ToggleSlotChip of Library.ElementId
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
     | SwitchConstructorMode of ConstructorMode
     /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
@@ -2030,6 +2035,10 @@ type TableAndElementRotationModel with
                 | Some ItemModels.PolarizerPresetBinding
                 | None -> None)
 
+    /// What the slot's chip lists: the kit's items that fit it, in `kitItems`' order (spec 0050 S8.4; 001 §J "each
+    /// dropdown lists compatible items only").
+    member model.slotChipItems (slot : Setups.SetupSlot) : Item list = slot.fittingItems model.kitItems model.tryItemModelChoice
+
     /// The name the window's stores give the item's model: its resolved version's `<name> v<n>`, after a preset's
     /// entry name or a sample's `<name> v<n>`; `(model not in the library)` when `tryItemModelChoice` answers `None`
     /// (spec 0050 S7.2, S8.2).
@@ -2775,42 +2784,47 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 model with kitStatus = Some (ControlCaption $"Not assigned — {error.describe}")
             }
     // Spec 0050 S8.2: a held setup is switched to by ActivateSetup, writing nothing, so a read-only kit takes it; only a
-    // new setup is written, behind the read-only guard, and never the setup swapped from.
+    // new setup is written, behind the read-only guard, and never the setup swapped from. S8.4: every outcome closes the
+    // chip list, so a pick closes it whether the swap switched, created or was refused.
     | SwapSlot (slotId, itemId) ->
-        match slotAssigned model slotId (Some itemId) with
-        | Error error ->
-            {
-                model with kitStatus = Some (ControlCaption $"Not swapped — {error.describe}")
-            }
-        | Ok filled ->
-            let swapped = withSlotFilled filled model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
-            let held = model.kitSetups |> List.map (fun setup -> setup.name)
-            let unnamed =
-                match model.activeSetupOpt with
-                | Some active -> active.name.nextFreeAmong held
-                | None -> SetupName.firstFree held
-            // Spec 0050 S8.3: a swapped table the kit's template names takes that name made free, else S8.2's.
-            let fresh = model.kit.kitFile.namingTemplate.setupNameAmong swapped model.kitItems held unnamed
-            match Setups.Setup.swapTarget swapped model.kitSetups fresh with
-            | Setups.SwitchToHeldSetup setup -> updateTableAndElementRotation (ActivateSetup setup.name) model
-            | Setups.CreateSwappedSetup setup ->
-                guardKitWrite model (fun () ->
-                    let library : KitLibraryContext =
-                        {
-                            kit = model.kit
-                            imports = model.catalogueImports
-                        }
-                    match library.recordSetup setup with
-                    | Ok () ->
-                        {
-                            model.withSetupRecorded setup with
-                                elements = swapped
-                                kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}' by the swap.")
-                        }
-                    | Error error ->
-                        {
-                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                        })
+        let answered =
+            match slotAssigned model slotId (Some itemId) with
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not swapped — {error.describe}")
+                }
+            | Ok filled ->
+                let swapped = withSlotFilled filled model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
+                let held = model.kitSetups |> List.map (fun setup -> setup.name)
+                let unnamed =
+                    match model.activeSetupOpt with
+                    | Some active -> active.name.nextFreeAmong held
+                    | None -> SetupName.firstFree held
+                // Spec 0050 S8.3: a swapped table the kit's template names takes that name made free, else S8.2's.
+                let fresh = model.kit.kitFile.namingTemplate.setupNameAmong swapped model.kitItems held unnamed
+                match Setups.Setup.swapTarget swapped model.kitSetups fresh with
+                | Setups.SwitchToHeldSetup setup -> updateTableAndElementRotation (ActivateSetup setup.name) model
+                | Setups.CreateSwappedSetup setup ->
+                    guardKitWrite model (fun () ->
+                        let library : KitLibraryContext =
+                            {
+                                kit = model.kit
+                                imports = model.catalogueImports
+                            }
+                        match library.recordSetup setup with
+                        | Ok () ->
+                            {
+                                model.withSetupRecorded setup with
+                                    elements = swapped
+                                    kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}' by the swap.")
+                            }
+                        | Error error ->
+                            {
+                                model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                            })
+        {
+            answered with slotChipOpenOpt = None
+        }
     // Spec 0050 S8.3: the setups the kit lacks, then the draft over every setup, as ExpCommit records them; the first
     // failed write stops the run, keeping what was written. The table, the active setup and the draft's choices stay.
     | GenerateSetupGrid grid ->
@@ -2886,6 +2900,18 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                 recorded with kitStatus = Some (ControlCaption $"Recorded {ids} over {setup.reference.describe}.")
                             }
                         | Error (kept, error) -> notSaved error kept)
+    // Spec 0050 S8.4: it writes nothing, so a read-only kit takes it; an id the table lacks changes nothing.
+    | ToggleSlotChip slotId ->
+        if model.elements |> List.exists (fun slot -> slot.id = slotId) then
+            let openOpt =
+                match model.slotChipOpenOpt with
+                | Some openId when openId = slotId -> None
+                | Some _
+                | None -> Some slotId
+            {
+                model with slotChipOpenOpt = openOpt
+            }
+        else model
     // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
     | SwitchConstructorMode mode ->
         {

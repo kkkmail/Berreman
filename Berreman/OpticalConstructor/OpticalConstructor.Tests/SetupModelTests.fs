@@ -24,8 +24,9 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// The constructor's setup messages over a kit opened read-write: CreateSetup records the table as a kit setup,
 /// SaveSetup writes it over the active one, ActivateSetup draws one, the window keeping its view, snap mode and pivot,
 /// AssignSlot puts a kit item into a slot, SwapSlot makes the table the setup holding the swapped item, and a commit
-/// records the table as the active setup its experiment references, a new one named by the kit's naming template, and
-/// RecordExperiment appends one more over it each time (spec 0050 S8.2–S8.4; 001 §P).
+/// records the table as the active setup its experiment references, a new one named by the kit's naming template,
+/// RecordExperiment appends one more over it each time, and a slot's chip lists the items that fit it, one list open at a
+/// time (spec 0050 S8.2–S8.4; 001 §J, §P).
 module SetupModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -234,7 +235,7 @@ module SetupModelTests =
             scene.kit.close () |> kitValue
             reopened.library.kit.close () |> kitValue
 
-    /// Step 272's table, and the slot ids of its first polarizer and its sample.
+    /// A table, step 272's or the chip facts', and the slot ids of its first polarizer and its sample.
     type private TemplateTable =
         {
             table : TableAndElementRotationModel
@@ -1139,3 +1140,112 @@ module SetupModelTests =
             Assert.Equal<Experiments.ExperimentCollection>(cleared.experimentCollection, refused.experimentCollection)
             Assert.Equal<Setups.Setup list>(cleared.kitSetups, refused.kitSetups)
             Assert.Equal<Setups.Setup option>(cleared.activeSetupOpt, refused.activeSetupOpt))
+
+    /// Over the kit `stocked` stocks and QZ2, the table with a linear polarizer and a sample added, both empty (spec 0050
+    /// S8.4).
+    let private chipTable (model : TableAndElementRotationModel) : TemplateTable =
+        let kit = stocked model |> updateTableAndElementRotation (AddItem qz2Draft)
+        Assert.Equal<ControlCaption option>(None, kit.kitStatus)
+        let polarizerPlaced, polarizer = withPolarizer kit
+        let placed, sample = withSample polarizerPlaced
+        let held : TemplateTable =
+            {
+                table = placed
+                polarizer = polarizer
+                sample = sample
+            }
+        held
+
+    /// The table's first slot of that kind.
+    let private slotOfKind (kind : CatalogueKind) (model : TableAndElementRotationModel) : Setups.SetupSlot =
+        model.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)
+
+    [<Fact>]
+    let ``a slot's chip lists the kit's items that fit it`` () : unit =
+        withSetupKit (fun _ model ->
+            let held = chipTable model
+            let table = held.table
+            let listed (slot : Setups.SetupSlot) : ItemId list = table.slotChipItems slot |> List.map (fun item -> item.id)
+            let inKitOrder (ids : ItemId list) : ItemId list =
+                table.kitItems |> List.map (fun item -> item.id) |> List.filter (fun id -> List.contains id ids)
+
+            // Spec 0050 S8.4: the kit holds its items in label order, so each chip lists them in that order.
+            Assert.Equal<ItemLabel list>(
+                [ ItemLabel "LP1"; ItemLabel "LPd"; ItemLabel "Laser"; ItemLabel "QZ"; ItemLabel "QZ2" ],
+                table.kitItems |> List.map (fun item -> item.label))
+            Assert.Equal<ItemId list>([ lp1Draft.id; lpdDraft.id ], listed (slotOf held.polarizer table))
+            Assert.Equal<ItemId list>(inKitOrder [ lpdDraft.id; lp1Draft.id ], listed (slotOf held.polarizer table))
+            Assert.Equal<ItemId list>([ qzDraft.id; qz2Draft.id ], listed (slotOf held.sample table))
+            Assert.Equal<ItemId list>(inKitOrder [ qz2Draft.id; qzDraft.id ], listed (slotOf held.sample table))
+            Assert.Equal<ItemId list>([ laserDraft.id ], listed (slotOfKind LightSource table))
+            Assert.Empty(listed (slotOfKind Detector table))
+
+            // A slot holding an item still lists every item that fits it, its own included.
+            let assigned = table |> updateTableAndElementRotation (AssignSlot (held.polarizer, Some lp1Draft.id))
+            Assert.Equal<ControlCaption option>(None, assigned.kitStatus)
+            Assert.Equal<ItemId list>(
+                [ lp1Draft.id; lpdDraft.id ],
+                assigned.slotChipItems (slotOf held.polarizer assigned) |> List.map (fun item -> item.id)))
+
+    [<Fact>]
+    let ``ToggleSlotChip opens one chip's list at a time, and a swap closes it`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = chipTable model
+            let closed = held.table
+            let toggled (slotId : Library.ElementId) (current : TableAndElementRotationModel) : TableAndElementRotationModel =
+                current |> updateTableAndElementRotation (ToggleSlotChip slotId)
+            Assert.Equal<Library.ElementId option>(None, closed.slotChipOpenOpt)
+            let before = kitFileBytes folder
+
+            let sampleOpen = closed |> toggled held.sample
+            Assert.Equal<Library.ElementId option>(Some held.sample, sampleOpen.slotChipOpenOpt)
+            let polarizerOpen = sampleOpen |> toggled held.polarizer
+            Assert.Equal<Library.ElementId option>(Some held.polarizer, polarizerOpen.slotChipOpenOpt)
+            let reclosed = polarizerOpen |> toggled held.polarizer
+            Assert.Equal<Library.ElementId option>(None, reclosed.slotChipOpenOpt)
+
+            // An id the table lacks changes nothing, whether a list is open or not.
+            for current in [ closed; sampleOpen; polarizerOpen ] do
+                let answered = current |> toggled (Library.ElementId "nowhere")
+                Assert.Equal<Library.ElementId option>(current.slotChipOpenOpt, answered.slotChipOpenOpt)
+                Assert.Equal<Setups.SetupSlot list>(current.elements, answered.elements)
+                Assert.Equal<Selection>(current.selection, answered.selection)
+                Assert.Equal<ControlCaption option>(current.kitStatus, answered.kitStatus)
+
+            // A toggle changes only which list is open, and writes nothing.
+            for current in [ sampleOpen; polarizerOpen; reclosed ] do
+                Assert.Equal<Setups.SetupSlot list>(closed.elements, current.elements)
+                Assert.Equal<Selection>(closed.selection, current.selection)
+                Assert.Equal<ControlCaption option>(closed.kitStatus, current.kitStatus)
+                Assert.Equal<Item list>(closed.kitItems, current.kitItems)
+                Assert.Equal<Setups.Setup list>(closed.kitSetups, current.kitSetups)
+                Assert.Equal<Setups.Setup option>(closed.activeSetupOpt, current.activeSetupOpt)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+
+            // Spec 0050 S8.4: a pick closes the open list, whether the swap created a setup, was refused or switched.
+            let created = sampleOpen |> updateTableAndElementRotation (SwapSlot (held.sample, qz2Draft.id))
+            Assert.Equal<Library.ElementId option>(None, created.slotChipOpenOpt)
+            let qz2Setup = Assert.Single(created.kitSetups)
+            Assert.Equal<Setups.Setup option>(Some qz2Setup, created.activeSetupOpt)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Created setup '{qz2Setup.name.value}' by the swap."), created.kitStatus)
+
+            let unheld = ItemId (Guid.Parse "27900000-0000-4000-8000-000000000099")
+            let refusedOpen = created |> toggled held.sample
+            Assert.Equal<Library.ElementId option>(Some held.sample, refusedOpen.slotChipOpenOpt)
+            let refused = refusedOpen |> updateTableAndElementRotation (SwapSlot (held.sample, unheld))
+            Assert.Equal<Library.ElementId option>(None, refused.slotChipOpenOpt)
+            match refused.kitStatus with
+            | Some status -> Assert.StartsWith("Not swapped", status.value)
+            | None -> Assert.Fail "a refused swap must be told in the kit status"
+            Assert.Equal<Setups.SetupSlot list>(created.elements, refused.elements)
+
+            let qz = refused |> toggled held.sample |> updateTableAndElementRotation (SwapSlot (held.sample, qzDraft.id))
+            Assert.Equal<Library.ElementId option>(None, qz.slotChipOpenOpt)
+            Assert.Equal(2, qz.kitSetups.Length)
+
+            let switchedOpen = qz |> toggled held.sample
+            Assert.Equal<Library.ElementId option>(Some held.sample, switchedOpen.slotChipOpenOpt)
+            let switched = switchedOpen |> updateTableAndElementRotation (SwapSlot (held.sample, qz2Draft.id))
+            Assert.Equal<Library.ElementId option>(None, switched.slotChipOpenOpt)
+            Assert.Equal<Setups.Setup option>(Some qz2Setup, switched.activeSetupOpt)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Loaded setup '{qz2Setup.name.value}'."), switched.kitStatus))
