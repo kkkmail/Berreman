@@ -5,6 +5,7 @@ open Xunit
 open Berreman.Constants
 open Berreman.Geometry
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -190,11 +191,11 @@ module SetupTests =
             {
                 id = Experiments.ExperimentId id
                 setup = setup
-                varied = None
-                measurement = Experiments.CaptureTransmitted
-                range = Experiments.VariableRange.forVariable Experiments.VaryR1
+                scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
+                role = Experiments.ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
                 dataFileOpt = None
-                sourceWaveLengthOpt = None
             }
 
         let onFirst = over { name = SetupName "Bench"; revision = SetupRevision.first } 1

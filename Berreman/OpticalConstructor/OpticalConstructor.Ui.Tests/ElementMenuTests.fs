@@ -190,7 +190,8 @@ module ElementMenuTests =
         let both = m |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
         Assert.Equal<string list>([ "Intensity" ], (both.experimentResult).series |> List.map (fun s -> s.name.value))
         let committed = both |> updateTableAndElementRotation ExpCommit
-        Assert.Equal(Experiments.CaptureTransmitted, (List.head committed.experimentCollection.experiments).measurement)
+        Assert.Equal<Experiments.MeasurementMode list>(
+            [ Experiments.CaptureTransmitted ], (List.head committed.experimentCollection.experiments).scan.blocks |> List.map (fun block -> block.capture))
 
     [<Fact>]
     let ``a detector on the reflected ray adds R, and both detectors offer T, R and Both`` () =

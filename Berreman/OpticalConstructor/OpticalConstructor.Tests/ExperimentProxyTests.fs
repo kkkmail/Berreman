@@ -337,8 +337,8 @@ module ExperimentProxyTests =
         let c1 = commit benchRevision1 c0
         Assert.Equal(1, List.length c1.experiments)
         let added = List.head c1.experiments
-        Assert.Equal(Some (el "src"), added.varied |> Option.map (fun v -> v.elementId))
-        Assert.Equal(Some VaryWaveLength, added.varied |> Option.map (fun v -> v.variable))
+        Assert.Equal<ElementId list>([ el "src" ], added.scan.axes |> List.map (fun axis -> axis.elementId))
+        Assert.Equal<VariableParameter list>([ VaryWaveLength ], added.scan.axes |> List.map (fun axis -> axis.variable))
         // The draft now edits the added experiment, so committing again UPDATES rather than appends.
         let c2 = commit benchRevision1 c1
         Assert.Equal(1, List.length c2.experiments)
@@ -350,9 +350,9 @@ module ExperimentProxyTests =
         let c2 = c1 |> chooseMeasurement CaptureReflected |> setRangeMin (Propagation.SweptValue 300.0) |> setRangeMax (Propagation.SweptValue 500.0) |> commit benchRevision1
         Assert.Equal(1, List.length c2.experiments)
         let updated = c2.experiments |> List.find (fun e -> e.id = id)
-        Assert.Equal(CaptureReflected, updated.measurement)
-        Assert.Equal(300.0, updated.range.min.value)
-        Assert.Equal(500.0, updated.range.max.value)
+        Assert.Equal<MeasurementMode list>([ CaptureReflected ], updated.scan.blocks |> List.map (fun block -> block.capture))
+        Assert.Equal<float list>([ 300.0 ], updated.scan.axes |> List.map (fun axis -> axis.range.min.value))
+        Assert.Equal<float list>([ 500.0 ], updated.scan.axes |> List.map (fun axis -> axis.range.max.value))
 
     [<Fact>]
     let ``newDraft after add lets a second commit APPEND a distinct experiment`` () =
@@ -373,7 +373,7 @@ module ExperimentProxyTests =
             |> (fun c -> c.newDraft)
             |> chooseElement (el "pol") (ElementLabel "Linear polarizer #2") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
             |> commit benchRevision2
-        let target = c1.experiments |> List.find (fun e -> (e.varied |> Option.map (fun v -> v.elementId)) = Some (el "pol"))
+        let target = c1.experiments |> List.find (fun e -> (e.scan.axes |> List.map (fun axis -> axis.elementId)) = [ el "pol" ])
         let c2 = edit target.id c1
         Assert.Equal(Some target.id, c2.draft.editingId)
         Assert.Equal(Some (el "pol"), c2.draft.elementId)
@@ -402,18 +402,167 @@ module ExperimentProxyTests =
         let c = withSource () |> setRangePoints (Propagation.CurvePointCount 1)
         Assert.True(c.draft.range.points.value >= 2)
 
+    // ============================ spec 0050 S9.1: the draft builds a scan ============================
+
+    [<Fact>]
+    let ``a committed experiment is a one-axis scan of the draft, a science run with no session and no notes`` () : unit =
+        let heNeLine = Berreman.Fields.WaveLength.nm 632.8<nm>
+        let quarterTurn : VariableRange =
+            {
+                min = Propagation.SweptValue 0.0
+                max = Propagation.SweptValue 90.0
+                points = Propagation.CurvePointCount 10
+            }
+        let committed =
+            ExperimentCollection.empty
+            |> chooseElement (el "lp2") (ElementLabel "Linear polarizer #4") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
+            |> setRange quarterTurn
+            |> setSourceWaveLength (Some heNeLine)
+            |> commit benchRevision1
+        let axis : ScanAxis =
+            {
+                elementId = el "lp2"
+                label = ElementLabel "Linear polarizer #4"
+                variable = VaryR1
+                range = quarterTurn
+            }
+        let expected : Experiment =
+            {
+                id = ExperimentId 1
+                setup = benchRevision1
+                scan = ExperimentScan.oneAxis axis CaptureTransmitted (Some heNeLine)
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
+                dataFileOpt = None
+            }
+        Assert.Equal<Experiment list>([ expected ], committed.experiments)
+        Assert.Equal<ExperimentScan option>(Some expected.scan, committed.draft.scanOpt)
+        Assert.Equal<ExperimentId option>(Some expected.id, committed.draft.editingId)
+
+        // The text `an experiment description mentions the element, the variable, and the capture` reads.
+        let description = (List.head committed.experiments).description
+        Assert.Equal("Linear polarizer #4: vary Rotation R1 over 0…90 ° (10 pts), capture Transmitted (T)", description)
+        Assert.Contains("Linear polarizer", description)
+        Assert.Contains("Rotation R1", description)
+        Assert.Contains("Transmitted", description)
+
+    [<Fact>]
+    let ``an added axis and an added block commit as one multi-variable scan, and editing splits it back`` () : unit =
+        // A draft with nothing chosen, or an element with nothing to vary, adds no axis and closes no block.
+        let lens = ExperimentCollection.empty |> chooseElement (el "lens") (ElementLabel "Lens #1") (VariableParameter.allowedFor Lens) CaptureTransmitted
+        for unchosen in [ ExperimentCollection.empty; lens ] do
+            Assert.Equal<ExperimentCollection>(unchosen, unchosen.addScanAxis)
+            Assert.Equal<ExperimentCollection>(unchosen, unchosen.addScanBlock)
+
+        let analyzerAzimuths : ScanAxis =
+            {
+                elementId = el "lp2"
+                label = ElementLabel "Linear polarizer #4"
+                variable = VaryR1
+                range = plateAzimuths.range
+            }
+        let chooseSample (c : ExperimentCollection) : ExperimentCollection =
+            chooseElement sample plateIncidence.label (VariableParameter.allowedFor Sample) CaptureBoth c
+
+        // The sample's incidence, then its azimuth inside it, read in T and R.
+        let outer =
+            ExperimentCollection.empty
+            |> chooseSample
+            |> chooseVariable VaryR2
+            |> setRange plateIncidence.range
+            |> (fun c -> c.addScanAxis)
+        Assert.Equal<ScanAxis list>([ plateIncidence ], outer.draft.outerAxes)
+        Assert.Equal<ScanAxis option>(None, outer.draft.axisOpt)
+        Assert.Equal(ElementLabel.blank, outer.draft.elementLabel)
+        Assert.Equal<VariableRange>(VariableRange.forVariable VaryR1, outer.draft.range)
+        Assert.False(outer.canCommit)
+
+        let closed =
+            outer
+            |> chooseSample
+            |> setRange plateAzimuthPair.range
+            |> chooseMeasurement CaptureBoth
+            |> (fun c -> c.addScanBlock)
+        Assert.Equal<ScanBlock list>([ incidenceByAzimuthBoth ], closed.draft.closedBlocks)
+        Assert.Empty(closed.draft.outerAxes)
+        Assert.Equal<ScanAxis option>(None, closed.draft.axisOpt)
+
+        // Then the rotating polarizer's four azimuths, read in T.
+        let committed =
+            closed
+            |> chooseElement (el "lp2") analyzerAzimuths.label (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
+            |> setRange analyzerAzimuths.range
+            |> chooseMeasurement CaptureTransmitted
+            |> commit benchRevision1
+        let lastBlock : ScanBlock =
+            {
+                axes = [ analyzerAzimuths ]
+                capture = CaptureTransmitted
+            }
+        let expectedScan : ExperimentScan =
+            {
+                blocks = [ incidenceByAzimuthBoth; lastBlock ]
+                sourceWaveLengthOpt = None
+            }
+        let stored = Assert.Single(committed.experiments)
+        Assert.Equal<ExperimentScan>(expectedScan, stored.scan)
+        Assert.Equal(ScienceRun, stored.role)
+        Assert.Equal(
+            "Sample #1: vary Incidence R2 over 20…60 ° (3 pts) × Sample #1: vary Rotation R1 over 0…90 ° (2 pts), capture Both (T + R); "
+            + "Linear polarizer #4: vary Rotation R1 over 0…67.5 ° (4 pts), capture Transmitted (T)",
+            stored.description)
+
+        // Editing splits the scan back into the draft, and committing it again gives the experiment back.
+        let editing = committed.newDraft |> edit stored.id
+        Assert.Equal<ScanBlock list>([ incidenceByAzimuthBoth ], editing.draft.closedBlocks)
+        Assert.Empty(editing.draft.outerAxes)
+        Assert.Equal<ScanAxis option>(Some analyzerAzimuths, editing.draft.axisOpt)
+        Assert.Equal(CaptureTransmitted, editing.draft.measurement)
+        Assert.Equal<ExperimentId option>(Some stored.id, editing.draft.editingId)
+        Assert.Equal<Experiment list>(committed.experiments, (commit benchRevision1 editing).experiments)
+
+        // A last block of two axes edits its first as outer; a dark line edits with no axis and commits unchanged.
+        let oneBlock =
+            {
+                stored with scan = { expectedScan with blocks = [ incidenceByAzimuthBoth ] }
+            }
+        let editingOne = ExperimentCollection.ofLoaded [ oneBlock ] |> edit oneBlock.id
+        Assert.Empty(editingOne.draft.closedBlocks)
+        Assert.Equal<ScanAxis list>([ plateIncidence ], editingOne.draft.outerAxes)
+        Assert.Equal<ScanAxis option>(Some plateAzimuthPair, editingOne.draft.axisOpt)
+        Assert.Equal(CaptureBoth, editingOne.draft.measurement)
+        Assert.Equal<Experiment list>([ oneBlock ], (commit benchRevision1 editingOne).experiments)
+        let dark =
+            {
+                stored with scan = ExperimentScan.darkLine CaptureReflected
+            }
+        let editingDark = ExperimentCollection.ofLoaded [ dark ] |> edit dark.id
+        Assert.Equal<ScanAxis option>(None, editingDark.draft.axisOpt)
+        Assert.Equal(CaptureReflected, editingDark.draft.measurement)
+        Assert.Equal<Experiment list>([ dark ], (commit benchRevision1 editingDark).experiments)
+
     // ============================ E1 / E2 / E3 over their setup revisions ============================
+
+    /// The rotating polarizer over R1's default range, under the label the run captured.
+    let private rotatingPolarizer (label : ElementLabel) : ScanAxis =
+        {
+            elementId = el "lp2"
+            label = label
+            variable = VaryR1
+            range = VariableRange.forVariable VaryR1
+        }
 
     /// E1 = source + polarizer + sample + rotating polarizer + detector on `Bench` revision 1, the rotating polarizer varied.
     let private e1 : Experiment =
         {
             id = ExperimentId 1
             setup = benchRevision1
-            varied = Some { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR1
+            scan = ExperimentScan.oneAxis (rotatingPolarizer (ElementLabel "Linear polarizer #4")) CaptureTransmitted None
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = None
-            sourceWaveLengthOpt = None
         }
 
     /// E2 = the same WITHOUT a sample, on `Bench` revision 2 (captures that the polarizers are not ideal).
@@ -421,24 +570,24 @@ module ExperimentProxyTests =
         { e1 with
             id = ExperimentId 2
             setup = benchRevision2
-            varied = Some { elementId = el "lp2"; label = ElementLabel "Linear polarizer #3"; variable = VaryR1 } }
+            scan = ExperimentScan.oneAxis (rotatingPolarizer (ElementLabel "Linear polarizer #3")) CaptureTransmitted None }
 
     /// E3 = an empty dark line (nothing varied) — how much ambient light reaches the detector with no source.
     let private e3 : Experiment =
-        { id = ExperimentId 3; setup = darkRevision1; varied = None; measurement = CaptureTransmitted; range = VariableRange.forVariable VaryR1; dataFileOpt = None; sourceWaveLengthOpt = None }
+        { e1 with id = ExperimentId 3; setup = darkRevision1; scan = ExperimentScan.darkLine CaptureTransmitted }
 
     [<Fact>]
     let ``E1 references its setup revision and names its varied polarizer with its label`` () =
         Assert.Equal<SetupReference>(benchRevision1, e1.setup)
-        let expectedVaried : VariedElement = { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
-        Assert.Equal<VariedElement option>(Some expectedVaried, e1.varied)
-        Assert.Equal(ElementLabel "Linear polarizer #4", e1.variedLabel)
+        let expectedAxis = rotatingPolarizer (ElementLabel "Linear polarizer #4")
+        Assert.Equal<ScanAxis list>([ expectedAxis ], e1.scan.axes)
+        Assert.Equal<ElementLabel list>([ ElementLabel "Linear polarizer #4" ], e1.scan.axes |> List.map (fun axis -> axis.label))
 
     [<Fact>]
     let ``E3 is an empty dark line — nothing varied, still describable`` () =
         Assert.Equal<SetupReference>(darkRevision1, e3.setup)
-        Assert.Equal(None, e3.varied)
-        Assert.Equal(ElementLabel.blank, e3.variedLabel)
+        Assert.Empty(e3.scan.axes)
+        Assert.Equal(ElementLabel.blank, (ExperimentCollection.ofLoaded [ e3 ] |> edit e3.id).draft.elementLabel)
         Assert.Contains("Dark line", e3.description)
         Assert.Contains("'Dark' revision 1", e3.description)
 
@@ -723,9 +872,9 @@ module ExperimentProxyTests =
         Assert.Equal(1, List.length c.experiments)
         let exp = List.head c.experiments
         Assert.Equal<SetupReference>(benchRevision2, exp.setup)
-        let expectedVaried : VariedElement = { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
-        Assert.Equal<VariedElement option>(Some expectedVaried, exp.varied)
-        Assert.Equal(ElementLabel "Linear polarizer #4", exp.variedLabel)
+        let expectedAxis = rotatingPolarizer (ElementLabel "Linear polarizer #4")
+        Assert.Equal<ScanAxis list>([ expectedAxis ], exp.scan.axes)
+        Assert.Equal<ElementLabel list>([ ElementLabel "Linear polarizer #4" ], exp.scan.axes |> List.map (fun axis -> axis.label))
 
     [<Fact>]
     let ``committing the draft over setups appends one experiment over each, and an incomplete draft appends none`` () : unit =
@@ -754,11 +903,11 @@ module ExperimentProxyTests =
             {
                 id = id
                 setup = setup
-                varied = Some { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
-                measurement = CaptureTransmitted
-                range = range
+                scan = ExperimentScan.oneAxis { rotatingPolarizer (ElementLabel "Linear polarizer #4") with range = range } CaptureTransmitted None
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
                 dataFileOpt = None
-                sourceWaveLengthOpt = None
             }
         let committed = commitOverSetups [ a1; b2 ] editing
         Assert.Equal<Experiment list>([ held; over a1 (ExperimentId 2); over b2 (ExperimentId 3) ], committed.experiments)
@@ -784,15 +933,22 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same listing logic`` () =
+        let stubAxis : ScanAxis =
+            {
+                elementId = el "stub-el"
+                label = ElementLabel "Stub"
+                variable = VaryR1
+                range = VariableRange.forVariable VaryR1
+            }
         let only : Experiment =
             {
                 id = ExperimentId 7
                 setup = benchRevision1
-                varied = Some { elementId = el "stub-el"; label = ElementLabel "Stub"; variable = VaryR1 }
-                measurement = CaptureTransmitted
-                range = VariableRange.forVariable VaryR1
+                scan = ExperimentScan.oneAxis stubAxis CaptureTransmitted None
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
                 dataFileOpt = None
-                sourceWaveLengthOpt = None
             }
         let stub : ExperimentProxy =
             {
@@ -803,7 +959,7 @@ module ExperimentProxyTests =
         | Ok [ s ] -> Assert.Equal(7, s.id.value)
         | other -> Assert.Fail($"%A{other}")
         match stub.tryGetExperiment (ExperimentId 7) with
-        | Ok (Some s) -> Assert.Equal(Some (el "stub-el"), s.varied |> Option.map (fun v -> v.elementId))
+        | Ok (Some s) -> Assert.Equal<ElementId list>([ el "stub-el" ], s.scan.axes |> List.map (fun axis -> axis.elementId))
         | other -> Assert.Fail($"%A{other}")
         match stub.tryGetExperiment (ExperimentId 0) with
         | Ok None -> ()

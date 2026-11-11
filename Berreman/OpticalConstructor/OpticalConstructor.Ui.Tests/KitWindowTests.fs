@@ -14,6 +14,7 @@ open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
@@ -65,11 +66,11 @@ module KitWindowTests =
         {
             id = Experiments.ExperimentId 1
             setup = darkSetup.reference
-            varied = None
-            measurement = Experiments.CaptureTransmitted
-            range = Experiments.VariableRange.forVariable Experiments.VaryR1
+            scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
+            role = Experiments.ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = None
-            sourceWaveLengthOpt = None
         }
 
     /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, Create setup and Save

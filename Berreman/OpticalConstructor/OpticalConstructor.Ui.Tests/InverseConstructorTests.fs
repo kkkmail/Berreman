@@ -574,7 +574,7 @@ module InverseConstructorTests =
         let stored = Assert.Single(reopened.experimentCollection.experiments)
         reopened.kit.close () |> SceneTestFixture.kitSuccess
         Assert.Equal(expId, stored.id)
-        Assert.Equal(7, stored.range.points.value)
+        Assert.Equal<int list>([ 7 ], stored.scan.axes |> List.map (fun axis -> axis.range.points.value))
         // The recommit over the referenced revision minted the next one; the stored experiment references it.
         Assert.Equal<SetupReference>({ captured.reference with revision = SetupRevision 2 }, stored.setup)
         let storedSlots =

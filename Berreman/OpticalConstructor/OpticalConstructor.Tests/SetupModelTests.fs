@@ -887,9 +887,9 @@ module SetupModelTests =
             Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ], experiments |> List.map (fun experiment -> experiment.id))
             Assert.Equal<SetupReference list>(setups |> List.map (fun setup -> setup.reference), experiments |> List.map (fun experiment -> experiment.setup))
             for experiment in experiments do
-                Assert.Equal<Library.ElementId option>(Some held.polarizer, experiment.varied |> Option.map (fun varied -> varied.elementId))
-                Assert.Equal<Experiments.VariableParameter option>(draft.variable, experiment.varied |> Option.map (fun varied -> varied.variable))
-                Assert.Equal<Experiments.VariableRange>(draft.range, experiment.range)
+                Assert.Equal<Library.ElementId list>([ held.polarizer ], experiment.scan.axes |> List.map (fun axis -> axis.elementId))
+                Assert.Equal<Experiments.VariableParameter list>(Option.toList draft.variable, experiment.scan.axes |> List.map (fun axis -> axis.variable))
+                Assert.Equal<Experiments.VariableRange list>([ draft.range ], experiment.scan.axes |> List.map (fun axis -> axis.range))
                 Assert.Equal<DataAttachment option>(None, experiment.dataFileOpt)
             Assert.Equal<Experiments.Experiment list>(experiments, generated.experimentCollection.experiments)
 
@@ -1028,8 +1028,8 @@ module SetupModelTests =
             | [ e1; e2 ] ->
                 Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ], [ e1.id; e2.id ])
                 Assert.Equal<SetupReference list>([ bench.reference; bench.reference ], [ e1.setup; e2.setup ])
-                Assert.Equal<Experiments.VariableRange>(firstRange, e1.range)
-                Assert.Equal<Experiments.VariableRange>(secondRange, e2.range)
+                Assert.Equal<Experiments.VariableRange list>([ firstRange ], e1.scan.axes |> List.map (fun axis -> axis.range))
+                Assert.Equal<Experiments.VariableRange list>([ secondRange ], e2.scan.axes |> List.map (fun axis -> axis.range))
                 Assert.Equal<Experiments.Experiment list>([ e1; e2 ], second.experimentCollection.experiments)
             | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
             Assert.Equal<string list>([ "Bench.setup-json" ], setupFilesIn folder)
@@ -1054,7 +1054,7 @@ module SetupModelTests =
             let editing = first |> updateTableAndElementRotation (ExpEdit e1.id) |> narrowed
             Assert.Equal<Experiments.ExperimentId option>(Some e1.id, editing.experimentCollection.draft.editingId)
             let changedRange = editing.experimentCollection.draft.range
-            Assert.NotEqual<Experiments.VariableRange>(e1.range, changedRange)
+            Assert.DoesNotContain(changedRange, e1.scan.axes |> List.map (fun axis -> axis.range))
 
             let second = editing |> updateTableAndElementRotation RecordExperiment
 
@@ -1064,7 +1064,7 @@ module SetupModelTests =
             | [ storedE1; e2 ] ->
                 Assert.Equal<Experiments.Experiment>(e1, storedE1)
                 Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 2, e2.id)
-                Assert.Equal<Experiments.VariableRange>(changedRange, e2.range)
+                Assert.Equal<Experiments.VariableRange list>([ changedRange ], e2.scan.axes |> List.map (fun axis -> axis.range))
                 Assert.Equal<SetupReference>(e1.setup, e2.setup)
                 Assert.Equal<Experiments.Experiment list>([ e1; e2 ], second.experimentCollection.experiments)
             | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")

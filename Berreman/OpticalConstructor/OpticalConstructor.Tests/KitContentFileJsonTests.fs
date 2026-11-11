@@ -27,6 +27,14 @@ module KitContentFileJsonTests =
 
     let private polarizerId : ElementId = ElementId "lp"
 
+    let private polarizerTurn : ScanAxis =
+        {
+            elementId = polarizerId
+            label = ElementLabel "Linear polarizer #3"
+            variable = VaryR1
+            range = VariableRange.forVariable VaryR1
+        }
+
     let private e1 : Experiment =
         let attachment : DataAttachment =
             {
@@ -36,28 +44,62 @@ module KitContentFileJsonTests =
         {
             id = ExperimentId 1
             setup = { name = SetupName "Bench"; revision = SetupRevision 2 }
-            varied =
-                Some
-                    {
-                        elementId = polarizerId
-                        label = ElementLabel "Linear polarizer #3"
-                        variable = VaryR1
-                    }
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR1
+            scan = ExperimentScan.oneAxis polarizerTurn CaptureTransmitted (Some (WaveLength.nm 632.8<nm>))
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = Some attachment
-            sourceWaveLengthOpt = Some (WaveLength.nm 632.8<nm>)
         }
 
     let private e3 : Experiment =
         {
             id = ExperimentId 3
             setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
-            varied = None
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR1
+            scan = ExperimentScan.darkLine CaptureTransmitted
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = None
-            sourceWaveLengthOpt = None
+        }
+
+    /// E1 as a calibration of day 1 with notes, over two blocks: the sample's incidence × azimuth read in T and R, then
+    /// the polarizer's four azimuths read in T (spec 0050 S9.1).
+    let private e1TwoBlocks : Experiment =
+        let sampleId = ElementId "sample"
+        let range (lo : float) (hi : float) (points : int) : VariableRange =
+            {
+                min = Propagation.SweptValue lo
+                max = Propagation.SweptValue hi
+                points = Propagation.CurvePointCount points
+            }
+        let incidence : ScanAxis =
+            {
+                elementId = sampleId
+                label = ElementLabel "Sample #1"
+                variable = VaryR2
+                range = range 20.0 60.0 3
+            }
+        let azimuth : ScanAxis =
+            {
+                incidence with
+                    variable = VaryR1
+                    range = range 0.0 90.0 2
+            }
+        let scan : ExperimentScan =
+            {
+                blocks =
+                    [
+                        { axes = [ incidence; azimuth ]; capture = CaptureBoth }
+                        { axes = [ { polarizerTurn with range = range 0.0 67.5 4 } ]; capture = CaptureTransmitted }
+                    ]
+                sourceWaveLengthOpt = None
+            }
+        {
+            e1 with
+                scan = scan
+                role = CalibrationRun
+                sessionOpt = SessionName.tryCreate "Day 1"
+                notes = ExperimentNotes "LR was re-seated"
         }
 
     let private editedExperimentFile (edit : JsonObject -> unit) : KitFileText =
@@ -79,7 +121,7 @@ module KitContentFileJsonTests =
     let ``an experiment file round-trips through its canonical text`` () : unit =
         let expectedVersion = FileSchemaVersion 1
 
-        for experiment in [ e1; e3 ] do
+        for experiment in [ e1; e3; e1TwoBlocks ] do
             let file = experiment.experimentFile
             let text = file.fileText |> kitContentJsonValue
             let readBack = text.parseExperimentFile |> kitContentJsonValue
@@ -131,8 +173,12 @@ module KitContentFileJsonTests =
         for key in [ "schemaVersion"; "experiment" ] do
             editedExperimentFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
 
-        for key in [ "id"; "setup"; "varied"; "measurement"; "range"; "dataFileOpt"; "sourceWaveLengthOpt" ] do
+        for key in [ "id"; "setup"; "scan"; "role"; "sessionOpt"; "notes"; "dataFileOpt" ] do
             editedExperimentFile (fun node -> node["experiment"].AsObject().Remove key |> ignore)
+            |> assertSchemaInvalid
+
+        for key in [ "blocks"; "sourceWaveLengthOpt" ] do
+            editedExperimentFile (fun node -> node.["experiment"].["scan"].AsObject().Remove key |> ignore)
             |> assertSchemaInvalid
 
         let invalidEdits : (JsonObject -> unit) list =
@@ -144,12 +190,20 @@ module KitContentFileJsonTests =
                 (fun node -> node["schemaVersion"] <- JsonValue.Create "1")
                 (fun node -> node["schemaVersion"] <- null)
                 (fun node -> node["experiment"] <- null)
-                (fun node -> node["experiment"]["notes"] <- JsonValue.Create "unexpected")
+                (fun node -> node["experiment"]["unexpected"] <- JsonValue.Create "unexpected")
                 (fun node -> node["experiment"]["id"] <- JsonValue.Create 0)
                 (fun node -> node["experiment"]["setup"] <- JsonValue.Create "not-an-array")
                 (fun node -> node["experiment"]["setup"] <- JsonArray())
                 (fun node -> node.["experiment"].["setup"].["revision"] <- JsonValue.Create 0)
-                (fun node -> node["experiment"]["range"] <- JsonValue.Create "not-an-object")
+                (fun node -> node["experiment"]["scan"] <- JsonValue.Create "not-an-object")
+                (fun node -> node.["experiment"].["scan"].["blocks"] <- JsonValue.Create "not-an-array")
+                (fun node -> node.["experiment"].["scan"].["unexpected"] <- JsonValue.Create "unexpected")
+                (fun node -> node["experiment"]["role"] <- JsonValue.Create 0)
+                (fun node -> node["experiment"]["role"] <- JsonValue.Create 8)
+                (fun node -> node["experiment"]["role"] <- JsonValue.Create "ScienceRun")
+                (fun node -> node["experiment"]["sessionOpt"] <- JsonValue.Create "")
+                (fun node -> node["experiment"]["sessionOpt"] <- JsonValue.Create "   ")
+                (fun node -> node["experiment"]["notes"] <- null)
                 (fun node -> node.["experiment"].["dataFileOpt"].["contentHash"] <- JsonValue.Create "abc")
                 (fun node -> node.["experiment"].["dataFileOpt"].["path"] <- JsonValue.Create "")
                 (fun node -> node.["experiment"].["dataFileOpt"].["notes"] <- JsonValue.Create "unexpected")
@@ -165,12 +219,12 @@ module KitContentFileJsonTests =
 
         let malformedEdits : (JsonObject -> unit) list =
             [
-                (fun node -> node.["experiment"].["varied"].["elementId"] <- JsonValue.Create 7)
-                (fun node -> node.["experiment"].["varied"].["label"] <- JsonValue.Create 7)
-                (fun node -> node["experiment"]["varied"] <- JsonValue.Create "not-a-varied-element")
-                (fun node -> node["experiment"]["measurement"] <- JsonValue.Create "not-a-measurement")
-                (fun node -> node.["experiment"].["range"].["points"] <- JsonValue.Create "not-a-count")
-                (fun node -> node["experiment"]["sourceWaveLengthOpt"] <- JsonValue.Create "not-a-wavelength")
+                (fun node -> node.["experiment"].["scan"].["blocks"].[0].["axes"].[0].["elementId"] <- JsonValue.Create 7)
+                (fun node -> node.["experiment"].["scan"].["blocks"].[0].["axes"].[0].["label"] <- JsonValue.Create 7)
+                (fun node -> node.["experiment"].["scan"].["blocks"].[0] <- JsonValue.Create "not-a-block")
+                (fun node -> node.["experiment"].["scan"].["blocks"].[0].["capture"] <- JsonValue.Create "not-a-measurement")
+                (fun node -> node.["experiment"].["scan"].["blocks"].[0].["axes"].[0].["range"].["points"] <- JsonValue.Create "not-a-count")
+                (fun node -> node.["experiment"].["scan"].["sourceWaveLengthOpt"] <- JsonValue.Create "not-a-wavelength")
             ]
         let malformed = KitFileText "{"
 

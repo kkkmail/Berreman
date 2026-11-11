@@ -19,7 +19,7 @@
       "schemaVersion": true,
       "experiment": {
         "type": "object",
-        "required": ["id", "setup", "varied", "measurement", "range", "dataFileOpt", "sourceWaveLengthOpt"],
+        "required": ["id", "setup", "scan", "role", "sessionOpt", "notes", "dataFileOpt"],
         "additionalProperties": false,
         "properties": {
           "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
@@ -33,9 +33,29 @@
               "revision": { "type": "integer", "minimum": 1 }
             }
           },
-          "varied": true,
-          "measurement": true,
-          "range": { "type": "object" },
+          "scan": {
+            "description": "What the run varies, block after block, and a tunable source's set wavelength (spec 0050 S9.1).",
+            "type": "object",
+            "required": ["blocks", "sourceWaveLengthOpt"],
+            "additionalProperties": false,
+            "properties": {
+              "blocks": { "type": "array" },
+              "sourceWaveLengthOpt": true
+            }
+          },
+          "role": {
+            "description": "What the run is for, its ExperimentRole tag (spec 0050 S9.1).",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "sessionOpt": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "string", "pattern": "\\S" }
+            ]
+          },
+          "notes": { "type": "string" },
           "dataFileOpt": {
             "oneOf": [
               { "type": "null" },
@@ -49,8 +69,7 @@
                 }
               }
             ]
-          },
-          "sourceWaveLengthOpt": true
+          }
         }
       }
     }

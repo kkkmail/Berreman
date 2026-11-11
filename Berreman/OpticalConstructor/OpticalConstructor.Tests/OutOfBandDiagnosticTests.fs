@@ -163,35 +163,54 @@ module OutOfBandDiagnosticTests =
                 name = OpticalConstructor.Domain.Kit.SetupName "Bench"
                 revision = OpticalConstructor.Domain.Kit.SetupRevision 1
             }
+        // The source's wavelength over `lo`…`hi` nm.
+        let sourceSweep (lo : float) (hi : float) : ScanAxis =
+            {
+                elementId = OpticalConstructor.Domain.Library.ElementId "src"
+                label = ElementLabel "Light source #1"
+                variable = VaryWaveLength
+                range = { min = OpticalConstructor.Domain.Propagation.SweptValue lo; max = OpticalConstructor.Domain.Propagation.SweptValue hi; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
+            }
         let sweep : Experiment =
             {
                 id = ExperimentId 1
                 setup = bench
-                varied =
-                    Some
-                        {
-                            VariedElement.elementId = OpticalConstructor.Domain.Library.ElementId "src"
-                            label = ElementLabel "Light source #1"
-                            variable = VaryWaveLength
-                        }
-                measurement = CaptureTransmitted
-                range = { min = OpticalConstructor.Domain.Propagation.SweptValue 200.0; max = OpticalConstructor.Domain.Propagation.SweptValue 800.0; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
+                scan = ExperimentScan.oneAxis (sourceSweep 200.0 800.0) CaptureTransmitted None
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
                 dataFileOpt = None
-                sourceWaveLengthOpt = None
             }
         Assert.Equal(SweptWavelengths (band 200.0 800.0), requestedWavelengthsOf fixedλ sweep)
-        // A dark line (varied = None) has no sweep, so it runs at the fixed source λ.
+        // A dark line (a block of no axis) has no sweep, so it runs at the fixed source λ.
         let darkLine : Experiment =
             {
-                id = ExperimentId 1
-                setup = bench
-                varied = None
-                measurement = CaptureTransmitted
-                range = VariableRange.forVariable VaryR1
-                dataFileOpt = None
-                sourceWaveLengthOpt = None
+                sweep with scan = ExperimentScan.darkLine CaptureTransmitted
             }
         Assert.Equal(FixedWavelength fixedλ, requestedWavelengthsOf fixedλ darkLine)
+        // Spec 0050 S9.1: two blocks sweeping 300…500 nm and 400…700 nm request their span, 300…700 nm; an R1 axis
+        // beside them requests nothing more.
+        let analyzerTurn : ScanAxis =
+            {
+                elementId = OpticalConstructor.Domain.Library.ElementId "lp"
+                label = ElementLabel "Linear polarizer #2"
+                variable = VaryR1
+                range = VariableRange.forVariable VaryR1
+            }
+        let twoSweeps : Experiment =
+            {
+                sweep with
+                    scan =
+                        {
+                            blocks =
+                                [
+                                    { axes = [ sourceSweep 300.0 500.0 ]; capture = CaptureTransmitted }
+                                    { axes = [ analyzerTurn; sourceSweep 400.0 700.0 ]; capture = CaptureBoth }
+                                ]
+                            sourceWaveLengthOpt = None
+                        }
+            }
+        Assert.Equal(SweptWavelengths (band 300.0 700.0), requestedWavelengthsOf fixedλ twoSweeps)
 
     // ============================ the tooltip / Details text ============================
 

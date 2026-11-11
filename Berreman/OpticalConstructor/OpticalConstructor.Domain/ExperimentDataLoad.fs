@@ -26,8 +26,9 @@ module ExperimentDataLoad =
             | None -> Intensity
         | None -> Intensity
 
-    /// Loads the kit attachment in the shape of the detector among the experiment's resolved `slots` and validates the
-    /// series against the experiment, preserving typed errors (spec 0038 Part L step 037; spec 0050 S4.2, S8.2).
+    /// Loads the attachment in the shape of the detector among the resolved `slots` and validates it against the scan's
+    /// one axis, or a dark line's R1 default range; any other scan reads nothing and is `DataRangeMismatchErr`, an X,Y
+    /// file holding one variable (spec 0038 Part L step 037; spec 0050 S4.2, S8.2, S9.1).
     let loadAndValidate
         (library : LibraryProxy)
         (dataProxy : ExperimentDataProxy)
@@ -35,14 +36,20 @@ module ExperimentDataLoad =
         (experiment : Experiment)
         (attachment : DataAttachment)
         : Result<MeasuredSeries, ExperimentDataError> =
-        let detector = detectorKindOf library slots
-        let varied = experiment.varied |> Option.map (fun v -> v.variable)
-        match detector with
-        | Intensity ->
-            dataProxy.tryLoadIntensity attachment
-            |> Result.map IntensityData
-            |> Result.bind (validateAgainstExperiment varied experiment.range detector)
-        | Ellipsometer ->
-            dataProxy.tryLoadEllipsometric attachment
-            |> Result.map EllipsometricData
-            |> Result.bind (validateAgainstExperiment varied experiment.range detector)
+        let validateOver (varied : VariableParameter option) (range : VariableRange) : Result<MeasuredSeries, ExperimentDataError> =
+            let detector = detectorKindOf library slots
+            match detector with
+            | Intensity ->
+                dataProxy.tryLoadIntensity attachment
+                |> Result.map IntensityData
+                |> Result.bind (validateAgainstExperiment varied range detector)
+            | Ellipsometer ->
+                dataProxy.tryLoadEllipsometric attachment
+                |> Result.map EllipsometricData
+                |> Result.bind (validateAgainstExperiment varied range detector)
+
+        match experiment.scan.blocks with
+        | [ { axes = [ axis ] } ] -> validateOver (Some axis.variable) axis.range
+        | [ { axes = [] } ] -> validateOver None (VariableRange.forVariable VaryR1)
+        | blocks ->
+            Error (DataRangeMismatchErr $"an X,Y data file holds one variable, and the scan varies {experiment.scan.axes.Length} in {blocks.Length} block(s)")

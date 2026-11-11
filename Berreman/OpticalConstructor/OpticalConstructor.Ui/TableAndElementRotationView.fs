@@ -4415,15 +4415,18 @@ type TableAndElementRotationModel with
             | Some chosen, Some variable, Some capture -> chartForRun model chosen variable capture draft.range draft.elementLabel draft.sourceWaveLengthOpt
             | _ -> ExperimentChart.emptyExperimentChart
 
-/// The chart of a specific COLLECTED experiment — the per-row "View" action. Spec 0038 Part I (step 025):
-/// the varied element is a slot of the experiment's setup revision (spec 0050 S8.2); a dark-line experiment (nothing
-/// varied) has no chart. Spec 0038 Part L (037): also EMPTY when the inverse chart surface is gated off.
+/// The chart of a COLLECTED experiment, the per-row "View" action (spec 0038 Part I, Part L 037): a scan of one block of
+/// one axis over its setup revision's slot (spec 0050 S8.2, S9.1); any other scan, or a gated-off inverse chart surface, is
+/// EMPTY until step 293 draws every scan.
 let chartForExperiment (model : TableAndElementRotationModel) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
     if not model.experimentChartVisible then ExperimentChart.emptyExperimentChart
     else
-        match exp.varied with
-        | Some v -> chartForRun model v.elementId v.variable exp.measurement exp.range exp.variedLabel exp.sourceWaveLengthOpt
-        | None -> ExperimentChart.emptyExperimentChart
+        match exp.scan.blocks with
+        | [ block ] ->
+            match block.axes with
+            | [ axis ] -> chartForRun model axis.elementId axis.variable block.capture axis.range axis.label exp.scan.sourceWaveLengthOpt
+            | _ -> ExperimentChart.emptyExperimentChart
+        | _ -> ExperimentChart.emptyExperimentChart
 
 // Spec 0027: wire the forward-referenced hooks (defined once `chartForParams` exists) so a double-click /
 // "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded

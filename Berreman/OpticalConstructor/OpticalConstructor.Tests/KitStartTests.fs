@@ -6,6 +6,7 @@ open System.Threading
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
@@ -173,11 +174,11 @@ module KitStartTests =
         {
             id = Experiments.ExperimentId 1
             setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
-            varied = None
-            measurement = Experiments.CaptureTransmitted
-            range = Experiments.VariableRange.forVariable Experiments.VaryR1
+            scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
+            role = Experiments.ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = None
-            sourceWaveLengthOpt = None
         }
 
     /// A kit sent as a zip, and the kit file and experiments it held when it was sent (spec 0050 S6).

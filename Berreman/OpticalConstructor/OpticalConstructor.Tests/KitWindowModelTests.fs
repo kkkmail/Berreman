@@ -7,6 +7,7 @@ open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -72,11 +73,11 @@ module KitWindowModelTests =
         {
             id = Experiments.ExperimentId 1
             setup = darkSetup.reference
-            varied = None
-            measurement = Experiments.CaptureTransmitted
-            range = Experiments.VariableRange.forVariable Experiments.VaryR1
+            scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
+            role = Experiments.ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = None
-            sourceWaveLengthOpt = None
         }
 
     /// A shell that records every folder it is asked to show and every window close it is asked for.

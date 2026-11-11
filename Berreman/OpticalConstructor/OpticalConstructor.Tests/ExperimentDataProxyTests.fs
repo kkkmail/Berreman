@@ -7,6 +7,7 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MeasuredData            // series / point / ExperimentDataError + parsers (step 034)
 open OpticalConstructor.Domain.ExperimentData
+open OpticalConstructor.Domain.Experiments
 
 /// Exact measured-data attachment signatures over a canned kit-path map (spec 0038 step 035; spec 0050 S4.2).
 module ExperimentDataProxyTests =
@@ -110,6 +111,77 @@ module ExperimentDataProxyTests =
         match proxy.tryLoadEllipsometric unknown with
         | Error (MalformedDataFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (MalformedDataFileErr _) for an unknown ellipsometric path, got %A{other}")
+
+    [<Fact>]
+    let ``loading data validates a one-axis scan as before and refuses an X,Y file for a multi-variable scan`` () : unit =
+        let library = BuiltinCatalogue.library ()
+        let detectorSlot : Setups.SetupSlot =
+            {
+                id = Library.ElementId "det"
+                placement =
+                    {
+                        Placement.ElementPlacement.create Placement.Detector Placement.TablePoint.origin with
+                            valueId = Some Library.PresetIds.detectorIntensity
+                    }
+                zoom = BeamLayout.ElementZoom 1.0
+                beam = BeamLayout.OnMainBeam
+                content = Setups.EmptySlotContent
+            }
+        let slots = [ detectorSlot ]
+        Assert.Equal<Library.DetectorKind>(Library.Intensity, ExperimentDataLoad.detectorKindOf library slots)
+
+        let attachment : DataAttachment =
+            {
+                path = KitRelativePath "data/run-intensity.csv"
+                contentHash = attachmentHash
+            }
+        let sweepOver (lo : float) (hi : float) : ScanAxis =
+            {
+                elementId = Library.ElementId "src"
+                label = ElementLabel "Light source #1"
+                variable = VaryWaveLength
+                range =
+                    {
+                        min = Propagation.SweptValue lo
+                        max = Propagation.SweptValue hi
+                        points = Propagation.CurvePointCount 5
+                    }
+            }
+        // 300…700 nm holds every abscissa of the canned series: 400, 500 and 600 nm.
+        let oneAxis : Experiment =
+            {
+                id = ExperimentId 1
+                setup = { name = SetupName "Bench"; revision = SetupRevision 1 }
+                scan = ExperimentScan.oneAxis (sweepOver 300.0 700.0) CaptureTransmitted None
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
+                dataFileOpt = Some attachment
+            }
+        let load (experiment : Experiment) : Result<MeasuredSeries, ExperimentDataError> =
+            ExperimentDataLoad.loadAndValidate library (seededMock ()) slots experiment attachment
+        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(Ok (IntensityData intensityFixture), load oneAxis)
+
+        // As before, the one axis's range is the check: 450…700 nm misses the 400 nm abscissa.
+        match load { oneAxis with scan = ExperimentScan.oneAxis (sweepOver 450.0 700.0) CaptureTransmitted None } with
+        | Error (DataRangeMismatchErr reason) -> Assert.Contains("400", reason)
+        | other -> Assert.Fail($"expected DataRangeMismatchErr for 400 nm, got %A{other}")
+
+        // A second axis makes the scan multi-variable, which an X,Y file cannot hold.
+        let analyzerTurn : ScanAxis =
+            {
+                elementId = Library.ElementId "lp"
+                label = ElementLabel "Linear polarizer #2"
+                variable = VaryR1
+                range = VariableRange.forVariable VaryR1
+            }
+        let twoAxes : Experiment =
+            {
+                oneAxis with
+                    scan = { oneAxis.scan with blocks = [ { axes = [ sweepOver 300.0 700.0; analyzerTurn ]; capture = CaptureTransmitted } ] }
+            }
+        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(
+            Error (DataRangeMismatchErr "an X,Y data file holds one variable, and the scan varies 2 in 1 block(s)"), load twoAxes)
 
     [<Fact>]
     let ``an ExperimentDataProxy compares by reference (the Elmish-required equality)`` () =

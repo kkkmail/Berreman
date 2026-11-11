@@ -100,21 +100,24 @@ module ExperimentCollectionRoundTripTests =
             history = []
         }
 
+    /// The rotating polarizer over R1's default range, under the label the run captured.
+    let private analyzerTurn (label : ElementLabel) : ScanAxis =
+        {
+            elementId = el "lp2"
+            label = label
+            variable = VaryR1
+            range = VariableRange.forVariable VaryR1
+        }
+
     let private e1 : Experiment =
         {
             id = ExperimentId 1
             setup = { bench.reference with revision = SetupRevision 1 }
-            varied =
-                Some
-                    {
-                        elementId = el "lp2"
-                        label = ElementLabel "Linear polarizer #4"
-                        variable = VaryR1
-                    }
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR1
+            scan = ExperimentScan.oneAxis (analyzerTurn (ElementLabel "Linear polarizer #4")) CaptureTransmitted None
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = Some e1Attachment
-            sourceWaveLengthOpt = None
         }
 
     let private e2 : Experiment =
@@ -122,26 +125,19 @@ module ExperimentCollectionRoundTripTests =
             e1 with
                 id = ExperimentId 2
                 setup = bench.reference
-                varied =
-                    Some
-                        {
-                            elementId = el "lp2"
-                            label = ElementLabel "Linear polarizer #3"
-                            variable = VaryR1
-                        }
+                scan = ExperimentScan.oneAxis (analyzerTurn (ElementLabel "Linear polarizer #3")) CaptureTransmitted None
                 dataFileOpt = None
-                sourceWaveLengthOpt = None
         }
 
     let private e3 : Experiment =
         {
             id = ExperimentId 3
             setup = dark.reference
-            varied = None
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR1
+            scan = ExperimentScan.darkLine CaptureTransmitted
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = Some e3Attachment
-            sourceWaveLengthOpt = None
         }
 
     [<Fact>]
@@ -172,7 +168,7 @@ module ExperimentCollectionRoundTripTests =
         Assert.Empty(slotsOf (List.item 2 loaded))
         Assert.Contains(Some glassPlateValueId, slotsOf (List.item 0 loaded) |> List.map (fun slot -> slot.placement.valueId))
         Assert.DoesNotContain(Some glassPlateValueId, slotsOf (List.item 1 loaded) |> List.map (fun slot -> slot.placement.valueId))
-        Assert.Equal(None, (List.item 2 loaded).varied)
+        Assert.Empty((List.item 2 loaded).scan.axes)
         Assert.Equal<ItemId option list>(
             [ None; Some lp1ItemId; None; Some lp2ItemId; None ],
             slotsOf (List.item 0 loaded) |> List.map (fun slot -> slot.content.itemOpt))
@@ -196,9 +192,10 @@ module ExperimentCollectionRoundTripTests =
     [<Fact>]
     let ``writing an experiment again replaces its kit file`` () : unit =
         let folder, proxy = createContentTestKit classFolder
+        let e1Turn = analyzerTurn (ElementLabel "Linear polarizer #4")
         let second =
             {
-                e1 with measurement = CaptureReflected
+                e1 with scan = ExperimentScan.oneAxis e1Turn CaptureReflected None
             }
         proxy.writeExperiment e1 |> kitContentValue
         proxy.writeExperiment second |> kitContentValue
@@ -209,11 +206,11 @@ module ExperimentCollectionRoundTripTests =
 
         let invalidRange =
             {
-                second.range with min = Propagation.SweptValue Double.NaN
+                e1Turn.range with min = Propagation.SweptValue Double.NaN
             }
         let invalidExperiment =
             {
-                second with range = invalidRange
+                second with scan = ExperimentScan.oneAxis { e1Turn with range = invalidRange } CaptureReflected None
             }
         let storedText = reader.readKindFile ExperimentKitFile e1.id.fileStem |> kitContentValue
         match proxy.writeExperiment invalidExperiment with
@@ -295,7 +292,7 @@ module ExperimentCollectionRoundTripTests =
             }
         let changedExperiment =
             {
-                e1 with measurement = CaptureReflected
+                e1 with scan = ExperimentScan.oneAxis (analyzerTurn (ElementLabel "Linear polarizer #4")) CaptureReflected None
             }
         let storedFiles () : Map<FileName, FileByteContent> =
             Directory.GetFiles(folder.value.value, "*", SearchOption.AllDirectories)

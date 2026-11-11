@@ -161,11 +161,11 @@ module KitLibraryTests =
         {
             id = ExperimentId 149
             setup = recordingSetup.reference
-            varied = None
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR2
+            scan = ExperimentScan.darkLine CaptureTransmitted
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = None
-            sourceWaveLengthOpt = None
         }
 
     let private recordingClosure () : LibraryEntryEnvelope list =

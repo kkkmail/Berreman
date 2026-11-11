@@ -266,11 +266,11 @@ module ExperimentCopyTests =
         {
             id = id
             setup = darkSetup.reference
-            varied = None
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR2
+            scan = ExperimentScan.darkLine CaptureTransmitted
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = dataFileOpt
-            sourceWaveLengthOpt = None
         }
 
     /// E1 runs over `Bench` and attaches the run.
@@ -450,12 +450,12 @@ module ExperimentCopyTests =
         let reflected = darkLine (ExperimentId 1) None
         let heldE1 =
             {
-                reflected with measurement = CaptureReflected
+                reflected with scan = ExperimentScan.darkLine CaptureReflected
             }
         let both = darkLine (ExperimentId 2) None
         let heldE2 =
             {
-                both with measurement = CaptureBoth
+                both with scan = ExperimentScan.darkLine CaptureBoth
             }
         for experiment in [ heldE1; heldE2 ] do
             target.context.proxy.writeExperiment experiment |> expectKitOk

@@ -68,11 +68,11 @@ module KitOpeningTests =
         {
             id = ExperimentId 1
             setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
-            varied = None
-            measurement = CaptureTransmitted
-            range = VariableRange.forVariable VaryR1
+            scan = ExperimentScan.darkLine CaptureTransmitted
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
             dataFileOpt = None
-            sourceWaveLengthOpt = None
         }
 
     [<Fact>]
