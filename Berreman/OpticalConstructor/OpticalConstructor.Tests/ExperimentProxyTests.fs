@@ -497,6 +497,48 @@ module ExperimentProxyTests =
         Assert.Equal<VariedElement option>(Some expectedVaried, exp.varied)
         Assert.Equal(ElementLabel "Linear polarizer #4", exp.variedLabel)
 
+    [<Fact>]
+    let ``committing the draft over setups appends one experiment over each, and an incomplete draft appends none`` () : unit =
+        // Test-local setup revisions of a grid (spec 0050 S8.3).
+        let a1 : SetupReference = { name = SetupName "A"; revision = SetupRevision 1 }
+        let b2 : SetupReference = { name = SetupName "B"; revision = SetupRevision 2 }
+        let attachment : DataAttachment =
+            {
+                path = KitRelativePath "data/e1.csv"
+                contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }
+        // E1 holds a data file, so a new experiment holding none shows the draft's edited experiment lends it nothing.
+        let held : Experiment = { e1 with dataFileOpt = Some attachment }
+        let editing =
+            ExperimentCollection.ofLoaded [ held ]
+            |> edit held.id
+            |> setRangeMax (Propagation.SweptValue 90.0)
+        Assert.Equal(Some held.id, editing.draft.editingId)
+        let range : VariableRange =
+            {
+                min = Propagation.SweptValue 0.0
+                max = Propagation.SweptValue 90.0
+                points = Propagation.CurvePointCount 73
+            }
+        let over (setup : SetupReference) (id : ExperimentId) : Experiment =
+            {
+                id = id
+                setup = setup
+                varied = Some { elementId = el "lp2"; label = ElementLabel "Linear polarizer #4"; variable = VaryR1 }
+                measurement = CaptureTransmitted
+                range = range
+                dataFileOpt = None
+                sourceWaveLengthOpt = None
+            }
+        let committed = commitOverSetups [ a1; b2 ] editing
+        Assert.Equal<Experiment list>([ held; over a1 (ExperimentId 2); over b2 (ExperimentId 3) ], committed.experiments)
+        Assert.Equal<ExperimentDraft>({ editing.draft with editingId = None }, committed.draft)
+        Assert.Equal(ExperimentId 4, committed.nextId)
+        // The draft edits nothing, so a later commit appends.
+        Assert.Equal(4, List.length (commit benchRevision1 committed).experiments)
+        let incomplete = { editing with draft = ExperimentDraft.empty }
+        Assert.Equal<ExperimentCollection>(incomplete, commitOverSetups [ a1; b2 ] incomplete)
+
     // ============================ the mock proxy seam ============================
 
     [<Fact>]

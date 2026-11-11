@@ -364,6 +364,19 @@ module Experiments =
                     draft = { c.draft with editingId = Some exp.id } }
             | None -> c
 
+    /// Commits the draft, editing nothing, once over each setup in order, each experiment taking the next id; the answer's
+    /// draft edits nothing, and an incomplete draft appends nothing (spec 0050 S8.3).
+    let commitOverSetups (references : SetupReference list) (c : ExperimentCollection) : ExperimentCollection =
+        if c.canCommit then
+            let fresh = { c.draft with editingId = None }
+            let committed =
+                references
+                |> List.fold (fun (collection : ExperimentCollection) (reference : SetupReference) ->
+                    commit reference { collection with draft = fresh }) c
+            { committed with draft = fresh }
+        else
+            c
+
     /// Binds one kit-relative measured-data path and hash, replacing any attachment; an unknown id is unchanged
     /// (spec 0038 Part I; spec 0050 S4.2).
     let attachDataFile (id : ExperimentId) (attachment : DataAttachment) (c : ExperimentCollection) : ExperimentCollection =
