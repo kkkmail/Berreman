@@ -30,6 +30,7 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
@@ -2523,13 +2524,16 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     }
-                // A first free name is one no held setup's file has, so `create` takes it.
+                // Spec 0050 S8.3: a new setup takes the kit's template name of the table, else S8.2's first free
+                // `Setup <n>`, either made free among the held setups, so `create` takes it.
                 let tableSetup : Result<Setups.Setup, KitLibraryError> =
                     match model.activeSetupOpt with
                     | Some active -> Ok (model.tableWrittenOver active)
                     | None ->
-                        let fresh = SetupName.firstFree (model.kitSetups |> List.map (fun held -> held.name))
-                        Setups.Setup.create fresh model.recordedSlots model.kitSetups |> Result.mapError KitLibrarySetupErr
+                        let taken = model.kitSetups |> List.map (fun held -> held.name)
+                        let slots = model.recordedSlots
+                        let name = model.kit.kitFile.namingTemplate.setupNameAmong slots model.kitItems taken (SetupName.firstFree taken)
+                        Setups.Setup.create name slots model.kitSetups |> Result.mapError KitLibrarySetupErr
                 match tableSetup with
                 | Error error -> notSaved error
                 | Ok setup ->
@@ -2713,10 +2717,12 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | Ok filled ->
             let swapped = withSlotFilled filled model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
             let held = model.kitSetups |> List.map (fun setup -> setup.name)
-            let fresh =
+            let unnamed =
                 match model.activeSetupOpt with
                 | Some active -> active.name.nextFreeAmong held
                 | None -> SetupName.firstFree held
+            // Spec 0050 S8.3: a swapped table the kit's template names takes that name made free, else S8.2's.
+            let fresh = model.kit.kitFile.namingTemplate.setupNameAmong swapped model.kitItems held unnamed
             match Setups.Setup.swapTarget swapped model.kitSetups fresh with
             | Setups.SwitchToHeldSetup setup -> updateTableAndElementRotation (ActivateSetup setup.name) model
             | Setups.CreateSwappedSetup setup ->

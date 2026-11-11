@@ -24,7 +24,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// The constructor's setup messages over a kit opened read-write: CreateSetup records the table as a kit setup,
 /// SaveSetup writes it over the active one, ActivateSetup draws one, the window keeping its view, snap mode and pivot,
 /// AssignSlot puts a kit item into a slot, SwapSlot makes the table the setup holding the swapped item, and a commit
-/// records the table as the active setup its experiment references (spec 0050 S8.2; 001 §P).
+/// records the table as the active setup its experiment references, a new one named by the kit's naming template
+/// (spec 0050 S8.2, S8.3; 001 §P).
 module SetupModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -232,6 +233,40 @@ module SetupModelTests =
         finally
             scene.kit.close () |> kitValue
             reopened.library.kit.close () |> kitValue
+
+    /// Over the kit `stocked` stocks and QZ2: LP1 in a linear polarizer, QZ in a sample turned to R1 45° and LPd in a
+    /// second linear polarizer, which the light meets in that order before the seeded detector, committed varying the
+    /// first polarizer; and the sample's slot id (spec 0050 S8.3).
+    let private templateCommitted (model : TableAndElementRotationModel) : TableAndElementRotationModel * Library.ElementId =
+        let kit = stocked model |> updateTableAndElementRotation (AddItem qz2Draft)
+        Assert.Equal<ControlCaption option>(None, kit.kitStatus)
+        let polarizerPlaced, polarizer = withPolarizer kit
+        let samplePlaced, sample = withSample polarizerPlaced
+        // The add selects the sample, so the turn is its own.
+        let placed =
+            samplePlaced
+            |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 45.0))
+            |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let analyzer = placed.elements |> List.find (fun slot -> slot.placement.catalogueKind = LinearPolarizer && slot.id <> polarizer)
+        let assigned =
+            placed
+            |> updateTableAndElementRotation (AssignSlot (polarizer, Some lp1Draft.id))
+            |> updateTableAndElementRotation (AssignSlot (sample, Some qzDraft.id))
+            |> updateTableAndElementRotation (AssignSlot (analyzer.id, Some lpdDraft.id))
+        Assert.Equal<ControlCaption option>(None, assigned.kitStatus)
+        Assert.Equal((Angle.degree 45.0<deg>).value, (slotOf sample assigned).placement.r1.value, 1e-12)
+        let idOf (kind : CatalogueKind) : Library.ElementId =
+            (assigned.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)).id
+        Assert.Equal<(Setups.SlotRole * Library.ElementId) list>(
+            [
+                Setups.SourceSlotRole, idOf LightSource
+                Setups.PrepSlotRole (Setups.SlotPosition 1), polarizer
+                Setups.ObjectSlotRole (Setups.SlotPosition 1), sample
+                Setups.AnalyzerSlotRole (Setups.SlotPosition 1), analyzer.id
+                Setups.DetectorSlotRole (Setups.SlotPosition 1), idOf Detector
+            ],
+            Setups.SetupSlot.inLightOrder assigned.elements |> List.map (fun roled -> roled.role, roled.slot.id))
+        assigned |> committedVarying polarizer, sample
 
     [<Fact>]
     let ``CreateSetup records the table as a new kit setup and makes it the active one`` () : unit =
@@ -731,3 +766,46 @@ module SetupModelTests =
                 Assert.Equal<Setups.Setup list>(widened.kitSetups, refused.kitSetups)
                 Assert.Equal<Setups.Setup option>(widened.activeSetupOpt, refused.activeSetupOpt)
                 Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)))
+
+    [<Fact>]
+    let ``a commit on a table the kit's template names records it under that name`` () : unit =
+        withSetupKit (fun folder model ->
+            Assert.Equal<NamingTemplate>(NamingTemplate.standard, model.kit.kitFile.namingTemplate)
+
+            let committed, _ = templateCommitted model
+
+            Assert.Equal<string list>([ "LP1-(QZ#45)-LPd.setup-json" ], setupFilesIn folder)
+            Assert.Equal<string list>([ "E1.experiment-json" ], experimentFilesIn folder)
+            let named = Assert.Single(committed.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<SetupName>(SetupName "LP1-(QZ#45)-LPd", named.name)
+            Assert.Equal<SetupRevision>(SetupRevision.first, named.revision)
+            Assert.Empty(named.history)
+            let e1 = Assert.Single(committed.kit.proxy.readExperiments () |> kitValue)
+            let expected : SetupReference = { name = SetupName "LP1-(QZ#45)-LPd"; revision = SetupRevision.first }
+            Assert.Equal<SetupReference>(expected, e1.setup)
+            Assert.Equal<Experiments.Experiment list>([ e1 ], committed.experimentCollection.experiments)
+            Assert.Equal<Setups.Setup option>(Some named, committed.activeSetupOpt)
+            Assert.Equal<Setups.Setup list>([ named ], committed.kitSetups)
+            Assert.Equal<ControlCaption option>(None, committed.kitStatus))
+
+    [<Fact>]
+    let ``a swap to content no setup holds takes the template's name of the swapped table`` () : unit =
+        withSetupKit (fun folder model ->
+            let committed, sample = templateCommitted model
+            let held = Assert.Single(committed.kitSetups)
+            let heldFile = Path.Combine(folder.value.value, "LP1-(QZ#45)-LPd.setup-json")
+            let heldBytes = File.ReadAllBytes heldFile
+
+            let swapped = committed |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
+
+            Assert.Equal<string list>([ "LP1-(QZ#45)-LPd.setup-json"; "LP1-(QZ2#45)-LPd.setup-json" ], setupFilesIn folder)
+            Assert.Equal<byte[]>(heldBytes, File.ReadAllBytes heldFile)
+            let created = heldSetup "LP1-(QZ2#45)-LPd" swapped
+            Assert.Equal<SetupRevision>(SetupRevision.first, created.revision)
+            Assert.Empty(created.history)
+            Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (qz2Draft.id, Setups.PlacementTurn), (created.slots |> List.find (fun slot -> slot.id = sample)).content)
+            Assert.Equal<Setups.Setup list>([ held; created ], swapped.kitSetups)
+            Assert.Equal<Setups.Setup list>(swapped.kitSetups, swapped.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<Setups.Setup option>(Some created, swapped.activeSetupOpt)
+            Assert.Equal<Setups.SetupSlot list>(created.slots, swapped.elements)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'LP1-(QZ2#45)-LPd' by the swap."), swapped.kitStatus))
