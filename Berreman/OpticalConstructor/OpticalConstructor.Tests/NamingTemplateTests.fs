@@ -1,8 +1,12 @@
 namespace OpticalConstructor.Tests
 
+open System
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.NamingTemplates
@@ -341,3 +345,236 @@ module NamingTemplateTests =
         reads (NameText "LP-(LR#90)-CPL-2") LpCpl Lr (Angle.degree 90.0<deg>)
         reads (NameText "CPL-(QZ#45)-LP-2") CplLp Qz (Angle.degree 45.0<deg>)
         reads (NameText "LP-(QZ#0)-LP-2R") LpLp Qz (Angle.degree 0.0<deg>)
+
+    // ============================ spec 0050 S8.3: a setup's name from its slots, and back ============================
+
+    let private emptySlot (id : Library.ElementId) (kind : CatalogueKind) (point : TablePoint) : SetupSlot =
+        {
+            id = id
+            placement = ElementPlacement.create kind point
+            zoom = BeamLayout.ElementZoom 5.0
+            beam = BeamLayout.OnMainBeam
+            content = EmptySlotContent
+        }
+
+    let private src : SetupSlot = emptySlot (Library.ElementId "src") LightSource RayModel.defaultSourcePoint
+    let private lpA : SetupSlot = emptySlot (Library.ElementId "lpA") LinearPolarizer { x = -0.3<meter>; y = 0.0<meter> }
+    let private sampleA : SetupSlot = emptySlot (Library.ElementId "sampleA") Sample { x = -0.1<meter>; y = 0.0<meter> }
+    let private sampleB : SetupSlot = emptySlot (Library.ElementId "sampleB") Sample { x = 0.1<meter>; y = 0.0<meter> }
+    let private lpB : SetupSlot = emptySlot (Library.ElementId "lpB") LinearPolarizer { x = 0.3<meter>; y = 0.0<meter> }
+    let private det : SetupSlot = emptySlot (Library.ElementId "det") Detector RayModel.defaultDetectorPoint
+
+    let private heNeChoice : ItemModelChoice =
+        SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source Library.PresetIds.heNe633)
+
+    let private circularPolarizerChoice : ItemModelChoice =
+        LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+
+    let private blackBoxChoice : ItemModelChoice = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.blackBoxMuellerModelId)
+
+    /// The draft's item, failing with the refusal's text when `addTo` refuses it.
+    let private itemOf (id : ItemId) (label : ItemLabel) (model : ItemModelChoice) (dial : ItemDial) : Item =
+        let draft : ItemDraft =
+            {
+                id = id
+                label = label
+                model = model
+                dial = dial
+            }
+
+        match draft.addTo [] with
+        | Ok item -> item
+        | Error error -> failwith $"'{label.value}' was refused: {error.describe}"
+
+    let private laser : Item =
+        itemOf (ItemId (Guid.Parse "5a6b7c8d-9eaf-4b01-92c3-4e5f6a7b8c91")) (ItemLabel "Laser") heNeChoice FixedMounting
+
+    let private cpl1 : Item =
+        itemOf (ItemId (Guid.Parse "6b7c8d9e-af01-4c12-a3d4-5f6a7b8c9da2")) (ItemLabel "CPL1") circularPolarizerChoice FixedMounting
+
+    let private cpl2 : Item =
+        itemOf (ItemId (Guid.Parse "7c8d9eaf-0112-4d23-b4e5-6a7b8c9daeb3")) (ItemLabel "CPL2") circularPolarizerChoice FixedMounting
+
+    let private qz : Item = itemOf (ItemId (Guid.Parse "8d9eaf01-1223-4e34-85f6-7b8c9daebfc4")) (ItemLabel "QZ") blackBoxChoice FixedMounting
+    let private lr : Item = itemOf (ItemId (Guid.Parse "9eaf0112-2334-4f45-9607-8c9daebfc0d5")) (ItemLabel "LR") blackBoxChoice FixedMounting
+
+    /// QZd sits on a dial that reads backwards, its zero at 10°.
+    let private qzd : Item =
+        let item =
+            itemOf (ItemId (Guid.Parse "af011223-3445-4056-a718-9daebfc0d1e6")) (ItemLabel "QZd") blackBoxChoice (DialMounted DialNegative)
+
+        match item.withParameterState ParameterName.dialZero (KnownParameter (ParameterValue (Angle.degree 10.0<deg>).value)) with
+        | Ok zeroed -> zeroed
+        | Error error -> failwith $"'QZd' refused a dial zero: {error.describe}"
+
+    let private kitItems : Item list = [ laser; cpl1; cpl2; qz; lr; qzd ]
+
+    /// The slot holding the item, put there by `withItem` as the table assigns it.
+    let private holding (item : Item) (model : ItemModelChoice) (slot : SetupSlot) : SetupSlot =
+        match slot.withItem item model with
+        | Ok held -> held
+        | Error error -> failwith $"'{item.label.value}' did not fit '{slot.id.value}': {error.describe}"
+
+    /// The slot turned to that R1, then holding the item.
+    let private turnedHolding (r1 : Angle) (item : Item) (model : ItemModelChoice) (slot : SetupSlot) : SetupSlot =
+        holding item model { slot with placement = withR1 r1 slot.placement }
+
+    let private qz45 : SetupSlot = turnedHolding (Angle.degree 45.0<deg>) qz blackBoxChoice sampleA
+    let private lr45 : SetupSlot = turnedHolding (Angle.degree 45.0<deg>) lr blackBoxChoice sampleB
+
+    /// The bench with these object slots, the light first and the others out of light order: the Laser, CPL1 before the
+    /// objects, CPL2 behind them and an empty detector.
+    let private benchWith (objA : SetupSlot) (objB : SetupSlot) : SetupSlot list =
+        [
+            holding laser heNeChoice src
+            det
+            holding cpl2 circularPolarizerChoice lpB
+            objB
+            objA
+            holding cpl1 circularPolarizerChoice lpA
+        ]
+
+    let private fullBench : SetupSlot list = benchWith qz45 lr45
+    let private qzOnlyBench : SetupSlot list = benchWith qz45 sampleB
+
+    /// QZd at R1 30°, which its backwards dial zeroed at 10° reads as 10° − 30° = −20°.
+    let private dialBench : SetupSlot list = benchWith (turnedHolding (Angle.degree 30.0<deg>) qzd blackBoxChoice sampleA) sampleB
+
+    let private lab : NamingTemplate =
+        match NamingTemplate.tryCreate "{source:CPL1=CPL,LP1=LP}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer:CPL2=CPL,LP2=LP}-{note}" with
+        | Ok template -> template
+        | Error error -> failwith $"the lab template was refused: {error.describe}"
+
+    let private readByLab (name : NameText) : NameReading =
+        match lab.readName name with
+        | Ok reading -> reading
+        | Error error -> failwith $"'{name.value}' was refused: {error.describe}"
+
+    let private assertAngle (expected : Angle) (actual : Angle) : unit = Assert.Equal(expected.value, actual.value, 1e-12)
+
+    [<Fact>]
+    let ``a setup's name is written from its slots in light order, its items under their aliases and its objects at their angles`` () : unit =
+        let names (template : NamingTemplate) (items : Item list) (expected : SetupName) (slots : SetupSlot list) : unit =
+            Assert.Equal<Result<SetupName, NamingTemplateError>>(Ok expected, template.setupNameOf slots items)
+
+        names lab kitItems (SetupName "CPL-(QZ#45-LR#45)-CPL") fullBench
+        names NamingTemplate.standard kitItems (SetupName "CPL1-(QZ#45-LR#45)-CPL2") fullBench
+        names lab kitItems (SetupName "CPL-(QZ#45)-CPL") qzOnlyBench
+        names lab kitItems (SetupName "CPL-(QZd#-20)-CPL") dialBench
+
+        // An item the items lack gives no value, as an empty slot gives none.
+        names lab (kitItems |> List.filter (fun item -> item.id <> lr.id)) (SetupName "CPL-(QZ#45)-CPL") fullBench
+
+        // CPL1 and CPL2 are each written under their own placeholder's alias; the light, which `lab` never names, is not.
+        let expected : NameReading =
+            {
+                parts =
+                    [
+                        { role = sourceRole; part = NamePart "CPL" }
+                        { role = ObjectSlotRole (SlotPosition 1); part = NamePart "QZ" }
+                        { role = ObjectSlotRole (SlotPosition 2); part = NamePart "LR" }
+                        { role = analyzerRole; part = NamePart "CPL" }
+                    ]
+                angles =
+                    [
+                        { position = SlotPosition 1; angle = Angle.degree 45.0<deg> }
+                        { position = SlotPosition 2; angle = Angle.degree 45.0<deg> }
+                    ]
+                noteOpt = Some (NamePart "2")
+            }
+
+        let noted = lab.nameReadingOf fullBench kitItems (Some (NamePart "2"))
+        Assert.Equal<Result<NameReading, NamingTemplateError>>(Ok expected, noted)
+
+        Assert.Equal<Result<NameText, NamingTemplateError>>(
+            Ok (NameText "CPL-(QZ#45-LR#45)-CPL-2"),
+            noted |> Result.bind (fun reading -> lab.writeName reading))
+
+    [<Fact>]
+    let ``a name reads back into the items of its slots and their angles`` () : unit =
+        let reading = readByLab (NameText "CPL-(QZ#45-LR#45)-CPL")
+
+        let expected : SlotItem list =
+            [
+                { role = sourceRole; item = cpl1.id }
+                { role = ObjectSlotRole (SlotPosition 1); item = qz.id }
+                { role = ObjectSlotRole (SlotPosition 2); item = lr.id }
+                { role = analyzerRole; item = cpl2.id }
+            ]
+
+        Assert.Equal<Result<SlotItem list, NamingTemplateError>>(Ok expected, lab.itemsOf reading kitItems)
+        Assert.Equal<Angle option>(Some (Angle.degree 45.0<deg>), reading.tryFindAngle (SlotPosition 1))
+        Assert.Equal<Angle option>(Some (Angle.degree 45.0<deg>), reading.tryFindAngle (SlotPosition 2))
+
+        // A part that no alias owns is an item's label, ignoring case.
+        let lowered = readByLab (NameText "CPL-(qz#45-LR#45)-CPL")
+        Assert.Equal<Result<SlotItem list, NamingTemplateError>>(Ok expected, lab.itemsOf lowered kitItems)
+
+        match lab.itemsOf (readByLab (NameText "CPL-(XX#45)-CPL")) kitItems with
+        | Error (UnknownNameItemErr reason) ->
+            Assert.Contains("'XX'", reason)
+            Assert.Contains("'obj1'", reason)
+        | Error other -> Assert.Fail($"expected UnknownNameItemErr, got {other.describe}")
+        | Ok slotItems -> Assert.Fail($"'XX' was read into {slotItems.Length} items")
+
+    [<Fact>]
+    let ``writing a setup's name and reading it back gives its items and angles`` () : unit =
+        let named = piecesOf lab |> placeholdersOf
+
+        // Each bench with its objects' angles in position order; QZd's is its dial reading.
+        let cases : (SetupSlot list * Angle list) list =
+            [
+                fullBench, [ Angle.degree 45.0<deg>; Angle.degree 45.0<deg> ]
+                qzOnlyBench, [ Angle.degree 45.0<deg> ]
+                dialBench, [ Angle.degree (-20.0<deg>) ]
+                benchWith (turnedHolding (Angle.degree 22.5<deg>) qz blackBoxChoice sampleA) lr45, [ Angle.degree 22.5<deg>; Angle.degree 45.0<deg> ]
+            ]
+
+        for slots, objectAngles in cases do
+            // The items of the slots `lab` names, in light order: it names no light, so the Laser is not among them.
+            let held : SlotItem list =
+                SetupSlot.inLightOrder slots
+                |> List.filter (fun roled -> named |> List.contains (SlotPlaceholder roled.role))
+                |> List.choose (fun roled -> roled.slot.content.itemOpt |> Option.map (fun item -> { role = roled.role; item = item }))
+
+            let name =
+                match lab.setupNameOf slots kitItems with
+                | Ok setupName -> NameText setupName.value
+                | Error error -> failwith $"the bench was not named: {error.describe}"
+
+            let reading = readByLab name
+            Assert.Equal<Result<SlotItem list, NamingTemplateError>>(Ok held, lab.itemsOf reading kitItems)
+            Assert.Equal(objectAngles.Length, reading.angles.Length)
+
+            objectAngles
+            |> List.iteri (fun index expected ->
+                match reading.tryFindAngle (SlotPosition (index + 1)) with
+                | Some angle -> assertAngle expected angle
+                | None -> Assert.Fail($"'{name.value}' read no angle for Obj {index + 1}"))
+
+    [<Fact>]
+    let ``a setup the template cannot name says which placeholder is empty, and a new setup takes the template's name made free, or the name it is given`` () : unit =
+        let noPrep = fullBench |> List.map (fun slot -> if slot.id = lpA.id then slot.withoutItem else slot)
+
+        match lab.setupNameOf noPrep kitItems with
+        | Error (MissingNameValueErr reason) -> Assert.Contains("'source1'", reason)
+        | Error other -> Assert.Fail($"expected MissingNameValueErr, got {other.describe}")
+        | Ok name -> Assert.Fail($"the bench without CPL1 was named '{name.value}'")
+
+        let unnamed = SetupName "Setup 3"
+        Assert.Equal<SetupName>(unnamed, lab.setupNameAmong noPrep kitItems [] unnamed)
+        Assert.Equal<SetupName>(SetupName "CPL-(QZ#45-LR#45)-CPL", lab.setupNameAmong fullBench kitItems [] unnamed)
+
+        Assert.Equal<SetupName>(
+            SetupName "CPL-(QZ#45-LR#45)-CPL (2)",
+            lab.setupNameAmong fullBench kitItems [ SetupName "cpl-(qz#45-lr#45)-cpl" ] unnamed)
+
+        // A template that writes a blank name for the slots names itself, and a new setup takes the given name.
+        let noteOnly = NamingTemplate "{note}"
+
+        match noteOnly.setupNameOf fullBench kitItems with
+        | Error (MissingNameValueErr reason) -> Assert.Contains("'{note}'", reason)
+        | Error other -> Assert.Fail($"expected MissingNameValueErr, got {other.describe}")
+        | Ok name -> Assert.Fail($"'{{note}}' named the bench '{name.value}'")
+
+        Assert.Equal<SetupName>(unnamed, noteOnly.setupNameAmong fullBench kitItems [] unnamed)

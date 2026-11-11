@@ -406,3 +406,119 @@ module NamingTemplates =
                 match readPieces pieces with
                 | Some reading -> Ok reading
                 | None -> Error (NameMismatchErr $"'{text}' against '{this.value}'"))
+
+    type ItemLabel with
+
+        /// The label as a name writes it where no alias renames it (spec 0050 S8.3).
+        member this.namePart : NamePart = NamePart this.value
+
+    type NameText with
+
+        /// The name as a setup's, refused when blank (spec 0050 S8.3).
+        member this.toSetupName : Result<SetupName, SetupError> = SetupName.tryCreate this.value
+
+    /// The kit item a name places in the slot of `role` (spec 0050 S8.3).
+    type SlotItem =
+        {
+            role : SlotRole
+            item : ItemId
+        }
+
+    type NamingTemplate with
+
+        /// The values the template takes from the slots in light order: a slot's item of `items` under its placeholder's
+        /// first alias of that label ignoring case, else its label; an object's dial reading, else its R1 (S8.2; 001 §I);
+        /// and the note. A missing slot, an empty one and an item `items` lacks give none (spec 0050 S8.3; 001 §J).
+        member this.nameReadingOf (slots : SetupSlot list) (items : Item list) (noteOpt : NamePart option) : Result<NameReading, NamingTemplateError> =
+            let lightOrder = SetupSlot.inLightOrder slots
+
+            let tryFindHeld (role : SlotRole) : (SetupSlot * Item) option =
+                lightOrder
+                |> List.tryFind (fun roled -> roled.role = role)
+                |> Option.bind (fun roled ->
+                    roled.slot.content.itemOpt
+                    |> Option.bind (fun id -> items |> List.tryFind (fun item -> item.id = id))
+                    |> Option.map (fun item -> roled.slot, item))
+
+            let angleIn (slot : SetupSlot) : Angle =
+                match slot.content with
+                | ItemInSlot (_, DialTurn reading) -> reading
+                | ItemInSlot (_, PlacementTurn)
+                | EmptySlotContent -> slot.placement.r1
+
+            let partOf (value : TemplateValue) (item : Item) : NamePart =
+                let labels (alias : NameAlias) : bool =
+                    String.Equals(alias.label.value, item.label.value, StringComparison.OrdinalIgnoreCase)
+
+                match value.aliases |> List.tryFind labels with
+                | Some alias -> alias.part
+                | None -> item.label.namePart
+
+            let withValue (read : NameReading) (piece : TemplatePiece) : NameReading =
+                match piece with
+                | LiteralPiece _ -> read
+                | ValuePiece value ->
+                    match value.placeholder with
+                    | SlotPlaceholder role ->
+                        match tryFindHeld role with
+                        | Some (_, item) -> { read with parts = read.parts @ [ { role = role; part = partOf value item } ] }
+                        | None -> read
+                    | AnglePlaceholder position ->
+                        match tryFindHeld (ObjectSlotRole position) with
+                        | Some (slot, _) -> { read with angles = read.angles @ [ { position = position; angle = angleIn slot } ] }
+                        | None -> read
+                    | NotePlaceholder -> { read with noteOpt = noteOpt }
+
+            this.pieces |> Result.map (List.fold withValue { parts = []; angles = []; noteOpt = None })
+
+        /// The item each part of the reading names in its placeholder, in order: the item labelled by the placeholder's
+        /// alias of that part, else by the part itself, ignoring case; a part naming none answers `UnknownNameItemErr`
+        /// (spec 0050 S8.3; 001 §J).
+        member this.itemsOf (reading : NameReading) (items : Item list) : Result<SlotItem list, NamingTemplateError> =
+            // Item labels are unique by file stem ignoring case (step 216), so at most one item matches.
+            let tryFindLabelled (label : string) : Item option =
+                items |> List.tryFind (fun item -> String.Equals(item.label.value, label, StringComparison.OrdinalIgnoreCase))
+
+            this.pieces
+            |> Result.bind (fun pieces ->
+                let aliasesOf (role : SlotRole) : NameAlias list =
+                    pieces
+                    |> List.tryPick (fun piece ->
+                        match piece with
+                        | ValuePiece value when value.placeholder = SlotPlaceholder role -> Some value.aliases
+                        | ValuePiece _
+                        | LiteralPiece _ -> None)
+                    |> Option.defaultValue []
+
+                let itemOf (slotPart : SlotPart) : Result<SlotItem, NamingTemplateError> =
+                    let namedOpt =
+                        match aliasesOf slotPart.role |> List.tryFind (fun alias -> alias.part = slotPart.part) with
+                        | Some alias -> tryFindLabelled alias.label.value
+                        | None -> tryFindLabelled slotPart.part.value
+
+                    match namedOpt with
+                    | Some item -> Ok { role = slotPart.role; item = item.id }
+                    | None ->
+                        let placeholder = SlotPlaceholder slotPart.role
+                        Error (UnknownNameItemErr $"'{slotPart.part.value}' in '{placeholder.text}' of '{this.value}'")
+
+                let collect (held : Result<SlotItem list, NamingTemplateError>) (slotPart : SlotPart) : Result<SlotItem list, NamingTemplateError> =
+                    held |> Result.bind (fun found -> itemOf slotPart |> Result.map (fun slotItem -> slotItem :: found))
+
+                reading.parts |> List.fold collect (Ok []) |> Result.map List.rev)
+
+        /// The name the template writes for the slots, without a note, as a setup's; a blank one answers
+        /// `MissingNameValueErr` naming the template (spec 0050 S8.3).
+        member this.setupNameOf (slots : SetupSlot list) (items : Item list) : Result<SetupName, NamingTemplateError> =
+            this.nameReadingOf slots items None
+            |> Result.bind (fun reading -> this.writeName reading)
+            |> Result.bind (fun name ->
+                name.toSetupName
+                |> Result.mapError (fun error -> MissingNameValueErr $"'{this.value}' writes '{name.value}': {error.describe}"))
+
+        /// A new setup's name: the template's made free among `taken`, or `unnamed` when it cannot name the slots. Held
+        /// setups keep their names; a template names what is made after it (spec 0050 S8.2, S8.3).
+        member this.setupNameAmong (slots : SetupSlot list) (items : Item list) (taken : SetupName list) (unnamed : SetupName) : SetupName =
+            match this.setupNameOf slots items with
+            | Ok name -> name.nextFreeAmong taken
+            | Error _ -> unnamed
