@@ -237,6 +237,13 @@ module KitWindowTests =
             finally
                 window.Close()
                 Dispatcher.UIThread.RunJobs()
+            // Spec 0050 S8.3: the kit bar's Save template is present only while the kit takes writes.
+            withKitWindow model (fun kitWindow ->
+                match expected, tryControlById kitWindow ConstructorUiId.saveNamingTemplateButton with
+                | ControlOffered, Some _
+                | ControlWithheld, None -> ()
+                | ControlOffered, None -> Assert.Fail "Save template must be in the kit bar of a read-write kit"
+                | ControlWithheld, Some _ -> Assert.Fail "Save template must not be in the kit bar of a read-only kit")
         finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
 
     [<Fact>]
@@ -317,6 +324,37 @@ module KitWindowTests =
                     Assert.Equal("Reload changes", boxLabelOf window ConstructorUiId.kitReloadChangesButton)
                     Assert.Equal("Close kit", boxLabelOf window ConstructorUiId.kitCloseButton))
             finally scratch.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``the kit bar shows the kit's naming template with Save template beside it`` () : unit =
+        Assert.Equal("NamingTemplateField", ConstructorUiId.namingTemplateField.value)
+        Assert.Equal("SaveNamingTemplateButton", ConstructorUiId.saveNamingTemplateButton.value)
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            try
+                let model = kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
+                withKitWindow model (fun window ->
+                    let field = Assert.IsType<TextBox>(controlById window ConstructorUiId.namingTemplateField)
+                    Assert.Equal(opened.library.kit.kitFile.namingTemplate.value, field.Text)
+                    Assert.Contains<Visual>(controlById window ConstructorUiId.kitBar, field.GetVisualAncestors())
+                    let save = Assert.IsType<Border>(controlById window ConstructorUiId.saveNamingTemplateButton)
+                    Assert.Equal("Save template", boxLabelOf window ConstructorUiId.saveNamingTemplateButton)
+                    let windowX (control : Control) (x : float) : float =
+                        match control.TranslatePoint(Point(x, 0.0), window) |> Option.ofNullable with
+                        | Some point -> point.X
+                        | None -> failwith "the control must have a position in its window"
+                    let fieldRight = windowX field field.Bounds.Width
+                    let saveLeft = windowX save 0.0
+                    Assert.True(saveLeft > fieldRight, $"Save template ({saveLeft}) must start right of the field's end ({fieldRight})")
+                    // Spec 0050 S8.3: the field and the button send the messages the model facts send.
+                    field.Text <- "{obj1}"
+                    Dispatcher.UIThread.RunJobs()
+                    pressBox window ConstructorUiId.saveNamingTemplateButton
+                    Assert.Equal("Saved the naming template.", textOf window ConstructorUiId.kitStatus)
+                    let stored = (KitProxy.create opened.folder).readKitFile () |> SceneTestFixture.kitSuccess
+                    Assert.Equal<NamingTemplate>(NamingTemplate "{obj1}", stored.namingTemplate))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
     let ``a changed kit offers Reload and Keep mine on one row, Keep mine to the right`` () : unit =

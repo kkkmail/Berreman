@@ -613,6 +613,8 @@ type TableAndElementRotationModel =
         kitCopyOpt : KitCopySource option
         /// The last kit read or write that needs telling (spec 0050 S4.3).
         kitStatus : ControlCaption option
+        /// The naming template being typed, the kit file's wherever the window takes one (spec 0050 S8.3).
+        namingTemplateText : ControlCaption
         /// The setup name being typed, validated when the setup is created (spec 0050 S8.2).
         setupName : ControlCaption
         /// The kit's setups in name order, as the window last read or wrote them (spec 0050 S8.2).
@@ -786,6 +788,7 @@ let initWith
         kitSend = KitArchiveJob.KitArchiveJobState.idle
         kitCopyOpt = None
         kitStatus = None
+        namingTemplateText = kit.kitFile.namingTemplate.caption
         setupName = ControlCaption ""
         kitSetups = []
         activeSetupOpt = None
@@ -1096,6 +1099,10 @@ type TableAndElementRotationMsg =
     | ReloadKitChanges
     /// The offer's Keep mine: keeps the model and records the current stamps, so the offer clears (spec 0050 S5.3).
     | KeepMyKitChanges
+    /// The kit bar's naming-template field's text (spec 0050 S8.3).
+    | SetNamingTemplateText of ControlCaption
+    /// The kit bar's Save template: the kit's naming template becomes the field's (spec 0050 S8.3).
+    | SaveNamingTemplate
     /// Sends the kit to this zip: the Send kit button's message after its save dialog, and how a test sends a kit (spec 0050 S6).
     | SendKit of FileName
     /// The running send zipped one more file (spec 0050 S6).
@@ -1887,9 +1894,9 @@ let private validateExperimentAttachment
         | Error error -> error.fileStatus
     | Error error -> AttachedFileValidationError (ControlCaption error.describe)
 
-/// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3, S8.2; 001
-/// §E): the kit, its experiments with a fresh draft, their attachments rechecked through the model's `experimentData`,
-/// its items, its setups with the active one as read, and no status or reload offer.
+/// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3, S8.2, S8.3;
+/// 001 §E): the kit, its naming template in the field, its experiments with a fresh draft, their attachments rechecked
+/// through the model's `experimentData`, its items, its setups with the active one as read, and no status or offer.
 let private withKitContent
     (kit : KitContext)
     (experiments : Experiments.Experiment list)
@@ -1901,6 +1908,7 @@ let private withKitContent
         {
             model with
                 kit = kit
+                namingTemplateText = kit.kitFile.namingTemplate.caption
                 experimentCollection = Experiments.ExperimentCollection.ofLoaded experiments
                 kitStatus = None
                 kitChanges = []
@@ -2817,6 +2825,39 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     model with kitChanges = []
                 }
             | Error error -> withKitCheckFailure error model)
+    | SetNamingTemplateText text ->
+        {
+            model with namingTemplateText = text
+        }
+    // Spec 0050 S8.3: the window's own write is no change offered for reload (step 130), and no setup or experiment is
+    // renamed (step 271).
+    | SaveNamingTemplate ->
+        guardKitWrite model (fun () ->
+            match NamingTemplate.tryCreate model.namingTemplateText.value with
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not saved — {error.describe}")
+                }
+            | Ok template when template = model.kit.kitFile.namingTemplate ->
+                {
+                    model with kitStatus = Some (ControlCaption "The naming template is unchanged.")
+                }
+            | Ok template ->
+                let revised =
+                    {
+                        model.kit.kitFile with namingTemplate = template
+                    }
+                match model.kit.saveKitFile revised with
+                | Ok kit ->
+                    {
+                        model with
+                            kit = kit
+                            kitStatus = Some (ControlCaption "Saved the naming template.")
+                    }
+                | Error error ->
+                    {
+                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    })
     // Spec 0050 S6: a send writes no kit file, so it is not behind `guardKitWrite`: a kit opened read-only is sent as
     // it is, which is how a reviewer returns a kit (001 §E 'Review round-trip'). One archive job runs per window.
     | SendKit zip ->

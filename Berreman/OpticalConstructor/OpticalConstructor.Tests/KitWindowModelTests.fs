@@ -17,6 +17,7 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -218,10 +219,15 @@ module KitWindowModelTests =
                         ready |> updateTableAndElementRotation (AttachDataFileTo (storedExperiment.id, dataFile))
                         ready |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench")) |> updateTableAndElementRotation CreateSetup
                         ready |> updateTableAndElementRotation SaveSetup
+                        // Spec 0050 S8.3: a typed template is refused as SaveSetup is.
+                        ready
+                        |> updateTableAndElementRotation (SetNamingTemplateText (ControlCaption "{obj1}"))
+                        |> updateTableAndElementRotation SaveNamingTemplate
                     ]
                 for answer in refused do
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)
                     Assert.Equal<Setups.Setup list>(ready.kitSetups, answer.kitSetups)
+                    Assert.Equal<KitContext>(ready.kit, answer.kit)
                     Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), answer.kitStatus)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
 
@@ -356,9 +362,18 @@ module KitWindowModelTests =
                 Setups.Setup.create (SetupName "Bench") [] []
                 |> Result.defaultWith (fun error -> failwith error.describe)
             writer.writeSetup bench |> kitValue
+            // Spec 0050 S8.3: the other writer also saves a naming template, which Reload shows in the field.
+            let kitFile = writer.readKitFile () |> kitValue
+            let templated =
+                {
+                    kitFile with namingTemplate = NamingTemplate "{obj1}"
+                }
+            writer.writeKitFile templated |> kitValue
             let offered = committed |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
             Assert.NotEmpty(offered.kitChanges)
+            Assert.Equal<ControlCaption>(NamingTemplate.standard.caption, offered.namingTemplateText)
             let reloaded = offered |> updateTableAndElementRotation ReloadKitChanges
+            Assert.Equal<ControlCaption>(ControlCaption "{obj1}", reloaded.namingTemplateText)
             let held = writer.readExperiments () |> kitValue
             Assert.Equal<Experiments.ExperimentId list>(
                 [ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ],
@@ -431,6 +446,56 @@ module KitWindowModelTests =
                 let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
                 Assert.Empty(again.kitChanges)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
+
+    [<Fact>]
+    let ``Save template writes the typed naming template into the kit file`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                // Spec 0050 S8.3: the lab's template (S12.1), its source and analyzer aliased.
+                let template = NamingTemplate "{source:CPL1=CPL}-({obj1}#{phi1})-{analyzer:CPL2=CPL}"
+                Assert.Equal<ControlCaption>(NamingTemplate.standard.caption, model.namingTemplateText)
+                let saved =
+                    model
+                    |> updateTableAndElementRotation (SetNamingTemplateText template.caption)
+                    |> updateTableAndElementRotation SaveNamingTemplate
+                Assert.Equal<NamingTemplate>(template, saved.kit.kitFile.namingTemplate)
+                let stored = saved.kit.proxy.readKitFile () |> kitValue
+                Assert.Equal<NamingTemplate>(template, stored.namingTemplate)
+                Assert.Equal<KitFile>(saved.kit.kitFile, stored)
+                Assert.Equal<ControlCaption>(template.caption, saved.namingTemplateText)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved the naming template."), saved.kitStatus)
+                let checkedKit = saved |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
+                Assert.Empty(checkedKit.kitChanges)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), checkedKit.kitStatus)))
+
+    [<Fact>]
+    let ``a naming template that does not parse, or the kit's own, is told and writes nothing`` () : unit =
+        withTitledFolder (fun folder imports ->
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            withLoadedScene opened (fun model ->
+                let kitFilePath = KitFile.fileName.combine folder.value
+                let kitFileBytes () : FileByteContent = FileByteContent (File.ReadAllBytes kitFilePath.value)
+                let before = kitFileBytes ()
+                Assert.Equal<NamingTemplate>(NamingTemplate.standard, model.kit.kitFile.namingTemplate)
+                let unparsed =
+                    model
+                    |> updateTableAndElementRotation (SetNamingTemplateText (ControlCaption "{sauce}"))
+                    |> updateTableAndElementRotation SaveNamingTemplate
+                match unparsed.kitStatus with
+                | Some status ->
+                    Assert.StartsWith("Not saved", status.value)
+                    Assert.Contains("the naming template is not valid", status.value)
+                | None -> Assert.Fail "a template that does not parse must be told in the kit status"
+                Assert.Equal<KitContext>(model.kit, unparsed.kit)
+                Assert.Equal<FileByteContent>(before, kitFileBytes ())
+                let unchanged =
+                    model
+                    |> updateTableAndElementRotation (SetNamingTemplateText NamingTemplate.standard.caption)
+                    |> updateTableAndElementRotation SaveNamingTemplate
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "The naming template is unchanged."), unchanged.kitStatus)
+                Assert.Equal<KitContext>(model.kit, unchanged.kit)
+                Assert.Equal<FileByteContent>(before, kitFileBytes ())))
 
     let private windowCpl1 : Item =
         let draft : ItemDraft =

@@ -109,6 +109,47 @@ let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableA
         WrapPanel.children (sendKit @ showInExplorer @ copyExperiments @ kitVerbs @ constructorItems)
     ] :> IView
 
+/// The kit's naming template in a field that fills the row, Save template right of it while the kit takes writes
+/// (spec 0050 S8.3; 001 §J). A dock, never a horizontal stack, so the field is bounded by the bar's width (AGENTS.md).
+let private namingTemplateRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    let saveTemplate : IView list =
+        match model.kitWrites with
+        | ControlOffered ->
+            [
+                Border.create [
+                    Border.dock Dock.Right
+                    Border.child (
+                        MaterialsWindowView.verbButton ConstructorUiId.saveNamingTemplateButton (ControlCaption "Save template") (fun () ->
+                            dispatch SaveNamingTemplate))
+                ]
+            ]
+        | ControlWithheld -> []
+    DockPanel.create [
+        DockPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+        DockPanel.children (
+            [
+                TextBlock.create [
+                    TextBlock.dock Dock.Left
+                    TextBlock.fontWeight FontWeight.SemiBold
+                    TextBlock.verticalAlignment VerticalAlignment.Center
+                    TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                    TextBlock.text "Naming template:"
+                ]
+                :> IView
+            ]
+            @ saveTemplate
+            @ [
+                TextBox.create [
+                    ConstructorUiId.namingTemplateField.automationAttribute<TextBox> ()
+                    TextBox.verticalAlignment VerticalAlignment.Center
+                    TextBox.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                    TextBox.text model.namingTemplateText.value
+                    TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetNamingTemplateText >> dispatch))
+                ]
+                :> IView
+            ])
+    ] :> IView
+
 /// The running send's progress row directly under the Kit menu, its Cancel ending the send before its next file
 /// (spec 0050 S6; .spec-md §10.2). Nothing while no send runs.
 let private kitSendRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
@@ -310,7 +351,7 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
                 StackPanel.orientation Orientation.Vertical
                 StackPanel.margin (Thickness(8.0, 6.0, 8.0, 2.0))
                 StackPanel.children (
-                    [ model.kitCaptionRow; kitMenuRow model dispatch ]
+                    [ model.kitCaptionRow; kitMenuRow model dispatch; namingTemplateRow model dispatch ]
                     @ kitSendRows model dispatch
                     @ kitCopyRows model dispatch
                     @ kitChangesRows model dispatch

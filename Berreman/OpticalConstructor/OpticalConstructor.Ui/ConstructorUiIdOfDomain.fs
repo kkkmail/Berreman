@@ -382,6 +382,11 @@ module ConstructorUiIdOfDomain =
         /// The setup name as its saved-setup button's caption (spec 0050 S8.2).
         member this.caption : ControlCaption = ControlCaption this.value
 
+    type Kit.NamingTemplate with
+
+        /// The template's text as the kit bar's naming-template field shows it (spec 0050 S8.3).
+        member this.caption : ControlCaption = ControlCaption this.value
+
     type EntryName with
 
         /// The name as a row, a summary or a name box shows it.

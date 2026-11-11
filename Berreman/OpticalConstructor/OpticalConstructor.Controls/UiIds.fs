@@ -703,6 +703,10 @@ type ConstructorUiId =
     static member kitReloadChangesButton : ConstructorUiId = ConstructorUiId "KitReloadChangesButton"
     /// The Kit menu's Close kit (spec 0050 S5.3).
     static member kitCloseButton : ConstructorUiId = ConstructorUiId "KitCloseButton"
+    /// The kit bar's field holding the naming template being typed (spec 0050 S8.3).
+    static member namingTemplateField : ConstructorUiId = ConstructorUiId "NamingTemplateField"
+    /// The kit bar's Save template: the field's text becomes the kit's naming template (spec 0050 S8.3).
+    static member saveNamingTemplateButton : ConstructorUiId = ConstructorUiId "SaveNamingTemplateButton"
     /// The constructor the window runs, Main or Inverse (spec 0050 S5.3).
     static member kitModeText : ConstructorUiId = ConstructorUiId "KitModeText"
     /// The switch to the other constructor (spec 0050 S5.3).
