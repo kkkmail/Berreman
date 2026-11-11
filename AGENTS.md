@@ -559,6 +559,12 @@ This is a spec-driven, gated repository.
   out with the text before it, and `{source:CPL1=CPL}` writes an item under another name. A new setup takes the
   template's name made free (`setupNameAmong`), one it cannot name keeps `Setup <n>`; the reference pipeline reads the
   lab's labels through `NamingTemplate.standard`, and the grid generator is `SetupGrids.fs`.
+- **The slot bar is the quick swap** (`SlotBarView.fs`, spec 0050 S8.4): one chip per slot in light order, directly
+  above the table, each listing the kit items that fit its slot (`SetupSlot.fittingItems`); choosing one is `SwapSlot`
+  (the held setup of that content, else a new one), Tab moves between chips and a typed letter picks (`pickedByLetter`).
+  `Record experiment` is `RecordExperiment`, a new experiment of the draft over the active setup every time (the direct
+  problem), while `ExpCommit` edits the draft's own; `Setup grid…` opens `SetupGridView.fs` over `SetupGridDraft`, whose
+  Generate is `GenerateSetupGrid`.
 - **The constructor is checked against the Analytics example scripts** (`FsxAcceptanceTests`,
   trait `fsx-acceptance`, ~1.5 min): each drives the headless app to build the script's table,
   exports the run through `ExperimentExportProxy`, and compares it with `Variables.calculate`.

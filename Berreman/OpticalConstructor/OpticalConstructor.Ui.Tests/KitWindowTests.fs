@@ -17,6 +17,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
@@ -907,9 +908,12 @@ module KitWindowTests =
         finally created.library.kit.close () |> SceneTestFixture.kitSuccess
         openedAt folder ReadWriteKitAccess ctx
 
+    /// The files at the kit folder's root that `pattern` matches, in ordinal order.
+    let private kitFilesIn (folder : KitFolder) (pattern : string) : string list =
+        Directory.GetFiles(folder.value.value, pattern) |> Array.map Path.GetFileName |> Array.sort |> List.ofArray
+
     /// The item files at the kit folder's root, in ordinal order.
-    let private itemFilesIn (folder : KitFolder) : string list =
-        Directory.GetFiles(folder.value.value, "*.item-json") |> Array.map Path.GetFileName |> Array.sort |> List.ofArray
+    let private itemFilesIn (folder : KitFolder) : string list = kitFilesIn folder "*.item-json"
 
     /// What a kit holds once closed and reopened read-only: its experiments, the items their setups' slots resolve to
     /// through `Experiment.itemsUsedBy`, all its items and its setups (spec 0050 S7.2, S8.2).
@@ -1276,3 +1280,138 @@ module KitWindowTests =
             finally
                 reopened.Close()
                 Dispatcher.UIThread.RunJobs())
+
+    /// The model with an item labelled `label` added through the Items panel's messages, of the offer the open add form
+    /// lists that `offered` accepts (spec 0050 S7.2).
+    let private withOfferAdded
+        (label : ControlCaption)
+        (offered : ItemModelChoice -> bool)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        let opened = model |> updateTableAndElementRotation OpenAddItemForm
+        let choice =
+            match opened.addItemFormOpt |> Option.bind (fun form -> form.offers |> List.tryFind offered) with
+            | Some offer -> offer
+            | None -> failwith $"The add form must offer a model for {label.value}."
+        let filled =
+            opened
+            |> updateTableAndElementRotation (ChooseNewItemModel choice)
+            |> updateTableAndElementRotation (SetNewItemLabel label)
+        match filled.addItemFormOpt |> Option.bind (fun form -> form.itemDraftOpt) with
+        | Some draft -> filled |> updateTableAndElementRotation (AddItem draft)
+        | None -> failwith $"The add form must send {label.value}."
+
+    /// The add form's offer of the linear polarizer preset.
+    let private linearPolarizerOffer (offer : ItemModelChoice) : bool =
+        match offer with
+        | PolarizerPresetChoice (_, polarizer) -> polarizer.id = Library.PresetIds.polarizerLp
+        | SourcePresetChoice _
+        | StackSampleChoice _
+        | LibraryModelChoice _ -> false
+
+    /// The add form's offer of the glass plate `plate`.
+    let private plateOffer (plate : Library.SampleId) (offer : ItemModelChoice) : bool =
+        match offer with
+        | StackSampleChoice (_, _, sample) -> sample.id = plate
+        | SourcePresetChoice _
+        | PolarizerPresetChoice _
+        | LibraryModelChoice _ -> false
+
+    /// The direct problem's sample slot and the two plates swapped into it (spec 0050 S8.4).
+    type private DirectProblemPieces =
+        {
+            sample : Library.ElementId
+            qz : ItemId
+            qz2 : ItemId
+        }
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: in a kit window, Record experiment twice, a chip swap and Record experiment again write two setups and three experiments, and the reopened window lists them`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let folder = TestAppScope.freshKitFolder owner
+            let bench = SetupName "Bench"
+            let swappedBench = SetupName "Bench (2)"
+            let objectRole = ObjectSlotRole (SlotPosition 1)
+            let opened = openedAt folder ReadWriteKitAccess ctx
+            let pieces =
+                try
+                    let loaded = kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
+                    // Spec 0050 S7.2: the add form offers the app's item models over the kit's, as the App's windows do.
+                    let offering =
+                        {
+                            loaded with itemModels = ctx.itemModels.overlaidWith opened.overlay
+                        }
+                    let stocked =
+                        offering
+                        |> withOfferAdded (ControlCaption "LP1") linearPolarizerOffer
+                        |> withOfferAdded (ControlCaption "QZ") (plateOffer Library.SampleIds.glassPlate1mmId)
+                        |> withOfferAdded (ControlCaption "QZ2") (plateOffer Library.SampleIds.glassPlate2mmId)
+                    let itemOf (label : string) : ItemId =
+                        match stocked.kitItems |> List.tryFind (fun item -> item.label = ItemLabel label) with
+                        | Some item -> item.id
+                        | None -> failwith $"The kit must hold {label}."
+                    let slotOf (kind : Placement.CatalogueKind) (model : TableAndElementRotationModel) : Library.ElementId =
+                        (model.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)).id
+                    let withPolarizer = stocked |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                    let polarizer = slotOf Placement.LinearPolarizer withPolarizer
+                    let withSample = withPolarizer |> updateTableAndElementRotation (AddElement Placement.Sample)
+                    let held : DirectProblemPieces =
+                        {
+                            sample = slotOf Placement.Sample withSample
+                            qz = itemOf "QZ"
+                            qz2 = itemOf "QZ2"
+                        }
+                    let ready =
+                        withSample
+                        |> updateTableAndElementRotation (AssignSlot (polarizer, Some (itemOf "LP1")))
+                        |> updateTableAndElementRotation (AssignSlot (held.sample, Some held.qz))
+                        |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench"))
+                        |> updateTableAndElementRotation CreateSetup
+                        |> updateTableAndElementRotation (ExpChooseElement polarizer)
+                    Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, ready.flowStep)
+                    Assert.Equal<SetupName option>(Some bench, ready.activeSetupOpt |> Option.map (fun setup -> setup.name))
+                    withKitWindow ready (fun window ->
+                        pressBox window ConstructorUiId.recordExperimentButton
+                        pressBox window ConstructorUiId.recordExperimentButton
+                        Assert.Equal("Recorded E2 over 'Bench' revision 1.", textOf window ConstructorUiId.kitStatus)
+                        pressBox window (ConstructorUiId.slotChip objectRole)
+                        pressBox window (ConstructorUiId.slotChipChoice objectRole held.qz2)
+                        Assert.Equal("Created setup 'Bench (2)' by the swap.", textOf window ConstructorUiId.kitStatus)
+                        Assert.Equal("Obj 1: QZ2 @ 0° ▾", boxLabelOf window (ConstructorUiId.slotChip objectRole))
+                        pressBox window ConstructorUiId.recordExperimentButton
+                        Assert.Equal("Recorded E3 over 'Bench (2)' revision 1.", textOf window ConstructorUiId.kitStatus))
+                    held
+                finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
+
+            Assert.Equal<string list>([ "Bench (2).setup-json"; "Bench.setup-json" ], kitFilesIn folder "*.setup-json")
+            Assert.Equal<string list>(
+                [ "E1.experiment-json"; "E2.experiment-json"; "E3.experiment-json" ], kitFilesIn folder "*.experiment-json")
+            let written = reopenedCopy folder
+            let sampleHeldIn (name : SetupName) : ItemId option =
+                match written.setups |> List.tryFind (fun setup -> setup.name = name) with
+                | Some setup ->
+                    Assert.Equal<SetupRevision>(SetupRevision.first, setup.revision)
+                    setup.slots |> List.tryFind (fun slot -> slot.id = pieces.sample) |> Option.bind (fun slot -> slot.content.itemOpt)
+                | None -> failwith $"The kit must hold the setup '{name.value}'."
+            Assert.Equal<ItemId option>(Some pieces.qz, sampleHeldIn bench)
+            Assert.Equal<ItemId option>(Some pieces.qz2, sampleHeldIn swappedBench)
+            Assert.Equal<string list>(
+                [ "E1 over 'Bench' revision 1"; "E2 over 'Bench' revision 1"; "E3 over 'Bench (2)' revision 1" ],
+                written.experiments |> List.map (fun experiment -> $"{experiment.id.fileStem.value} over {experiment.setup.describe}"))
+            let reopened = openedAt folder ReadWriteKitAccess ctx
+            try
+                let reloaded = kitWindowModel ctx reopened ForwardConstructor KitWindowShell.inert
+                let experimentIds = [ 1; 2; 3 ] |> List.map Experiments.ExperimentId
+                Assert.Equal<SetupName list>([ bench; swappedBench ], reloaded.kitSetups |> List.map (fun setup -> setup.name))
+                Assert.Equal<Experiments.ExperimentId list>(
+                    experimentIds, reloaded.experimentCollection.experiments |> List.map (fun experiment -> experiment.id))
+                withKitWindow (reloaded |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)) (fun window ->
+                    for name in [ bench; swappedBench ] do
+                        let id = ConstructorUiId.savedSetup name
+                        Assert.True((controlById window id).IsEffectivelyVisible, $"{id.value} must show in the reopened window")
+                    for experimentId in experimentIds do
+                        let id = ConstructorUiId.experimentEditButton experimentId.uiKey
+                        Assert.True((controlById window id).IsEffectivelyVisible, $"{id.value} must show in the reopened window"))
+            finally reopened.library.kit.close () |> SceneTestFixture.kitSuccess)
