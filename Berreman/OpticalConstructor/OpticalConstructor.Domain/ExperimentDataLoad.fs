@@ -3,6 +3,7 @@ namespace OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library                 // LibraryProxy / DetectorKind / DetectorItem
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.LibraryEntryFiles       // ContentHash
 open OpticalConstructor.Domain.Placement               // CatalogueKind.Detector
 open OpticalConstructor.Domain.Setups                  // SetupSlot
 open OpticalConstructor.Domain.MeasuredData            // MeasuredSeries / validateAgainstExperiment / ExperimentDataError
@@ -67,3 +68,40 @@ module ExperimentDataLoad =
         | [ { axes = [] } ] -> validateOver None (VariableRange.forVariable VaryR1)
         | blocks ->
             Error (DataRangeMismatchErr $"an X,Y data file holds one variable, and the scan varies {experiment.scan.axes.Length} in {blocks.Length} block(s)")
+
+    /// An experiment's data status: no data, mapped, validated with its points, changed since attach or out of range
+    /// (spec 0050 S9.1; 001 §K, §E).
+    type ExperimentDataBadge =
+        | NoDataBadge
+        /// Mapped but not validated, with the reason when the file did not read (spec 0050 S9.1).
+        | MappedDataBadge of problemOpt : ExperimentDataError option
+        | ValidatedDataBadge of points : MeasuredPointCount
+        /// The file's hash now differs from the attachment's, or `None` when the file is missing (spec 0050 S9.1).
+        | DataChangedBadge of attachment : DataAttachment * currentOpt : ContentHash option
+        /// A range or units mismatch against the experiment (spec 0050 S9.1).
+        | OutOfRangeBadge of problem : ExperimentDataError
+
+        member this.text : string =
+            match this with
+            | NoDataBadge -> "no data"
+            | MappedDataBadge _ -> "mapped"
+            | ValidatedDataBadge points -> $"validated ({points.value} points)"
+            | DataChangedBadge _ -> "data changed"
+            | OutOfRangeBadge _ -> "out of range"
+
+        /// The one rule: no data; else a changed or missing file, ahead of any outcome; else the validation's outcome, or
+        /// merely mapped without one (spec 0050 S9.1).
+        static member ofCheck
+            (dataOpt : MappedAttachment option)
+            (statusOpt : DataAttachmentStatus option)
+            (outcomeOpt : Result<MeasuredSeries, ExperimentDataError> option)
+            : ExperimentDataBadge =
+            match dataOpt, statusOpt, outcomeOpt with
+            | None, _, _ -> NoDataBadge
+            | Some data, Some (AttachedDataChanged current), _ -> DataChangedBadge (data.attachment, Some current)
+            | Some data, Some AttachedDataMissing, _ -> DataChangedBadge (data.attachment, None)
+            | Some _, _, Some (Ok series) -> ValidatedDataBadge series.pointCount
+            | Some _, _, Some (Error (DataRangeMismatchErr _ as problem))
+            | Some _, _, Some (Error (DataUnitsMismatchErr _ as problem)) -> OutOfRangeBadge problem
+            | Some _, _, Some (Error problem) -> MappedDataBadge (Some problem)
+            | Some _, _, None -> MappedDataBadge None

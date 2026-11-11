@@ -282,27 +282,6 @@ type ConstructorMode =
     | ForwardConstructor
     | InverseConstructor
 
-/// Attachment, parse and validation status for one experiment's measured data
-/// (spec 0038 Part L step 037; spec 0050 S4.2).
-type ExperimentFileStatus =
-    | DataFileAttachFailed of reason : ControlCaption
-    | DataFileValidated of points : MeasuredData.MeasuredPointCount
-    | AttachedFileParseError of reason : ControlCaption
-    | AttachedFileValidationError of reason : ControlCaption
-    /// The file's current content differs from the hash recorded when attached.
-    | DataFileChangedSinceAttach
-    /// The attached file is absent at its recorded kit-relative path.
-    | DataFileMissingFromKit of path : ControlCaption
-
-    member this.caption : ControlCaption =
-        match this with
-        | DataFileAttachFailed reason -> ControlCaption $"Attach failed — {reason.value}"
-        | DataFileValidated n -> ControlCaption $"Loaded — {n.value} point(s), schema-valid"
-        | AttachedFileParseError reason -> ControlCaption $"Parse error — {reason.value}"
-        | AttachedFileValidationError reason -> ControlCaption $"Validation error — {reason.value}"
-        | DataFileChangedSinceAttach -> ControlCaption "Data changed since attach — attach it again to validate it"
-        | DataFileMissingFromKit path -> ControlCaption $"Data file missing — {path.value}"
-
 /// What asked for the check of kit files changed outside the app (spec 0050 S5.3).
 type KitCheckOrigin =
     /// The window was activated; a check that finds nothing says nothing (spec 0050 S5.3).
@@ -642,9 +621,9 @@ type TableAndElementRotationModel =
         parameterEditOpt : ParameterEditDraft option
         /// Measured-data attachments read through kit (spec 0050 S4.2/S4.3).
         experimentData : ExperimentData.ExperimentDataProxy
-        /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
-        /// experiment's id — set when a file is attached (load + validate through the proxy).
-        experimentDataStatus : Map<Experiments.ExperimentId, ExperimentFileStatus>
+        /// The data badge of each experiment with a mapped attachment, keyed by its id, set when a file is attached and
+        /// when the kit opens (spec 0038 Part L; spec 0050 S9.1).
+        experimentDataStatus : Map<Experiments.ExperimentId, ExperimentDataBadge>
         /// Spec 0046: the open right-click element menu (ray toggles, which beam the element sits on,
         /// remove), if any. Closed by any left click, a selection change, or its own Close verb.
         elementMenu : ElementMenu option
@@ -1907,31 +1886,23 @@ type TableAndElementRotationModel with
         | Some id -> BeamLayout.effectiveCapture (availableCaptures model id) draft.measurement
         | None -> None
 
-type MeasuredData.ExperimentDataError with
-
-    /// Spec 0038 Part L (037): a measured-data load error as a PARSE failure (a malformed / empty file) or a
-    /// VALIDATION failure (a range / units mismatch against the experiment), carrying the domain error's
-    /// diagnostic `reason` into the typed inline status.
-    member private error.fileStatus : ExperimentFileStatus =
-        match error with
-        | MeasuredData.MalformedDataFileErr _
-        | MeasuredData.EmptyDataFileErr _ -> AttachedFileParseError error.caption
-        | MeasuredData.DataRangeMismatchErr _
-        | MeasuredData.DataUnitsMismatchErr _ -> AttachedFileValidationError error.caption
-
-/// Reads the mapped file through its profile and validates it against the detector the experiment's setup revision
-/// holds; a revision the kit's setups lack is the validation's failure (spec 0038 Part L; spec 0050 S8.2, S9.1).
-let private validateExperimentAttachment
-    (model : TableAndElementRotationModel)
-    (experiment : Experiments.Experiment)
-    (data : MappedAttachment)
-    : ExperimentFileStatus =
-    match experiment.slotsIn model.kitSetups with
-    | Ok slots ->
-        match ExperimentDataLoad.loadAndValidate model.library model.experimentData slots experiment data with
-        | Ok series -> DataFileValidated series.pointCount
-        | Error error -> error.fileStatus
-    | Error error -> AttachedFileValidationError (ControlCaption error.describe)
+/// The experiment's data badge: its file's status through the kit and, while unchanged, its reading and validation
+/// against the detector its setup revision holds. A revision the kit's setups lack fails as a units mismatch, that
+/// detector being unknown (spec 0038 Part L; spec 0050 S8.2, S9.1).
+let private checkExperimentData (model : TableAndElementRotationModel) (experiment : Experiments.Experiment) : ExperimentDataBadge =
+    match experiment.dataOpt with
+    | Some data ->
+        match model.experimentData.attachmentStatus data.attachment with
+        | Ok AttachedDataUnchanged ->
+            let outcome =
+                experiment.slotsIn model.kitSetups
+                |> Result.mapError (fun error -> MeasuredData.DataUnitsMismatchErr error.describe)
+                |> Result.bind (fun slots -> loadAndValidate model.library model.experimentData slots experiment data)
+            ExperimentDataBadge.ofCheck experiment.dataOpt (Some AttachedDataUnchanged) (Some outcome)
+        | Ok status -> ExperimentDataBadge.ofCheck experiment.dataOpt (Some status) None
+        // A kit read failure is a malformed file, as `ExperimentDataStore` maps one (spec 0050 S4.2).
+        | Error error -> ExperimentDataBadge.ofCheck experiment.dataOpt None (Some (Error (MeasuredData.MalformedDataFileErr error.describe)))
+    | None -> ExperimentDataBadge.ofCheck None None None
 
 /// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3, S8.2, S8.3;
 /// 001 §E): the kit, its naming template in the field, its experiments with a fresh draft, their attachments rechecked
@@ -1957,25 +1928,24 @@ let private withKitContent
                     |> Option.bind (fun active -> setups |> List.tryFind (fun setup -> setup.name = active.name))
                 kitItems = items
         }
-    let statuses =
+    let badges =
         experiments
         |> List.choose (fun experiment ->
             match experiment.dataOpt with
-            | Some data ->
-                let status =
-                    match loaded.experimentData.attachmentStatus data.attachment with
-                    | Ok AttachedDataUnchanged -> validateExperimentAttachment loaded experiment data
-                    | Ok (AttachedDataChanged _) -> DataFileChangedSinceAttach
-                    | Ok AttachedDataMissing -> DataFileMissingFromKit data.attachment.path.toControlCaption
-                    | Error error -> AttachedFileParseError error.caption
-                Some (experiment.id, status)
+            | Some _ -> Some (experiment.id, checkExperimentData loaded experiment)
             | None -> None)
         |> Map.ofList
     {
-        loaded with experimentDataStatus = statuses
+        loaded with experimentDataStatus = badges
     }
 
 type TableAndElementRotationModel with
+
+    /// The experiment's data badge as last checked, else what its mapped attachment alone gives (spec 0050 S9.1).
+    member model.dataBadgeOf (experiment : Experiments.Experiment) : ExperimentDataBadge =
+        match model.experimentDataStatus |> Map.tryFind experiment.id with
+        | Some badge -> badge
+        | None -> ExperimentDataBadge.ofCheck experiment.dataOpt None None
 
     /// Works in the opened kit, loads its items and rechecks every recorded data attachment (spec 0050 S4.3, S6; 001 §E).
     member model.loadKit (opened : OpenedKit) : TableAndElementRotationModel =
@@ -2832,9 +2802,9 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         guardKitWrite model (fun () ->
             match model.experimentData.attachDataFile file with
             | Error error ->
+                // Spec 0050 S9.1: a refused attach keeps the experiment's data and badge.
                 {
-                    model with
-                        experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (DataFileAttachFailed error.caption)
+                    model with kitStatus = Some (ControlCaption $"Not attached — {error.describe}")
                 }
             | Ok attachment ->
                 // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
@@ -2860,11 +2830,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         }
                     match library.recordExperiment experiment with
                     | Ok () ->
-                        let status = validateExperimentAttachment model experiment data
                         {
                             model with
                                 experimentCollection = collection
-                                experimentDataStatus = model.experimentDataStatus |> Map.add experimentId status
+                                experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (checkExperimentData model experiment)
                                 kitStatus = None
                         }
                     | Error error ->
@@ -5191,16 +5160,13 @@ let private attachDataFileButton (availability : ControlAvailability) (dispatch 
     :> IView
 
 /// One experiment's data-file row: its description, the Attach verb + the currently-attached file
-/// name, and the typed parse / validation status (shown only once a file has been attached).
+/// name, and its data badge (spec 0050 S9.1).
 let private dataFileRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
     let attachedText =
         match experiment.dataOpt with
         | Some data -> $"file: {data.attachment.path.value} ({data.profile.value})"
         | None -> "no file attached"
-    let statusText =
-        match model.experimentDataStatus |> Map.tryFind experiment.id with
-        | Some status -> status.caption.value
-        | None -> ""
+    let statusText = (model.dataBadgeOf experiment).caption.value
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
@@ -5219,7 +5185,6 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
                 TextBlock.text statusText
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.maxWidth 360.0
-                TextBlock.isVisible (statusText <> "")
                 TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
             ]
         ]

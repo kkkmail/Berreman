@@ -20,6 +20,7 @@ open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.ExperimentDataLoad
 open OpticalConstructor.Tests
 
 /// Inverse experiments persist in folder kits and revalidate measured data on open (spec 0050 S4.3).
@@ -134,8 +135,9 @@ module InverseConstructorTests =
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
         let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "measured.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId with
-        | Some (DataFileValidated (MeasuredData.MeasuredPointCount 3)) -> ()
-        | other -> Assert.Fail($"expected DataFileValidated (MeasuredData.MeasuredPointCount 3), got %A{other}")
+        | Some (ValidatedDataBadge (MeasuredData.MeasuredPointCount 3) as badge) ->
+            Assert.Equal("Loaded — 3 point(s), schema-valid", badge.caption.value)
+        | other -> Assert.Fail($"expected ValidatedDataBadge (MeasuredData.MeasuredPointCount 3), got %A{other}")
         let exp = List.head m1.experimentCollection.experiments
         Assert.Equal<string option>(Some "data/measured.csv", exp.dataOpt |> Option.map (fun data -> data.attachment.path.value))
         // Spec 0050 S9.1: an attach reads the file through the intensity detector's built-in profile, every row the run's.
@@ -148,8 +150,10 @@ module InverseConstructorTests =
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
         let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "bad.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId with
-        | Some (AttachedFileParseError reason) -> Assert.Contains("row 3", reason.value)
-        | other -> Assert.Fail($"expected AttachedFileParseError, got %A{other}")
+        | Some (MappedDataBadge (Some problem) as badge) ->
+            Assert.Contains("row 3", problem.caption.value)
+            Assert.Equal($"Parse error — {problem.caption.value}", badge.caption.value)
+        | other -> Assert.Fail($"expected MappedDataBadge (Some _), got %A{other}")
 
     [<Fact>]
     let ``attaching an out-of-range intensity file records a typed validation-error status`` () =
@@ -158,8 +162,10 @@ module InverseConstructorTests =
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
         let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "oor.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId with
-        | Some (AttachedFileValidationError reason) -> Assert.Contains("outside the experiment range", reason.value)
-        | other -> Assert.Fail($"expected AttachedFileValidationError, got %A{other}")
+        | Some (OutOfRangeBadge problem as badge) ->
+            Assert.Contains("outside the experiment range", problem.caption.value)
+            Assert.Equal($"Validation error — {problem.caption.value}", badge.caption.value)
+        | other -> Assert.Fail($"expected OutOfRangeBadge, got %A{other}")
 
     [<Fact>]
     let ``the detector kind selects the ellipsometric load path`` () =
@@ -186,11 +192,11 @@ module InverseConstructorTests =
         | Error error -> Assert.Fail($"the committed experiment's setup must be the window's: {error.describe}")
         let m2 = m1 |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "ellipso.csv"))
         match m2.experimentDataStatus |> Map.tryFind expId with
-        | Some (DataFileValidated (MeasuredData.MeasuredPointCount 2)) -> ()
-        | other -> Assert.Fail($"expected DataFileValidated (MeasuredData.MeasuredPointCount 2) from the ellipsometric path, got %A{other}")
+        | Some (ValidatedDataBadge (MeasuredData.MeasuredPointCount 2)) -> ()
+        | other -> Assert.Fail($"expected ValidatedDataBadge (MeasuredData.MeasuredPointCount 2) from the ellipsometric path, got %A{other}")
 
     [<Fact>]
-    let ``a picked file the kit cannot attach records a typed attach-failed status and no attachment`` () =
+    let ``a picked file the kit cannot attach records no attachment and tells the kit status why`` () =
         let readyProxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
         let attachError = KitIoErr "picked measured.csv could not be read"
         let picked = FileName "measured.csv"
@@ -206,14 +212,15 @@ module InverseConstructorTests =
             }
         let model, expId = withIntensityExperiment { inverse () with experimentData = refusingProxy }
         let failed = model |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
-        Assert.Equal<MappedAttachment option>(None, (List.head failed.experimentCollection.experiments).dataOpt)
+        let failedExperiment = List.head failed.experimentCollection.experiments
+        Assert.Equal<MappedAttachment option>(None, failedExperiment.dataOpt)
         Assert.Equal(model.experimentCollection, failed.experimentCollection)
-        match Map.tryFind expId failed.experimentDataStatus with
-        | Some (DataFileAttachFailed reason as status) ->
-            Assert.Equal(attachError.describe, reason.value)
-            Assert.Contains("Attach failed", status.caption.value)
-            Assert.Contains(attachError.describe, status.caption.value)
-        | other -> Assert.Fail($"expected DataFileAttachFailed, got %A{other}")
+        // Spec 0050 S9.1: the refusal keeps the experiment's badge and tells the kit status why.
+        Assert.Equal<ExperimentDataBadge>(NoDataBadge, failed.dataBadgeOf failedExperiment)
+        Assert.Equal("No data", (failed.dataBadgeOf failedExperiment).caption.value)
+        Assert.Equal<Map<Experiments.ExperimentId, ExperimentDataBadge>>(model.experimentDataStatus, failed.experimentDataStatus)
+        let notAttached = ControlCaption $"Not attached — {attachError.describe}"
+        Assert.Equal<ControlCaption option>(Some notAttached, failed.kitStatus)
 
         let attached =
             {
@@ -226,9 +233,10 @@ module InverseConstructorTests =
             }
             |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
         Assert.Equal(attached.experimentCollection, refusedReplacement.experimentCollection)
-        match Map.tryFind expId refusedReplacement.experimentDataStatus with
-        | Some (DataFileAttachFailed reason) -> Assert.Equal(attachError.describe, reason.value)
-        | other -> Assert.Fail($"expected DataFileAttachFailed for replacement, got %A{other}")
+        let attachedExperiment = List.head attached.experimentCollection.experiments
+        Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredData.MeasuredPointCount 2), attached.dataBadgeOf attachedExperiment)
+        Assert.Equal<ExperimentDataBadge>(attached.dataBadgeOf attachedExperiment, refusedReplacement.dataBadgeOf attachedExperiment)
+        Assert.Equal<ControlCaption option>(Some notAttached, refusedReplacement.kitStatus)
 
     [<Fact>]
     let ``committed experiments and their attachments are kept in the kit and reopen with it`` () =
@@ -292,22 +300,22 @@ module InverseConstructorTests =
             Assert.Equal<DataAttachment list>([ attachment ], loadedAttachments |> Seq.toList)
             Assert.Equal<Experiments.Experiment list>(saved.experimentCollection.experiments, loaded.experimentCollection.experiments)
             Assert.Equal(1, Map.count loaded.experimentDataStatus)
-            Assert.Equal<ExperimentFileStatus option>(None, Map.tryFind unattachedId loaded.experimentDataStatus)
+            Assert.Equal<ExperimentDataBadge option>(None, Map.tryFind unattachedId loaded.experimentDataStatus)
             loaded
 
         saved.kit.close () |> SceneTestFixture.kitSuccess
         let loaded = loadWith (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
-        let expected = DataFileValidated (MeasuredData.MeasuredPointCount 3)
-        Assert.Equal<ExperimentFileStatus option>(Some expected, Map.tryFind expId loaded.experimentDataStatus)
+        let expected = ValidatedDataBadge (MeasuredData.MeasuredPointCount 3)
+        Assert.Equal<ExperimentDataBadge option>(Some expected, Map.tryFind expId loaded.experimentDataStatus)
 
         let parseError = MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"
         let malformed = loadWith (Error parseError)
-        Assert.Equal<ExperimentFileStatus option>(Some (AttachedFileParseError parseError.caption), Map.tryFind expId malformed.experimentDataStatus)
+        Assert.Equal<ExperimentDataBadge option>(Some (MappedDataBadge (Some parseError)), Map.tryFind expId malformed.experimentDataStatus)
 
         let outOfRange = loadWith (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         match Map.tryFind expId outOfRange.experimentDataStatus with
-        | Some (AttachedFileValidationError reason) -> Assert.Contains("outside the experiment range", reason.value)
-        | other -> Assert.Fail($"expected AttachedFileValidationError on open, got %A{other}")
+        | Some (OutOfRangeBadge problem) -> Assert.Contains("outside the experiment range", problem.caption.value)
+        | other -> Assert.Fail($"expected OutOfRangeBadge on open, got %A{other}")
 
     [<Fact>]
     let ``opening a kit flags an attachment whose data changed since attach or is missing`` () =
@@ -350,11 +358,12 @@ module InverseConstructorTests =
         saved.kit.close () |> SceneTestFixture.kitSuccess
         let opened = openFolder folder saved.catalogueImports
         let loaded = saved.loadKit { opened with experimentData = loadingProxy }
-        let missing = DataFileMissingFromKit secondPath.toControlCaption
+        let changed = DataChangedBadge (List.head attachments, Some currentHash)
+        let missing = DataChangedBadge (List.last attachments, None)
         Assert.Equal<DataAttachment list>(attachments, inspected |> Seq.toList)
-        Assert.Equal<Map<Experiments.ExperimentId, ExperimentFileStatus>>(
-            Map.ofList [ firstId, DataFileChangedSinceAttach; secondId, missing ], loaded.experimentDataStatus)
-        Assert.Equal("Data changed since attach — attach it again to validate it", DataFileChangedSinceAttach.caption.value)
+        Assert.Equal<Map<Experiments.ExperimentId, ExperimentDataBadge>>(
+            Map.ofList [ firstId, changed; secondId, missing ], loaded.experimentDataStatus)
+        Assert.Equal("Data changed since attach — attach it again to validate it", changed.caption.value)
         Assert.Equal("Data file missing — data/b.csv", missing.caption.value)
         Assert.Equal<Experiments.Experiment list>(saved.experimentCollection.experiments, loaded.experimentCollection.experiments)
 
@@ -369,9 +378,10 @@ module InverseConstructorTests =
                             }
                 }
         opened.library.kit.close () |> SceneTestFixture.kitSuccess
-        let readFailure = AttachedFileParseError readError.caption
-        Assert.Equal<Map<Experiments.ExperimentId, ExperimentFileStatus>>(
+        let readFailure = MappedDataBadge (Some (MeasuredData.MalformedDataFileErr readError.describe))
+        Assert.Equal<Map<Experiments.ExperimentId, ExperimentDataBadge>>(
             Map.ofList [ firstId, readFailure; secondId, readFailure ], unreadable.experimentDataStatus)
+        Assert.Equal($"Parse error — {readError.describe}", readFailure.caption.value)
         Assert.Equal<Experiments.Experiment list>(saved.experimentCollection.experiments, unreadable.experimentCollection.experiments)
 
     [<Fact>]
@@ -454,7 +464,7 @@ module InverseConstructorTests =
         Assert.Equal(edited.experimentCollection, refusedEdit.experimentCollection)
         let refusedAttach = protectedModel |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "replacement.csv"))
         Assert.Equal(protectedModel.experimentCollection, refusedAttach.experimentCollection)
-        Assert.Equal<Map<Experiments.ExperimentId, ExperimentFileStatus>>(protectedModel.experimentDataStatus, refusedAttach.experimentDataStatus)
+        Assert.Equal<Map<Experiments.ExperimentId, ExperimentDataBadge>>(protectedModel.experimentDataStatus, refusedAttach.experimentDataStatus)
         let refusedRemove = protectedModel |> updateTableAndElementRotation (ExpRemove expId)
         Assert.Equal(protectedModel.experimentCollection, refusedRemove.experimentCollection)
         for refused in [ refusedEdit; refusedAttach; refusedRemove ] do

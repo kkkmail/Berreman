@@ -481,11 +481,6 @@ module ConstructorUiIdOfDomain =
             | DetectorKind.Intensity -> ControlCaption "Intensity"
             | DetectorKind.Ellipsometer -> ControlCaption "Ellipsometer"
 
-    type OpticalConstructor.Domain.Kit.KitError with
-
-        /// The kit failure as the measured-data attachment status (spec 0050 S4.2).
-        member this.caption : ControlCaption = ControlCaption this.describe
-
     type OpticalConstructor.Domain.KitLibrary.KitLibraryError with
 
         /// The failed kit open as the start screen and the launcher show it (spec 0050 S5.2).
@@ -513,11 +508,6 @@ module ConstructorUiIdOfDomain =
         /// Open kit…'s offer for a folder without `.kit-json` (spec 0050 S5.2).
         member this.notAKitCaption : ControlCaption = ControlCaption $"{this.value.value} holds no kit."
 
-    type OpticalConstructor.Domain.Kit.KitRelativePath with
-
-        /// The kit-relative path as its data-file caption (spec 0050 S4.2).
-        member this.toControlCaption : ControlCaption = ControlCaption this.value
-
     type OpticalConstructor.Domain.MeasuredData.ExperimentDataError with
 
         /// The typed rejection's reason as a status line shows it.
@@ -527,6 +517,20 @@ module ConstructorUiIdOfDomain =
             | OpticalConstructor.Domain.MeasuredData.EmptyDataFileErr reason
             | OpticalConstructor.Domain.MeasuredData.DataRangeMismatchErr reason
             | OpticalConstructor.Domain.MeasuredData.DataUnitsMismatchErr reason -> ControlCaption reason
+
+    type ExperimentDataLoad.ExperimentDataBadge with
+
+        /// The badge as the experiment's data-file row shows it, keeping the captions of the status it replaced (spec 0050
+        /// S9.1).
+        member this.caption : ControlCaption =
+            match this with
+            | ExperimentDataLoad.NoDataBadge -> ControlCaption "No data"
+            | ExperimentDataLoad.MappedDataBadge None -> ControlCaption "Mapped — not validated"
+            | ExperimentDataLoad.MappedDataBadge (Some problem) -> ControlCaption $"Parse error — {problem.caption.value}"
+            | ExperimentDataLoad.ValidatedDataBadge points -> ControlCaption $"Loaded — {points.value} point(s), schema-valid"
+            | ExperimentDataLoad.DataChangedBadge (_, Some _) -> ControlCaption "Data changed since attach — attach it again to validate it"
+            | ExperimentDataLoad.DataChangedBadge (attachment, None) -> ControlCaption $"Data file missing — {attachment.path.value}"
+            | ExperimentDataLoad.OutOfRangeBadge problem -> ControlCaption $"Validation error — {problem.caption.value}"
 
     type UnitOfMeasure with
 
