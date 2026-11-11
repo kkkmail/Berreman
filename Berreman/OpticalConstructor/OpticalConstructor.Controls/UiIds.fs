@@ -139,12 +139,24 @@ type ConstructorUiId =
     /// The Add / Update and New actions.
     static member experimentAddButton : ConstructorUiId = ConstructorUiId "ExperimentAddButton"
     static member experimentNewButton : ConstructorUiId = ConstructorUiId "ExperimentNewButton"
+    /// The draft's scan lines: its closed blocks and its current block's held axes (spec 0050 S9.1).
+    static member experimentScanSummary : ConstructorUiId = ConstructorUiId "ExperimentScanSummary"
+    /// Add variable and Add block: the edited axis joins the current block, or closes it (spec 0050 S9.1).
+    static member experimentAddScanAxisButton : ConstructorUiId = ConstructorUiId "ExperimentAddScanAxisButton"
+    static member experimentAddScanBlockButton : ConstructorUiId = ConstructorUiId "ExperimentAddScanBlockButton"
+    /// A role box of the loaded experiment, by the role's code (spec 0050 S9.1).
+    static member experimentRoleChoice (role : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentRole_{role.value}"
+    /// The loaded experiment's session and notes fields (spec 0050 S9.1).
+    static member experimentSessionField : ConstructorUiId = ConstructorUiId "ExperimentSessionField"
+    static member experimentNotesField : ConstructorUiId = ConstructorUiId "ExperimentNotesField"
     /// The collection list and a row's Edit / Remove actions.
     static member experimentCollection : ConstructorUiId = ConstructorUiId "ExperimentCollection"
     /// A collected experiment's Edit, Remove and View (open its chart window) actions.
     static member experimentEditButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentEdit_{experiment.value}"
     static member experimentRemoveButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentRemove_{experiment.value}"
     static member experimentViewButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentView_{experiment.value}"
+    /// A collected experiment's data badge text (spec 0050 S9.1).
+    static member experimentRowBadge (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentBadge_{experiment.value}"
     /// The inline result polyline (the first series — the intensity / Ψ curve).
     static member experimentChart : ConstructorUiId = ConstructorUiId "ExperimentChart"
     /// The ellipsometer Ψ/Δ single-point readout text.

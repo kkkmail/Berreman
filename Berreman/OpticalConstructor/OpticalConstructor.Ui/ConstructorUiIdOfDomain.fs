@@ -400,6 +400,32 @@ module ConstructorUiIdOfDomain =
         /// The experiment as the key of its Experiments-bay collection row (its number's text).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
 
+    type ExperimentRole with
+
+        /// The role as the code of its Experiments-bay role box (spec 0050 S9.1).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | ScienceRun -> ConstructorUiKey "science"
+            | CalibrationRun -> ConstructorUiKey "calibration"
+            | DarkRun -> ConstructorUiKey "dark"
+            | DriftCheckRun -> ConstructorUiKey "drift-check"
+            | DiagnosticRun -> ConstructorUiKey "diagnostic"
+            | IgnoredRun -> ConstructorUiKey "ignored"
+            | PlannedRun -> ConstructorUiKey "planned"
+
+        /// The role as its box and a collection row show it (spec 0050 S9.1).
+        member this.caption : ControlCaption = ControlCaption this.text
+
+    type SessionName with
+
+        /// The session as the Experiments bay's Session field shows it (spec 0050 S9.1).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type ExperimentNotes with
+
+        /// The notes as the Experiments bay's Notes field shows them (spec 0050 S9.1).
+        member this.caption : ControlCaption = ControlCaption this.value
+
     type Kit.SetupName with
 
         /// The setup name as its saved-setup button's caption (spec 0050 S8.2).

@@ -159,10 +159,18 @@ module ScrollExtentTests =
     let ``Inverse: the Experiments bay with its data-file section leaves everything reachable`` () =
         let materials, samples, categories, library = stores ()
         assertReachable "Inverse/Experiments" (fun () ->
-            constructorWindow
+            let collection = (filledExperiments ()).experimentCollection
+            // Spec 0050 S9.1: E1 loaded, its axis held, so the role row, the session and notes fields and a scan line show.
+            let loaded =
                 { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with
                     ribbon = BayNames.experiments
-                    experimentCollection = (filledExperiments ()).experimentCollection })
+                    experimentCollection = collection }
+                |> updateTableAndElementRotation (ExpEdit (List.head collection.experiments).id)
+                |> updateTableAndElementRotation ExpAddScanAxis
+            Assert.Equal(ControlOffered, loaded.experimentState.bookkeepingAvailability)
+            Assert.Equal(7, List.length loaded.experimentState.roleOptions)
+            Assert.Single(loaded.experimentState.scanLines) |> ignore
+            constructorWindow loaded)
 
     [<Fact>]
     let ``Library and Materials windows: the facet rows wrap, nothing is clipped`` () =

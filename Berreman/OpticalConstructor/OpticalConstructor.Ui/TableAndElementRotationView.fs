@@ -4630,7 +4630,8 @@ type TableAndElementRotationModel with
     /// element-constrained variable choices, the current draft (chosen element / variable / capture / range),
     /// whether it can be committed and whether it is editing, the collection of added experiments, and the
     /// inline chart of the draft's run. Disabled when the scene has no elements. Public so the host's bay
-    /// projection is unit-testable without mounting a window.
+    /// projection is unit-testable without mounting a window. Spec 0050 S9.1: also the draft's scan lines, the edited
+    /// experiment's role, session and notes, and each row's name, role and data badge.
     member model.experimentState : ExperimentControls.ExperimentControlsState =
         let col = model.experimentCollection
         let draft = col.draft
@@ -4649,6 +4650,28 @@ type TableAndElementRotationModel with
             | Some id -> availableCaptures model id
             | None -> []
         let capture = model.draftCapture
+        // Spec 0050 S9.1: step 288's texts — a closed block's axes and capture, the current block's held axes.
+        let axesText (axes : Experiments.ScanAxis list) : string =
+            axes |> List.map (fun (axis : Experiments.ScanAxis) -> axis.describe) |> String.concat " × "
+        let blockLines =
+            draft.closedBlocks
+            |> List.mapi (fun index (block : Experiments.ScanBlock) ->
+                match block.axes with
+                | [] -> ControlCaption $"Block {index + 1}: Dark line, capture {block.capture.label}"
+                | axes -> ControlCaption $"Block {index + 1}: {axesText axes}, capture {block.capture.label}")
+        let heldLines =
+            match draft.outerAxes with
+            | [] -> []
+            | axes -> [ ControlCaption $"This block: {axesText axes}" ]
+        let editedOpt =
+            draft.editingId |> Option.bind (fun id -> col.experiments |> List.tryFind (fun experiment -> experiment.id = id))
+        let addAvailability =
+            match model.kitWrites with
+            | ControlWithheld -> ControlWithheld
+            | ControlOffered ->
+                match col.canCommit, capture with
+                | true, Some _ -> ControlOffered
+                | true, None | false, _ -> ControlWithheld
         {
             candidates = model.sweepCandidates
             chosenId = draft.elementId |> Option.map (fun id -> id.uiKey)
@@ -4675,24 +4698,44 @@ type TableAndElementRotationModel with
             rangeMax = draft.range.max.rangeEnd
             rangePoints = draft.range.points.pointCount
             rangeUnitLabel = ControlCaption (match draft.variable with Some v -> v.unitLabel | None -> "°")
-            addAvailability =
-                match model.kitWrites with
-                | ControlWithheld -> ControlWithheld
-                | ControlOffered ->
-                    match col.canCommit, capture with
-                    | true, Some _ -> ControlOffered
-                    | true, None | false, _ -> ControlWithheld
+            addAvailability = addAvailability
+            scanLines = blockLines @ heldLines
+            scanAvailability = addAvailability
             removalAvailability = model.kitWrites
             editorMode =
                 match draft.editingId with
                 | Some _ -> ExperimentControls.EditorUpdatesExisting
                 | None -> ExperimentControls.EditorAddsNew
+            roleOptions =
+                match editedOpt with
+                | Some edited ->
+                    Experiments.ExperimentRole.all
+                    |> List.map (fun role ->
+                        {
+                            ExperimentControls.ExperimentRoleOption.key = role.uiKey
+                            caption = role.caption
+                            mark = if role = edited.role then ExperimentControls.RoleChosen else ExperimentControls.RoleNotChosen
+                        })
+                | None -> []
+            sessionText =
+                match editedOpt |> Option.bind (fun edited -> edited.sessionOpt) with
+                | Some session -> session.caption
+                | None -> ControlCaption ""
+            notesText =
+                match editedOpt with
+                | Some edited -> edited.notes.caption
+                | None -> ControlCaption ""
+            bookkeepingAvailability =
+                match editedOpt, model.kitWrites with
+                | Some _, ControlOffered -> ControlOffered
+                | Some _, ControlWithheld | None, _ -> ControlWithheld
             collection =
                 col.experiments
                 |> List.map (fun e ->
                     {
                         ExperimentControls.ExperimentRow.id = e.id.uiKey
-                        description = ControlCaption e.description
+                        description = ControlCaption $"{e.name.value} [{e.role.text}] — {e.description}"
+                        badge = ControlCaption (model.dataBadgeOf e).text
                         focus = if draft.editingId = Some e.id then ExperimentControls.LoadedInEditor else ExperimentControls.NotLoadedInEditor
                     })
             readout = model.experimentReadout
@@ -4708,10 +4751,11 @@ type TableAndElementRotationModel with
         }
 
 /// The Experiments bay's handlers. A clicked candidate or row key is resolved against the scene and the
-/// collection it was built from.
+/// collection it was built from; a role, session or notes edit is the edited experiment's (spec 0050 S9.1).
 let private experimentHandlers (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : ExperimentControls.ExperimentControlsHandlers =
     let withExperiment (msg : Experiments.ExperimentId -> TableAndElementRotationMsg) (key : ConstructorUiKey) : unit =
         model.experimentCollection.experiments |> List.tryFind (fun e -> e.id.uiKey = key) |> Option.iter (fun e -> dispatch (msg e.id))
+    let edited = model.experimentCollection.draft.editingId
     {
         chooseElement = fun key -> model.elements |> List.tryFind (fun e -> e.id.uiKey = key) |> Option.iter (fun e -> dispatch (ExpChooseElement e.id))
         chooseVariable = fun v -> dispatch (ExpChooseVariable v)
@@ -4722,6 +4766,15 @@ let private experimentHandlers (model : TableAndElementRotationModel) (dispatch 
         setSourceWaveLength = fun nm -> dispatch (ExpSetSourceWaveLength nm)
         addOrUpdate = fun () -> dispatch ExpCommit
         newExperiment = fun () -> dispatch ExpNew
+        addScanAxis = fun () -> dispatch ExpAddScanAxis
+        addScanBlock = fun () -> dispatch ExpAddScanBlock
+        setRole =
+            fun key ->
+                match edited, Experiments.ExperimentRole.all |> List.tryFind (fun role -> role.uiKey = key) with
+                | Some id, Some role -> dispatch (SetExperimentRole (id, role))
+                | Some _, None | None, _ -> ()
+        setSession = fun text -> edited |> Option.iter (fun id -> dispatch (SetExperimentSession (id, text)))
+        setNotes = fun text -> edited |> Option.iter (fun id -> dispatch (SetExperimentNotes (id, text)))
         editExperiment = withExperiment ExpEdit
         removeExperiment = withExperiment ExpRemove
         viewExperiment = withExperiment ViewExperiment

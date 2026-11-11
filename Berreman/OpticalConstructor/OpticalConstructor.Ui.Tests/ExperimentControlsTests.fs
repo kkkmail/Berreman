@@ -1389,6 +1389,7 @@ module ExperimentControlsTests =
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                     setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
                     addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                    addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
                     viewExperiment = ignore; openChartWindow = ignore
                 }
             let state =
@@ -1408,4 +1409,243 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
             Assert.DoesNotContain(texts, fun t -> t.StartsWith "Open chart")
+            window.Close())
+
+    // ============ spec 0050 S9.1 — the bay reads v2: the scan, the loaded experiment's bookkeeping, the rows' badges ============
+
+    /// A live, re-rendering Main view over `seed`, and the model its last message left.
+    let private liveWithLatest (seed : TableAndElementRotationModel) : Window * TableAndElementRotationModel ref =
+        let latest = ref seed
+        let comp =
+            Component(fun ctx ->
+                let st = ctx.useState seed
+                mainView st.Current (fun msg ->
+                    let next = updateTableAndElementRotation msg st.Current
+                    latest.Value <- next
+                    st.Set next))
+        Window(Width = 1000.0, Height = 980.0, Content = comp), latest
+
+    /// The bay's control of that id, by its `Name` or its AutomationId.
+    let private controlIn<'Control when 'Control :> Control> (window : Window) (id : ConstructorUiId) : 'Control option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (fun visual ->
+            match visual with
+            | :? 'Control as c when matchesId id.value c -> Some c
+            | _ -> None)
+
+    /// The scan summary's lines, top to bottom.
+    let private scanLinesIn (window : Window) : string list =
+        match controlIn<StackPanel> window ConstructorUiId.experimentScanSummary with
+        | Some panel -> panel.Children |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
+        | None -> failwith "the scan summary is not in the bay"
+
+    /// Whether the bay's box of that id takes a press.
+    let private enabledIn (window : Window) (id : ConstructorUiId) : bool =
+        match controlIn<Border> window id with
+        | Some box -> box.IsEffectivelyEnabled
+        | None -> failwith $"{id.value} is not in the bay"
+
+    /// The Main scene with a sample at index 2, the Experiments bay open.
+    let private sampleBay () : TableAndElementRotationModel =
+        SceneTestFixture.mainScene ()
+        |> updateTableAndElementRotation (AddElement Sample)
+        |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+
+    /// The Main scene with a polarizer at index 2 varied on R1 and committed as E1, the Experiments bay open.
+    let private committedPolarizer () : TableAndElementRotationModel =
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        m
+        |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
+        |> updateTableAndElementRotation ExpCommit
+        |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+
+    [<Fact>]
+    let ``the bay's scan, role, session and notes UiIds are the stable intent-named ids`` () =
+        Assert.Equal("ExperimentScanSummary", ConstructorUiId.experimentScanSummary.value)
+        Assert.Equal("ExperimentAddScanAxisButton", ConstructorUiId.experimentAddScanAxisButton.value)
+        Assert.Equal("ExperimentAddScanBlockButton", ConstructorUiId.experimentAddScanBlockButton.value)
+        Assert.Equal("ExperimentRole_calibration", (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey).value)
+        Assert.Equal("ExperimentSessionField", ConstructorUiId.experimentSessionField.value)
+        Assert.Equal("ExperimentNotesField", ConstructorUiId.experimentNotesField.value)
+        Assert.Equal("ExperimentBadge_3", (ConstructorUiId.experimentRowBadge (Experiments.ExperimentId 3).uiKey).value)
+        Assert.Equal<string list>(
+            [ "ExperimentRole_science"; "ExperimentRole_calibration"; "ExperimentRole_dark"; "ExperimentRole_drift-check"
+              "ExperimentRole_diagnostic"; "ExperimentRole_ignored"; "ExperimentRole_planned" ],
+            Experiments.ExperimentRole.all |> List.map (fun role -> (ConstructorUiId.experimentRoleChoice role.uiKey).value))
+        Assert.Equal<string list>(
+            [ "Science"; "Calibration"; "Dark"; "Drift check"; "Diagnostic"; "Ignored"; "Planned" ],
+            Experiments.ExperimentRole.all |> List.map (fun role -> role.caption.value))
+
+    [<Fact>]
+    let ``Add variable and Add block list the held axes and blocks under the range`` () =
+        HeadlessSession.run (fun () ->
+            let seed = sampleBay ()
+            let candidate = ConstructorUiId.experimentCandidate (ConstructorUiKey (idOf 2 seed))
+            let window, latest = liveWithLatest seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.Empty(scanLinesIn window)
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "nothing chosen: Add variable is withheld")
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanBlockButton, "nothing chosen: Add block is withheld")
+
+            clickIn window candidate.value
+            clickIn window (ConstructorUiId.experimentVariable ExperimentControls.VaryR2.uiKey).value
+            Assert.True(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "R2 chosen: Add variable is offered")
+            clickIn window ConstructorUiId.experimentAddScanAxisButton.value
+            let held = Assert.Single latest.Value.experimentCollection.draft.outerAxes
+            Assert.Equal(Experiments.VaryR2, held.variable)
+            Assert.Equal<string list>([ $"This block: {held.describe}" ], scanLinesIn window)
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "the edited axis held: Add variable is withheld")
+
+            clickIn window candidate.value
+            clickIn window (ConstructorUiId.experimentVariable ExperimentControls.VaryR1.uiKey).value
+            Assert.True(enabledIn window ConstructorUiId.experimentAddScanBlockButton, "R1 chosen: Add block is offered")
+            clickIn window ConstructorUiId.experimentAddScanBlockButton.value
+            let block = Assert.Single latest.Value.experimentCollection.draft.closedBlocks
+            Assert.Equal<Experiments.VariableParameter list>([ Experiments.VaryR2; Experiments.VaryR1 ], block.axes |> List.map (fun axis -> axis.variable))
+            Assert.Empty(latest.Value.experimentCollection.draft.outerAxes)
+            let r2, r1 = List.item 0 block.axes, List.item 1 block.axes
+            Assert.Equal<string list>([ $"Block 1: {r2.describe} × {r1.describe}, capture {block.capture.label}" ], scanLinesIn window)
+            let line = List.exactlyOne (scanLinesIn window)
+            Assert.True(line.IndexOf "Incidence R2" < line.IndexOf "Rotation R1", $"R2 is the outer axis: {line}")
+            Assert.EndsWith(", capture Transmitted (T)", line)
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "nothing chosen again: Add variable is withheld")
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanBlockButton, "nothing chosen again: Add block is withheld")
+            window.Close())
+
+    [<Fact>]
+    let ``an experiment loaded in the editor shows its role, session and notes, and a press on a role sends it`` () =
+        HeadlessSession.run (fun () ->
+            let committed = committedPolarizer ()
+            let e1 = Assert.Single committed.experimentCollection.experiments
+            let roleBoxShown (window : Window) (role : Experiments.ExperimentRole) : bool =
+                match controlIn<Border> window (ConstructorUiId.experimentRoleChoice role.uiKey) with
+                | Some box -> box.IsEffectivelyVisible
+                | None -> false
+            let fieldText (window : Window) (id : ConstructorUiId) : string =
+                match controlIn<TextBox> window id with
+                | Some field when field.IsEffectivelyVisible -> Option.ofObj field.Text |> Option.defaultValue ""
+                | Some _ -> failwith $"{id.value} is hidden"
+                | None -> failwith $"{id.value} is not in the bay"
+            let marksWith (chosen : Experiments.ExperimentRole) : (string * ExperimentControls.ExperimentRoleMark) list =
+                Experiments.ExperimentRole.all
+                |> List.map (fun role -> role.uiKey.value, (if role = chosen then ExperimentControls.RoleChosen else ExperimentControls.RoleNotChosen))
+            let marks (model : TableAndElementRotationModel) : (string * ExperimentControls.ExperimentRoleMark) list =
+                model.experimentState.roleOptions |> List.map (fun option -> option.key.value, option.mark)
+
+            // Nothing loaded: no role box, no field shown.
+            let unloaded = committed |> updateTableAndElementRotation ExpNew
+            Assert.Empty(unloaded.experimentState.roleOptions)
+            Assert.Equal(ControlWithheld, unloaded.experimentState.bookkeepingAvailability)
+            let bare, _ = liveWithLatest unloaded
+            bare.Show()
+            Dispatcher.UIThread.RunJobs()
+            for role in Experiments.ExperimentRole.all do
+                Assert.False(roleBoxShown bare role, $"{role.text} is shown with no experiment loaded")
+            for id in [ ConstructorUiId.experimentSessionField; ConstructorUiId.experimentNotesField ] do
+                match controlIn<TextBox> bare id with
+                | Some field -> Assert.False(field.IsEffectivelyVisible, $"{id.value} is shown with no experiment loaded")
+                | None -> ()
+            bare.Close()
+
+            // E1 loaded: Science chosen, the session and notes empty.
+            let loaded = unloaded |> updateTableAndElementRotation (ExpEdit e1.id)
+            Assert.Equal<(string * ExperimentControls.ExperimentRoleMark) list>(marksWith Experiments.ScienceRun, marks loaded)
+            Assert.Equal(ControlOffered, loaded.experimentState.bookkeepingAvailability)
+            let window, latest = liveWithLatest loaded
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            for role in Experiments.ExperimentRole.all do
+                Assert.True(roleBoxShown window role, $"{role.text} is not shown for the loaded experiment")
+            Assert.Equal("", fieldText window ConstructorUiId.experimentSessionField)
+            Assert.Equal("", fieldText window ConstructorUiId.experimentNotesField)
+
+            // A press on Calibration records it for E1.
+            clickIn window (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey).value
+            Assert.Equal<ControlCaption option>(None, latest.Value.kitStatus)
+            let recorded = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
+            Assert.Equal(Experiments.CalibrationRun, recorded.role)
+            Assert.Equal<(string * ExperimentControls.ExperimentRoleMark) list>(marksWith Experiments.CalibrationRun, marks latest.Value)
+
+            // The session and notes commit on Enter, as the range fields do.
+            let typeInto (id : ConstructorUiId) (text : string) : unit =
+                match controlIn<TextBox> window id with
+                | Some field ->
+                    field.Focus() |> ignore
+                    Dispatcher.UIThread.RunJobs()
+                    window.KeyTextInput(text)
+                    Dispatcher.UIThread.RunJobs()
+                    window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                    window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                | None -> failwith $"{id.value} is not in the bay"
+            typeInto ConstructorUiId.experimentSessionField "Run A"
+            typeInto ConstructorUiId.experimentNotesField "dusty mount"
+            let noted = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
+            Assert.Equal(Some "Run A", noted.sessionOpt |> Option.map (fun session -> session.value))
+            Assert.Equal("dusty mount", noted.notes.value)
+            Assert.Equal("Run A", fieldText window ConstructorUiId.experimentSessionField)
+            Assert.Equal("dusty mount", fieldText window ConstructorUiId.experimentNotesField)
+
+            // E2 recorded, then E1 loaded over it straight from its row: the next press is E1's, never E2's.
+            clickIn window ConstructorUiId.experimentNewButton.value
+            clickIn window (ConstructorUiId.experimentCandidate (ConstructorUiKey (idOf 2 committed))).value
+            clickIn window ConstructorUiId.experimentAddButton.value
+            let e2 = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id <> e1.id)
+            Assert.Equal(Some e2.id, latest.Value.experimentCollection.draft.editingId)
+            Assert.Equal("", fieldText window ConstructorUiId.experimentSessionField)
+            clickIn window (ConstructorUiId.experimentEditButton e1.id.uiKey).value
+            Assert.Equal(Some e1.id, latest.Value.experimentCollection.draft.editingId)
+            Assert.Equal("Run A", fieldText window ConstructorUiId.experimentSessionField)
+            clickIn window (ConstructorUiId.experimentRoleChoice Experiments.DarkRun.uiKey).value
+            let roleOf (id : Experiments.ExperimentId) : Experiments.ExperimentRole =
+                (latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = id)).role
+            Assert.Equal(Experiments.DarkRun, roleOf e1.id)
+            Assert.Equal(Experiments.ScienceRun, roleOf e2.id)
+            window.Close())
+
+    [<Fact>]
+    let ``each collected experiment's row shows its name, its role and its data badge`` () =
+        HeadlessSession.run (fun () ->
+            let committed = committedPolarizer ()
+            let e1 = Assert.Single committed.experimentCollection.experiments
+            Assert.Equal("E1", e1.name.value)
+            let row = Assert.Single committed.experimentState.collection
+            Assert.Equal($"E1 [Science] — {e1.description}", row.description.value)
+            Assert.Equal("no data", row.badge.value)
+
+            let window, _ = liveWithLatest committed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let texts (id : ConstructorUiId) : string list =
+                match controlIn<Control> window id with
+                | Some control ->
+                    (control :> Visual).GetSelfAndVisualDescendants()
+                    |> Seq.choose (function :? TextBlock as t when t.IsEffectivelyVisible -> Option.ofObj t.Text | _ -> None)
+                    |> List.ofSeq
+                | None -> failwith $"{id.value} is not in the bay"
+            Assert.Equal<string list>([ $"E1 [Science] — {e1.description}" ], texts (ConstructorUiId.experimentEditButton e1.id.uiKey))
+            Assert.Equal<string list>([ "no data" ], texts (ConstructorUiId.experimentRowBadge e1.id.uiKey))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing Add variable between two axes and Add records one two-variable experiment`` () =
+        HeadlessSession.run (fun () ->
+            let seed = sampleBay ()
+            let candidate = (ConstructorUiId.experimentCandidate (ConstructorUiKey (idOf 2 seed))).value
+            let window, latest = liveWithLatest seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window candidate
+            clickIn window (ConstructorUiId.experimentVariable (ConstructorUiKey "r2")).value
+            clickIn window ConstructorUiId.experimentAddScanAxisButton.value
+            clickIn window candidate
+            clickIn window (ConstructorUiId.experimentVariable (ConstructorUiKey "r1")).value
+            clickIn window ConstructorUiId.experimentAddButton.value
+            let experiment = Assert.Single latest.Value.experimentCollection.experiments
+            let block = Assert.Single experiment.scan.blocks
+            Assert.Equal<Experiments.VariableParameter list>([ Experiments.VaryR2; Experiments.VaryR1 ], block.axes |> List.map (fun axis -> axis.variable))
+            Assert.Equal<Library.ElementId list>([ (elem 2 seed).id; (elem 2 seed).id ], block.axes |> List.map (fun axis -> axis.elementId))
             window.Close())

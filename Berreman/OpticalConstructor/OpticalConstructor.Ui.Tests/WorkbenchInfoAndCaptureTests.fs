@@ -227,6 +227,7 @@ module WorkbenchInfoAndCaptureTests =
                         chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                         setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
                         addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                        addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
                         viewExperiment = ignore; openChartWindow = ignore
                     }
                 let window = Window(Width = 600.0, Height = 800.0)
