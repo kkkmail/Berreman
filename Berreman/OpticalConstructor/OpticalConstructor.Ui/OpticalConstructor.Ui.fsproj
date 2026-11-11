@@ -116,6 +116,7 @@
         <Compile Include="KitOpening.fs" />
         <Compile Include="KitArchiveJob.fs" />
         <Compile Include="SlotBarView.fs" />
+        <Compile Include="SetupGridView.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="KitStartView.fs" />
         <Compile Include="ItemsPanelView.fs" />

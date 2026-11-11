@@ -187,6 +187,17 @@ module ConstructorUiIdOfDomain =
         static member slotChipChoice (role : Setups.SlotRole) (item : Kit.ItemId) : ConstructorUiId =
             ConstructorUiId $"SlotChipChoice_{role.uiKey.value}_{item.value}"
 
+        /// An item a slot's row of the grid panel offers: `SetupGridItem_<role.uiKey>_<the item's GUID>` (spec 0050 S8.4).
+        static member setupGridItemChoice (role : Setups.SlotRole) (item : Kit.ItemId) : ConstructorUiId =
+            ConstructorUiId $"SetupGridItem_{role.uiKey.value}_{item.value}"
+
+        /// A slot's R1 field in the grid panel: `SetupGridAngleField_<role.uiKey>` (spec 0050 S8.4).
+        static member setupGridAngleField (role : Setups.SlotRole) : ConstructorUiId = ConstructorUiId $"SetupGridAngleField_{role.uiKey.value}"
+
+        /// A slot's tried R1 in the grid panel: `SetupGridAngle_<role.uiKey>_<its degreeCaption without the °>` (spec 0050 S8.4).
+        static member setupGridAngle (role : Setups.SlotRole) (angle : Berreman.Geometry.Angle) : ConstructorUiId =
+            ConstructorUiId $"SetupGridAngle_{role.uiKey.value}_{(BarDegrees angle.degrees).text}"
+
         /// The element menu's "Place on the reflected ray of" this element (spec 0046).
         static member elementMenuPlaceOnReflectedOf (elementId : ElementId) : ConstructorUiId =
             ConstructorUiId $"ElementMenuPlaceOnReflectedOf_{elementId.value}"
@@ -800,6 +811,14 @@ module ConstructorUiIdOfDomain =
         /// The angle in degrees as the rotation bar writes them (`BarDegrees.text`), then `°` (spec 0050 S8.4).
         member this.degreeCaption : ControlCaption = ControlCaption $"{(BarDegrees this.degrees).text}°"
 
+    type Kit.ItemId with
+
+        /// The label of this item among `items`, `(not in this kit)` when `items` lacks it (spec 0050 S8.4).
+        member this.labelAmong (items : Kit.Item list) : ControlCaption =
+            match items |> List.tryFind (fun item -> item.id = this) with
+            | Some item -> item.label.caption
+            | None -> ControlCaption "(not in this kit)"
+
     type Setups.RoledSlot with
 
         /// The chip's `<role>: <item label>`, `—` for nothing and `(not in this kit)` for an item `items` lacks; an
@@ -808,13 +827,30 @@ module ConstructorUiIdOfDomain =
             match this.slot.content.itemOpt with
             | None -> ControlCaption $"{this.role.text}: —"
             | Some held ->
-                let label =
-                    match items |> List.tryFind (fun item -> item.id = held) with
-                    | Some item -> item.label.value
-                    | None -> "(not in this kit)"
+                let label = (held.labelAmong items).value
                 match this.role with
                 | Setups.ObjectSlotRole _ -> ControlCaption $"{this.role.text}: {label} @ {this.slot.turnAngle.degreeCaption.value}"
                 | Setups.SourceSlotRole
                 | Setups.PrepSlotRole _
                 | Setups.AnalyzerSlotRole _
                 | Setups.DetectorSlotRole _ -> ControlCaption $"{this.role.text}: {label}"
+
+    type SetupGrids.GridCombination with
+
+        /// Each pick in order as `<its slot's role in the table's light order>: <item label> @ <R1>`, `—` for nothing and
+        /// `(not in this kit)` for an item `items` lacks, joined by `, `; no pick is `The table as it is` (spec 0050 S8.4).
+        member this.caption (table : Setups.SetupSlot list) (items : Kit.Item list) : ControlCaption =
+            let roles = Setups.SetupSlot.inLightOrder table
+            let pickCaption (pick : SetupGrids.SlotPick) : string =
+                let role =
+                    match roles |> List.tryFind (fun roled -> roled.slot.id = pick.slot) with
+                    | Some roled -> roled.role.text
+                    | None -> pick.slot.value
+                let label =
+                    match pick.choice.itemOpt with
+                    | Some held -> (held.labelAmong items).value
+                    | None -> "—"
+                $"{role}: {label} @ {pick.choice.r1.degreeCaption.value}"
+            match this.picks with
+            | [] -> ControlCaption "The table as it is"
+            | picks -> ControlCaption (picks |> List.map pickCaption |> String.concat ", ")

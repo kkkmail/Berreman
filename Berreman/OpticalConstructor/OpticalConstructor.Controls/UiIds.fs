@@ -807,6 +807,20 @@ type ConstructorUiId =
     static member slotChipChoiceList : ConstructorUiId = ConstructorUiId "SlotChipChoiceList"
     /// Record experiment: a new experiment of the draft over the active setup (spec 0050 S8.4; 001 §O).
     static member recordExperimentButton : ConstructorUiId = ConstructorUiId "RecordExperimentButton"
+    /// Setup grid…: opens the grid generator's panel between the bar and the table (spec 0050 S8.4; 001 §J).
+    static member setupGridOpenButton : ConstructorUiId = ConstructorUiId "SetupGridOpenButton"
+
+    // --- The setup grid generator (SetupGridView). ---
+    /// The grid generator's panel: each slot's items and R1 angles to try, and their combinations (spec 0050 S8.4).
+    static member setupGridPanel : ConstructorUiId = ConstructorUiId "SetupGridPanel"
+    /// The panel's combinations, one line each, ticked, unticked or impossible (spec 0050 S8.4).
+    static member setupGridCombinationList : ConstructorUiId = ConstructorUiId "SetupGridCombinationList"
+    /// Generate: every ticked combination as a setup of the kit (spec 0050 S8.4; 001 §O).
+    static member setupGridGenerateButton : ConstructorUiId = ConstructorUiId "SetupGridGenerateButton"
+    /// Close: the panel closes, forgetting its draft (spec 0050 S8.4).
+    static member setupGridCloseButton : ConstructorUiId = ConstructorUiId "SetupGridCloseButton"
+    /// A combination's line in the panel's list: `SetupGridCombination_<n>`, 1-based (spec 0050 S8.4).
+    static member setupGridCombination (position : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SetupGridCombination_{position.value}"
 
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
     /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).

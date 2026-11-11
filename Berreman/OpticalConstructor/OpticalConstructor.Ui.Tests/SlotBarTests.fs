@@ -45,7 +45,7 @@ module SlotBarTests =
         SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source Library.PresetIds.heNe633)
 
     /// The ideal linear polarizer preset on the shipped ideal-polarizer item model.
-    let private linearPolarizerChoice : ItemModelChoice =
+    let internal linearPolarizerChoice : ItemModelChoice =
         match BuiltinCatalogue.preset Library.PresetIds.polarizerLp with
         | Library.PolarizerItem polarizer ->
             PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizer)
@@ -54,7 +54,7 @@ module SlotBarTests =
         | Library.DetectorItem _ -> failwith "The Built-in linear polarizer preset must be a polarizer."
 
     /// The glass plate at its first version on the shipped stack-sample item model.
-    let private plateChoice (plate : Library.SampleId) : ItemModelChoice =
+    let internal plateChoice (plate : Library.SampleId) : ItemModelChoice =
         StackSampleChoice (
             BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId,
             Library.SampleVersionId.firstOf plate,
@@ -62,13 +62,13 @@ module SlotBarTests =
         )
 
     /// Runs over a fresh Main scene in its scratch kit; the kit is closed at the end.
-    let private withScene (run : TableAndElementRotationModel -> unit) : unit =
+    let internal withScene (run : TableAndElementRotationModel -> unit) : unit =
         let scene = initMain () |> SceneTestFixture.kitSuccess
         try run scene
         finally scene.kit.close () |> SceneTestFixture.kitSuccess
 
     /// The model with an item of `choice` labelled `label`, added through the Items panel's add form (spec 0050 S7.2).
-    let private withItemAdded (label : ControlCaption) (choice : ItemModelChoice) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    let internal withItemAdded (label : ControlCaption) (choice : ItemModelChoice) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let filled =
             model
             |> update OpenAddItemForm
@@ -79,7 +79,7 @@ module SlotBarTests =
         | None -> failwith $"The add form must send {label.value}."
 
     /// The id of the kit's item labelled `label`.
-    let private itemLabelled (label : ItemLabel) (model : TableAndElementRotationModel) : ItemId =
+    let internal itemLabelled (label : ItemLabel) (model : TableAndElementRotationModel) : ItemId =
         match model.kitItems |> List.tryFind (fun item -> item.label = label) with
         | Some item -> item.id
         | None -> failwith $"The kit must hold {label.value}."
@@ -127,7 +127,7 @@ module SlotBarTests =
 
     /// Shows `mainView` over `model` headless at 1000 × 900, as `ScrollExtentTests.constructorWindow` mounts it, keeping
     /// every model the program answers in order; runs `check` over the window and those models, then closes it.
-    let private withMainWindow
+    let internal withMainWindow
         (model : TableAndElementRotationModel)
         (check : Window -> ResizeArray<TableAndElementRotationModel> -> unit)
         : unit =
@@ -149,35 +149,35 @@ module SlotBarTests =
             Dispatcher.UIThread.RunJobs()
 
     /// Every control under `root` carrying `id` as its AutomationId.
-    let private controlsUnder (root : Visual) (id : ConstructorUiId) : Control list =
+    let internal controlsUnder (root : Visual) (id : ConstructorUiId) : Control list =
         root.GetVisualDescendants()
         |> Seq.choose (function :? Control as control -> Some control | _ -> None)
         |> Seq.filter (fun control -> AutomationProperties.GetAutomationId control = id.value)
         |> List.ofSeq
 
-    let private tryControlById (window : Window) (id : ConstructorUiId) : Control option =
+    let internal tryControlById (window : Window) (id : ConstructorUiId) : Control option =
         controlsUnder window id |> List.tryHead
 
-    let private controlById (window : Window) (id : ConstructorUiId) : Control =
+    let internal controlById (window : Window) (id : ConstructorUiId) : Control =
         tryControlById window id |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
 
-    let private assertAbsent (window : Window) (id : ConstructorUiId) : unit =
+    let internal assertAbsent (window : Window) (id : ConstructorUiId) : unit =
         match tryControlById window id with
         | Some _ -> Assert.Fail $"{id.value} must be absent"
         | None -> ()
 
     /// The label of the chip or box carrying `id`: the text of the box's child.
-    let private boxLabelOf (window : Window) (id : ConstructorUiId) : string =
+    let internal boxLabelOf (window : Window) (id : ConstructorUiId) : string =
         Assert.IsType<TextBlock>(Assert.IsType<Border>(controlById window id).Child).Text
 
     /// The window position of the control's top-left corner.
-    let private topLeftOf (window : Window) (control : Control) : Point =
+    let internal topLeftOf (window : Window) (control : Control) : Point =
         match control.TranslatePoint(Point(0.0, 0.0), window) |> Option.ofNullable with
         | Some point -> point
         | None -> failwith $"{AutomationProperties.GetAutomationId control} has no position in its window"
 
     /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does.
-    let private pressBox (window : Window) (id : ConstructorUiId) : unit =
+    let internal pressBox (window : Window) (id : ConstructorUiId) : unit =
         let pressed = Assert.IsType<Border>(controlById window id)
         Assert.True(pressed.IsEffectivelyVisible, $"{id.value} must be visible")
         pressed.BringIntoView() |> ignore
@@ -201,7 +201,7 @@ module SlotBarTests =
         | focus -> box (focus.GetFocusedElement())
 
     /// The latest model the program answered, else the one it started from.
-    let private latestOf (start : TableAndElementRotationModel) (answered : ResizeArray<TableAndElementRotationModel>) : TableAndElementRotationModel =
+    let internal latestOf (start : TableAndElementRotationModel) (answered : ResizeArray<TableAndElementRotationModel>) : TableAndElementRotationModel =
         match Seq.tryLast answered with
         | Some latest -> latest
         | None -> start
@@ -215,6 +215,7 @@ module SlotBarTests =
         Assert.Equal("SlotBar", ConstructorUiId.slotBar.value)
         Assert.Equal("SlotChipChoiceList", ConstructorUiId.slotChipChoiceList.value)
         Assert.Equal("RecordExperimentButton", ConstructorUiId.recordExperimentButton.value)
+        Assert.Equal("SetupGridOpenButton", ConstructorUiId.setupGridOpenButton.value)
         Assert.Equal("SlotChip_Source", (ConstructorUiId.slotChip SourceSlotRole).value)
         Assert.Equal("SlotChip_Prep1", (ConstructorUiId.slotChip (PrepSlotRole (SlotPosition 1))).value)
         Assert.Equal("SlotChip_Obj2", (ConstructorUiId.slotChip (ObjectSlotRole (SlotPosition 2))).value)

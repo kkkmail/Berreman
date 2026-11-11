@@ -2059,6 +2059,44 @@ type TableAndElementRotationModel with
     member model.setupGrid : SetupGrids.SetupGrid option =
         model.setupGridOpt |> Option.map (fun draft -> draft.gridOver model.elements model.kitItems model.tryItemModelChoice)
 
+    /// The grid panel while open: a row per slot in light order with its fitting items and draft, a line per combination
+    /// marked impossible with why, ticked or unticked, and Generate for a ticked combination over a slot under a writable
+    /// kit (spec 0050 S8.4).
+    member model.setupGridState : SetupGridView.SetupGridState option =
+        (model.setupGridOpt, model.setupGrid)
+        ||> Option.map2 (fun draft grid ->
+            let ticked = grid.ticked
+            let rowOf (combination : SetupGrids.GridCombination) : SetupGridView.GridCombinationState =
+                let mark =
+                    match combination.slotsOver model.elements model.kitItems model.tryItemModelChoice with
+                    | Error error -> SetupGridView.CombinationImpossible (ControlCaption error.describe)
+                    | Ok _ when List.contains combination ticked -> SetupGridView.CombinationTicked
+                    | Ok _ -> SetupGridView.CombinationUnticked
+                {
+                    combination = combination
+                    caption = combination.caption model.elements model.kitItems
+                    mark = mark
+                }
+            let generateAvailability =
+                match model.kitWrites, grid.axes, ticked with
+                | ControlOffered, _ :: _, _ :: _ -> ControlOffered
+                | ControlOffered, [], _
+                | ControlOffered, _, []
+                | ControlWithheld, _, _ -> ControlWithheld
+            {
+                grid = grid
+                slots =
+                    Setups.SetupSlot.inLightOrder model.elements
+                    |> List.map (fun roled ->
+                        {
+                            SetupGridView.SetupGridSlotState.roled = roled
+                            fitting = model.slotChipItems roled.slot
+                            draft = draft.slotDraft roled.slot.id
+                        })
+                rows = grid.combinations |> List.map rowOf
+                generateAvailability = generateAvailability
+            })
+
     /// The name the window's stores give the item's model: its resolved version's `<name> v<n>`, after a preset's
     /// entry name or a sample's `<name> v<n>`; `(model not in the library)` when `tryItemModelChoice` answers `None`
     /// (spec 0050 S7.2, S8.2).
@@ -4523,6 +4561,18 @@ let private slotBarHandlers (model : TableAndElementRotationModel) (dispatch : T
                 |> Option.bind (fun slot -> slot.pickedByLetter letter (model.slotChipItems slot))
                 |> Option.iter (fun picked -> dispatch (SwapSlot (slotId, picked.id)))
         recordExperiment = fun () -> dispatch RecordExperiment
+        openSetupGrid = fun () -> dispatch OpenSetupGrid
+    }
+
+/// The grid panel's handlers: each sends its semantic message, Generate the grid the panel shows (spec 0050 S8.4).
+let private setupGridHandlers (dispatch : TableAndElementRotationMsg -> unit) : SetupGridView.SetupGridHandlers =
+    {
+        toggleItem = fun slotId itemId -> dispatch (ToggleSetupGridItem (slotId, itemId))
+        addAngle = fun slotId degrees -> dispatch (AddSetupGridAngle (slotId, degrees))
+        removeAngle = fun slotId angle -> dispatch (RemoveSetupGridAngle (slotId, angle))
+        toggleCombination = fun combination -> dispatch (ToggleSetupGridCombination combination)
+        generateGrid = fun grid -> dispatch (GenerateSetupGrid grid)
+        closeGrid = fun () -> dispatch CloseSetupGrid
     }
 
 // ---------------------------------------------------------------------------
@@ -5455,11 +5505,19 @@ let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
     // a full-surface bay never realizes the canvas and must not wire the table gestures.
     // Spec 0046: a RIGHT click opens the element menu on release (its press starts no drag); the menu
     // overlay sits above the surface as a sibling, so its rows get their own clicks.
-    // Spec 0050 S8.4: the slot bar sits above the table.
+    // Spec 0050 S8.4: the slot bar sits above the table, and the grid panel, while open, between them.
     let tableSurface () : IView =
+        let setupGridPanel : IView list =
+            match model.setupGridState with
+            | Some state -> [ SetupGridView.setupGridView state (setupGridHandlers dispatch) ]
+            | None -> []
         DockPanel.create [
             DockPanel.children [
-                Border.create [ Border.dock Dock.Top; Border.child (SlotBarView.slotBarView model.slotBarState (slotBarHandlers model dispatch)) ]
+                StackPanel.create [
+                    StackPanel.dock Dock.Top
+                    StackPanel.orientation Orientation.Vertical
+                    StackPanel.children (SlotBarView.slotBarView model.slotBarState (slotBarHandlers model dispatch) :: setupGridPanel)
+                ]
                 Panel.create [
                     Panel.children [
                         Border.create [

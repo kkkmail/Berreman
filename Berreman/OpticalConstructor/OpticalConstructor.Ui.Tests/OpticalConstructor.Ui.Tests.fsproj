@@ -242,6 +242,7 @@
         <Compile Include="DataLocationsWindowTests.fs" />
         <Compile Include="ItemsPanelTests.fs" />
         <Compile Include="SlotBarTests.fs" />
+        <Compile Include="SetupGridPanelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

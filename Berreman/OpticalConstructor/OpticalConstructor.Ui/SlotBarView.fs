@@ -32,23 +32,24 @@ type SlotBarState =
         recordAvailability : ControlAvailability
     }
 
-/// What the bar sends: a chip's toggle, a listed item's swap, a letter typed on a chip and Record experiment (spec 0050
-/// S8.4).
+/// What the bar sends: a chip's toggle, a listed item's swap, a letter typed on a chip, Record experiment and Setup grid…
+/// (spec 0050 S8.4).
 type SlotBarHandlers =
     {
         toggleChip : Library.ElementId -> unit
         swapSlot : Library.ElementId -> Kit.ItemId -> unit
         pickByLetter : Library.ElementId -> Setups.PickLetter -> unit
         recordExperiment : unit -> unit
+        openSetupGrid : unit -> unit
     }
 
 // `MaterialsWindowView.verbButton`'s box look; that module keeps its idle colours private (spec 0050 S8.4).
 let private idleBackground : Color = Color.FromRgb(232uy, 232uy, 232uy)
 let private idleBorder : Color = Color.FromRgb(120uy, 120uy, 120uy)
 
-/// The bar over `state`: its chips, then Record experiment while offered, on a wrapping row, and the open chip's fitting
-/// items below. A chip is a tab stop, so Tab walks the chips in light order, and a letter typed on one picks (spec 0050
-/// S8.4).
+/// The bar over `state`: its chips, then Record experiment while offered and Setup grid…, on a wrapping row, and the open
+/// chip's fitting items below. A chip is a tab stop, so Tab walks the chips in light order, and a letter typed on one
+/// picks (spec 0050 S8.4).
 let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
     let chipBox (chip : SlotChipState) : IView =
         let slotId = chip.roled.slot.id
@@ -97,6 +98,9 @@ let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
         | ControlOffered ->
             [ MaterialsWindowView.verbButton ConstructorUiId.recordExperimentButton (ControlCaption "Record experiment") handlers.recordExperiment ]
         | ControlWithheld -> []
+    // The grid's edits write nothing, so a read-only kit is offered it too (spec 0050 S8.4).
+    let gridVerb : IView =
+        MaterialsWindowView.verbButton ConstructorUiId.setupGridOpenButton (ControlCaption "Setup grid…") handlers.openSetupGrid
     let choiceList (chip : SlotChipState) : IView =
         let slotId = chip.roled.slot.id
         let choiceBox (item : Kit.Item) : IView =
@@ -126,7 +130,7 @@ let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
         StackPanel.children (
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.children ((state.chips |> List.map chipBox) @ recordVerb)
+                WrapPanel.children ((state.chips |> List.map chipBox) @ recordVerb @ [ gridVerb ])
             ]
             :> IView
             :: openList)

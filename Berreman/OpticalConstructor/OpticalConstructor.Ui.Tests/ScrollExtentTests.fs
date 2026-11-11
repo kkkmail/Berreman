@@ -145,6 +145,16 @@ module ScrollExtentTests =
             assertReachable $"Main/%s{bay.value}" (fun () -> constructorWindow ({ SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
         assertReachable "Main/Experiments (collected + chart)" (fun () -> constructorWindow (filledExperiments ()))
 
+    /// Spec 0050 S8.4: the grid panel docks between the slot bar and the table, so the page grows by it.
+    [<Fact>]
+    let ``the Main page with the setup grid open leaves everything reachable`` () : unit =
+        assertReachable "MainSetupGrid" (fun () ->
+            let filled = filledExperiments ()
+            let polarizer = (List.item 2 filled.elements).id
+            let withAngle (model : TableAndElementRotationModel) (degrees : float) : TableAndElementRotationModel =
+                model |> updateTableAndElementRotation (AddSetupGridAngle (polarizer, BarDegrees degrees))
+            constructorWindow ([ 0.0; 45.0; 90.0 ] |> List.fold withAngle (filled |> updateTableAndElementRotation OpenSetupGrid)))
+
     [<Fact>]
     let ``Inverse: the Experiments bay with its data-file section leaves everything reachable`` () =
         let materials, samples, categories, library = stores ()
