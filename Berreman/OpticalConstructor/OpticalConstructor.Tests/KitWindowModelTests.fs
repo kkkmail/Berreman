@@ -21,8 +21,11 @@ open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.MeasuredData
+open OpticalConstructor.Domain.ExperimentDataLoad
 
 module KitWindowModelTests =
 
@@ -87,6 +90,12 @@ module KitWindowModelTests =
             KitWindowShell.inert with
                 explorer = ExplorerProxy.createInMemory shown.Add
                 requestClose = fun () -> closes.Add ()
+        }
+
+    /// A shell that records every request to open the import wizard, in order (spec 0050 S9.2).
+    let private wizardShell (requests : ResizeArray<ImportWizardRequest>) : KitWindowShell =
+        {
+            KitWindowShell.inert with openImportWizard = requests.Add
         }
 
     /// A shell over the real archive whose job host runs each send at once, recording its progress and its end as the
@@ -205,7 +214,11 @@ module KitWindowModelTests =
                 let active = model |> updateTableAndElementRotation (ActivateSetup storedBench)
                 let placed = active |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
                 let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
-                let ready = placed |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
+                let requests = ResizeArray<ImportWizardRequest> ()
+                let ready =
+                    {
+                        (placed |> updateTableAndElementRotation (ExpChooseElement polarizer.id)) with kitShell = wizardShell requests
+                    }
                 Assert.True(ready.experimentCollection.canCommit, "the draft must be ready to commit")
                 Assert.Equal<Experiments.Experiment list>([ storedExperiment ], ready.experimentCollection.experiments)
                 match ready.activeSetupOpt with
@@ -220,7 +233,10 @@ module KitWindowModelTests =
                     [
                         ready |> updateTableAndElementRotation ExpCommit
                         ready |> updateTableAndElementRotation (ExpRemove storedExperiment.id)
-                        ready |> updateTableAndElementRotation (AttachDataFileTo (storedExperiment.id, dataFile))
+                        // Spec 0050 S9.2: the wizard opens over nothing, and neither its profile nor its file is written.
+                        ready |> updateTableAndElementRotation (OpenImportWizard (storedExperiment.id, dataFile))
+                        ready |> updateTableAndElementRotation (SaveImportProfile KitTests.labScanProfile)
+                        ready |> updateTableAndElementRotation (AttachDataFile (storedExperiment.id, dataFile, ImportProfileName.intensitySeries))
                         ready |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench")) |> updateTableAndElementRotation CreateSetup
                         ready |> updateTableAndElementRotation SaveSetup
                         // Spec 0050 S8.3: a typed template is refused as SaveSetup is.
@@ -239,6 +255,7 @@ module KitWindowModelTests =
                     Assert.Equal<Setups.Setup list>(ready.kitSetups, answer.kitSetups)
                     Assert.Equal<KitContext>(ready.kit, answer.kit)
                     Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), answer.kitStatus)
+                Assert.Empty(requests)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
 
     [<Fact>]
@@ -506,6 +523,158 @@ module KitWindowModelTests =
                 Assert.Equal<ControlCaption option>(Some (ControlCaption "The naming template is unchanged."), unchanged.kitStatus)
                 Assert.Equal<KitContext>(model.kit, unchanged.kit)
                 Assert.Equal<FileByteContent>(before, kitFileBytes ())))
+
+    /// A phone's ROI capture as the lab writes it: the UTF-8 byte-order mark, then a header row and two captures of one
+    /// experiment, described at 0° and 45° (spec 0050 S9.2).
+    let private phoneRoiBytes : FileByteContent =
+        let text =
+            "experiment,capture_index,captured_at,description,avg_total\n"
+            + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,869.5\n"
+            + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,912.25\n"
+        FileByteContent (Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] (Text.Encoding.UTF8.GetBytes text))
+
+    /// The phone's ROI file mapped by columns: its description the scan in degrees, `avg_total` the signal, with the
+    /// capture's timestamp, its index and the experiment key (spec 0050 S9.2; 001 §K).
+    let private phoneRoiByColumns : ImportProfile =
+        {
+            name = ImportProfileName "Phone ROI by columns"
+            delimiter = CommaDelimiter
+            header = HeaderOnFirstRow
+            bom = ByteOrderMarkPresent
+            roles =
+                {
+                    scan =
+                        [
+                            {
+                                column = DataColumnNumber 4
+                                valueUnit = DegreeColumnUnit
+                                reading = PhysicalScanValue
+                            }
+                        ]
+                    reading = SignalColumns (DataColumnNumber 5, None)
+                    timestampOpt = Some (DataColumnNumber 3)
+                    captureIndexOpt = Some (DataColumnNumber 2)
+                    observableOpt = None
+                    keyOpt = Some (DataColumnNumber 1)
+                }
+        }
+
+    /// Runs over a read-write `Optics QZ` kit loaded into an inverse scene whose shell records every wizard request. The
+    /// window has recorded `E1` in the kit: a linear polarizer's one-axis R1 scan over 0…360° (spec 0050 S9.2).
+    let private withWizardKit (run : FolderName -> KitFolder -> ResizeArray<ImportWizardRequest> -> TableAndElementRotationModel -> unit) : unit =
+        withFactFolder (fun factFolder folder imports ->
+            let stores = BuiltinCatalogue.freshStores ()
+            let library = Library.liveLibrary stores.libraryEntries stores.samples (Library.SourceProxy.createInMemory ())
+            let scene = initInverse library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories |> kitValue
+            let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
+            try
+                let requests = ResizeArray<ImportWizardRequest> ()
+                let shelled =
+                    {
+                        scene with
+                            catalogueImports = imports
+                            kitShell = wizardShell requests
+                    }
+                let recorded = committedPolarizerExperiment (shelled.loadKit opened)
+                let e1 = Assert.Single(recorded.experimentCollection.experiments)
+                Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 1, e1.id)
+                Assert.Equal<(Experiments.VariableParameter * Experiments.VariableRange) list>(
+                    [ Experiments.VaryR1, Experiments.VariableRange.forVariable Experiments.VaryR1 ],
+                    e1.scan.axes |> List.map (fun axis -> axis.variable, axis.range))
+                run factFolder folder requests recorded
+            finally
+                scene.kit.close () |> kitValue
+                opened.library.kit.close () |> kitValue)
+
+    [<Fact>]
+    let ``Save import profile writes the wizard's new mapping into the kit file and refuses a name the kit holds`` () : unit =
+        withWizardKit (fun _ folder requests model ->
+            let labScan = KitTests.labScanProfile
+            let kitFilePath = KitFile.fileName.combine folder.value
+            let kitFileBytes () : FileByteContent = FileByteContent (File.ReadAllBytes kitFilePath.value)
+            Assert.Empty(model.kit.kitFile.importProfiles)
+            let saved = model |> updateTableAndElementRotation (SaveImportProfile labScan)
+            Assert.Equal<ImportProfile list>([ labScan ], saved.kit.kitFile.importProfiles)
+            let stored = saved.kit.proxy.readKitFile () |> kitValue
+            Assert.Equal<ImportProfile list>([ labScan ], stored.importProfiles)
+            Assert.Equal<KitFile>(saved.kit.kitFile, stored)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved the import profile 'Lab scan'."), saved.kitStatus)
+            Assert.Equal<TableAndElementRotationModel>({ model with kit = saved.kit; kitStatus = saved.kitStatus }, saved)
+            // Spec 0050 S9.2: the window's own write is no change offered for reload (step 130).
+            let checkedKit = saved |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
+            Assert.Empty(checkedKit.kitChanges)
+            let before = kitFileBytes ()
+            let refusal (answer : TableAndElementRotationModel) : string =
+                match answer.kitStatus with
+                | Some status -> status.value
+                | None -> failwith "a refused import profile must be told in the kit status"
+            let held = saved |> updateTableAndElementRotation (SaveImportProfile labScan)
+            Assert.StartsWith("Not saved —", refusal held)
+            Assert.Contains("already holds", refusal held)
+            let builtIn = saved |> updateTableAndElementRotation (SaveImportProfile { labScan with name = ImportProfileName.intensitySeries })
+            Assert.StartsWith("Not saved —", refusal builtIn)
+            Assert.Contains("built-in", refusal builtIn)
+            for refused in [ held; builtIn ] do
+                Assert.Equal<TableAndElementRotationModel>({ saved with kitStatus = refused.kitStatus }, refused)
+            Assert.Equal<FileByteContent>(before, kitFileBytes ())
+            Assert.Empty(requests))
+
+    [<Fact>]
+    let ``opening the import wizard hands it the picked file, the kit's profiles and the detector's default`` () : unit =
+        withWizardKit (fun factFolder _ requests model ->
+            let saved = model |> updateTableAndElementRotation (SaveImportProfile KitTests.labScanProfile)
+            let picked = (FileName "lab-scan.csv").combine factFolder
+            File.WriteAllText(picked.value, "angle,signal,sigma,key\n0,1.5,0.1,E1\n45,1.25,0.1,E1\n")
+            let opened = saved |> updateTableAndElementRotation (OpenImportWizard (Experiments.ExperimentId 1, picked))
+            Assert.Equal<TableAndElementRotationModel>(saved, opened)
+            let request = Assert.Single(requests)
+            Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 1, request.experimentId)
+            Assert.Equal<FileName>(picked, request.file)
+            Assert.Equal<ImportProfile list>([ KitTests.labScanProfile ], request.kitProfiles)
+            Assert.Equal<ImportProfileName>(ImportProfileName "Intensity series", request.defaultProfile)
+            // The wizard's one read is the window's: the picked file's bytes, read without touching the kit.
+            match request.readPickedFile request.file with
+            | Ok source ->
+                Assert.Equal<FileName>(picked, source.file)
+                Assert.Equal<FileByteContent>(FileByteContent (File.ReadAllBytes picked.value), source.content)
+            | Error error -> Assert.Fail error.describe
+            let unknown = saved |> updateTableAndElementRotation (OpenImportWizard (Experiments.ExperimentId 9, picked))
+            Assert.Equal<TableAndElementRotationModel>(saved, unknown)
+            Assert.Single(requests) |> ignore)
+
+    [<Fact>]
+    let ``the wizard's Attach saves its new mapping first and attaches the file by it`` () : unit =
+        withWizardKit (fun factFolder _ requests model ->
+            let phoneRoi = (FileName "phone-roi.csv").combine factFolder
+            File.WriteAllBytes(phoneRoi.value, phoneRoiBytes.value)
+            let applied : ImportWizardApplied =
+                {
+                    experimentId = Experiments.ExperimentId 1
+                    file = phoneRoi
+                    profile = phoneRoiByColumns.name
+                    savedOpt = Some phoneRoiByColumns
+                }
+            let attach = AttachDataFile (Experiments.ExperimentId 1, phoneRoi, phoneRoiByColumns.name)
+            Assert.Equal<TableAndElementRotationMsg list>([ SaveImportProfile phoneRoiByColumns; attach ], applied.messages)
+            let picked =
+                {
+                    applied with savedOpt = None
+                }
+            Assert.Equal<TableAndElementRotationMsg list>([ attach ], picked.messages)
+            let attached = model |> passedThrough applied.messages
+            Assert.Equal<ImportProfile list>([ phoneRoiByColumns ], attached.kit.kitFile.importProfiles)
+            Assert.Equal<ImportProfile list>([ phoneRoiByColumns ], (attached.kit.proxy.readKitFile () |> kitValue).importProfiles)
+            let e1 = Assert.Single(attached.experimentCollection.experiments)
+            match e1.dataOpt with
+            | Some data ->
+                Assert.Equal<KitRelativePath>(KitRelativePath "data/phone-roi.csv", data.attachment.path)
+                Assert.Equal<ImportProfileName>(phoneRoiByColumns.name, data.profile)
+                Assert.Equal<DataRowSelection>(AllDataRows, data.rows)
+            | None -> Assert.Fail "E1 must hold the attached phone ROI file"
+            Assert.Equal<Experiments.Experiment list>([ e1 ], attached.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredPointCount 2), attached.dataBadgeOf e1)
+            Assert.Equal<ControlCaption option>(None, attached.kitStatus)
+            Assert.Empty(requests))
 
     let private windowCpl1 : Item =
         let draft : ItemDraft =

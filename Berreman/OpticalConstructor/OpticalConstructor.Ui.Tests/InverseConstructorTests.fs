@@ -139,14 +139,14 @@ module InverseConstructorTests =
     let ``attaching a valid intensity file records a typed Loaded status and the attachment`` () =
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
-        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "measured.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFile (expId, FileName "measured.csv", ImportProfileName.intensitySeries))
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (ValidatedDataBadge (MeasuredData.MeasuredPointCount 3) as badge) ->
             Assert.Equal("Loaded — 3 point(s), schema-valid", badge.caption.value)
         | other -> Assert.Fail($"expected ValidatedDataBadge (MeasuredData.MeasuredPointCount 3), got %A{other}")
         let exp = List.head m1.experimentCollection.experiments
         Assert.Equal<string option>(Some "data/measured.csv", exp.dataOpt |> Option.map (fun data -> data.attachment.path.value))
-        // Spec 0050 S9.1: an attach reads the file through the intensity detector's built-in profile, every row the run's.
+        // Spec 0050 S9.2: an attach maps the file by the profile the wizard chose, every row the run's.
         Assert.Equal<ImportProfileName option>(Some (ImportProfileName "Intensity series"), exp.dataOpt |> Option.map (fun data -> data.profile))
         Assert.Equal<DataRowSelection option>(Some AllDataRows, exp.dataOpt |> Option.map (fun data -> data.rows))
 
@@ -154,7 +154,7 @@ module InverseConstructorTests =
     let ``attaching a malformed intensity file records a typed parse-error status`` () =
         let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
-        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "bad.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFile (expId, FileName "bad.csv", ImportProfileName.intensitySeries))
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (MappedDataBadge (Some problem) as badge) ->
             Assert.Contains("row 3", problem.caption.value)
@@ -166,7 +166,7 @@ module InverseConstructorTests =
         // The R2 experiment's range is 0…89°; an abscissa of 200 is a LOUD range mismatch.
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
-        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "oor.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFile (expId, FileName "oor.csv", ImportProfileName.intensitySeries))
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (OutOfRangeBadge problem as badge) ->
             Assert.Contains("outside the experiment range", problem.caption.value)
@@ -174,9 +174,9 @@ module InverseConstructorTests =
         | other -> Assert.Fail($"expected OutOfRangeBadge, got %A{other}")
 
     [<Fact>]
-    let ``the detector kind selects the ellipsometric load path`` () =
-        // Bind the detector to the ellipsometer, commit an experiment, then attach an ellipsometric
-        // file — the load must read it through the ellipsometric built-in profile and validate it as an ellipsometric shape.
+    let ``the profile the wizard chose selects the ellipsometric read`` () =
+        // Bind the detector to the ellipsometer, commit an experiment, then attach an ellipsometric file by the
+        // ellipsometric profile the wizard chose: it is read by that profile and validated as an ellipsometric shape.
         let ellipsometric =
             match (MeasuredData.DataFileText "wavelength_nm,psi_deg,delta_deg\n500,20,120\n600,25,110").parseEllipsometricSeries with
             | Ok series -> series
@@ -196,10 +196,12 @@ module InverseConstructorTests =
         match committed.slotsIn m1.kitSetups with
         | Ok slots -> Assert.Equal<Library.DetectorKind>(Library.Ellipsometer, ExperimentDataLoad.detectorKindOf m1.library slots)
         | Error error -> Assert.Fail($"the committed experiment's setup must be the window's: {error.describe}")
-        let m2 = m1 |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "ellipso.csv"))
+        let m2 = m1 |> updateTableAndElementRotation (AttachDataFile (expId, FileName "ellipso.csv", ImportProfileName.ellipsometricSeries))
         match m2.experimentDataStatus |> Map.tryFind expId with
         | Some (ValidatedDataBadge (MeasuredData.MeasuredPointCount 2)) -> ()
         | other -> Assert.Fail($"expected ValidatedDataBadge (MeasuredData.MeasuredPointCount 2) from the ellipsometric path, got %A{other}")
+        let attached = List.head m2.experimentCollection.experiments
+        Assert.Equal<ImportProfileName option>(Some ImportProfileName.ellipsometricSeries, attached.dataOpt |> Option.map (fun data -> data.profile))
 
     [<Fact>]
     let ``a picked file the kit cannot attach records no attachment and tells the kit status why`` () =
@@ -216,7 +218,7 @@ module InverseConstructorTests =
                     readMapped = fun _ -> failwith "an attachment failure must not read data"
             }
         let model, expId = withIntensityExperiment { inverse () with experimentData = refusingProxy }
-        let failed = model |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+        let failed = model |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
         let failedExperiment = List.head failed.experimentCollection.experiments
         Assert.Equal<MappedAttachment option>(None, failedExperiment.dataOpt)
         Assert.Equal(model.experimentCollection, failed.experimentCollection)
@@ -231,12 +233,12 @@ module InverseConstructorTests =
             {
                 model with experimentData = readyProxy
             }
-            |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+            |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
         let refusedReplacement =
             {
                 attached with experimentData = refusingProxy
             }
-            |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+            |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
         Assert.Equal(attached.experimentCollection, refusedReplacement.experimentCollection)
         let attachedExperiment = List.head attached.experimentCollection.experiments
         Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredData.MeasuredPointCount 2), attached.dataBadgeOf attachedExperiment)
@@ -248,7 +250,7 @@ module InverseConstructorTests =
         let folder = TestAppScope.freshKitFolder owner
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
         let mBuilt, expId = withIntensityExperiment { inverseIn folder with experimentData = proxy }
-        let mSaved = mBuilt |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "run.csv"))
+        let mSaved = mBuilt |> updateTableAndElementRotation (AttachDataFile (expId, FileName "run.csv", ImportProfileName.intensitySeries))
         Assert.Equal<Experiments.Experiment list>(mSaved.experimentCollection.experiments, mSaved.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
         let setupFile = FileName "Setup 1.setup-json"
         Assert.True(File.Exists((setupFile.combine folder.value).value), "the commit must record the table as the kit's 'Setup 1'")
@@ -270,7 +272,7 @@ module InverseConstructorTests =
         let picked = FileName "unchanged.csv"
         let saved =
             built
-            |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+            |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
             |> updateTableAndElementRotation ExpNew
             |> updateTableAndElementRotation (ExpChooseElement (theSample built).id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
@@ -333,7 +335,7 @@ module InverseConstructorTests =
         let secondPath = KitRelativePath "data/b.csv"
         let withSecond =
             built
-            |> updateTableAndElementRotation (AttachDataFileTo (firstId, firstFile))
+            |> updateTableAndElementRotation (AttachDataFile (firstId, firstFile, ImportProfileName.intensitySeries))
             |> updateTableAndElementRotation ExpNew
             |> updateTableAndElementRotation (ExpChooseElement (theSample built).id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
@@ -342,7 +344,7 @@ module InverseConstructorTests =
         Assert.NotEqual(firstId, secondId)
         let saved =
             withSecond
-            |> updateTableAndElementRotation (AttachDataFileTo (secondId, secondFile))
+            |> updateTableAndElementRotation (AttachDataFile (secondId, secondFile, ImportProfileName.intensitySeries))
         let attachments = saved.experimentCollection.experiments |> List.choose (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.attachment))
         Assert.Equal<KitRelativePath list>([ firstPath; secondPath ], attachments |> List.map (fun attachment -> attachment.path))
         let currentHash = ContentHash "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
@@ -402,7 +404,7 @@ module InverseConstructorTests =
         let picked = dataFile.combine folder.value
         File.WriteAllText(picked.value, "x,intensity\n0,1\n45,0.5\n89,0.2\n")
         let before = File.ReadAllText filePath.value
-        let attached = model |> updateTableAndElementRotation (AttachDataFileTo (expId, picked))
+        let attached = model |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
         Assert.NotEqual<string>(before, File.ReadAllText filePath.value)
         let experiment = List.head attached.experimentCollection.experiments
         match experiment.dataOpt with
@@ -453,7 +455,7 @@ module InverseConstructorTests =
 
         let data = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
         let committed, expId = withIntensityExperiment { initial with experimentData = data }
-        let attached = committed |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "original.csv"))
+        let attached = committed |> updateTableAndElementRotation (AttachDataFile (expId, FileName "original.csv", ImportProfileName.intensitySeries))
         let protectedModel =
             {
                 attached with
@@ -466,7 +468,7 @@ module InverseConstructorTests =
         let edited = protectedModel |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 7))
         let refusedEdit = edited |> updateTableAndElementRotation ExpCommit
         Assert.Equal(edited.experimentCollection, refusedEdit.experimentCollection)
-        let refusedAttach = protectedModel |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "replacement.csv"))
+        let refusedAttach = protectedModel |> updateTableAndElementRotation (AttachDataFile (expId, FileName "replacement.csv", ImportProfileName.intensitySeries))
         Assert.Equal(protectedModel.experimentCollection, refusedAttach.experimentCollection)
         Assert.Equal<Map<Experiments.ExperimentId, ExperimentDataBadge>>(protectedModel.experimentDataStatus, refusedAttach.experimentDataStatus)
         let refusedRemove = protectedModel |> updateTableAndElementRotation (ExpRemove expId)
@@ -625,7 +627,7 @@ module InverseConstructorTests =
             let expId = (List.head expId0Model.experimentCollection.experiments).id
             let seed =
                 expId0Model
-                |> updateTableAndElementRotation (AttachDataFileTo (expId, FileName "m.csv"))
+                |> updateTableAndElementRotation (AttachDataFile (expId, FileName "m.csv", ImportProfileName.intensitySeries))
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let window = Window(Width = 1000.0, Height = 980.0)
             window.Content <- Component(fun _ -> mainView seed ignore)

@@ -35,6 +35,7 @@ open OpticalConstructor.Domain.ExperimentDataLoad
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Domain.KitArchive
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
@@ -236,6 +237,8 @@ type KitWindowShell =
         archiveJobs : KitArchiveJob.KitArchiveJobHost
         /// The folder dialog that chooses the kit to copy experiments from (spec 0050 S6, step 145).
         kitPicker : KitFolderPicker
+        /// Opens the column-mapping wizard over the request (spec 0050 S9.2, step 311).
+        openImportWizard : ImportWizardRequest -> unit
     }
 
     /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip or kit and runs no job; its
@@ -251,6 +254,7 @@ type KitWindowShell =
                 {
                     pickKitFolder = fun () -> async { return None }
                 }
+            openImportWizard = ignore
         }
 
 /// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
@@ -1063,8 +1067,12 @@ type TableAndElementRotationMsg =
     /// Spec 0027 (030 follow-up): open the chart window for a COLLECTED experiment by id (the per-row "View"
     /// button, and a double-click on the experiment row).
     | ViewExperiment of Experiments.ExperimentId
-    /// Records a picked file through the kit, then loads and validates its attachment (spec 0050 S4.2).
-    | AttachDataFileTo of Experiments.ExperimentId * FileName
+    /// Attaches the picked file through the kit and maps it by that profile, every row the run's (spec 0050 S4.2, S9.2).
+    | AttachDataFile of Experiments.ExperimentId * FileName * ImportProfileName
+    /// The Attach data file… button's message after its file dialog: opens the wizard over the picked file (spec 0050 S9.2).
+    | OpenImportWizard of Experiments.ExperimentId * FileName
+    /// The wizard's new column mapping, saved into the kit file (spec 0050 S9.2; 001 §K).
+    | SaveImportProfile of ImportProfile
     /// Records that role for the experiment in its kit file (spec 0050 S9.1; 001 §P `SetExperimentRole`).
     | SetExperimentRole of Experiments.ExperimentId * Experiments.ExperimentRole
     /// Records the typed session for the experiment in its kit file, a blank text clearing it (spec 0050 S9.1).
@@ -1161,6 +1169,16 @@ type TableAndElementRotationMsg =
     /// Spec 0046: the GLOBAL rotation pivot (the Rotation bay's checkbox) — about each element's centre, or
     /// about the middle of its incident face.
     | SetRotationPivot of BeamLayout.RotationPivot
+
+type ImportWizardApplied with
+
+    /// The wizard's Attach as the window's messages: a new profile is saved before the file is mapped by it (spec 0050
+    /// S9.2).
+    member this.messages : TableAndElementRotationMsg list =
+        let attach = AttachDataFile (this.experimentId, this.file, this.profile)
+        match this.savedOpt with
+        | Some saved -> [ SaveImportProfile saved; attach ]
+        | None -> [ attach ]
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -2798,7 +2816,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         // button / a row double-click). Same side-effecting seam as OpenExperimentChartWindow.
         viewExperimentHook model id
         model
-    | AttachDataFileTo (experimentId, file) ->
+    | AttachDataFile (experimentId, file, profile) ->
         guardKitWrite model (fun () ->
             match model.experimentData.attachDataFile file with
             | Error error ->
@@ -2808,16 +2826,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 }
             | Ok attachment ->
                 // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
-                // Spec 0050 S9.1: it is read through its detector's built-in profile, every row the run's.
-                let slots =
-                    model.experimentCollection.experiments
-                    |> List.tryFind (fun e -> e.id = experimentId)
-                    |> Option.bind (fun held -> held.slotsIn model.kitSetups |> Result.toOption)
-                    |> Option.defaultValue []
+                // Spec 0050 S9.2: it is read through the profile the wizard chose, every row the run's.
                 let data : MappedAttachment =
                     {
                         attachment = attachment
-                        profile = (ExperimentDataLoad.detectorKindOf model.library slots).builtInProfile
+                        profile = profile
                         rows = AllDataRows
                     }
                 let collection = Experiments.attachDataFile experimentId data model.experimentCollection
@@ -2841,6 +2854,43 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                         }
                 | None -> model)
+    // Spec 0050 S9.2: the wizard reads the file and attaches nothing itself; its Attach returns as `messages`.
+    | OpenImportWizard (experimentId, file) ->
+        guardKitWrite model (fun () ->
+            match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
+            | Some held ->
+                let slots = held.slotsIn model.kitSetups |> Result.defaultValue []
+                let request : ImportWizardRequest =
+                    {
+                        experimentId = experimentId
+                        file = file
+                        readPickedFile = model.experimentData.readPickedFile
+                        kitProfiles = model.kit.kitFile.importProfiles
+                        defaultProfile = (ExperimentDataLoad.detectorKindOf model.library slots).builtInProfile
+                    }
+                model.kitShell.openImportWizard request
+                model
+            | None -> model)
+    // Spec 0050 S9.2: the window's own write is no change offered for reload (step 130), as `SaveNamingTemplate`'s.
+    | SaveImportProfile profile ->
+        guardKitWrite model (fun () ->
+            match model.kit.kitFile.withImportProfile profile with
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not saved — {error.describe}")
+                }
+            | Ok kitFile ->
+                match model.kit.saveKitFile kitFile with
+                | Ok kit ->
+                    {
+                        model with
+                            kit = kit
+                            kitStatus = Some (ControlCaption $"Saved the import profile '{profile.name.value}'.")
+                    }
+                | Error error ->
+                    {
+                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    })
     | SetExperimentRole (experimentId, role) -> model |> recordExperimentEdit experimentId (fun held -> held.withRole role)
     | SetExperimentSession (experimentId, text) ->
         model |> recordExperimentEdit experimentId (fun held -> held.withSessionOpt (ExperimentSessionName.tryCreate text.value))
@@ -5184,7 +5234,7 @@ let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName 
 
 /// The "Attach data file…" verb for one collected experiment — resolve the owner window from the
 /// click's visual tree (the `selectorChooseButton` precedent) and open the picker, dispatching
-/// `AttachDataFileTo` on a confirmed selection. Keyed + AutomationId'd by the experiment id.
+/// `OpenImportWizard` on a confirmed selection (spec 0050 S9.2). Keyed + AutomationId'd by the experiment id.
 /// Withheld, it is disabled and dimmed and opens no picker (spec 0050 S5.3).
 let private attachDataFileButton (availability : ControlAvailability) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
     let id = ConstructorUiId.attachDataFile experiment.id
@@ -5209,7 +5259,7 @@ let private attachDataFileButton (availability : ControlAvailability) (dispatch 
                 | :? Visual as source ->
                     match TopLevel.GetTopLevel source with
                     | :? Window as owner ->
-                        pickDataFile owner (ControlCaption "Attach measured-data file") (fun path -> dispatch (AttachDataFileTo (experiment.id, path)))
+                        pickDataFile owner (ControlCaption "Attach measured-data file") (fun path -> dispatch (OpenImportWizard (experiment.id, path)))
                     | _ -> ()
                 | _ -> ()), SubPatchOptions.OnChangeOf (box (experiment.id.uiKey.value, availability)))
     ]
