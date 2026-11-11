@@ -151,6 +151,7 @@ module ExperimentDataProxyTests =
         let oneAxis : Experiment =
             {
                 id = ExperimentId 1
+                name = (ExperimentId 1).defaultName
                 setup = { name = SetupName "Bench"; revision = SetupRevision 1 }
                 scan = ExperimentScan.oneAxis (sweepOver 300.0 700.0) CaptureTransmitted None
                 role = ScienceRun

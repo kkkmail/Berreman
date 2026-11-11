@@ -91,22 +91,23 @@ module KitContentFiles =
 
     type KitProxy with
 
-        /// Replaces the experiment's kit file whole, naming any rendering refusal (spec 0050 S4.3).
+        /// Replaces the experiment's `<name>.experiment-json` whole, naming any rendering refusal (spec 0050 S4.3, S9.1).
         member this.writeExperiment (experiment : Experiment) : Result<unit, KitError> =
-            writeRenderedKindFile this ExperimentKitFile experiment.id.fileStem experiment.experimentFile.fileText
+            writeRenderedKindFile this ExperimentKitFile experiment.name.fileStem experiment.experimentFile.fileText
 
-        /// Deletes the experiment's kit file, or reports it missing (spec 0050 S4.3).
-        member this.deleteExperiment (id : ExperimentId) : Result<unit, KitError> =
-            this.deleteKindFile ExperimentKitFile id.fileStem
+        /// Deletes the kit file of the experiment of that name, or reports it missing (spec 0050 S4.3, S9.1).
+        member this.deleteExperiment (name : ExperimentName) : Result<unit, KitError> =
+            this.deleteKindFile ExperimentKitFile name.fileStem
 
-        /// Reads every experiment in id order; an unreadable or misnamed file refuses the whole read (spec 0050 S4.3).
+        /// Reads every experiment in id order; a file that does not read, or holds an experiment of another name, refuses
+        /// the whole read (spec 0050 S4.3, S9.1).
         member this.readExperiments () : Result<Experiment list, KitError> =
             let accept (file : FileName) (stem : FileStem) (_ : Experiment list) (parsed : ExperimentFile) : Result<Experiment, KitError> =
                 let experiment = parsed.experiment
-                if String.Equals(experiment.id.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
+                if String.Equals(experiment.name.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
                     Ok experiment
                 else
-                    Error (KitFileRejectedErr $"the file '{file.value}' holds experiment '{experiment.id.fileStem.value}' instead of '{stem.value}'")
+                    Error (KitFileRejectedErr $"the file '{file.value}' holds experiment '{experiment.name.value}' instead of '{stem.value}'")
 
             readEveryKindFile this ExperimentKitFile (fun text -> text.parseExperimentFile) accept
             |> Result.map (List.sortBy (fun experiment -> experiment.id))
@@ -256,8 +257,8 @@ module KitContentFiles =
 
         /// Copies the chosen source experiments with the setups they reference and the items those use, each mapped by its
         /// row or default or added, the data and photos they reference and the source snapshots this kit lacks, renumbered
-        /// on a clash. Everything is read before anything is written, the source only read; the first failure stops the
-        /// copy (spec 0050 S6, S7.2, S8.2).
+        /// and renamed on a clash. Everything is read before anything is written, the source only read; the first failure
+        /// stops the copy (spec 0050 S6, S7.2, S8.2, S9.1).
         member this.copyExperimentsFrom
             (source : KitContext)
             (ids : ExperimentId list)
@@ -265,7 +266,7 @@ module KitContentFiles =
             : Result<ExperimentCopyReport, KitLibraryError> =
             let keep (offered : Experiment list) : Result<Experiment list, KitLibraryError> =
                 match ids |> List.tryFind (fun id -> not (offered |> List.exists (fun experiment -> experiment.id = id))) with
-                | Some missing -> Error (KitLibraryKitErr (MissingKitFileErr (ExperimentKitFile.fileNameOf missing.fileStem).value))
+                | Some missing -> Error (KitLibraryKitErr (MissingKitFileErr (ExperimentKitFile.fileNameOf missing.defaultName.fileStem).value))
                 | None -> Ok (offered |> List.filter (fun experiment -> List.contains experiment.id ids))
 
             // The setups the kept experiments reference, once each in first-reference order; a revision the source lacks
@@ -436,10 +437,13 @@ module KitContentFiles =
                         |> Result.map (fun lab -> (path, lab) :: read))) (Ok [])
                 |> Result.map List.rev
 
+            // A clash of ids takes the next id, and then a clash of names the next free name (spec 0050 S6, S9.1).
             let renumber (kept : Experiment list) : Result<Experiment list, KitLibraryError> =
                 this.proxy.readExperiments ()
                 |> Result.mapError KitLibraryKitErr
-                |> Result.map (fun held -> Experiment.renumberedFor (held |> List.map (fun experiment -> experiment.id)) kept)
+                |> Result.map (fun held ->
+                    Experiment.renumberedFor (held |> List.map (fun experiment -> experiment.id)) kept
+                    |> Experiment.renamedFor (held |> List.map (fun experiment -> experiment.name)))
 
             let writeSnapshots (snapshots : LibraryEntryEnvelope list) : Result<LibraryVersionRef list, KitLibraryError> =
                 snapshots

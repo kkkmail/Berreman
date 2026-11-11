@@ -92,7 +92,7 @@ module SolverHandoffWindowTests =
     let private withId (n : int) (exp : Experiments.Experiment) : Experiments.Experiment =
         // The single-case `ExperimentId` case constructor directly — `ExperimentId.create` would bind
         // the same-named union CASE in expression position (the step-037 shadowing gotcha).
-        { exp with id = Experiments.ExperimentId n }
+        { exp with id = Experiments.ExperimentId n; name = (Experiments.ExperimentId n).defaultName }
 
     let private withFile (name : string) (exp : Experiments.Experiment) : Experiments.Experiment =
         let attachment : DataAttachment =

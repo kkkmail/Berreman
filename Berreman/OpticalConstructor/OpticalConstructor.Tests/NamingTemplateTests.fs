@@ -598,3 +598,36 @@ module NamingTemplateTests =
         | Error (InvalidExperimentNameErr reason) -> Assert.Contains("'  '", reason)
         | Error other -> Assert.Fail($"expected InvalidExperimentNameErr, got {other.describe}")
         | Ok name -> Assert.Fail($"a blank text was kept as '{name.value}'")
+
+    [<Fact>]
+    let ``the experiments of new setups are named by the template over each setup's slots, each free among the kit's and the earlier ones`` () : unit =
+        let setupOf (name : SetupName) (slots : SetupSlot list) : Setup =
+            match Setup.create name slots [] with
+            | Ok setup -> setup
+            | Error error -> failwith $"'{name.value}' was refused: {error.describe}"
+        let targetOf (setup : Setup) (name : ExperimentName) : ExperimentTarget =
+            {
+                setup = setup.reference
+                name = name
+            }
+        let qz45Name = ExperimentName "CPL-(QZ#45)-CPL"
+        let qz90Name = ExperimentName "CPL-(QZ#90)-CPL"
+        let qz45Setup = setupOf (SetupName "CPL-(QZ#45)-CPL") qzOnlyBench
+        let qz90Setup = setupOf (SetupName "CPL-(QZ#90)-CPL") (benchWith (turnedHolding (Angle.degree 90.0<deg>) qz blackBoxChoice sampleA) sampleB)
+
+        // The kit holds `CPL-(QZ#45)-CPL`, so the first takes its next free suffix; the second is free.
+        Assert.Equal<ExperimentTarget list>(
+            [ targetOf qz45Setup (ExperimentName "CPL-(QZ#45)-CPL (2)"); targetOf qz90Setup qz90Name ],
+            lab.experimentTargets [ qz45Setup; qz90Setup ] kitItems [ qz45Name ] (ExperimentId 4))
+
+        // A name given to an earlier target is taken too.
+        Assert.Equal<ExperimentTarget list>(
+            [ targetOf qz45Setup qz45Name; targetOf qz45Setup (ExperimentName "CPL-(QZ#45)-CPL (2)") ],
+            lab.experimentTargets [ qz45Setup; qz45Setup ] kitItems [] (ExperimentId 4))
+
+        // Without CPL1 the template names nothing, so each such experiment is named by the id it takes, from E4.
+        let noPrepSetup = setupOf (SetupName "Setup 1") (qzOnlyBench |> List.map (fun slot -> if slot.id = lpA.id then slot.withoutItem else slot))
+        Assert.Equal<ExperimentTarget list>(
+            [ targetOf noPrepSetup (ExperimentName "E4"); targetOf qz90Setup qz90Name; targetOf noPrepSetup (ExperimentName "E6") ],
+            lab.experimentTargets [ noPrepSetup; qz90Setup; noPrepSetup ] kitItems [] (ExperimentId 4))
+        Assert.Empty(lab.experimentTargets [] kitItems [ qz45Name ] (ExperimentId 4))

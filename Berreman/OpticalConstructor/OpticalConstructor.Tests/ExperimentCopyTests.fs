@@ -265,6 +265,7 @@ module ExperimentCopyTests =
     let private darkLine (id : ExperimentId) (dataFileOpt : DataAttachment option) : Experiment =
         {
             id = id
+            name = id.defaultName
             setup = darkSetup.reference
             scan = ExperimentScan.darkLine CaptureTransmitted
             role = ScienceRun
@@ -365,7 +366,7 @@ module ExperimentCopyTests =
         for experiment in experiments do
             match experiment.slotsIn setups with
             | Ok _ -> ()
-            | Error error -> Assert.Fail($"{experiment.id.fileStem.value}'s setup is not in the kit: {error.describe}")
+            | Error error -> Assert.Fail($"{experiment.name.value}'s setup is not in the kit: {error.describe}")
 
     let private ordinal (paths : KitRelativePath list) : KitRelativePath list =
         paths |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
@@ -461,15 +462,44 @@ module ExperimentCopyTests =
             target.context.proxy.writeExperiment experiment |> expectKitOk
         let copiedE3 = recordedAs (ExperimentId 3) recorded
         let sourceE2 = recordedAs (ExperimentId 2) recorded
+        // Spec 0050 S9.1: the kit holds `E2` too, so the copy also takes the next free name.
         let copiedE4 =
             {
-                sourceE2 with id = ExperimentId 4
+                sourceE2 with
+                    id = ExperimentId 4
+                    name = ExperimentName "E2 (2)"
             }
 
         let report = target.context.copyExperimentsFrom source.context [ ExperimentId 2; ExperimentId 3 ] [] |> expectCopyOk
 
         Assert.Equal<Experiment list>([ copiedE4; copiedE3 ], report.experiments)
         Assert.Equal<Result<Experiment list, KitError>>(Ok [ heldE1; heldE2; copiedE3; copiedE4 ], target.context.proxy.readExperiments ())
+        assertSetupsHeld target report.experiments
+
+    [<Fact>]
+    let ``a copied experiment whose name the target holds takes the next free name`` () : unit =
+        let clock = steppingClock ()
+        let source, recorded = sourceHolding standardExperiments clock
+        let target = emptyTarget ReadWriteKitAccess clock
+        let unnamed = darkLine (ExperimentId 7) None
+        let heldNamedE1 =
+            {
+                unnamed with name = (ExperimentId 1).defaultName
+            }
+        target.context.proxy.writeExperiment heldNamedE1 |> expectKitOk
+        let e1 = recordedAs (ExperimentId 1) recorded
+        let copiedE1 =
+            {
+                e1 with name = ExperimentName "E1 (2)"
+            }
+
+        let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
+
+        Assert.Equal<Experiment list>([ copiedE1 ], report.experiments)
+        let paths = target.folder.paths ()
+        Assert.Contains(KitRelativePath "E1 (2).experiment-json", paths)
+        Assert.Contains(KitRelativePath "E1.experiment-json", paths)
+        Assert.Equal<Result<Experiment list, KitError>>(Ok [ copiedE1; heldNamedE1 ], target.context.proxy.readExperiments ())
         assertSetupsHeld target report.experiments
 
     [<Fact>]

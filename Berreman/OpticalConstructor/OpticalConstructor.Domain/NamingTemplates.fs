@@ -540,3 +540,23 @@ module NamingTemplates =
                 | Ok experimentName -> experimentName.nextFreeAmong taken
                 | Error _ -> unnamed
             | Error _ -> unnamed
+
+        /// The experiments to append over the setups, in order: each over its setup's reference, named by
+        /// `experimentNameAmong` free of `taken` and the names given before it, else `E<n>` of the id it will take,
+        /// counted from `firstId` (spec 0050 S9.1).
+        member this.experimentTargets
+            (setups : Setup list)
+            (items : Item list)
+            (taken : ExperimentName list)
+            (firstId : ExperimentId)
+            : ExperimentTarget list =
+            setups
+            |> List.fold (fun (id : ExperimentId, given : ExperimentTarget list) setup ->
+                let named = given |> List.map (fun target -> target.name)
+                let target : ExperimentTarget =
+                    {
+                        setup = setup.reference
+                        name = this.experimentNameAmong setup.slots items None (taken @ named) id.defaultName
+                    }
+                id.next, given @ [ target ]) (firstId, [])
+            |> snd

@@ -332,7 +332,14 @@ module ScrollExtentTests =
                     | 0 -> AddCopiedItem
                     | _ -> MapOntoKitItem (List.item (index % 3) kitItems).id
             }
-        let experiments = [ 1 .. 40 ] |> List.map (fun n -> { collected with id = Experiments.ExperimentId n })
+        let experiments =
+            [ 1 .. 40 ]
+            |> List.map (fun n ->
+                {
+                    collected with
+                        id = Experiments.ExperimentId n
+                        name = (Experiments.ExperimentId n).defaultName
+                })
         let copySource : KitCopySource =
             {
                 source = sourceKit

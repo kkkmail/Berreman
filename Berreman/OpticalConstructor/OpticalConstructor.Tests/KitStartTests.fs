@@ -173,6 +173,7 @@ module KitStartTests =
     let private sentExperiment : Experiments.Experiment =
         {
             id = Experiments.ExperimentId 1
+            name = (Experiments.ExperimentId 1).defaultName
             setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
             scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
             role = Experiments.ScienceRun

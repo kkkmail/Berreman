@@ -72,6 +72,7 @@ module KitWindowModelTests =
     let private storedExperiment : Experiments.Experiment =
         {
             id = Experiments.ExperimentId 1
+            name = (Experiments.ExperimentId 1).defaultName
             setup = darkSetup.reference
             scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
             role = Experiments.ScienceRun
@@ -125,11 +126,13 @@ module KitWindowModelTests =
         |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
         |> updateTableAndElementRotation ExpCommit
 
-    /// Another writer's `E2`: the committed experiment given `id = ExperimentId 2` (spec 0050 S5.3, step 148).
+    /// Another writer's `E2`: the committed experiment given `id = ExperimentId 2` and its name (spec 0050 S5.3, S9.1).
     let private writeE2 (writer : KitProxy) (committed : Experiments.Experiment) : unit =
         let e2 =
             {
-                committed with id = Experiments.ExperimentId 2
+                committed with
+                    id = Experiments.ExperimentId 2
+                    name = (Experiments.ExperimentId 2).defaultName
             }
         writer.writeExperiment e2 |> kitValue
 
@@ -722,6 +725,7 @@ module KitWindowModelTests =
         {
             storedExperiment with
                 id = id
+                name = id.defaultName
                 dataFileOpt = dataFileOpt
         }
 
@@ -1014,6 +1018,7 @@ module KitWindowModelTests =
         {
             storedExperiment with
                 id = Experiments.ExperimentId 2
+                name = (Experiments.ExperimentId 2).defaultName
                 setup = plateBench.reference
         }
 

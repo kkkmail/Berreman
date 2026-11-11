@@ -459,7 +459,8 @@ module InverseConstructorTests =
             | Some status -> Assert.Contains("read-only", status.value)
             | None -> Assert.Fail("A refused kit write must show its reason.")
         Assert.Equal<Experiments.Experiment list>(attached.experimentCollection.experiments, initial.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
-        initial.kit.proxy.deleteExperiment expId |> SceneTestFixture.kitSuccess
+        let removed = attached.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = expId)
+        initial.kit.proxy.deleteExperiment removed.name |> SceneTestFixture.kitSuccess
         let missing = attached |> updateTableAndElementRotation (ExpRemove expId)
         Assert.Empty(missing.experimentCollection.experiments)
         Assert.Equal<ControlCaption option>(None, missing.kitStatus)

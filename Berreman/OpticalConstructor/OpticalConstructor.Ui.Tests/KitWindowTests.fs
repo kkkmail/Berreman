@@ -65,6 +65,7 @@ module KitWindowTests =
     let private storedExperiment : Experiments.Experiment =
         {
             id = Experiments.ExperimentId 1
+            name = (Experiments.ExperimentId 1).defaultName
             setup = darkSetup.reference
             scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
             role = Experiments.ScienceRun
@@ -379,7 +380,9 @@ module KitWindowTests =
                 let writer = KitProxy.create opened.folder
                 let e2 =
                     {
-                        storedExperiment with id = Experiments.ExperimentId 2
+                        storedExperiment with
+                            id = Experiments.ExperimentId 2
+                            name = (Experiments.ExperimentId 2).defaultName
                     }
                 writer.writeExperiment e2 |> SceneTestFixture.kitSuccess
                 let kitFile = writer.readKitFile () |> SceneTestFixture.kitSuccess
@@ -547,7 +550,9 @@ module KitWindowTests =
                 |> updateTableAndElementRotation ExpCommit
             let experiment = Assert.Single(committed.experimentCollection.experiments)
             {
-                experiment with id = Experiments.ExperimentId 2
+                experiment with
+                    id = Experiments.ExperimentId 2
+                    name = (Experiments.ExperimentId 2).defaultName
             }
         finally scratch.kit.close () |> SceneTestFixture.kitSuccess
 
@@ -625,7 +630,9 @@ module KitWindowTests =
     /// `storedExperiment` as the source's experiment `n`.
     let private sourceExperiment (n : int) : Experiments.Experiment =
         {
-            storedExperiment with id = Experiments.ExperimentId n
+            storedExperiment with
+                id = Experiments.ExperimentId n
+                name = (Experiments.ExperimentId n).defaultName
         }
 
     /// The copy panel's controls besides the experiments' toggles.
@@ -879,6 +886,7 @@ module KitWindowTests =
         {
             storedExperiment with
                 id = Experiments.ExperimentId 2
+                name = (Experiments.ExperimentId 2).defaultName
                 setup = plateBench.reference
         }
 
@@ -1400,7 +1408,7 @@ module KitWindowTests =
             Assert.Equal<ItemId option>(Some pieces.qz2, sampleHeldIn swappedBench)
             Assert.Equal<string list>(
                 [ "E1 over 'Bench' revision 1"; "E2 over 'Bench' revision 1"; "E3 over 'Bench (2)' revision 1" ],
-                written.experiments |> List.map (fun experiment -> $"{experiment.id.fileStem.value} over {experiment.setup.describe}"))
+                written.experiments |> List.map (fun experiment -> $"{experiment.name.value} over {experiment.setup.describe}"))
             let reopened = openedAt folder ReadWriteKitAccess ctx
             try
                 let reloaded = kitWindowModel ctx reopened ForwardConstructor KitWindowShell.inert

@@ -2403,6 +2403,13 @@ let private appendedOver (held : Experiments.ExperimentCollection) (committed : 
     let heldIds = held.experiments |> List.map (fun experiment -> experiment.id)
     committed.experiments |> List.filter (fun experiment -> not (List.contains experiment.id heldIds))
 
+/// The experiments to append over `setups`, named by the kit's template free of the collection's names, else `E<n>` of
+/// the id each takes (spec 0050 S9.1).
+let private experimentTargetsOver (setups : Setups.Setup list) (model : TableAndElementRotationModel) : Experiments.ExperimentTarget list =
+    let collection = model.experimentCollection
+    let taken = collection.experiments |> List.map (fun experiment -> experiment.name)
+    model.kit.kitFile.namingTemplate.experimentTargets setups model.kitItems taken collection.nextId
+
 /// The open grid draft edited, or the model as it is while the panel is closed (spec 0050 S8.4).
 let private withGridDraftEdited
     (edit : SetupGrids.SetupGridDraft -> SetupGrids.SetupGridDraft)
@@ -2709,7 +2716,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 | Error error -> notSaved error
                 | Ok setup ->
                     let collection = Experiments.chooseMeasurement capture model.experimentCollection
-                    let committed = Experiments.commit setup.reference collection
+                    // Spec 0050 S9.1: an append is named by the template over the setup; an edit keeps its name.
+                    let committed =
+                        match experimentTargetsOver [ setup ] model with
+                        | [ target ] -> Experiments.commit target collection
+                        | _ -> model.experimentCollection
                     if committed = model.experimentCollection then model
                     else
                         match committed.draft.editingId |> Option.bind (fun id -> committed.experiments |> List.tryFind (fun experiment -> experiment.id = id)) with
@@ -2729,7 +2740,12 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ExpEdit id -> { model with experimentCollection = Experiments.edit id model.experimentCollection }
     | ExpRemove id ->
         guardKitWrite model (fun () ->
-            match model.kit.proxy.deleteExperiment id with
+            // Spec 0050 S9.1: the file is the experiment's name's; an id the collection lacks has none to delete.
+            let deleted =
+                match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) with
+                | Some experiment -> model.kit.proxy.deleteExperiment experiment.name
+                | None -> Ok ()
+            match deleted with
             | Ok () | Error (MissingKitFileErr _) ->
                 {
                     model with
@@ -2935,7 +2951,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     match model.draftCapture with
                     | Some capture ->
                         Experiments.chooseMeasurement capture model.experimentCollection
-                        |> Experiments.commitOverSetups (setups |> List.map (fun setup -> setup.reference))
+                        |> Experiments.commitOverSetups (experimentTargetsOver setups model)
                     | None -> model.experimentCollection
                 let appended = appendedOver model.experimentCollection committed
                 let setupHeld (current : TableAndElementRotationModel) (setup : Setups.Setup) : TableAndElementRotationModel =
@@ -2981,13 +2997,13 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     | Ok (tabled, setup) ->
                         let committed =
                             Experiments.chooseMeasurement capture tabled.experimentCollection
-                            |> Experiments.commitOverSetups [ setup.reference ]
+                            |> Experiments.commitOverSetups (experimentTargetsOver [ setup ] tabled)
                         let appended = appendedOver tabled.experimentCollection committed
                         match withExperimentsRecorded committed appended tabled with
                         | Ok recorded ->
-                            let ids = appended |> List.map (fun experiment -> experiment.id.fileStem.value) |> String.concat ", "
+                            let names = appended |> List.map (fun experiment -> experiment.name.value) |> String.concat ", "
                             {
-                                recorded with kitStatus = Some (ControlCaption $"Recorded {ids} over {setup.reference.describe}.")
+                                recorded with kitStatus = Some (ControlCaption $"Recorded {names} over {setup.reference.describe}.")
                             }
                         | Error (kept, error) -> notSaved error kept)
     // Spec 0050 S8.4: it writes nothing, so a read-only kit takes it; an id the table lacks changes nothing.

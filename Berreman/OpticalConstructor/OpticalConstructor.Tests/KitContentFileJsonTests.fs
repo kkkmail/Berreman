@@ -43,6 +43,7 @@ module KitContentFileJsonTests =
             }
         {
             id = ExperimentId 1
+            name = (ExperimentId 1).defaultName
             setup = { name = SetupName "Bench"; revision = SetupRevision 2 }
             scan = ExperimentScan.oneAxis polarizerTurn CaptureTransmitted (Some (WaveLength.nm 632.8<nm>))
             role = ScienceRun
@@ -54,6 +55,7 @@ module KitContentFileJsonTests =
     let private e3 : Experiment =
         {
             id = ExperimentId 3
+            name = (ExperimentId 3).defaultName
             setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
             scan = ExperimentScan.darkLine CaptureTransmitted
             role = ScienceRun
@@ -109,13 +111,14 @@ module KitContentFileJsonTests =
         node.canonicalFileText |> KitFileText
 
     [<Fact>]
-    let ``an experiment is stored under its id`` () : unit =
-        let id = ExperimentId 3
+    let ``an experiment is stored under its name`` () : unit =
+        let name = ExperimentName "CPL-(QZ#45)-CPL"
+        let expectedName = FileName "CPL-(QZ#45)-CPL.experiment-json"
+        let unnamed = ExperimentId 3
         let expectedStem = FileStem "E3"
-        let expectedName = FileName "E3.experiment-json"
 
-        Assert.Equal<FileStem>(expectedStem, id.fileStem)
-        Assert.Equal<FileName>(expectedName, ExperimentKitFile.fileNameOf id.fileStem)
+        Assert.Equal<FileName>(expectedName, ExperimentKitFile.fileNameOf name.fileStem)
+        Assert.Equal<FileStem>(expectedStem, unnamed.defaultName.fileStem)
 
     [<Fact>]
     let ``an experiment file round-trips through its canonical text`` () : unit =
@@ -173,7 +176,7 @@ module KitContentFileJsonTests =
         for key in [ "schemaVersion"; "experiment" ] do
             editedExperimentFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
 
-        for key in [ "id"; "setup"; "scan"; "role"; "sessionOpt"; "notes"; "dataFileOpt" ] do
+        for key in [ "id"; "name"; "setup"; "scan"; "role"; "sessionOpt"; "notes"; "dataFileOpt" ] do
             editedExperimentFile (fun node -> node["experiment"].AsObject().Remove key |> ignore)
             |> assertSchemaInvalid
 
@@ -192,6 +195,7 @@ module KitContentFileJsonTests =
                 (fun node -> node["experiment"] <- null)
                 (fun node -> node["experiment"]["unexpected"] <- JsonValue.Create "unexpected")
                 (fun node -> node["experiment"]["id"] <- JsonValue.Create 0)
+                (fun node -> node["experiment"]["name"] <- JsonValue.Create "  ")
                 (fun node -> node["experiment"]["setup"] <- JsonValue.Create "not-an-array")
                 (fun node -> node["experiment"]["setup"] <- JsonArray())
                 (fun node -> node.["experiment"].["setup"].["revision"] <- JsonValue.Create 0)

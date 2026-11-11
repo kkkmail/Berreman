@@ -233,9 +233,6 @@ module Experiments =
         /// `E<n>`: the name an experiment takes when the template cannot name its setup (spec 0050 S9.1).
         member this.defaultName : ExperimentName = ExperimentName $"E{this.value}"
 
-        /// Names an experiment's kit file by its identity, the stem of its default name (spec 0050 S4.3, S9.1).
-        member this.fileStem : FileStem = this.defaultName.fileStem
-
     /// An element's human label as an experiment captures it ("<kind> #<n>"), so a row outlives the element.
     type ElementLabel =
         | ElementLabel of string
@@ -338,6 +335,8 @@ module Experiments =
     type Experiment =
         {
             id : ExperimentId
+            /// The stem of its `<name>.experiment-json`; an edit never renames it (spec 0050 S9.1).
+            name : ExperimentName
             setup : SetupReference
             scan : ExperimentScan
             role : ExperimentRole
@@ -378,6 +377,20 @@ module Experiments =
                         experiment with id = id
                     }
                 id :: given, copied :: renumbered) ([], [])
+            |> snd
+            |> List.rev
+
+        /// Copies into a kit holding `taken`, in order: a name free of `taken` and of those given so far, by file stem
+        /// ignoring case, is kept, a clash takes its next free suffix; only `name` changes (spec 0050 S9.1, S6).
+        static member renamedFor (taken : ExperimentName list) (incoming : Experiment list) : Experiment list =
+            incoming
+            |> List.fold (fun (given : ExperimentName list, renamed : Experiment list) experiment ->
+                let name = experiment.name.nextFreeAmong (taken @ given)
+                let copied =
+                    {
+                        experiment with name = name
+                    }
+                given @ [ name ], copied :: renamed) ([], [])
             |> snd
             |> List.rev
 
@@ -585,10 +598,18 @@ module Experiments =
     let setRange (range : VariableRange) (c : ExperimentCollection) : ExperimentCollection =
         { c with draft = { c.draft with range = range } }
 
-    /// Confirms the draft's scan over the table's setup revision (spec 028 step 3; spec 0050 S8.2, S9.1): an edited
-    /// experiment takes the setup and scan and keeps the rest; otherwise a new `ScienceRun`, with no session, notes or data
-    /// file, is appended and edited next. A draft with no edited axis commits nothing (the bay's `canCommit`).
-    let commit (setup : SetupReference) (c : ExperimentCollection) : ExperimentCollection =
+    /// One experiment to append: the setup revision it is recorded over and the name it is stored under (spec 0050 S9.1).
+    type ExperimentTarget =
+        {
+            setup : SetupReference
+            name : ExperimentName
+        }
+
+    /// Confirms the draft's scan over the target's setup revision (spec 028 step 3; spec 0050 S8.2, S9.1): an edited
+    /// experiment takes the setup and scan and keeps the rest, its name included; otherwise a new `ScienceRun` of the
+    /// target's name, with no session, notes or data file, is appended and edited next. A draft with no edited axis
+    /// commits nothing (the bay's `canCommit`).
+    let commit (target : ExperimentTarget) (c : ExperimentCollection) : ExperimentCollection =
         match c.draft.scanOpt with
         | Some scan ->
             match c.draft.editingId with
@@ -599,7 +620,7 @@ module Experiments =
                         if e.id = existing then
                             {
                                 e with
-                                    setup = setup
+                                    setup = target.setup
                                     scan = scan
                             }
                         else e)
@@ -608,7 +629,8 @@ module Experiments =
                 let exp : Experiment =
                     {
                         id = c.nextId
-                        setup = setup
+                        name = target.name
+                        setup = target.setup
                         scan = scan
                         role = ScienceRun
                         sessionOpt = None
@@ -621,15 +643,15 @@ module Experiments =
                     draft = { c.draft with editingId = Some exp.id } }
         | None -> c
 
-    /// Commits the draft, editing nothing, once over each setup in order, each experiment taking the next id; the answer's
-    /// draft edits nothing, and an incomplete draft appends nothing (spec 0050 S8.3).
-    let commitOverSetups (references : SetupReference list) (c : ExperimentCollection) : ExperimentCollection =
+    /// Commits the draft, editing nothing, once over each target in order, each experiment taking the next id and its
+    /// target's name; the answer's draft edits nothing, and an incomplete draft appends nothing (spec 0050 S8.3, S9.1).
+    let commitOverSetups (targets : ExperimentTarget list) (c : ExperimentCollection) : ExperimentCollection =
         if c.canCommit then
             let fresh = { c.draft with editingId = None }
             let committed =
-                references
-                |> List.fold (fun (collection : ExperimentCollection) (reference : SetupReference) ->
-                    commit reference { collection with draft = fresh }) c
+                targets
+                |> List.fold (fun (collection : ExperimentCollection) (target : ExperimentTarget) ->
+                    commit target { collection with draft = fresh }) c
             { committed with draft = fresh }
         else
             c

@@ -190,6 +190,7 @@ module SetupTests =
         let over (setup : SetupReference) (id : int) : Experiments.Experiment =
             {
                 id = Experiments.ExperimentId id
+                name = (Experiments.ExperimentId id).defaultName
                 setup = setup
                 scan = Experiments.ExperimentScan.darkLine Experiments.CaptureTransmitted
                 role = Experiments.ScienceRun

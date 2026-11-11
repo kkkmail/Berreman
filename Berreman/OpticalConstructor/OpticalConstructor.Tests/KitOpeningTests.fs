@@ -67,6 +67,7 @@ module KitOpeningTests =
     let private openingExperiment : Experiment =
         {
             id = ExperimentId 1
+            name = (ExperimentId 1).defaultName
             setup = { name = SetupName "Dark"; revision = SetupRevision 1 }
             scan = ExperimentScan.darkLine CaptureTransmitted
             role = ScienceRun

@@ -19,10 +19,15 @@
       "schemaVersion": true,
       "experiment": {
         "type": "object",
-        "required": ["id", "setup", "scan", "role", "sessionOpt", "notes", "dataFileOpt"],
+        "required": ["id", "name", "setup", "scan", "role", "sessionOpt", "notes", "dataFileOpt"],
         "additionalProperties": false,
         "properties": {
           "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
+          "name": {
+            "description": "The stem of the experiment's <name>.experiment-json (spec 0050 S9.1).",
+            "type": "string",
+            "pattern": "\\S"
+          },
           "setup": {
             "description": "The setup revision the experiment was recorded over (spec 0050 S8.2).",
             "type": "object",

@@ -55,7 +55,7 @@ module SetupModelTests =
         |> updateTableAndElementRotation (SetSetupName (ControlCaption name))
         |> updateTableAndElementRotation CreateSetup
 
-    /// The kit folder's experiment files, by id in ordinal order.
+    /// The kit folder's experiment files, by name in ordinal order.
     let private experimentFilesIn (folder : KitFolder) : string list =
         Directory.GetFiles(folder.value.value, "*.experiment-json")
         |> Array.map Path.GetFileName
@@ -825,12 +825,15 @@ module SetupModelTests =
             let committed, _ = templateCommitted model
 
             Assert.Equal<string list>([ "LP1-(QZ#45)-LPd.setup-json" ], setupFilesIn folder)
-            Assert.Equal<string list>([ "E1.experiment-json" ], experimentFilesIn folder)
+            // Spec 0050 S9.1: E1 is named by the template too.
+            Assert.Equal<string list>([ "LP1-(QZ#45)-LPd.experiment-json" ], experimentFilesIn folder)
             let named = Assert.Single(committed.kit.proxy.readSetups () |> kitValue)
             Assert.Equal<SetupName>(SetupName "LP1-(QZ#45)-LPd", named.name)
             Assert.Equal<SetupRevision>(SetupRevision.first, named.revision)
             Assert.Empty(named.history)
             let e1 = Assert.Single(committed.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 1, e1.id)
+            Assert.Equal<Experiments.ExperimentName>(Experiments.ExperimentName "LP1-(QZ#45)-LPd", e1.name)
             let expected : SetupReference = { name = SetupName "LP1-(QZ#45)-LPd"; revision = SetupRevision.first }
             Assert.Equal<SetupReference>(expected, e1.setup)
             Assert.Equal<Experiments.Experiment list>([ e1 ], committed.experimentCollection.experiments)
@@ -872,7 +875,8 @@ module SetupModelTests =
 
             Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 2 experiments."), generated.kitStatus)
             Assert.Equal<string list>([ "LP1-(QZ#0)-LPd.setup-json"; "LP1-(QZ#45)-LPd.setup-json" ], setupFilesIn folder)
-            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
+            // Spec 0050 S9.1: each experiment is named by the template over its setup.
+            Assert.Equal<string list>([ "LP1-(QZ#0)-LPd.experiment-json"; "LP1-(QZ#45)-LPd.experiment-json" ], experimentFilesIn folder)
             let setups = generated.kit.proxy.readSetups () |> kitValue
             Assert.Equal<SetupName list>([ SetupName "LP1-(QZ#0)-LPd"; SetupName "LP1-(QZ#45)-LPd" ], setups |> List.map (fun setup -> setup.name))
             Assert.Equal<SetupRevision list>([ SetupRevision.first; SetupRevision.first ], setups |> List.map (fun setup -> setup.revision))
@@ -885,6 +889,9 @@ module SetupModelTests =
             let draft = chosen.experimentCollection.draft
             let experiments = generated.kit.proxy.readExperiments () |> kitValue
             Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ], experiments |> List.map (fun experiment -> experiment.id))
+            Assert.Equal<Experiments.ExperimentName list>(
+                [ Experiments.ExperimentName "LP1-(QZ#0)-LPd"; Experiments.ExperimentName "LP1-(QZ#45)-LPd" ],
+                experiments |> List.map (fun experiment -> experiment.name))
             Assert.Equal<SetupReference list>(setups |> List.map (fun setup -> setup.reference), experiments |> List.map (fun experiment -> experiment.setup))
             for experiment in experiments do
                 Assert.Equal<Library.ElementId list>([ held.polarizer ], experiment.scan.axes |> List.map (fun axis -> axis.elementId))
@@ -918,10 +925,21 @@ module SetupModelTests =
             Assert.Equal<string list>(setupFiles, setupFilesIn folder)
             Assert.Equal<byte[] list>(firstBytes, setupBytes ())
             Assert.Equal<Setups.Setup list>(first.kitSetups, again.kitSetups)
-            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json"; "E3.experiment-json"; "E4.experiment-json" ], experimentFilesIn folder)
+            // Spec 0050 S9.1: the second run's experiments take the template's names made free among the first's.
+            let experimentFiles =
+                [
+                    "LP1-(QZ#0)-LPd (2).experiment-json"
+                    "LP1-(QZ#0)-LPd.experiment-json"
+                    "LP1-(QZ#45)-LPd (2).experiment-json"
+                    "LP1-(QZ#45)-LPd.experiment-json"
+                ]
+            Assert.Equal<string list>(experimentFiles, experimentFilesIn folder)
             match again.kit.proxy.readExperiments () |> kitValue with
             | [ e1; e2; e3; e4 ] ->
                 Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 3; Experiments.ExperimentId 4 ], [ e3.id; e4.id ])
+                Assert.Equal<Experiments.ExperimentName list>(
+                    [ Experiments.ExperimentName "LP1-(QZ#0)-LPd (2)"; Experiments.ExperimentName "LP1-(QZ#45)-LPd (2)" ],
+                    [ e3.name; e4.name ])
                 Assert.Equal<SetupReference list>([ e1.setup; e2.setup ], [ e3.setup; e4.setup ])
                 Assert.Equal<SetupReference list>(first.kitSetups |> List.map (fun setup -> setup.reference), [ e3.setup; e4.setup ])
                 Assert.Equal<Experiments.Experiment list>([ e1; e2; e3; e4 ], again.experimentCollection.experiments)
@@ -1375,7 +1393,8 @@ module SetupModelTests =
             Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 3 setups (3 new) and 3 experiments."), generated.kitStatus)
             let names = [ "LP1-(QZ#0)-LPd"; "LP1-(QZ#45)-LPd"; "LP1-(QZ2#0)-LPd" ]
             Assert.Equal<string list>(names |> List.map (fun name -> $"{name}.setup-json"), setupFilesIn folder)
-            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json"; "E3.experiment-json" ], experimentFilesIn folder)
+            // Spec 0050 S9.1: the template names each experiment as it names its setup.
+            Assert.Equal<string list>(names |> List.map (fun name -> $"{name}.experiment-json"), experimentFilesIn folder)
             let setups = generated.kit.proxy.readSetups () |> kitValue
             Assert.Equal<SetupName list>(names |> List.map SetupName, setups |> List.map (fun setup -> setup.name))
             Assert.Equal<Setups.Setup list>(setups, generated.kitSetups)

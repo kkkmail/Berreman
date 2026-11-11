@@ -24,6 +24,15 @@ module ExperimentProxyTests =
     let private benchRevision2 : SetupReference = { name = SetupName "Bench"; revision = SetupRevision 2 }
     let private darkRevision1 : SetupReference = { name = SetupName "Dark"; revision = SetupRevision 1 }
 
+    /// Commits the draft over the setup revision, an appended experiment named `E<n>` of the id it takes (spec 0050 S9.1).
+    let private commitOver (setup : SetupReference) (c : ExperimentCollection) : ExperimentCollection =
+        let target : ExperimentTarget =
+            {
+                setup = setup
+                name = c.nextId.defaultName
+            }
+        commit target c
+
     // ============================ variable capability (attached to the kind, as DATA) ============================
 
     [<Fact>]
@@ -334,20 +343,20 @@ module ExperimentProxyTests =
     [<Fact>]
     let ``commit APPENDS a new experiment and then keeps editing it (no duplicate on re-commit)`` () =
         let c0 = withSource ()
-        let c1 = commit benchRevision1 c0
+        let c1 = commitOver benchRevision1 c0
         Assert.Equal(1, List.length c1.experiments)
         let added = List.head c1.experiments
         Assert.Equal<ElementId list>([ el "src" ], added.scan.axes |> List.map (fun axis -> axis.elementId))
         Assert.Equal<VariableParameter list>([ VaryWaveLength ], added.scan.axes |> List.map (fun axis -> axis.variable))
         // The draft now edits the added experiment, so committing again UPDATES rather than appends.
-        let c2 = commit benchRevision1 c1
+        let c2 = commitOver benchRevision1 c1
         Assert.Equal(1, List.length c2.experiments)
 
     [<Fact>]
     let ``editing the draft after add updates the stored experiment in place`` () =
-        let c1 = withSource () |> commit benchRevision1
+        let c1 = withSource () |> commitOver benchRevision1
         let id = (List.head c1.experiments).id
-        let c2 = c1 |> chooseMeasurement CaptureReflected |> setRangeMin (Propagation.SweptValue 300.0) |> setRangeMax (Propagation.SweptValue 500.0) |> commit benchRevision1
+        let c2 = c1 |> chooseMeasurement CaptureReflected |> setRangeMin (Propagation.SweptValue 300.0) |> setRangeMax (Propagation.SweptValue 500.0) |> commitOver benchRevision1
         Assert.Equal(1, List.length c2.experiments)
         let updated = c2.experiments |> List.find (fun e -> e.id = id)
         Assert.Equal<MeasurementMode list>([ CaptureReflected ], updated.scan.blocks |> List.map (fun block -> block.capture))
@@ -356,12 +365,12 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``newDraft after add lets a second commit APPEND a distinct experiment`` () =
-        let c1 = withSource () |> commit benchRevision1
+        let c1 = withSource () |> commitOver benchRevision1
         let c2 =
             c1
             |> (fun c -> c.newDraft)
             |> chooseElement (el "pol") (ElementLabel "Linear polarizer #2") (VariableParameter.allowedFor LinearPolarizer) CaptureBoth
-            |> commit benchRevision2
+            |> commitOver benchRevision2
         Assert.Equal(2, List.length c2.experiments)
         let ids = c2.experiments |> List.map (fun e -> e.id.value)
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)   // distinct ids
@@ -369,10 +378,10 @@ module ExperimentProxyTests =
     [<Fact>]
     let ``edit loads an experiment into the draft for re-editing`` () =
         let c1 =
-            withSource () |> commit benchRevision1
+            withSource () |> commitOver benchRevision1
             |> (fun c -> c.newDraft)
             |> chooseElement (el "pol") (ElementLabel "Linear polarizer #2") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
-            |> commit benchRevision2
+            |> commitOver benchRevision2
         let target = c1.experiments |> List.find (fun e -> (e.scan.axes |> List.map (fun axis -> axis.elementId)) = [ el "pol" ])
         let c2 = edit target.id c1
         Assert.Equal(Some target.id, c2.draft.editingId)
@@ -381,7 +390,7 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``remove deletes the experiment and clears the draft when it was being edited`` () =
-        let c1 = withSource () |> commit benchRevision1
+        let c1 = withSource () |> commitOver benchRevision1
         let id = (List.head c1.experiments).id
         let c2 = remove id c1
         Assert.Empty(c2.experiments)
@@ -391,7 +400,7 @@ module ExperimentProxyTests =
 
     [<Fact>]
     let ``an experiment description mentions the element, the variable, and the capture`` () =
-        let c1 = withSource () |> chooseMeasurement CaptureBoth |> commit benchRevision1
+        let c1 = withSource () |> chooseMeasurement CaptureBoth |> commitOver benchRevision1
         let exp = List.head c1.experiments
         Assert.Contains("Light source", exp.description)
         Assert.Contains("Wavelength", exp.description)
@@ -418,7 +427,7 @@ module ExperimentProxyTests =
             |> chooseElement (el "lp2") (ElementLabel "Linear polarizer #4") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
             |> setRange quarterTurn
             |> setSourceWaveLength (Some heNeLine)
-            |> commit benchRevision1
+            |> commitOver benchRevision1
         let axis : ScanAxis =
             {
                 elementId = el "lp2"
@@ -429,6 +438,7 @@ module ExperimentProxyTests =
         let expected : Experiment =
             {
                 id = ExperimentId 1
+                name = (ExperimentId 1).defaultName
                 setup = benchRevision1
                 scan = ExperimentScan.oneAxis axis CaptureTransmitted (Some heNeLine)
                 role = ScienceRun
@@ -494,7 +504,7 @@ module ExperimentProxyTests =
             |> chooseElement (el "lp2") analyzerAzimuths.label (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
             |> setRange analyzerAzimuths.range
             |> chooseMeasurement CaptureTransmitted
-            |> commit benchRevision1
+            |> commitOver benchRevision1
         let lastBlock : ScanBlock =
             {
                 axes = [ analyzerAzimuths ]
@@ -520,7 +530,7 @@ module ExperimentProxyTests =
         Assert.Equal<ScanAxis option>(Some analyzerAzimuths, editing.draft.axisOpt)
         Assert.Equal(CaptureTransmitted, editing.draft.measurement)
         Assert.Equal<ExperimentId option>(Some stored.id, editing.draft.editingId)
-        Assert.Equal<Experiment list>(committed.experiments, (commit benchRevision1 editing).experiments)
+        Assert.Equal<Experiment list>(committed.experiments, (commitOver benchRevision1 editing).experiments)
 
         // A last block of two axes edits its first as outer; a dark line edits with no axis and commits unchanged.
         let oneBlock =
@@ -532,7 +542,7 @@ module ExperimentProxyTests =
         Assert.Equal<ScanAxis list>([ plateIncidence ], editingOne.draft.outerAxes)
         Assert.Equal<ScanAxis option>(Some plateAzimuthPair, editingOne.draft.axisOpt)
         Assert.Equal(CaptureBoth, editingOne.draft.measurement)
-        Assert.Equal<Experiment list>([ oneBlock ], (commit benchRevision1 editingOne).experiments)
+        Assert.Equal<Experiment list>([ oneBlock ], (commitOver benchRevision1 editingOne).experiments)
         let dark =
             {
                 stored with scan = ExperimentScan.darkLine CaptureReflected
@@ -540,7 +550,7 @@ module ExperimentProxyTests =
         let editingDark = ExperimentCollection.ofLoaded [ dark ] |> edit dark.id
         Assert.Equal<ScanAxis option>(None, editingDark.draft.axisOpt)
         Assert.Equal(CaptureReflected, editingDark.draft.measurement)
-        Assert.Equal<Experiment list>([ dark ], (commit benchRevision1 editingDark).experiments)
+        Assert.Equal<Experiment list>([ dark ], (commitOver benchRevision1 editingDark).experiments)
 
     // ============================ E1 / E2 / E3 over their setup revisions ============================
 
@@ -557,6 +567,7 @@ module ExperimentProxyTests =
     let private e1 : Experiment =
         {
             id = ExperimentId 1
+            name = (ExperimentId 1).defaultName
             setup = benchRevision1
             scan = ExperimentScan.oneAxis (rotatingPolarizer (ElementLabel "Linear polarizer #4")) CaptureTransmitted None
             role = ScienceRun
@@ -569,12 +580,13 @@ module ExperimentProxyTests =
     let private e2 : Experiment =
         { e1 with
             id = ExperimentId 2
+            name = (ExperimentId 2).defaultName
             setup = benchRevision2
             scan = ExperimentScan.oneAxis (rotatingPolarizer (ElementLabel "Linear polarizer #3")) CaptureTransmitted None }
 
     /// E3 = an empty dark line (nothing varied) — how much ambient light reaches the detector with no source.
     let private e3 : Experiment =
-        { e1 with id = ExperimentId 3; setup = darkRevision1; scan = ExperimentScan.darkLine CaptureTransmitted }
+        { e1 with id = ExperimentId 3; name = (ExperimentId 3).defaultName; setup = darkRevision1; scan = ExperimentScan.darkLine CaptureTransmitted }
 
     [<Fact>]
     let ``E1 references its setup revision and names its varied polarizer with its label`` () =
@@ -606,7 +618,7 @@ module ExperimentProxyTests =
                 contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             }
         Assert.Equal("data/run1.csv", attachment.path.value)
-        let c = withSource () |> commit benchRevision1
+        let c = withSource () |> commitOver benchRevision1
         let id = (List.head c.experiments).id
         Assert.Equal(None, (List.head c.experiments).dataFileOpt)
         let c2 = attachDataFile id attachment c
@@ -659,6 +671,35 @@ module ExperimentProxyTests =
             Assert.Equal<Experiment list>(renumbering.expected, renumbered)
             Assert.Equal<Experiment list>(unnumbered renumbering.incoming, unnumbered renumbered)
         Assert.Empty(Experiment.renumberedFor [ ExperimentId 1 ] [])
+
+    let private named (experiment : Experiment) (name : ExperimentName) : Experiment =
+        {
+            experiment with name = name
+        }
+
+    [<Fact>]
+    let ``copied experiments keep their names unless the kit holds them, and a clash takes the next free suffix`` () : unit =
+        let unnamed (experiments : Experiment list) : Experiment list =
+            experiments |> List.map (fun experiment -> named experiment (ExperimentName "-"))
+        let incoming = [ named e1 (ExperimentName "cpl-(qz#45)-cpl"); e3 ]
+        Assert.Equal<ExperimentName>(ExperimentName "E3", e3.name)
+
+        // The kit's name clashes ignoring case, so the copy takes its next free suffix; E3 is free and kept.
+        let renamed = Experiment.renamedFor [ ExperimentName "CPL-(QZ#45)-CPL" ] incoming
+        Assert.Equal<ExperimentName list>(
+            [ ExperimentName "cpl-(qz#45)-cpl (2)"; ExperimentName "E3" ],
+            renamed |> List.map (fun experiment -> experiment.name))
+        Assert.Equal<Experiment list>(unnamed incoming, unnamed renamed)
+
+        // A kit holding no name keeps every incoming one.
+        Assert.Equal<Experiment list>(incoming, Experiment.renamedFor [] incoming)
+        Assert.Empty(Experiment.renamedFor [ ExperimentName "E3" ] [])
+
+        // A name given to an earlier incoming experiment is taken too.
+        let twice = [ named e1 (ExperimentName "Run"); named e2 (ExperimentName "run") ]
+        Assert.Equal<ExperimentName list>(
+            [ ExperimentName "Run"; ExperimentName "run (2)" ],
+            Experiment.renamedFor [] twice |> List.map (fun experiment -> experiment.name))
 
     // ============================ spec 0050 S7.2, S8.2: the physical items an experiment uses ============================
 
@@ -781,6 +822,7 @@ module ExperimentProxyTests =
             {
                 e3 with
                     id = ExperimentId id
+                    name = (ExperimentId id).defaultName
                     setup = setup
             }
 
@@ -849,6 +891,7 @@ module ExperimentProxyTests =
             {
                 e3 with
                     id = ExperimentId 24
+                    name = (ExperimentId 24).defaultName
                     setup = bench.reference
             }
 
@@ -868,7 +911,7 @@ module ExperimentProxyTests =
         let c =
             ExperimentCollection.empty
             |> chooseElement (el "lp2") (ElementLabel "Linear polarizer #4") (VariableParameter.allowedFor LinearPolarizer) CaptureTransmitted
-            |> commit benchRevision2
+            |> commitOver benchRevision2
         Assert.Equal(1, List.length c.experiments)
         let exp = List.head c.experiments
         Assert.Equal<SetupReference>(benchRevision2, exp.setup)
@@ -902,6 +945,7 @@ module ExperimentProxyTests =
         let over (setup : SetupReference) (id : ExperimentId) : Experiment =
             {
                 id = id
+                name = id.defaultName
                 setup = setup
                 scan = ExperimentScan.oneAxis { rotatingPolarizer (ElementLabel "Linear polarizer #4") with range = range } CaptureTransmitted None
                 role = ScienceRun
@@ -909,14 +953,19 @@ module ExperimentProxyTests =
                 notes = ExperimentNotes.none
                 dataFileOpt = None
             }
-        let committed = commitOverSetups [ a1; b2 ] editing
+        let targets : ExperimentTarget list =
+            [
+                { setup = a1; name = (ExperimentId 2).defaultName }
+                { setup = b2; name = (ExperimentId 3).defaultName }
+            ]
+        let committed = commitOverSetups targets editing
         Assert.Equal<Experiment list>([ held; over a1 (ExperimentId 2); over b2 (ExperimentId 3) ], committed.experiments)
         Assert.Equal<ExperimentDraft>({ editing.draft with editingId = None }, committed.draft)
         Assert.Equal(ExperimentId 4, committed.nextId)
         // The draft edits nothing, so a later commit appends.
-        Assert.Equal(4, List.length (commit benchRevision1 committed).experiments)
+        Assert.Equal(4, List.length (commitOver benchRevision1 committed).experiments)
         let incomplete = { editing with draft = ExperimentDraft.empty }
-        Assert.Equal<ExperimentCollection>(incomplete, commitOverSetups [ a1; b2 ] incomplete)
+        Assert.Equal<ExperimentCollection>(incomplete, commitOverSetups targets incomplete)
 
     // ============================ the mock proxy seam ============================
 
@@ -943,6 +992,7 @@ module ExperimentProxyTests =
         let only : Experiment =
             {
                 id = ExperimentId 7
+                name = (ExperimentId 7).defaultName
                 setup = benchRevision1
                 scan = ExperimentScan.oneAxis stubAxis CaptureTransmitted None
                 role = ScienceRun

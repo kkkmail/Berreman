@@ -112,6 +112,7 @@ module ExperimentCollectionRoundTripTests =
     let private e1 : Experiment =
         {
             id = ExperimentId 1
+            name = (ExperimentId 1).defaultName
             setup = { bench.reference with revision = SetupRevision 1 }
             scan = ExperimentScan.oneAxis (analyzerTurn (ElementLabel "Linear polarizer #4")) CaptureTransmitted None
             role = ScienceRun
@@ -124,6 +125,7 @@ module ExperimentCollectionRoundTripTests =
         {
             e1 with
                 id = ExperimentId 2
+                name = (ExperimentId 2).defaultName
                 setup = bench.reference
                 scan = ExperimentScan.oneAxis (analyzerTurn (ElementLabel "Linear polarizer #3")) CaptureTransmitted None
                 dataFileOpt = None
@@ -132,6 +134,7 @@ module ExperimentCollectionRoundTripTests =
     let private e3 : Experiment =
         {
             id = ExperimentId 3
+            name = (ExperimentId 3).defaultName
             setup = dark.reference
             scan = ExperimentScan.darkLine CaptureTransmitted
             role = ScienceRun
@@ -182,7 +185,9 @@ module ExperimentCollectionRoundTripTests =
         // Spec 0050 S4.3: identity order differs from filename order, and stem matching ignores case.
         let tenth =
             {
-                e3 with id = ExperimentId 10
+                e3 with
+                    id = ExperimentId 10
+                    name = (ExperimentId 10).defaultName
             }
         let lowerFile = FileName "e10.experiment-json"
         let text = tenth.experimentFile.fileText |> Result.defaultWith (fun error -> failwith error.describe)
@@ -202,7 +207,7 @@ module ExperimentCollectionRoundTripTests =
 
         let reader = KitProxy.create folder
         Assert.Equal<Experiment list>([ second ], reader.readExperiments () |> kitContentValue)
-        Assert.Equal<FileStem list>([ e1.id.fileStem ], reader.listKindFiles ExperimentKitFile |> kitContentValue)
+        Assert.Equal<FileStem list>([ e1.name.fileStem ], reader.listKindFiles ExperimentKitFile |> kitContentValue)
 
         let invalidRange =
             {
@@ -212,12 +217,12 @@ module ExperimentCollectionRoundTripTests =
             {
                 second with scan = ExperimentScan.oneAxis { e1Turn with range = invalidRange } CaptureReflected None
             }
-        let storedText = reader.readKindFile ExperimentKitFile e1.id.fileStem |> kitContentValue
+        let storedText = reader.readKindFile ExperimentKitFile e1.name.fileStem |> kitContentValue
         match proxy.writeExperiment invalidExperiment with
         | Error (KitFileRejectedErr reason) -> Assert.Contains("E1.experiment-json", reason)
         | Error error -> Assert.Fail($"Expected KitFileRejectedErr, got {error.describe}")
         | Ok () -> Assert.Fail("An experiment that cannot be rendered must refuse the write.")
-        Assert.Equal<KitFileText>(storedText, reader.readKindFile ExperimentKitFile e1.id.fileStem |> kitContentValue)
+        Assert.Equal<KitFileText>(storedText, reader.readKindFile ExperimentKitFile e1.name.fileStem |> kitContentValue)
 
     [<Fact>]
     let ``a kit with no experiment files reads no experiments`` () : unit =
@@ -232,18 +237,18 @@ module ExperimentCollectionRoundTripTests =
         let reader = KitProxy.create folder
         Assert.Equal<Experiment list>([ e1; e2; e3 ], reader.readExperiments () |> kitContentValue)
 
-        proxy.deleteExperiment e2.id |> kitContentValue
+        proxy.deleteExperiment e2.name |> kitContentValue
         Assert.Equal<Experiment list>([ e1; e3 ], reader.readExperiments () |> kitContentValue)
         let deletedFile = FileName "E2.experiment-json"
         Assert.False(File.Exists((deletedFile.combine folder.value).value))
-        match proxy.deleteExperiment e2.id with
+        match proxy.deleteExperiment e2.name with
         | Error (MissingKitFileErr reason) -> Assert.Contains(deletedFile.value, reason)
         | Error error -> Assert.Fail($"Expected MissingKitFileErr, got {error.describe}")
         | Ok () -> Assert.Fail("Deleting an absent experiment must report the missing file.")
         Assert.Equal<Experiment list>([ e1; e3 ], reader.readExperiments () |> kitContentValue)
 
     [<Fact>]
-    let ``an experiment file that does not read, or holds another id, refuses the read, naming the file`` () : unit =
+    let ``an experiment file that does not read, or holds another name, refuses the read, naming the file`` () : unit =
         let e1Text = e1.experimentFile.fileText |> Result.defaultWith (fun error -> failwith error.describe)
         let invalidFiles =
             [ FileName "E5.experiment-json", KitFileText "{"
@@ -306,7 +311,7 @@ module ExperimentCollectionRoundTripTests =
         let writes =
             [ (fun () -> reader.writeExperiment changedExperiment)
               (fun () -> reader.writeExperiment e3)
-              (fun () -> reader.deleteExperiment e2.id)
+              (fun () -> reader.deleteExperiment e2.name)
               (fun () -> reader.writeSetup changedSetup)
               (fun () -> reader.writeSetup newSetup) ]
         for write in writes do

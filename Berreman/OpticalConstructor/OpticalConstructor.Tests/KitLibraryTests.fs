@@ -160,6 +160,7 @@ module KitLibraryTests =
     let private recordingExperiment : Experiment =
         {
             id = ExperimentId 149
+            name = (ExperimentId 149).defaultName
             setup = recordingSetup.reference
             scan = ExperimentScan.darkLine CaptureTransmitted
             role = ScienceRun

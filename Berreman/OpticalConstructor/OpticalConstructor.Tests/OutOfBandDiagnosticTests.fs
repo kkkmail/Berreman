@@ -174,6 +174,7 @@ module OutOfBandDiagnosticTests =
         let sweep : Experiment =
             {
                 id = ExperimentId 1
+                name = (ExperimentId 1).defaultName
                 setup = bench
                 scan = ExperimentScan.oneAxis (sourceSweep 200.0 800.0) CaptureTransmitted None
                 role = ScienceRun

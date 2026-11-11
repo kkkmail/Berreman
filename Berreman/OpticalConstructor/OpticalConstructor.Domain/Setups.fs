@@ -447,7 +447,7 @@ module Setups =
                 match assigned |> List.tryFind (fun (_, _, id) -> not (isHeld id)) with
                 | Some (experiment, roled, id) ->
                     let slot = $"'{roled.role.text}' ({roled.slot.id.value})"
-                    let place = $"the slot {slot} of {experiment.setup.describe}, which {experiment.id.fileStem.value} references"
+                    let place = $"the slot {slot} of {experiment.setup.describe}, which {experiment.name.value} references"
                     Error (SetupItemReferenceErr (UnknownKitItemErr $"{id.value}, held in {place}"))
                 | None ->
                     let used = assigned |> List.map (fun (_, _, id) -> id)
