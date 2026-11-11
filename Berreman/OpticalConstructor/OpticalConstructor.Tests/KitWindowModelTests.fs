@@ -229,6 +229,10 @@ module KitWindowModelTests =
                         |> updateTableAndElementRotation SaveNamingTemplate
                         // Spec 0050 S8.4: a recorded experiment is refused as a commit is.
                         ready |> updateTableAndElementRotation RecordExperiment
+                        // Spec 0050 S9.1: a recorded experiment's role, session and notes are written to its file.
+                        ready |> updateTableAndElementRotation (SetExperimentRole (storedExperiment.id, CalibrationRun))
+                        ready |> updateTableAndElementRotation (SetExperimentSession (storedExperiment.id, ControlCaption "Day 1"))
+                        ready |> updateTableAndElementRotation (SetExperimentNotes (storedExperiment.id, ControlCaption "LR re-seated before this run"))
                     ]
                 for answer in refused do
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)

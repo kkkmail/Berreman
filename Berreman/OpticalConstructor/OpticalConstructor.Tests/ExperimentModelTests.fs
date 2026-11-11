@@ -19,9 +19,10 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// The Main scene's scan messages over a kit opened read-write: Add variable moves the edited axis into the draft's
-/// current block, Add block closes that block on the capture the detectors allow, neither writes the kit, and a commit
-/// records the draft's whole scan as one experiment (spec 0050 S9.1; 001 §K, §P).
+/// The Main scene's scan and bookkeeping messages over a kit opened read-write: Add variable moves the edited axis into
+/// the draft's current block, Add block closes that block on the capture the detectors allow, neither writes the kit, a
+/// commit records the draft's whole scan as one experiment, and a recorded experiment's role, session and notes are
+/// written to its file (spec 0050 S9.1; 001 §E, §K, §P).
 module ExperimentModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -116,6 +117,33 @@ module ExperimentModelTests =
     /// The draft's edited axis, failing when the draft has none.
     let private editedAxis (model : TableAndElementRotationModel) : Experiments.ScanAxis =
         model.experimentCollection.draft.axisOpt |> Option.defaultWith (fun () -> failwith "The draft must have an edited axis.")
+
+    /// Runs over the scan kit with `E1`, the sample's incidence over 20…60° in 3 points, committed through the bay, and
+    /// that experiment as the kit holds it (spec 0050 S9.1).
+    let private withCommittedE1 (run : KitFolder -> TableAndElementRotationModel -> Experiments.Experiment -> unit) : unit =
+        withScanKit (fun folder scan ->
+            let incidenceRange : Experiments.VariableRange =
+                {
+                    min = SweptValue 20.0
+                    max = SweptValue 60.0
+                    points = CurvePointCount 3
+                }
+            let committed =
+                scan.table
+                |> varying scan.sample ExperimentControls.VaryR2 incidenceRange
+                |> updateTableAndElementRotation ExpCommit
+            Assert.Equal<ControlCaption option>(None, committed.kitStatus)
+            let e1 : Experiments.Experiment = Assert.Single(committed.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 1, e1.id)
+            Assert.Equal<Experiments.Experiment list>([ e1 ], committed.experimentCollection.experiments)
+            run folder committed e1)
+
+    /// The kit file of the experiment, by its path relative to the kit folder.
+    let private experimentFileOf (experiment : Experiments.Experiment) : string = $"{experiment.name.value}.experiment-json"
+
+    /// Every kit file but the experiment's, with its bytes.
+    let private otherFileBytes (folder : KitFolder) (experiment : Experiments.Experiment) : Map<string, FileByteContent> =
+        kitFileBytes folder |> Map.remove (experimentFileOf experiment)
 
     [<Fact>]
     let ``Add variable and Add block build the draft's scan, and a commit records it as one experiment`` () : unit =
@@ -235,3 +263,64 @@ module ExperimentModelTests =
             Assert.Equal<TableAndElementRotationModel>(fresh, fresh |> updateTableAndElementRotation ExpAddScanBlock)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
             Assert.Empty(experimentFilesIn folder))
+
+    [<Fact>]
+    let ``SetExperimentRole, SetExperimentSession and SetExperimentNotes change the stored experiment and its kit file`` () : unit =
+        withCommittedE1 (fun folder committed e1 ->
+            let fileBefore = (kitFileBytes folder).[experimentFileOf e1]
+            let othersBefore = otherFileBytes folder e1
+            let changed =
+                committed
+                |> updateTableAndElementRotation (SetExperimentRole (e1.id, Experiments.CalibrationRun))
+                |> updateTableAndElementRotation (SetExperimentSession (e1.id, ControlCaption "Day 1"))
+                |> updateTableAndElementRotation (SetExperimentNotes (e1.id, ControlCaption "LR re-seated before this run"))
+            Assert.Equal<ControlCaption option>(None, changed.kitStatus)
+
+            // Only the role, the session and the notes change: the scan, setup, name and data stay, the draft too.
+            let expected : Experiments.Experiment =
+                {
+                    e1 with
+                        role = Experiments.CalibrationRun
+                        sessionOpt = Some (Experiments.SessionName "Day 1")
+                        notes = Experiments.ExperimentNotes "LR re-seated before this run"
+                }
+            let held : Experiments.Experiment = Assert.Single(changed.experimentCollection.experiments)
+            Assert.Equal<Experiments.ExperimentScan>(e1.scan, held.scan)
+            Assert.Equal<Experiments.Experiment>(expected, held)
+            Assert.Equal<Experiments.ExperimentCollection>(
+                {
+                    committed.experimentCollection with experiments = [ expected ]
+                },
+                changed.experimentCollection)
+
+            // The experiment's kit file holds the three; no other file is written.
+            Assert.Equal<string list>([ experimentFileOf e1 ], experimentFilesIn folder)
+            Assert.NotEqual<FileByteContent>(fileBefore, (kitFileBytes folder).[experimentFileOf e1])
+            Assert.Equal<Map<string, FileByteContent>>(othersBefore, otherFileBytes folder e1)
+            let stored : Experiments.Experiment = Assert.Single(changed.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<Experiments.Experiment>(expected, stored))
+
+    [<Fact>]
+    let ``a blank session clears it, and a change to an experiment the kit lacks writes nothing`` () : unit =
+        withCommittedE1 (fun folder committed e1 ->
+            let inSession = committed |> updateTableAndElementRotation (SetExperimentSession (e1.id, ControlCaption "Day 1"))
+            let sessioned : Experiments.Experiment = Assert.Single(inSession.experimentCollection.experiments)
+            Assert.Equal<Experiments.SessionName option>(Some (Experiments.SessionName "Day 1"), sessioned.sessionOpt)
+            let sessionedStored : Experiments.Experiment = Assert.Single(inSession.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<Experiments.SessionName option>(Some (Experiments.SessionName "Day 1"), sessionedStored.sessionOpt)
+            let cleared = inSession |> updateTableAndElementRotation (SetExperimentSession (e1.id, ControlCaption "  "))
+            Assert.Equal<ControlCaption option>(None, cleared.kitStatus)
+            let clearedHeld : Experiments.Experiment = Assert.Single(cleared.experimentCollection.experiments)
+            Assert.Equal<Experiments.SessionName option>(None, clearedHeld.sessionOpt)
+            Assert.Equal<Experiments.Experiment>(e1, clearedHeld)
+            let clearedStored : Experiments.Experiment = Assert.Single(cleared.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<Experiments.SessionName option>(None, clearedStored.sessionOpt)
+            Assert.Equal<Experiments.Experiment>(e1, clearedStored)
+
+            // The kit holds no experiment 9: the model stays equal and no file's bytes change.
+            let before = kitFileBytes folder
+            let absent = Experiments.ExperimentId 9
+            Assert.DoesNotContain(absent, cleared.experimentCollection.experiments |> List.map (fun experiment -> experiment.id))
+            let unchanged = cleared |> updateTableAndElementRotation (SetExperimentRole (absent, Experiments.DarkRun))
+            Assert.Equal<TableAndElementRotationModel>(cleared, unchanged)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))

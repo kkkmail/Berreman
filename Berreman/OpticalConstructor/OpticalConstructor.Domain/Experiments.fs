@@ -395,6 +395,17 @@ module Experiments =
             |> snd
             |> List.rev
 
+    type Experiment with
+
+        /// The experiment with that role, its scan, setup, name and data kept (spec 0050 S9.1).
+        member this.withRole (role : ExperimentRole) : Experiment = { this with role = role }
+
+        /// The experiment in that session, or in none, its scan, setup, name and data kept (spec 0050 S9.1).
+        member this.withSessionOpt (sessionOpt : SessionName option) : Experiment = { this with sessionOpt = sessionOpt }
+
+        /// The experiment with those notes, its scan, setup, name and data kept (spec 0050 S9.1).
+        member this.withNotes (notes : ExperimentNotes) : Experiment = { this with notes = notes }
+
     /// One experiment's versioned .experiment-json content (spec 0050 S4.3).
     type ExperimentFile =
         {
@@ -509,6 +520,13 @@ module Experiments =
         /// Start a brand-new draft (clears the editor and the editing cursor).
         member this.newDraft : ExperimentCollection =
             { this with draft = ExperimentDraft.empty }
+
+        /// The collection with `experiment` in place of its id's, unchanged when it holds none; the draft is untouched
+        /// (spec 0050 S9.1).
+        member this.withStoredExperiment (experiment : Experiment) : ExperimentCollection =
+            {
+                this with experiments = this.experiments |> List.map (fun held -> if held.id = experiment.id then experiment else held)
+            }
 
         /// Moves the edited axis into the current block's outer axes and clears it, its range back to R1's default; a draft
         /// with no edited axis is unchanged. A member, not a free function of the collection (ELEV013; spec 0050 S9.1).

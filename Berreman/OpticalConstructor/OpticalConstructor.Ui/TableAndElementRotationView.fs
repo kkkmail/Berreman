@@ -1086,6 +1086,12 @@ type TableAndElementRotationMsg =
     | ViewExperiment of Experiments.ExperimentId
     /// Records a picked file through the kit, then loads and validates its attachment (spec 0050 S4.2).
     | AttachDataFileTo of Experiments.ExperimentId * FileName
+    /// Records that role for the experiment in its kit file (spec 0050 S9.1; 001 §P `SetExperimentRole`).
+    | SetExperimentRole of Experiments.ExperimentId * Experiments.ExperimentRole
+    /// Records the typed session for the experiment in its kit file, a blank text clearing it (spec 0050 S9.1).
+    | SetExperimentSession of Experiments.ExperimentId * ControlCaption
+    /// Records the typed notes for the experiment in its kit file (spec 0050 S9.1; 001 §E).
+    | SetExperimentNotes of Experiments.ExperimentId * ControlCaption
     /// Edits the name the next created setup takes (spec 0050 S8.2).
     | SetSetupName of ControlCaption
     /// The table becomes a new setup of the kit, named by the field (spec 0050 S8.2; 001 §P `CreateSetup`).
@@ -2327,6 +2333,44 @@ let private recordKitItemEdit
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     })
 
+/// The session name type itself: qualified as `Experiments.SessionName`, F# resolves its union case and finds no
+/// `tryCreate` (spec 0050 S9.1).
+type private ExperimentSessionName = Experiments.SessionName
+
+type ControlCaption with
+
+    /// The typed text as an experiment's notes (spec 0050 S9.1).
+    member private this.toExperimentNotes : Experiments.ExperimentNotes = Experiments.ExperimentNotes this.value
+
+/// Records the collection's experiment of that id changed, after step 185's read-only guard: an id the collection lacks
+/// changes nothing, and a failed write keeps the model and tells why (spec 0050 S9.1).
+let private recordExperimentEdit
+    (id : Experiments.ExperimentId)
+    (change : Experiments.Experiment -> Experiments.Experiment)
+    (model : TableAndElementRotationModel)
+    : TableAndElementRotationModel =
+    guardKitWrite model (fun () ->
+        match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) with
+        | None -> model
+        | Some held ->
+            let changed = change held
+            let library : KitLibraryContext =
+                {
+                    kit = model.kit
+                    imports = model.catalogueImports
+                }
+            match library.recordExperiment changed with
+            | Ok () ->
+                {
+                    model with
+                        experimentCollection = model.experimentCollection.withStoredExperiment changed
+                        kitStatus = None
+                }
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                })
+
 /// The table's slot of that id holding the kit's item of that id, or emptied; refused when the table lacks the slot,
 /// the kit the item, the stores its model, or the slot does not fit it. `AssignSlot` and `SwapSlot` refuse alike (spec
 /// 0050 S8.2).
@@ -2828,6 +2872,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                         }
                 | None -> model)
+    | SetExperimentRole (experimentId, role) -> model |> recordExperimentEdit experimentId (fun held -> held.withRole role)
+    | SetExperimentSession (experimentId, text) ->
+        model |> recordExperimentEdit experimentId (fun held -> held.withSessionOpt (ExperimentSessionName.tryCreate text.value))
+    | SetExperimentNotes (experimentId, text) ->
+        model |> recordExperimentEdit experimentId (fun held -> held.withNotes text.toExperimentNotes)
     | SetSetupName name -> { model with setupName = name }
     | CreateSetup ->
         guardKitWrite model (fun () ->
