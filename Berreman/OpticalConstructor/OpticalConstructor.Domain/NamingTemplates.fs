@@ -2,6 +2,8 @@ namespace OpticalConstructor.Domain
 
 open System
 open System.Globalization
+open Berreman.Constants
+open Berreman.Geometry
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Setups
 
@@ -237,3 +239,170 @@ module NamingTemplates =
         static member tryCreate (text : string) : Result<NamingTemplate, NamingTemplateError> =
             let template = NamingTemplate text
             template.pieces |> Result.map (fun _ -> template)
+
+    /// A whole name as text: a setup's or an experiment's name, or a label a lab file carries (spec 0050 S8.3).
+    type NameText =
+        | NameText of string
+
+        member this.value : string = let (NameText text) = this in text
+
+    /// The text a name holds for the slot of `role` (spec 0050 S8.3).
+    type SlotPart =
+        {
+            role : SlotRole
+            part : NamePart
+        }
+
+    /// The angle a name holds for the object at `position` (spec 0050 S8.3).
+    type ObjectAngle =
+        {
+            position : SlotPosition
+            angle : Angle
+        }
+
+    /// The values a name holds, each list in its template's order (spec 0050 S8.3; 001 §J).
+    type NameReading =
+        {
+            parts : SlotPart list
+            angles : ObjectAngle list
+            noteOpt : NamePart option
+        }
+
+        /// The text the name holds for the slot of `role`, if any (spec 0050 S8.3).
+        member this.tryFindPart (role : SlotRole) : NamePart option =
+            this.parts |> List.tryFind (fun slotPart -> slotPart.role = role) |> Option.map (fun slotPart -> slotPart.part)
+
+        /// The angle the name holds for the object at `position`, if any (spec 0050 S8.3).
+        member this.tryFindAngle (position : SlotPosition) : Angle option =
+            this.angles
+            |> List.tryFind (fun objectAngle -> objectAngle.position = position)
+            |> Option.map (fun objectAngle -> objectAngle.angle)
+
+    type NamingTemplate with
+
+        /// The name the template writes for the reading: each value after the text its placeholder owns, an optional
+        /// value the reading lacks left out with that text, and the tail last (spec 0050 S8.3; 001 §J).
+        member this.writeName (reading : NameReading) : Result<NameText, NamingTemplateError> =
+            // Degrees to three decimals, invariant, with no exponent, trailing zero or sign on zero (spec 0050 S8.3).
+            let degreesText (angle : Angle) : string =
+                let rounded = Math.Round(angle.degrees, 3)
+                let unsigned = if rounded = 0.0 then 0.0 else rounded
+                unsigned.ToString("0.###", CultureInfo.InvariantCulture)
+
+            let valueOf (placeholder : TemplatePlaceholder) : string option =
+                match placeholder with
+                | SlotPlaceholder role -> reading.tryFindPart role |> Option.map (fun part -> part.value)
+                | AnglePlaceholder position -> reading.tryFindAngle position |> Option.map degreesText
+                | NotePlaceholder -> reading.noteOpt |> Option.map (fun note -> note.value)
+
+            let rec write (owned : string) (pieces : TemplatePiece list) (written : string list) : Result<NameText, NamingTemplateError> =
+                match pieces with
+                | [] -> Ok (NameText (String.concat "" (List.rev (owned :: written))))
+                | LiteralPiece literal :: later -> write (owned + literal.value) later written
+                | ValuePiece value :: later ->
+                    match valueOf value.placeholder, value.placeholder.need with
+                    | Some text, _ -> write "" later (text :: owned :: written)
+                    | None, OptionalPlaceholder -> write "" later written
+                    | None, RequiredPlaceholder -> Error (MissingNameValueErr $"'{value.placeholder.text}' of '{this.value}'")
+
+            this.pieces |> Result.bind (fun pieces -> write "" pieces [])
+
+        /// The values the name holds, by the first way of leaving out the template's optional groups that reads it (all
+        /// kept first, an earlier group kept longest), or `NameMismatchErr` naming the name (spec 0050 S8.3; 001 §J).
+        member this.readName (name : NameText) : Result<NameReading, NamingTemplateError> =
+            let text = name.value
+
+            let angleOf (value : string) : Angle option =
+                let digits (part : string) : bool = part <> "" && String.forall Char.IsAsciiDigit part
+                let unsigned = if value.StartsWith '-' then value.Substring 1 else value
+
+                let shaped =
+                    match unsigned.IndexOf '.' with
+                    | -1 -> digits unsigned
+                    | dot -> digits (unsigned.Substring(0, dot)) && digits (unsigned.Substring(dot + 1))
+
+                let styles = NumberStyles.AllowLeadingSign ||| NumberStyles.AllowDecimalPoint
+
+                match shaped, Double.TryParse(value, styles, CultureInfo.InvariantCulture) with
+                | true, (true, degrees) when Double.IsFinite degrees -> Some (Angle.degree (degrees * 1.0<deg>))
+                | _ -> None
+
+            let readPieces (pieces : TemplatePiece list) : NameReading option =
+                let ownedEntries, tail =
+                    pieces
+                    |> List.fold
+                        (fun (entries : (string * TemplatePlaceholder) list, pending : string) piece ->
+                            match piece with
+                            | LiteralPiece literal -> entries, pending + literal.value
+                            | ValuePiece value -> (pending, value.placeholder) :: entries, "")
+                        ([], "")
+
+                let entries = List.rev ownedEntries
+
+                let groups : TemplatePlaceholder list list =
+                    entries
+                    |> List.choose (fun (_, placeholder) ->
+                        match placeholder.need, placeholder with
+                        | RequiredPlaceholder, _ -> None
+                        | OptionalPlaceholder, SlotPlaceholder (ObjectSlotRole position)
+                        | OptionalPlaceholder, AnglePlaceholder position -> Some (Choice1Of2 position, placeholder)
+                        | OptionalPlaceholder, _ -> Some (Choice2Of2 placeholder, placeholder))
+                    |> List.groupBy fst
+                    |> List.map (fun (_, members) -> List.map snd members)
+
+                // Binary counting over the groups, the last the lowest digit and a left-out group a one.
+                let rec ways (rest : TemplatePlaceholder list list) : seq<TemplatePlaceholder list> =
+                    match rest with
+                    | [] -> Seq.singleton []
+                    | group :: later ->
+                        seq {
+                            yield! ways later
+                            yield! ways later |> Seq.map (fun leftOut -> group @ leftOut)
+                        }
+
+                let rec readFrom (at : int) (kept : (string * TemplatePlaceholder) list) (read : NameReading) : NameReading option =
+                    match kept with
+                    | [] when String.Equals(text.Substring at, tail, StringComparison.Ordinal) ->
+                        Some { parts = List.rev read.parts; angles = List.rev read.angles; noteOpt = read.noteOpt }
+                    | [] -> None
+                    | (owned, placeholder) :: later when text.Substring(at).StartsWith(owned, StringComparison.Ordinal) ->
+                        let start = at + owned.Length
+
+                        let follow =
+                            match later with
+                            | (next, _) :: _ -> next
+                            | [] -> tail
+
+                        let finishOpt =
+                            if start >= text.Length then None
+                            elif follow = "" then Some text.Length
+                            else
+                                match text.IndexOf(follow, start + 1, StringComparison.Ordinal) with
+                                | -1 -> None
+                                | finish -> Some finish
+
+                        finishOpt
+                        |> Option.bind (fun finish ->
+                            let value = text.Substring(start, finish - start)
+
+                            let withValue : NameReading option =
+                                match placeholder with
+                                | SlotPlaceholder role -> Some { read with parts = { role = role; part = NamePart value } :: read.parts }
+                                | AnglePlaceholder position ->
+                                    angleOf value
+                                    |> Option.map (fun angle -> { read with angles = { position = position; angle = angle } :: read.angles })
+                                | NotePlaceholder -> Some { read with noteOpt = Some (NamePart value) }
+
+                            withValue |> Option.bind (readFrom finish later))
+                    | _ :: _ -> None
+
+                ways groups
+                |> Seq.tryPick (fun leftOut ->
+                    let kept = entries |> List.filter (fun (_, placeholder) -> not (List.contains placeholder leftOut))
+                    readFrom 0 kept { parts = []; angles = []; noteOpt = None })
+
+            this.pieces
+            |> Result.bind (fun pieces ->
+                match readPieces pieces with
+                | Some reading -> Ok reading
+                | None -> Error (NameMismatchErr $"'{text}' against '{this.value}'"))

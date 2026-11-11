@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Tests
 
 open Xunit
+open Berreman.Constants
+open Berreman.Geometry
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.NamingTemplates
@@ -204,3 +206,122 @@ module NamingTemplateTests =
 
         cases |> List.iter (fun (error, expected) -> Assert.Equal(expected, error.describe))
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+
+    let private sourceRole : SlotRole = PrepSlotRole (SlotPosition 1)
+    let private analyzerRole : SlotRole = AnalyzerSlotRole (SlotPosition 1)
+
+    /// The reading the lab's grammar gives a label: the source, the objects at their angles in order, the analyzer
+    /// and the note, each list in the standard template's order.
+    let private labReading (source : NamePart) (objects : (NamePart * Angle) list) (analyzer : NamePart) (noteOpt : NamePart option) : NameReading =
+        let positions = objects |> List.mapi (fun index _ -> SlotPosition (index + 1))
+
+        {
+            parts =
+                [ { role = sourceRole; part = source } ]
+                @ List.map2 (fun position (part, _) -> { role = ObjectSlotRole position; part = part }) positions objects
+                @ [ { role = analyzerRole; part = analyzer } ]
+            angles = List.map2 (fun position (_, angle) -> { position = position; angle = angle }) positions objects
+            noteOpt = noteOpt
+        }
+
+    let private readingOf (name : NameText) : NameReading =
+        match NamingTemplate.standard.readName name with
+        | Ok reading -> reading
+        | Error error -> failwith $"'{name.value}' was refused: {error.describe}"
+
+    [<Fact>]
+    let ``the lab's labels read into their source, objects, angles, analyzer and note`` () : unit =
+        let cpl = NamePart "CPL"
+        let lp = NamePart "LP"
+        let qz = NamePart "QZ"
+        let lr = NamePart "LR"
+        let air = NamePart "AIR"
+
+        let cases : (NameText * NameReading) list =
+            [
+                NameText "CPL-(QZ#90-LR#90)-CPL", labReading cpl [ qz, Angle.degree 90.0<deg>; lr, Angle.degree 90.0<deg> ] cpl None
+                NameText "CPL-(AIR#0)-CPL", labReading cpl [ air, Angle.degree 0.0<deg> ] cpl None
+                NameText "LP-(LR#90)-CPL-2", labReading lp [ lr, Angle.degree 90.0<deg> ] cpl (Some (NamePart "2"))
+                NameText "CPL-(AIR#0)-CPL-BR", labReading cpl [ air, Angle.degree 0.0<deg> ] cpl (Some (NamePart "BR"))
+                NameText "CPL-(LR#-45)-CPL", labReading cpl [ lr, Angle.degree (-45.0<deg>) ] cpl None
+                NameText "LP-(QZ#22.5)-LP", labReading lp [ qz, Angle.degree 22.5<deg> ] lp None
+            ]
+
+        cases |> List.iter (fun (name, expected) -> Assert.Equal<NameReading>(expected, readingOf name))
+
+        let both = readingOf (NameText "CPL-(QZ#90-LR#90)-CPL")
+        Assert.Equal<NamePart option>(Some cpl, both.tryFindPart sourceRole)
+        Assert.Equal<NamePart option>(Some lr, both.tryFindPart (ObjectSlotRole (SlotPosition 2)))
+        Assert.Equal<NamePart option>(Some cpl, both.tryFindPart analyzerRole)
+        Assert.Equal<Angle option>(Some (Angle.degree 90.0<deg>), both.tryFindAngle (SlotPosition 2))
+        Assert.Equal<NamePart option>(None, both.noteOpt)
+
+        let air0 = readingOf (NameText "CPL-(AIR#0)-CPL")
+        Assert.Equal<NamePart option>(Some air, air0.tryFindPart (ObjectSlotRole (SlotPosition 1)))
+        Assert.Equal<Angle option>(Some (Angle.degree 0.0<deg>), air0.tryFindAngle (SlotPosition 1))
+        Assert.Equal<NamePart option>(None, air0.tryFindPart (ObjectSlotRole (SlotPosition 2)))
+        Assert.Equal<Angle option>(None, air0.tryFindAngle (SlotPosition 2))
+
+        let noted = readingOf (NameText "LP-(LR#90)-CPL-2")
+        Assert.Equal<NamePart option>(Some lp, noted.tryFindPart sourceRole)
+        Assert.Equal<NamePart option>(Some cpl, noted.tryFindPart analyzerRole)
+        Assert.Equal<NamePart option>(Some (NamePart "2"), noted.noteOpt)
+
+    [<Fact>]
+    let ``a name that does not fit the template is refused naming it`` () : unit =
+        [
+            NameText "Darkness"
+            NameText "BullshitCheck"
+            NameText "BullshitCheck-2"
+            NameText "LP-(Darkness)-CPL2"
+            NameText "CPL-(QZ#ab)-CPL"
+            NameText "CPL-(QZ#90-LR)-CPL"
+            NameText ""
+        ]
+        |> List.iter (fun name ->
+            match NamingTemplate.standard.readName name with
+            | Error (NameMismatchErr reason) ->
+                Assert.Contains($"'{name.value}'", reason)
+                Assert.Contains(NamingTemplate.standard.value, reason)
+            | Error other -> Assert.Fail($"'{name.value}' expected NameMismatchErr, got {other.describe}")
+            | Ok reading -> Assert.Fail($"'{name.value}' was read into {reading.parts.Length} parts"))
+
+    [<Fact>]
+    let ``writing a reading back gives the name it was read from`` () : unit =
+        [
+            NameText "CPL-(QZ#90-LR#90)-CPL"
+            NameText "CPL-(QZ#0-LR#0)-LP-2"
+            NameText "LP-(AIR#0)-LP-2R"
+            NameText "CPL-(AIR#0)-CPL-BR"
+            NameText "LP-(LR#45)-CPL-2"
+            NameText "CPL-(QZ#45-LR#45)-CPL-2"
+            NameText "CPL-(LR#-45)-CPL"
+            NameText "LP-(QZ#22.5)-LP"
+        ]
+        |> List.iter (fun name ->
+            let written = NamingTemplate.standard.readName name |> Result.bind (fun reading -> NamingTemplate.standard.writeName reading)
+            Assert.Equal<Result<NameText, NamingTemplateError>>(Ok name, written))
+
+    [<Fact>]
+    let ``a reading writes each value in its place and leaves out an optional one it lacks with the text it owns`` () : unit =
+        let cpl = NamePart "CPL"
+        let qz45 = labReading cpl [ NamePart "QZ", Angle.degree 45.0<deg> ] cpl None
+
+        let writes (expected : NameText) (reading : NameReading) : unit =
+            Assert.Equal<Result<NameText, NamingTemplateError>>(Ok expected, NamingTemplate.standard.writeName reading)
+
+        let atAngle (angle : Angle) : NameReading =
+            { qz45 with angles = [ { position = SlotPosition 1; angle = angle } ] }
+
+        writes (NameText "CPL-(QZ#45)-CPL") qz45
+        writes (NameText "CPL-(QZ#45)-CPL-2") { qz45 with noteOpt = Some (NamePart "2") }
+        writes (NameText "CPL-(QZ#45-LR#45)-CPL") (labReading cpl [ NamePart "QZ", Angle.degree 45.0<deg>; NamePart "LR", Angle.degree 45.0<deg> ] cpl None)
+        writes (NameText "CPL-(QZ#0.333)-CPL") (atAngle (Angle.degree (1.0 / 3.0 * 1.0<deg>)))
+        writes (NameText "CPL-(QZ#0)-CPL") (atAngle (Angle.degree (-0.0001<deg>)))
+
+        let noAnalyzer = { qz45 with parts = qz45.parts |> List.filter (fun slotPart -> slotPart.role <> analyzerRole) }
+
+        match NamingTemplate.standard.writeName noAnalyzer with
+        | Error (MissingNameValueErr reason) -> Assert.Contains("'analyzer1'", reason)
+        | Error other -> Assert.Fail($"expected MissingNameValueErr, got {other.describe}")
+        | Ok name -> Assert.Fail($"expected MissingNameValueErr, got '{name.value}'")
