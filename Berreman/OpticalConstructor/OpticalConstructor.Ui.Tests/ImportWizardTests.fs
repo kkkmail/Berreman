@@ -1,5 +1,16 @@
 namespace OpticalConstructor.Ui.Tests
 
+open Avalonia
+open Avalonia.Automation
+open Avalonia.Controls
+open Avalonia.FuncUI.Elmish
+open Avalonia.FuncUI.Hosts
+open Avalonia.Headless
+open Avalonia.Input
+open Avalonia.Media
+open Avalonia.Threading
+open Avalonia.VisualTree
+open Elmish
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
@@ -107,6 +118,99 @@ module ImportWizardTests =
         match errorOpt with
         | Some error -> error.describe
         | None -> "no error"
+
+    /// One cell of the mounted preview grid: where it sits and what it shows.
+    type private GridCellShown =
+        {
+            row : int
+            column : int
+            text : string
+        }
+
+    let private tryControl (root : Control) (id : ConstructorUiId) : Control option =
+        root.GetVisualDescendants()
+        |> Seq.tryPick (function
+            | :? Control as control when AutomationProperties.GetAutomationId control = id.value -> Some control
+            | _ -> None)
+
+    let private controlOf (root : Control) (id : ConstructorUiId) : Control =
+        match tryControl root id with
+        | Some control -> control
+        | None -> failwith $"Missing control {id.value}."
+
+    let private assertAbsent (root : Control) (id : ConstructorUiId) : unit =
+        match tryControl root id with
+        | Some _ -> Assert.Fail $"{id.value} must be absent."
+        | None -> ()
+
+    let private textsUnder (control : Control) : string list =
+        control.GetVisualDescendants()
+        |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
+        |> Seq.toList
+
+    let private fillOf (control : Control) : Color =
+        match control with
+        | :? Border as box ->
+            match box.Background with
+            | :? SolidColorBrush as fill -> fill.Color
+            | _ -> failwith $"{AutomationProperties.GetAutomationId control} has no solid fill."
+        | _ -> failwith $"{AutomationProperties.GetAutomationId control} is not a box."
+
+    let private topLeftOf (window : Window) (control : Control) : Point =
+        match control.TranslatePoint(Point(0.0, 0.0), window) |> Option.ofNullable with
+        | Some point -> point
+        | None -> failwith $"{AutomationProperties.GetAutomationId control} has no position in its window."
+
+    /// Presses the box carrying `id` at its centre, as `ImportDialogTests` presses one.
+    let private pressControl (window : Window) (id : ConstructorUiId) : unit =
+        let control = controlOf window id
+        control.BringIntoView() |> ignore
+        Dispatcher.UIThread.RunJobs()
+        match control.TranslatePoint(Point(control.Bounds.Width / 2.0, control.Bounds.Height / 2.0), window) |> Option.ofNullable with
+        | Some centre ->
+            window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+        | None -> Assert.Fail $"{id.value} has no position in its window."
+
+    /// Picks the item shown as `caption` in the list carrying `id`, as a user's pick sets it.
+    let private pickIn (window : Window) (id : ConstructorUiId) (caption : string) : unit =
+        let list = controlOf window id :?> ComboBox
+        let index = list.Items |> Seq.cast<obj> |> Seq.findIndex (fun item -> string item = caption)
+        list.SelectedIndex <- index
+        Dispatcher.UIThread.RunJobs()
+
+    let private shownIn (window : Window) (id : ConstructorUiId) : string = string (controlOf window id :?> ComboBox).SelectedItem
+
+    let private itemsIn (window : Window) (id : ConstructorUiId) : string list =
+        (controlOf window id :?> ComboBox).Items |> Seq.cast<obj> |> Seq.map string |> List.ofSeq
+
+    let private cellsOf (grid : Grid) : GridCellShown list =
+        grid.Children
+        |> Seq.choose (function
+            | :? TextBlock as text -> Some { row = Grid.GetRow text; column = Grid.GetColumn text; text = text.Text }
+            | _ -> None)
+        |> List.ofSeq
+
+    /// Mounts `importWizardView` over `model` as `ImportDialogTests` mounts the import dialog's view, recording every
+    /// message the view sends.
+    let private withMountedWizard (model : ImportWizardModel) (check : Window -> ResizeArray<ImportWizardMsg> -> unit) : unit =
+        let sent = ResizeArray<ImportWizardMsg>()
+
+        HeadlessSession.run (fun () ->
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+
+            try
+                Program.mkSimple (fun () -> model) (fun msg held -> sent.Add msg; updateImportWizard msg held) importWizardView
+                |> Program.withHost window
+                |> Program.run
+
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                check window sent
+            finally
+                window.Close())
 
     /// Columns 1 to 5 as key, capture index, timestamp, a raw dial reading in degrees and the signal.
     let private phoneRoiRoles : ImportWizardMsg list =
@@ -314,3 +418,230 @@ module ImportWizardTests =
         model |> updateImportWizard CancelImportWizard |> ignore
         Assert.Equal<WizardCall list>([ CloseCall ], List.ofSeq observed.calls)
         Assert.Equal<FileName list>([ labFile ], List.ofSeq observed.reads)
+
+    [<Fact>]
+    let ``the import wizard UiIds are the stable intent-named ids`` () : unit =
+        let column = (DataColumnNumber 4).uiPosition
+
+        Assert.Equal<string list>(
+            [
+                "ImportWizardWindow"
+                "ImportWizardHeading"
+                "ImportWizardDelimiter_comma"
+                "ImportWizardHeader_first-row"
+                "ImportWizardBomText"
+                "ImportWizardProfile_Phone ROI CSV"
+                "ImportWizardNewMappingButton"
+                "ImportWizardProfileNameField"
+                "ImportWizardPreviewGrid"
+                "ImportWizardColumnRole_4"
+                "ImportWizardColumnUnit_4"
+                "ImportWizardColumnReading_4"
+                "ImportWizardMessage"
+                "ImportWizardAttachButton"
+                "ImportWizardCancelButton"
+            ],
+            [
+                ConstructorUiId.importWizardWindow
+                ConstructorUiId.importWizardHeading
+                ConstructorUiId.importWizardDelimiterChoice CommaDelimiter.uiKey
+                ConstructorUiId.importWizardHeaderChoice HeaderOnFirstRow.uiKey
+                ConstructorUiId.importWizardBomText
+                ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey
+                ConstructorUiId.importWizardNewMappingButton
+                ConstructorUiId.importWizardProfileNameField
+                ConstructorUiId.importWizardPreviewGrid
+                ConstructorUiId.importWizardColumnRoleChoice column
+                ConstructorUiId.importWizardColumnUnitChoice column
+                ConstructorUiId.importWizardColumnReadingChoice column
+                ConstructorUiId.importWizardMessage
+                ConstructorUiId.importWizardAttachButton
+                ConstructorUiId.importWizardCancelButton
+            ]
+            |> List.map _.value)
+
+        Assert.Equal<string list>([ "comma"; "semicolon"; "tab" ], DataDelimiter.all |> List.map _.uiKey.value)
+        Assert.Equal<string list>([ "first-row"; "no-header" ], HeaderRowChoice.all |> List.map _.uiKey.value)
+
+    [<Fact>]
+    let ``the wizard shows the sniffed layout, every profile and the preview, with Attach and Cancel in one row`` () : unit =
+        let observed = observePhoneRoi ()
+
+        withMountedWizard observed.context.initImportWizard (fun window sent ->
+            let heading = controlOf window ConstructorUiId.importWizardHeading :?> TextBlock
+            Assert.Equal("Import phone-roi.csv\nNothing is attached until you press Attach.", heading.Text)
+
+            let delimiterBox (delimiter : DataDelimiter) : Control = controlOf window (ConstructorUiId.importWizardDelimiterChoice delimiter.uiKey)
+            let headerBox (header : HeaderRowChoice) : Control = controlOf window (ConstructorUiId.importWizardHeaderChoice header.uiKey)
+            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (delimiterBox CommaDelimiter))
+            Assert.Equal<string list>([ "Comma" ], textsUnder (delimiterBox CommaDelimiter))
+
+            for other in [ SemicolonDelimiter; TabDelimiter ] do
+                Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf (delimiterBox other))
+
+            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (headerBox HeaderOnFirstRow))
+            Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf (headerBox NoHeaderRow))
+            Assert.Equal("Byte-order mark: yes", (controlOf window ConstructorUiId.importWizardBomText :?> TextBlock).Text)
+
+            for name in ImportProfileName.builtIns @ [ labScanProfile.name ] do
+                Assert.Equal<string list>([ name.value ], textsUnder (controlOf window (ConstructorUiId.importWizardProfileChoice name.uiKey)))
+
+            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (controlOf window (ConstructorUiId.importWizardProfileChoice intensitySeries.uiKey)))
+            Assert.Equal<string list>([ "New column mapping" ], textsUnder (controlOf window ConstructorUiId.importWizardNewMappingButton))
+            Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf (controlOf window ConstructorUiId.importWizardNewMappingButton))
+
+            let grid = controlOf window ConstructorUiId.importWizardPreviewGrid :?> Grid
+            Assert.Equal(5, grid.ColumnDefinitions.Count)
+
+            let row (index : int) (texts : string list) : GridCellShown list =
+                texts |> List.mapi (fun column text -> { row = index; column = column; text = text })
+
+            Assert.Equal<GridCellShown list>(
+                row 0 [ "experiment"; "capture_index"; "captured_at"; "description"; "avg_total" ]
+                @ row 1 [ "CPL-(AIR#0)-CPL"; "0"; "2026-07-15T12:00:00+00:00"; "0"; "869.5" ]
+                @ row 2 [ "CPL-(AIR#0)-CPL"; "1"; "2026-07-15T12:05:00+00:00"; "45"; "912.25" ],
+                cellsOf grid)
+
+            assertAbsent window ConstructorUiId.importWizardMessage
+
+            let attach = controlOf window ConstructorUiId.importWizardAttachButton
+            let cancel = controlOf window ConstructorUiId.importWizardCancelButton
+            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf attach)
+            Assert.Equal(MaterialsWindowView.negativeBackground, fillOf cancel)
+            Assert.Equal((topLeftOf window attach).Y, (topLeftOf window cancel).Y)
+            Assert.True((topLeftOf window cancel).X > (topLeftOf window attach).X + attach.Bounds.Width, "Cancel must be to the right of Attach with a gap.")
+            Assert.Empty sent)
+
+        Assert.Empty observed.calls
+
+    [<Fact>]
+    let ``a new column mapping shows a role per column, and a scan role its unit and reading`` () : unit =
+        let observed = observePhoneRoi ()
+        let positions = [ 1 .. 5 ] |> List.map (fun number -> (DataColumnNumber number).uiPosition)
+        let column4 = (DataColumnNumber 4).uiPosition
+
+        withMountedWizard observed.context.initImportWizard (fun window sent ->
+            for position in positions do
+                assertAbsent window (ConstructorUiId.importWizardColumnRoleChoice position)
+
+            assertAbsent window ConstructorUiId.importWizardProfileNameField
+
+            pressControl window ConstructorUiId.importWizardNewMappingButton
+
+            let grid = controlOf window ConstructorUiId.importWizardPreviewGrid
+
+            let roleCaptions =
+                [ "—"; "scan variable"; "signal"; "σ"; "timestamp"; "capture index"; "observable"; "experiment key"; "throughput" ]
+                @ [ for i in 0 .. 3 do for j in 0 .. 3 -> $"m{i}{j}" ]
+
+            for position in positions do
+                controlOf grid (ConstructorUiId.importWizardColumnRoleChoice position) |> ignore
+                Assert.Equal<string list>(roleCaptions, itemsIn window (ConstructorUiId.importWizardColumnRoleChoice position))
+                Assert.Equal("—", shownIn window (ConstructorUiId.importWizardColumnRoleChoice position))
+                assertAbsent window (ConstructorUiId.importWizardColumnUnitChoice position)
+                assertAbsent window (ConstructorUiId.importWizardColumnReadingChoice position)
+
+            Assert.Equal("", (controlOf window ConstructorUiId.importWizardProfileNameField :?> TextBox).Text)
+            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (controlOf window ConstructorUiId.importWizardNewMappingButton))
+
+            pickIn window (ConstructorUiId.importWizardColumnRoleChoice column4) "scan variable"
+
+            for position in positions do
+                let role = controlOf grid (ConstructorUiId.importWizardColumnRoleChoice position)
+
+                if position = column4 then
+                    Assert.Equal("scan variable", shownIn window (ConstructorUiId.importWizardColumnRoleChoice position))
+                    Assert.Equal(3, Grid.GetColumn (role.GetVisualParent() :?> Control))
+                    controlOf grid (ConstructorUiId.importWizardColumnUnitChoice position) |> ignore
+                    controlOf grid (ConstructorUiId.importWizardColumnReadingChoice position) |> ignore
+                else
+                    Assert.Equal("—", shownIn window (ConstructorUiId.importWizardColumnRoleChoice position))
+                    assertAbsent window (ConstructorUiId.importWizardColumnUnitChoice position)
+                    assertAbsent window (ConstructorUiId.importWizardColumnReadingChoice position)
+
+            Assert.Equal<string list>(ScanColumnUnit.all |> List.map _.text, itemsIn window (ConstructorUiId.importWizardColumnUnitChoice column4))
+            Assert.Equal<string list>([ "raw dial reading"; "physical value" ], itemsIn window (ConstructorUiId.importWizardColumnReadingChoice column4))
+            Assert.Equal("°", shownIn window (ConstructorUiId.importWizardColumnUnitChoice column4))
+            Assert.Equal("physical value", shownIn window (ConstructorUiId.importWizardColumnReadingChoice column4))
+
+            pickIn window (ConstructorUiId.importWizardColumnUnitChoice column4) RadianColumnUnit.text
+            pickIn window (ConstructorUiId.importWizardColumnReadingChoice column4) "raw dial reading"
+            Assert.Equal("scan variable", shownIn window (ConstructorUiId.importWizardColumnRoleChoice column4))
+
+            // Leaving the mapping and coming back recreates the lists over the held roles and sends nothing.
+            pressControl window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
+            assertAbsent window (ConstructorUiId.importWizardColumnRoleChoice column4)
+            assertAbsent window ConstructorUiId.importWizardProfileNameField
+            pressControl window ConstructorUiId.importWizardNewMappingButton
+            Assert.Equal("scan variable", shownIn window (ConstructorUiId.importWizardColumnRoleChoice column4))
+            Assert.Equal(RadianColumnUnit.text, shownIn window (ConstructorUiId.importWizardColumnUnitChoice column4))
+            Assert.Equal("raw dial reading", shownIn window (ConstructorUiId.importWizardColumnReadingChoice column4))
+            Assert.Equal("—", shownIn window (ConstructorUiId.importWizardColumnRoleChoice (DataColumnNumber 1).uiPosition))
+
+            Assert.Equal<ImportWizardMsg list>(
+                [
+                    StartColumnMapping
+                    SetColumnRole (DataColumnNumber 4, ScanColumnRole (DegreeColumnUnit, PhysicalScanValue))
+                    SetColumnRole (DataColumnNumber 4, ScanColumnRole (RadianColumnUnit, PhysicalScanValue))
+                    SetColumnRole (DataColumnNumber 4, ScanColumnRole (RadianColumnUnit, RawDialReading))
+                    PickImportProfile phoneRoiCsv
+                    StartColumnMapping
+                ],
+                List.ofSeq sent))
+
+        Assert.Empty observed.calls
+
+    [<Fact>]
+    let ``a refused Attach shows its reason in the wizard`` () : unit =
+        let observed = observePhoneRoi ()
+
+        withMountedWizard observed.context.initImportWizard (fun window sent ->
+            assertAbsent window ConstructorUiId.importWizardMessage
+
+            pressControl window ConstructorUiId.importWizardNewMappingButton
+            pressControl window ConstructorUiId.importWizardAttachButton
+
+            let message = controlOf window ConstructorUiId.importWizardMessage :?> TextBlock
+            Assert.Contains("the import profile name is blank", message.Text)
+            Assert.Equal(MaterialsWindowView.messageColor, (message.Foreground :?> SolidColorBrush).Color)
+            Assert.Equal<ImportWizardMsg list>([ StartColumnMapping; ApplyImportWizard ], List.ofSeq sent)
+
+            (controlOf window ConstructorUiId.importWizardProfileNameField :?> TextBox).Text <- "Bench A"
+            Dispatcher.UIThread.RunJobs()
+            assertAbsent window ConstructorUiId.importWizardMessage
+
+            pressControl window ConstructorUiId.importWizardAttachButton
+            let unmappedRefusal = controlOf window ConstructorUiId.importWizardMessage :?> TextBlock
+            Assert.Contains("a signal mapping needs exactly one signal column", unmappedRefusal.Text)
+
+            // Leaving the mapping and coming back recreates the name field over the held name and sends nothing.
+            pressControl window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
+            assertAbsent window ConstructorUiId.importWizardMessage
+            pressControl window ConstructorUiId.importWizardNewMappingButton
+            Assert.Equal("Bench A", (controlOf window ConstructorUiId.importWizardProfileNameField :?> TextBox).Text)
+
+            Assert.Equal<ImportWizardMsg list>(
+                [
+                    StartColumnMapping
+                    ApplyImportWizard
+                    SetImportProfileName (ControlCaption "Bench A")
+                    ApplyImportWizard
+                    PickImportProfile phoneRoiCsv
+                    StartColumnMapping
+                ],
+                List.ofSeq sent))
+
+        Assert.Empty observed.calls
+
+        let unread = KitIoErr "the picked file is locked by another program"
+        let locked = observeWizard (fun _ -> Error unread)
+
+        withMountedWizard locked.context.initImportWizard (fun window sent ->
+            let message = controlOf window ConstructorUiId.importWizardMessage :?> TextBlock
+            Assert.Equal($"The file could not be read — {unread.describe}", message.Text)
+            assertAbsent window ConstructorUiId.importWizardAttachButton
+            controlOf window ConstructorUiId.importWizardCancelButton |> ignore
+            assertAbsent window ConstructorUiId.importWizardPreviewGrid
+            Assert.Empty sent)
+
+        Assert.Empty locked.calls

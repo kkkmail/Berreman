@@ -1,7 +1,14 @@
-/// The column-mapping import wizard's MVU (001 §K; spec 0050 S9.2).
+/// The column-mapping import wizard's MVU and projection (001 §K; spec 0050 S9.2).
 /// Nothing is attached or saved until Attach hands the kit window its choice.
 module OpticalConstructor.Ui.ImportWizardView
 
+open Avalonia
+open Avalonia.Controls
+open Avalonia.Controls.Primitives
+open Avalonia.Layout
+open Avalonia.Media
+open Avalonia.FuncUI.DSL
+open Avalonia.FuncUI.Types
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
@@ -9,6 +16,7 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Storage.LabFileImport
+open OpticalConstructor.Ui.MaterialsWindowView
 
 /// What the kit window hands the wizard: the experiment, the picked file, its read and the profiles to offer.
 [<ReferenceEquality>]
@@ -234,3 +242,274 @@ let updateImportWizard (msg : ImportWizardMsg) (m : ImportWizardModel) : ImportW
     | CancelImportWizard ->
         m.context.requestClose ()
         m
+
+/// Every role a column's role choice lists, in its order; one scan item stands for every unit and reading
+/// (spec 0050 S9.2).
+let private wizardRoleChoices : ColumnRoleChoice list =
+    [
+        UnmappedColumnRole
+        ScanColumnRole (DegreeColumnUnit, PhysicalScanValue)
+        SignalColumnRole
+        SigmaColumnRole
+        TimestampColumnRole
+        CaptureIndexColumnRole
+        ObservableColumnRole
+        KeyColumnRole
+        ThroughputColumnRole
+    ]
+    @ (MuellerElementIndex.all |> List.map MuellerElementRole)
+
+/// The wizard over `m`: the file, its layout and mark, every profile, the preview with a role per column under a new
+/// mapping, the refusal, and Attach beside Cancel (spec 0050 S9.2; .spec-md §10.5).
+let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit) : IView =
+    // The chosen box of a group is filled. `actionButton` keeps its first press handler, safe as a box's message never changes.
+    let choiceBox (chosen : ConstructorUiId) (id : ConstructorUiId) (label : ControlCaption) (msg : ImportWizardMsg) : IView =
+        if id = chosen then actionButton id label positiveBackground (fun () -> dispatch msg)
+        else verbButton id label (fun () -> dispatch msg)
+
+    // A label docked beside its wrapping boxes (AGENTS.md: never a WrapPanel in a horizontal StackPanel).
+    let labelled (label : ControlCaption) (children : IView list) : IView =
+        DockPanel.create [
+            DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
+            DockPanel.children [
+                TextBlock.create [
+                    TextBlock.dock Dock.Left
+                    TextBlock.minWidth 60.0
+                    TextBlock.margin (Thickness(0.0, 5.0, 6.0, 0.0))
+                    TextBlock.verticalAlignment VerticalAlignment.Top
+                    TextBlock.text label.value
+                ]
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.children children
+                ]
+            ]
+        ] :> IView
+
+    // Resubscribed on every patch, so a unit or reading pick keeps the column's current other half.
+    let choiceList (id : ConstructorUiId) (captions : ControlCaption list) (shown : int) (msgAt : int -> ImportWizardMsg option) : IView =
+        ComboBox.create [
+            id.automationAttribute<ComboBox> ()
+            ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
+            ComboBox.dataItems (captions |> List.map _.value)
+            ComboBox.selectedIndex shown
+            ComboBox.onSelectedIndexChanged ((fun picked -> msgAt picked |> Option.iter dispatch), SubPatchOptions.Always)
+        ]
+        |> View.withKey id.value
+        :> IView
+
+    let roleCell (choice : ColumnChoice) : IView =
+        let position = choice.column.uiPosition
+        let shownRole = wizardRoleChoices |> List.tryFindIndex (fun role -> role.caption = choice.role.caption) |> Option.defaultValue -1
+
+        let roleList =
+            choiceList
+                (ConstructorUiId.importWizardColumnRoleChoice position)
+                (wizardRoleChoices |> List.map _.caption)
+                shownRole
+                (fun picked -> List.tryItem picked wizardRoleChoices |> Option.map (fun role -> SetColumnRole (choice.column, role)))
+
+        let scanLists : IView list =
+            match choice.role with
+            | ScanColumnRole (valueUnit, reading) ->
+                [
+                    choiceList
+                        (ConstructorUiId.importWizardColumnUnitChoice position)
+                        (ScanColumnUnit.all |> List.map _.caption)
+                        (ScanColumnUnit.all |> List.findIndex (fun unit -> unit = valueUnit))
+                        (fun picked ->
+                            List.tryItem picked ScanColumnUnit.all
+                            |> Option.map (fun unit -> SetColumnRole (choice.column, ScanColumnRole (unit, reading))))
+                    choiceList
+                        (ConstructorUiId.importWizardColumnReadingChoice position)
+                        (ScanReading.all |> List.map _.caption)
+                        (ScanReading.all |> List.findIndex (fun held -> held = reading))
+                        (fun picked ->
+                            List.tryItem picked ScanReading.all
+                            |> Option.map (fun picks -> SetColumnRole (choice.column, ScanColumnRole (valueUnit, picks))))
+                ]
+            | UnmappedColumnRole
+            | SignalColumnRole
+            | SigmaColumnRole
+            | TimestampColumnRole
+            | CaptureIndexColumnRole
+            | ObservableColumnRole
+            | KeyColumnRole
+            | ThroughputColumnRole
+            | MuellerElementRole _ -> []
+
+        StackPanel.create [
+            StackPanel.row 1
+            StackPanel.column choice.column.index
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children (roleList :: scanLists)
+        ]
+        |> View.withKey $"ImportWizardColumnCell_{choice.column.value}"
+        :> IView
+
+    let cell (row : int) (weight : FontWeight) (column : int) (shown : PreviewCell) : IView =
+        TextBlock.create [
+            TextBlock.row row
+            TextBlock.column column
+            TextBlock.fontWeight weight
+            TextBlock.verticalAlignment VerticalAlignment.Center
+            TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
+            TextBlock.text shown.value
+        ] :> IView
+
+    let preview : IView =
+        match m.preview with
+        | Error error ->
+            TextBlock.create [
+                TextBlock.textWrapping TextWrapping.Wrap
+                TextBlock.foreground (brush messageColor)
+                TextBlock.text error.caption.value
+            ] :> IView
+        | Ok shown ->
+            let width = shown.columnNames.Length
+
+            let roleCells : IView list =
+                match m.choice with
+                | NewColumnMapping -> m.columns |> List.map roleCell
+                | PickedImportProfile _ -> []
+
+            let firstDataRow = if List.isEmpty roleCells then 1 else 2
+
+            let dataCells =
+                shown.rows
+                |> List.mapi (fun index row -> row.cells |> List.truncate width |> List.mapi (cell (firstDataRow + index) FontWeight.Normal))
+                |> List.concat
+
+            Grid.create [
+                ConstructorUiId.importWizardPreviewGrid.automationAttribute<Grid> ()
+                Grid.columnDefinitions (List.replicate (max width 1) "Auto" |> String.concat ",")
+                Grid.rowDefinitions (List.replicate (firstDataRow + shown.rows.Length) "Auto" |> String.concat ",")
+                Grid.children ((shown.columnNames |> List.mapi (cell 0 FontWeight.SemiBold)) @ roleCells @ dataCells)
+            ] :> IView
+
+    let message : IView list =
+        let captionOpt =
+            match m.source, m.lastError with
+            | Error error, _ -> Some (ControlCaption $"The file could not be read — {error.describe}")
+            | Ok _, Some error -> Some error.caption
+            | Ok _, None -> None
+
+        match captionOpt with
+        | Some caption ->
+            [
+                TextBlock.create [
+                    ConstructorUiId.importWizardMessage.automationAttribute<TextBlock> ()
+                    TextBlock.dock Dock.Bottom
+                    TextBlock.margin (Thickness(0.0, 6.0, 0.0, 6.0))
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.foreground (brush messageColor)
+                    TextBlock.text caption.value
+                ]
+                |> View.withKey ConstructorUiId.importWizardMessage.value
+                :> IView
+            ]
+        | None -> []
+
+    let attach : IView list =
+        match m.source with
+        | Ok _ -> [ actionButton ConstructorUiId.importWizardAttachButton (ControlCaption "Attach") positiveBackground (fun () -> dispatch ApplyImportWizard) ]
+        | Error _ -> []
+
+    let layoutBlock : IView =
+        let chosenDelimiter = ConstructorUiId.importWizardDelimiterChoice m.delimiter.uiKey
+        let chosenHeader = ConstructorUiId.importWizardHeaderChoice m.header.uiKey
+
+        let delimiterBoxes =
+            DataDelimiter.all
+            |> List.map (fun delimiter ->
+                choiceBox chosenDelimiter (ConstructorUiId.importWizardDelimiterChoice delimiter.uiKey) delimiter.caption (SetImportDelimiter delimiter))
+
+        let headerBoxes =
+            HeaderRowChoice.all
+            |> List.map (fun header -> choiceBox chosenHeader (ConstructorUiId.importWizardHeaderChoice header.uiKey) header.caption (SetImportHeader header))
+
+        let bomText =
+            TextBlock.create [
+                ConstructorUiId.importWizardBomText.automationAttribute<TextBlock> ()
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (Thickness(4.0, 0.0, 8.0, 4.0))
+                TextBlock.text m.bom.caption.value
+            ] :> IView
+
+        labelled (ControlCaption "Layout:") (delimiterBoxes @ headerBoxes @ [ bomText ])
+
+    let profileBlock : IView =
+        let chosen =
+            match m.choice with
+            | PickedImportProfile name -> ConstructorUiId.importWizardProfileChoice name.uiKey
+            | NewColumnMapping -> ConstructorUiId.importWizardNewMappingButton
+
+        let names = (BuiltInImportProfile.all |> List.map _.name) @ (m.context.request.kitProfiles |> List.map _.name)
+
+        let profileBoxes =
+            names |> List.map (fun name -> choiceBox chosen (ConstructorUiId.importWizardProfileChoice name.uiKey) name.caption (PickImportProfile name))
+
+        let newMapping = choiceBox chosen ConstructorUiId.importWizardNewMappingButton (ControlCaption "New column mapping") StartColumnMapping
+        labelled (ControlCaption "Profile:") (profileBoxes @ [ newMapping ])
+
+    let profileNameRow : IView list =
+        match m.choice with
+        | NewColumnMapping ->
+            [
+                DockPanel.create [
+                    DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
+                    DockPanel.children [
+                        TextBlock.create [
+                            TextBlock.dock Dock.Left
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                            TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                            TextBlock.text "Profile name:"
+                        ]
+                        TextBox.create [
+                            ConstructorUiId.importWizardProfileNameField.automationAttribute<TextBox> ()
+                            TextBox.text m.profileName.value
+                            TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetImportProfileName >> dispatch))
+                        ]
+                    ]
+                ]
+                :> IView
+            ]
+        | PickedImportProfile _ -> []
+
+    let heading : IView =
+        TextBlock.create [
+            ConstructorUiId.importWizardHeading.automationAttribute<TextBlock> ()
+            TextBlock.textWrapping TextWrapping.Wrap
+            TextBlock.margin (Thickness(0.0, 0.0, 0.0, 12.0))
+            TextBlock.text $"Import {m.context.request.file.leafName.value}\nNothing is attached until you press Attach."
+        ]
+        |> View.withKey ConstructorUiId.importWizardHeading.value
+        :> IView
+
+    let cancel = actionButton ConstructorUiId.importWizardCancelButton (ControlCaption "Cancel") negativeBackground (fun () -> dispatch CancelImportWizard)
+
+    let actions : IView =
+        StackPanel.create [
+            StackPanel.dock Dock.Bottom
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.children (attach @ [ cancel ])
+        ] :> IView
+
+    let choices : IView =
+        StackPanel.create [
+            StackPanel.dock Dock.Top
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children ([ heading; layoutBlock; profileBlock ] @ profileNameRow)
+        ] :> IView
+
+    let previewScroll : IView =
+        ScrollViewer.create [
+            ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
+            ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+            ScrollViewer.content preview
+        ] :> IView
+
+    DockPanel.create [
+        DockPanel.margin 12.0
+        DockPanel.children ([ actions ] @ message @ [ choices; previewScroll ])
+    ] :> IView

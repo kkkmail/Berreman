@@ -884,3 +884,85 @@ module ConstructorUiIdOfDomain =
             match this.picks with
             | [] -> ControlCaption "The table as it is"
             | picks -> ControlCaption (picks |> List.map pickCaption |> String.concat ", ")
+
+    type Kit.DataDelimiter with
+
+        /// The delimiter as the key of its wizard box (spec 0050 S9.2).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | Kit.CommaDelimiter -> ConstructorUiKey "comma"
+            | Kit.SemicolonDelimiter -> ConstructorUiKey "semicolon"
+            | Kit.TabDelimiter -> ConstructorUiKey "tab"
+
+        /// The delimiter as its wizard box names it (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.CommaDelimiter -> ControlCaption "Comma"
+            | Kit.SemicolonDelimiter -> ControlCaption "Semicolon"
+            | Kit.TabDelimiter -> ControlCaption "Tab"
+
+    type Kit.HeaderRowChoice with
+
+        /// The header choice as the key of its wizard box (spec 0050 S9.2).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | Kit.HeaderOnFirstRow -> ConstructorUiKey "first-row"
+            | Kit.NoHeaderRow -> ConstructorUiKey "no-header"
+
+        /// The header choice as its wizard box names it (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.HeaderOnFirstRow -> ControlCaption "First row is a header"
+            | Kit.NoHeaderRow -> ControlCaption "No header row"
+
+    type Kit.ByteOrderMark with
+
+        /// The mark as the wizard's layout block states it (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.ByteOrderMarkPresent -> ControlCaption "Byte-order mark: yes"
+            | Kit.ByteOrderMarkAbsent -> ControlCaption "Byte-order mark: no"
+
+    type Kit.ImportProfileName with
+
+        /// The profile's name as the key of its wizard box (spec 0050 S9.2).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+        /// The profile's name as its wizard box shows it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type Kit.DataColumnNumber with
+
+        /// The column's number as the position of its wizard choices (spec 0050 S9.2).
+        member this.uiPosition : ConstructorUiPosition = ConstructorUiPosition this.value
+
+    type Kit.ImportProfileError with
+
+        /// The refusal as the wizard's message shows it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.describe
+
+    type ImportProfiles.ColumnRoleChoice with
+
+        /// The role as a column's role choice lists it, `scan variable` for every scan role (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | ImportProfiles.ScanColumnRole _ -> ControlCaption "scan variable"
+            | ImportProfiles.UnmappedColumnRole
+            | ImportProfiles.SignalColumnRole
+            | ImportProfiles.SigmaColumnRole
+            | ImportProfiles.TimestampColumnRole
+            | ImportProfiles.CaptureIndexColumnRole
+            | ImportProfiles.ObservableColumnRole
+            | ImportProfiles.KeyColumnRole
+            | ImportProfiles.ThroughputColumnRole
+            | ImportProfiles.MuellerElementRole _ -> ControlCaption this.text
+
+    type Kit.ScanColumnUnit with
+
+        /// The unit as a scan column's unit choice lists it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.text
+
+    type Kit.ScanReading with
+
+        /// The reading as a scan column's reading choice lists it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.text

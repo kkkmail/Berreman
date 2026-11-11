@@ -611,6 +611,38 @@ type ConstructorUiId =
     static member importApplyButton : ConstructorUiId = ConstructorUiId "ImportApplyButton"
     static member importCancelButton : ConstructorUiId = ConstructorUiId "ImportCancelButton"
 
+    // The column-mapping import wizard (spec 0050 S9.2).
+    /// The wizard's window.
+    static member importWizardWindow : ConstructorUiId = ConstructorUiId "ImportWizardWindow"
+    /// The heading naming the picked file.
+    static member importWizardHeading : ConstructorUiId = ConstructorUiId "ImportWizardHeading"
+    /// A delimiter's box, by the delimiter's key.
+    static member importWizardDelimiterChoice (delimiter : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportWizardDelimiter_{delimiter.value}"
+    /// A header choice's box, by the choice's key.
+    static member importWizardHeaderChoice (header : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportWizardHeader_{header.value}"
+    /// The byte-order mark's caption.
+    static member importWizardBomText : ConstructorUiId = ConstructorUiId "ImportWizardBomText"
+    /// A built-in or kit profile's box, by the profile's name.
+    static member importWizardProfileChoice (profile : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportWizardProfile_{profile.value}"
+    /// The New column mapping box.
+    static member importWizardNewMappingButton : ConstructorUiId = ConstructorUiId "ImportWizardNewMappingButton"
+    /// The new mapping's profile name field.
+    static member importWizardProfileNameField : ConstructorUiId = ConstructorUiId "ImportWizardProfileNameField"
+    /// The preview of the file's columns and first rows.
+    static member importWizardPreviewGrid : ConstructorUiId = ConstructorUiId "ImportWizardPreviewGrid"
+    /// A preview column's role choice, by the column's number.
+    static member importWizardColumnRoleChoice (column : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"ImportWizardColumnRole_{column.value}"
+    /// A scan column's unit choice, by the column's number.
+    static member importWizardColumnUnitChoice (column : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"ImportWizardColumnUnit_{column.value}"
+    /// A scan column's reading choice, by the column's number.
+    static member importWizardColumnReadingChoice (column : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"ImportWizardColumnReading_{column.value}"
+    /// The refused Attach's or the unread file's reason.
+    static member importWizardMessage : ConstructorUiId = ConstructorUiId "ImportWizardMessage"
+    /// Attach, which hands the kit window the chosen profile.
+    static member importWizardAttachButton : ConstructorUiId = ConstructorUiId "ImportWizardAttachButton"
+    /// Cancel, which closes and attaches nothing.
+    static member importWizardCancelButton : ConstructorUiId = ConstructorUiId "ImportWizardCancelButton"
+
     // --- The renderer test scene (`RendererTestView`). ---
     static member rendererTestCanvas : ConstructorUiId = ConstructorUiId "RendererTestCanvas"
 
