@@ -2,6 +2,7 @@ namespace OpticalConstructor.Storage
 
 open System
 open System.Globalization
+open FSharp.Data
 open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
@@ -10,11 +11,12 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.PropagationReadouts
+open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.ImportProfiles
 
-/// The Mueller-matrix observation file: the app writes keyed observations to it and the `Mueller-matrix observations`
-/// profile reads them back, element for element (spec 0050 S9.2; 001 §Q AT-2).
+/// The Mueller-matrix observation file, which the app writes and the `Mueller-matrix observations` profile reads back
+/// (001 §Q AT-2), and a kit profile's column mapping of any delimited lab file (spec 0050 S9.2; 001 §K).
 module LabFileImport =
 
     /// The observation file's columns in order, the one place its header is written (spec 0050 S9.2).
@@ -22,6 +24,36 @@ module LabFileImport =
         [ "sample"; "cut"; "cut_tilt_rad"; "thickness_m"; "incidence_rad"; "azimuth_rad"; "observable"; "wavelength_nm" ]
         @ (MuellerElementIndex.all |> List.map (fun index -> index.text))
         @ [ "throughput" ]
+
+    /// A lab file's header cells, when its first row is a header, and its data rows' cells, read by FSharp.Data's
+    /// `CsvFile` as `parseMuellerCsv` reads: a row of blank cells is skipped, and a refusal of the reader is the
+    /// error. Every reading of a lab file by a layout goes through it (spec 0050 S9.2).
+    let private labFileRows (delimiter : DataDelimiter) (header : HeaderRowChoice) (text : KitFileText)
+        : Result<DataFileCell list option * DataFileCell list list, ExperimentDataError> =
+        let cellsOf (columns : string[]) : DataFileCell list = columns |> Array.map DataFileCell |> Array.toList
+
+        if String.IsNullOrWhiteSpace text.value then
+            Error (EmptyDataFileErr "the lab file is empty")
+        else
+            try
+                let hasHeaders =
+                    match header with
+                    | HeaderOnFirstRow -> true
+                    | NoHeaderRow -> false
+
+                let csv = CsvFile.Parse(text.value, separators = string delimiter.character, hasHeaders = hasHeaders)
+
+                // FSharp.Data checks a row's width as it enumerates, so the rows are read inside the `try`.
+                let rows =
+                    csv.Rows
+                    |> Seq.map (fun row -> row.Columns)
+                    |> Seq.filter (fun columns -> columns |> Array.exists (fun cell -> not (String.IsNullOrWhiteSpace cell)))
+                    |> Seq.map cellsOf
+                    |> Seq.toList
+
+                Ok (csv.Headers |> Option.map cellsOf, rows)
+            with error ->
+                Error (MalformedDataFileErr $"the lab file's rows could not be read by {delimiter.text}: {error.Message}")
 
     type KeyedObservation with
 
@@ -166,3 +198,144 @@ module LabFileImport =
                 match rows |> List.map (fun (lineNumber, line) -> rowOf lineNumber line) |> Softellect.Sys.Rop.unzip with
                 | observations, [] -> Ok observations
                 | _, error :: _ -> Error error
+
+    type ImportProfile with
+
+        /// The lab file's data rows read through this profile's delimiter, header and column roles, in row order. A row is
+        /// refused at its leftmost cell that is missing, blank or does not read, naming the data row, the column and the
+        /// cell; an unmapped column is read by nothing (spec 0050 S9.2; 001 §K).
+        member this.mapText (text : KitFileText) : Result<MappedRow list, ExperimentDataError> =
+            let roles = this.roles
+            let invariant = CultureInfo.InvariantCulture
+            let trimmedOf (cell : DataFileCell) : string = cell.value.Trim()
+
+            let numberOf (cell : DataFileCell) : float option =
+                match Double.TryParse(trimmedOf cell, NumberStyles.Float, invariant) with
+                | true, x -> Some x
+                | false, _ -> None
+
+            // `parseMuellerCsv`'s timestamp rule.
+            let timestampOf (cell : DataFileCell) : RowTimestamp option =
+                match DateTimeOffset.TryParse(trimmedOf cell, invariant, DateTimeStyles.AssumeUniversal) with
+                | true, instant -> Some (RowTimestamp instant)
+                | false, _ -> None
+
+            let captureIndexOf (cell : DataFileCell) : CaptureIndex option =
+                match Int32.TryParse(trimmedOf cell, NumberStyles.Integer, invariant) with
+                | true, index -> Some (CaptureIndex index)
+                | false, _ -> None
+
+            let keyOf (cell : DataFileCell) : DataRowKey option = Some (DataRowKey (trimmedOf cell))
+
+            // A refusal keeps its column, so of two refused cells the row reports the leftmost, whichever role reads it.
+            let both
+                (first : Result<'First, DataColumnNumber * ExperimentDataError>)
+                (second : Result<'Second, DataColumnNumber * ExperimentDataError>)
+                : Result<'First * 'Second, DataColumnNumber * ExperimentDataError> =
+                match first, second with
+                | Ok firstValue, Ok secondValue -> Ok (firstValue, secondValue)
+                | Error refusal, Ok _
+                | Ok _, Error refusal -> Error refusal
+                | Error (column, error), Error (otherColumn, otherError) ->
+                    if otherColumn < column then Error (otherColumn, otherError) else Error (column, error)
+
+            let all (results : Result<'Value, DataColumnNumber * ExperimentDataError> list)
+                : Result<'Value list, DataColumnNumber * ExperimentDataError> =
+                let prepend result values = both result values |> Result.map (fun (value, rest) -> value :: rest)
+                List.foldBack prepend results (Ok [])
+
+            let optionalAt
+                (read : DataColumnNumber -> Result<'Value, DataColumnNumber * ExperimentDataError>)
+                (columnOpt : DataColumnNumber option)
+                : Result<'Value option, DataColumnNumber * ExperimentDataError> =
+                match columnOpt with
+                | Some column -> read column |> Result.map Some
+                | None -> Ok None
+
+            let rowOf (rowNumber : int) (cells : DataFileCell list) : Result<MappedRow, ExperimentDataError> =
+                let readAt
+                    (what : string)
+                    (tryRead : DataFileCell -> 'Value option)
+                    (column : DataColumnNumber)
+                    : Result<'Value, DataColumnNumber * ExperimentDataError> =
+                    let refused (reason : string) : Result<'Value, DataColumnNumber * ExperimentDataError> =
+                        Error (column, MalformedDataFileErr $"data row {rowNumber}, column {column.value}: {reason}")
+
+                    match List.tryItem column.index cells with
+                    | None -> refused $"the row holds {List.length cells} cells, so this one is missing"
+                    | Some cell when String.IsNullOrWhiteSpace cell.value -> refused $"'{cell.value}' is blank"
+                    | Some cell ->
+                        match tryRead cell with
+                        | Some value -> Ok value
+                        | None -> refused $"'{trimmedOf cell}' is not {what}"
+
+                let numberAt (column : DataColumnNumber) : Result<float, DataColumnNumber * ExperimentDataError> =
+                    readAt "a number" numberOf column
+
+                let scanResult : Result<ScanCell list, DataColumnNumber * ExperimentDataError> =
+                    roles.scan
+                    |> List.map (fun scanColumn ->
+                        readAt "a number" (numberOf >> Option.map Units.UnitMagnitude) scanColumn.column
+                        |> Result.map (fun magnitude ->
+                            let cell : ScanCell = { column = scanColumn; magnitude = magnitude }
+                            cell))
+                    |> all
+
+                let readingResult : Result<MappedReading, DataColumnNumber * ExperimentDataError> =
+                    match roles.reading with
+                    | SignalColumns (signal, sigmaOpt) ->
+                        both
+                            (readAt "a number" (numberOf >> Option.map MeasuredIntensity) signal)
+                            (optionalAt (readAt "a number" (numberOf >> Option.map MeasuredSigma)) sigmaOpt)
+                        |> Result.map SignalReading
+                    | MuellerElementColumns (elements, throughputOpt) ->
+                        both (elements |> List.map numberAt |> all) (optionalAt numberAt throughputOpt)
+                        |> Result.map (fun (values, throughputValueOpt) ->
+                            let absolute =
+                                match throughputValueOpt with
+                                | Some throughput -> values |> List.map (fun value -> throughput * value)
+                                | None -> values
+
+                            // Element (i, j) is the column of index 4i + j, so the rows are the values in fours.
+                            absolute |> List.chunkBySize 4 |> RealMatrix4x4.create |> MuellerMatrix |> MuellerReading)
+
+                let detailsResult =
+                    both
+                        (optionalAt (readAt "a timestamp" timestampOf) roles.timestampOpt)
+                        (both
+                            (optionalAt (readAt "a capture index" captureIndexOf) roles.captureIndexOpt)
+                            (both
+                                (optionalAt (readAt "T, R or an observable tag" MuellerInverse.Observable.tryOfCell) roles.observableOpt)
+                                (optionalAt (readAt "a key" keyOf) roles.keyOpt)))
+
+                both scanResult (both readingResult detailsResult)
+                |> Result.map (fun (scan, (reading, (timestampOpt, (captureIndexOpt, (observableOpt, keyOpt))))) ->
+                    let row : MappedRow =
+                        {
+                            keyOpt = keyOpt
+                            scan = scan
+                            reading = reading
+                            timestampOpt = timestampOpt
+                            captureIndexOpt = captureIndexOpt
+                            observableOpt = observableOpt
+                        }
+
+                    row)
+                |> Result.mapError snd
+
+            let elementCount = List.length MuellerElementIndex.all
+
+            match roles.reading with
+            | MuellerElementColumns (elements, _) when List.length elements <> elementCount ->
+                let mapped = List.length elements
+                Error (MalformedDataFileErr $"the profile '{this.name.value}' maps {mapped} Mueller element columns, and a matrix has {elementCount}")
+            | MuellerElementColumns _
+            | SignalColumns _ ->
+                labFileRows this.delimiter this.header text
+                |> Result.bind (fun (_, rows) ->
+                    match rows with
+                    | [] -> Error (EmptyDataFileErr "the lab file has no data row")
+                    | _ ->
+                        match rows |> List.mapi (fun index cells -> rowOf (index + 1) cells) |> Softellect.Sys.Rop.unzip with
+                        | mapped, [] -> Ok mapped
+                        | _, error :: _ -> Error error)

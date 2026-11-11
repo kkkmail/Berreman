@@ -1,10 +1,12 @@
 namespace OpticalConstructor.Tests
 
+open System.Globalization
 open Xunit
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
 open Berreman.Media
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.PropagationReadouts
@@ -12,8 +14,8 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Storage.LabFileImport
 
-/// The Mueller-matrix observation file the app writes and the `Mueller-matrix observations` profile reads (spec 0050
-/// S9.2).
+/// The Mueller-matrix observation file the app writes and the `Mueller-matrix observations` profile reads, and a kit
+/// profile's column mapping of a lab file (spec 0050 S9.2).
 module LabFileImportTests =
 
     /// The header the slice fixes, written out here as the oracle the writer is held to.
@@ -150,3 +152,135 @@ module LabFileImportTests =
         refusedSecond (keyedObservation (DataRowKey "infinite") { zCutConfiguration with thickness = Thickness.Infinity } zCut.observation.measured)
         refusedSecond (keyedObservation (DataRowKey "micrometres") { zCutConfiguration with waveLength = WaveLength.mkm 0.6328<mkm> } zCut.observation.measured)
         refusedSecond (keyedObservation (DataRowKey "dark") zCutConfiguration (absoluteMatrix 0.0))
+
+    let private labScanColumn : ScanColumn =
+        { column = DataColumnNumber 1; valueUnit = DegreeColumnUnit; reading = PhysicalScanValue }
+
+    /// A comma file with a header row: the scan angle in degrees, the signal and its σ, and the experiment key.
+    let private labScanProfile : ImportProfile =
+        let roles : ColumnRoles =
+            {
+                scan = [ labScanColumn ]
+                reading = SignalColumns (DataColumnNumber 2, Some (DataColumnNumber 3))
+                timestampOpt = None
+                captureIndexOpt = None
+                observableOpt = None
+                keyOpt = Some (DataColumnNumber 4)
+            }
+
+        {
+            name = ImportProfileName "Lab scan"
+            delimiter = CommaDelimiter
+            header = HeaderOnFirstRow
+            bom = ByteOrderMarkAbsent
+            roles = roles
+        }
+
+    let private incidenceColumn : ScanColumn =
+        { column = DataColumnNumber 1; valueUnit = RadianColumnUnit; reading = PhysicalScanValue }
+
+    /// A semicolon file without a header: the incidence in radians, m00…m33 in columns 2 to 17, the throughput, the
+    /// observable and the key.
+    let private muellerProfile : ImportProfile =
+        let roles : ColumnRoles =
+            {
+                scan = [ incidenceColumn ]
+                reading = MuellerElementColumns ([ for column in 2 .. 17 -> DataColumnNumber column ], Some (DataColumnNumber 18))
+                timestampOpt = None
+                captureIndexOpt = None
+                observableOpt = Some (DataColumnNumber 19)
+                keyOpt = Some (DataColumnNumber 20)
+            }
+
+        {
+            name = ImportProfileName "Mueller scan"
+            delimiter = SemicolonDelimiter
+            header = NoHeaderRow
+            bom = ByteOrderMarkAbsent
+            roles = roles
+        }
+
+    let private mappedRows (profile : ImportProfile) (text : KitFileText) : MappedRow list =
+        match profile.mapText text with
+        | Ok rows -> rows
+        | Error error -> failwith $"the lab file was refused: %A{error}"
+
+    [<Fact>]
+    let ``a column mapping reads each row's scan values, signal, σ and key`` () : unit =
+        let rows =
+            mappedRows labScanProfile (KitFileText "phi,I,sigma,exp\n0,0.5,0.01,CPL-(QZ#45)-CPL\n20,0.25,0.01,\"LP-(AIR#0)-LP\"\n")
+
+        let expected : MappedRow list =
+            [
+                {
+                    keyOpt = Some (DataRowKey "CPL-(QZ#45)-CPL")
+                    scan = [ { column = labScanColumn; magnitude = Units.UnitMagnitude 0.0 } ]
+                    reading = SignalReading (MeasuredIntensity 0.5, Some (MeasuredSigma 0.01))
+                    timestampOpt = None
+                    captureIndexOpt = None
+                    observableOpt = None
+                }
+                {
+                    keyOpt = Some (DataRowKey "LP-(AIR#0)-LP")
+                    scan = [ { column = labScanColumn; magnitude = Units.UnitMagnitude 20.0 } ]
+                    reading = SignalReading (MeasuredIntensity 0.25, Some (MeasuredSigma 0.01))
+                    timestampOpt = None
+                    captureIndexOpt = None
+                    observableOpt = None
+                }
+            ]
+
+        Assert.Equal<MappedRow list>(expected, rows)
+
+    [<Fact>]
+    let ``a semicolon file without a header maps its Mueller elements and throughput`` () : unit =
+        let normalized = absoluteMatrix 1.0
+        let number (x : float) : string = x.ToString("R", CultureInfo.InvariantCulture)
+
+        let text =
+            [
+                "0.25"
+                for i in 0 .. 3 do
+                    for j in 0 .. 3 do
+                        number (normalized.element i j)
+                "0.5"
+                "R"
+                "Z-cut"
+            ]
+            |> String.concat ";"
+            |> fun row -> row + "\n"
+            |> KitFileText
+
+        match mappedRows muellerProfile text with
+        | [ mapped ] ->
+            Assert.Equal<ScanCell list>([ { column = incidenceColumn; magnitude = Units.UnitMagnitude 0.25 } ], mapped.scan)
+            Assert.Equal<Observable option>(Some ReflectedMueller, mapped.observableOpt)
+            Assert.Equal<DataRowKey option>(Some (DataRowKey "Z-cut"), mapped.keyOpt)
+
+            match mapped.reading with
+            | MuellerReading measured ->
+                Assert.Equal<float>(0.5, measured.element 0 0)
+                Assert.Equal<float>(0.5 * normalized.element 1 2, measured.element 1 2)
+                let absolute = absoluteMatrix 0.5
+
+                for i in 0 .. 3 do
+                    for j in 0 .. 3 do
+                        Assert.Equal<float>(absolute.element i j, measured.element i j)
+            | SignalReading _ -> Assert.Fail("a Mueller mapping read a signal")
+        | rows -> Assert.Fail($"expected one mapped row, got {List.length rows}")
+
+    [<Fact>]
+    let ``a cell the mapping cannot read names its row and column`` () : unit =
+        assertMalformed "data row 2, column 2: 'n/a'" (labScanProfile.mapText (KitFileText "phi,I,sigma,exp\n0,0.5,0.01,A\n20,n/a,0.01,B\n"))
+
+        // No key column at all, a blank key cell, and a row short of its header, which the CSV reader refuses.
+        assertMalformed "data row 1, column 4" (labScanProfile.mapText (KitFileText "phi,I,sigma\n0,0.5,0.01\n"))
+        assertMalformed "data row 2, column 4: ''" (labScanProfile.mapText (KitFileText "phi,I,sigma,exp\n0,0.5,0.01,A\n20,0.25,0.01,\n"))
+
+        match labScanProfile.mapText (KitFileText "phi,I,sigma,exp\n0,0.5,0.01,A\n20,0.25,0.01\n") with
+        | Error (MalformedDataFileErr _) -> ()
+        | other -> Assert.Fail($"expected MalformedDataFileErr for a row short of the header, got %A{other}")
+
+        match labScanProfile.mapText (KitFileText "phi,I,sigma,exp\n") with
+        | Error (EmptyDataFileErr _) -> ()
+        | other -> Assert.Fail($"expected EmptyDataFileErr for the header alone, got %A{other}")
