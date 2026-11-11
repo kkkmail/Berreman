@@ -9,6 +9,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.MuellerReconstruction
 
@@ -578,3 +579,22 @@ module NamingTemplateTests =
         | Ok name -> Assert.Fail($"'{{note}}' named the bench '{name.value}'")
 
         Assert.Equal<SetupName>(unnamed, noteOnly.setupNameAmong fullBench kitItems [] unnamed)
+
+    [<Fact>]
+    let ``an experiment is named by the kit's template from its setup's slots, made free among the kit's experiments, or takes the name it is given`` () : unit =
+        let unnamed = (ExperimentId 3).defaultName
+        let names (expected : ExperimentName) (slots : SetupSlot list) (noteOpt : NamePart option) (taken : ExperimentName list) : unit =
+            Assert.Equal<ExperimentName>(expected, lab.experimentNameAmong slots kitItems noteOpt taken unnamed)
+
+        names (ExperimentName "CPL-(QZ#45-LR#45)-CPL") fullBench None []
+        names (ExperimentName "CPL-(QZ#45-LR#45)-CPL (2)") fullBench None [ ExperimentName "cpl-(qz#45-lr#45)-cpl" ]
+        names (ExperimentName "CPL-(QZ#45-LR#45)-CPL-2") fullBench (Some (NamePart "2")) []
+
+        // Without CPL1 the template has nothing for 'source1', so the experiment takes the name it is given.
+        let noPrep = fullBench |> List.map (fun slot -> if slot.id = lpA.id then slot.withoutItem else slot)
+        names (ExperimentName "E3") noPrep None []
+
+        match (NameText "  ").toExperimentName with
+        | Error (InvalidExperimentNameErr reason) -> Assert.Contains("'  '", reason)
+        | Error other -> Assert.Fail($"expected InvalidExperimentNameErr, got {other.describe}")
+        | Ok name -> Assert.Fail($"a blank text was kept as '{name.value}'")

@@ -90,6 +90,43 @@ module ExperimentProxyTests =
         Assert.Equal<SessionName option>(None, SessionName.tryCreate "   ")
         Assert.Equal<string>("", ExperimentNotes.none.value)
 
+    // ============================ spec 0050 S9.1: an experiment's name ============================
+
+    [<Fact>]
+    let ``an experiment name keeps its text, refuses a blank one, takes the next free suffix and defaults to its id`` () : unit =
+        let labName = ExperimentName.tryCreate "CPL-(QZ#45-LR#45)-CPL"
+        Assert.Equal<Result<ExperimentName, ExperimentError>>(Ok (ExperimentName "CPL-(QZ#45-LR#45)-CPL"), labName)
+        Assert.Equal<Result<FileStem, ExperimentError>>(Ok (FileStem "CPL-(QZ#45-LR#45)-CPL"), labName |> Result.map (fun name -> name.fileStem))
+
+        // Only the characters Windows forbids in a file name leave the stem.
+        Assert.Equal<Result<FileStem, ExperimentError>>(Ok (FileStem "a_ b_c"), ExperimentName.tryCreate "a: b/c" |> Result.map (fun name -> name.fileStem))
+
+        for blank in [ ""; "   " ] do
+            match ExperimentName.tryCreate blank with
+            | Error (InvalidExperimentNameErr reason) -> Assert.Contains($"'{blank}'", reason)
+            | Error other -> Assert.Fail($"expected InvalidExperimentNameErr, got {other.describe}")
+            | Ok name -> Assert.Fail($"'{blank}' was kept as '{name.value}'")
+
+        Assert.Equal<ExperimentName>(ExperimentName "X (3)", (ExperimentName "X").nextFreeAmong [ ExperimentName "x"; ExperimentName "X (2)" ])
+        Assert.Equal<ExperimentName>(ExperimentName "X", (ExperimentName "X").nextFreeAmong [])
+        Assert.Equal<ExperimentName>(ExperimentName "E7", (ExperimentId 7).defaultName)
+
+    [<Fact>]
+    let ``every experiment error renders its condition and its payload`` () : unit =
+        let unknownReason = "E9 is not in the kit"
+        let unavailableReason = "the kit folder is read-only"
+        let nameReason = "'   ': an experiment name must not be blank"
+
+        let cases : (ExperimentError * string) list =
+            [
+                UnknownExperimentErr unknownReason, $"the experiment is unknown: {unknownReason}"
+                ExperimentUnavailableErr unavailableReason, $"the experiment is unavailable: {unavailableReason}"
+                InvalidExperimentNameErr nameReason, $"the experiment name is not valid: {nameReason}"
+            ]
+
+        cases |> List.iter (fun (error, expected) -> Assert.Equal(expected, error.describe))
+        Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+
     // ============================ the editable collection (choose / commit / edit / remove) ============================
 
     /// A collection with the source picked (λ variable, both capture allowed) — the common editing start.

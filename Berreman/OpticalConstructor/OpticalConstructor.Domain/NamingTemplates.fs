@@ -6,6 +6,7 @@ open Berreman.Constants
 open Berreman.Geometry
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.Experiments
 
 /// The kit's naming template: its grammar, and the names it writes for setups and experiments and reads back to match
 /// imported data (spec 0050 S8.3; 001 §J).
@@ -515,4 +516,27 @@ module NamingTemplates =
         member this.setupNameAmong (slots : SetupSlot list) (items : Item list) (taken : SetupName list) (unnamed : SetupName) : SetupName =
             match this.setupNameOf slots items with
             | Ok name -> name.nextFreeAmong taken
+            | Error _ -> unnamed
+
+    type NameText with
+
+        /// The name as an experiment's, refused when blank (spec 0050 S9.1).
+        member this.toExperimentName : Result<ExperimentName, ExperimentError> = ExperimentName.tryCreate this.value
+
+    type NamingTemplate with
+
+        /// A new experiment's name: the template's for the slots and the note, made free among `taken`, or `unnamed`
+        /// when it cannot name them, as `setupNameAmong` names a setup (spec 0050 S9.1, S8.3).
+        member this.experimentNameAmong
+            (slots : SetupSlot list)
+            (items : Item list)
+            (noteOpt : NamePart option)
+            (taken : ExperimentName list)
+            (unnamed : ExperimentName)
+            : ExperimentName =
+            match this.nameReadingOf slots items noteOpt |> Result.bind (fun reading -> this.writeName reading) with
+            | Ok name ->
+                match name.toExperimentName with
+                | Ok experimentName -> experimentName.nextFreeAmong taken
+                | Error _ -> unnamed
             | Error _ -> unnamed

@@ -118,9 +118,6 @@ module Experiments =
 
         member this.next : ExperimentId = ExperimentId (this.value + 1)
 
-        /// Names an experiment's kit file by its identity, E<n> (spec 0050 S4.3).
-        member this.fileStem : FileStem = FileStem.ofText $"E{this.value}"
-
     /// What a recorded run is for; its disk tag is an int, 1 to 7 in case order (spec 0050 S9.1, 001 §K).
     type ExperimentRole =
         | ScienceRun
@@ -185,6 +182,46 @@ module Experiments =
         member this.value : string = let (ExperimentNotes text) = this in text
 
         static member none : ExperimentNotes = ExperimentNotes ""
+
+    /// The Experiments error channel: errors as values, each case carrying a `reason` (spec 0050 S9.1).
+    type ExperimentError =
+        | UnknownExperimentErr of reason : string
+        | ExperimentUnavailableErr of reason : string
+        /// A blank experiment name (spec 0050 S9.1).
+        | InvalidExperimentNameErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | UnknownExperimentErr reason -> $"the experiment is unknown: {reason}"
+            | ExperimentUnavailableErr reason -> $"the experiment is unavailable: {reason}"
+            | InvalidExperimentNameErr reason -> $"the experiment name is not valid: {reason}"
+
+    /// The name an experiment is stored under, kept as given; its `<name>.experiment-json` stem follows the shared name
+    /// rule (spec 0050 S9.1; 001 §A; .spec-md §3.11).
+    type ExperimentName =
+        | ExperimentName of string
+
+        member this.value : string = let (ExperimentName text) = this in text
+
+        static member tryCreate (text : string) : Result<ExperimentName, ExperimentError> =
+            if System.String.IsNullOrWhiteSpace text then
+                Error (InvalidExperimentNameErr $"'{text}': an experiment name must not be blank")
+            else
+                Ok (ExperimentName text)
+
+        member this.fileStem : FileStem = FileStem.ofText this.value
+
+        /// The first free name by `FileStem.firstFreeText`, the suffix sequence items and setups share (spec 0050 S9.1).
+        member this.nextFreeAmong (taken : ExperimentName list) : ExperimentName =
+            ExperimentName (FileStem.firstFreeText this.value (taken |> List.map (fun held -> held.value)))
+
+    type ExperimentId with
+
+        /// `E<n>`: the name an experiment takes when the template cannot name its setup (spec 0050 S9.1).
+        member this.defaultName : ExperimentName = ExperimentName $"E{this.value}"
+
+        /// Names an experiment's kit file by its identity, the stem of its default name (spec 0050 S4.3, S9.1).
+        member this.fileStem : FileStem = this.defaultName.fileStem
 
     /// An element's human label as an experiment captures it ("<kind> #<n>"), so a row outlives the element.
     type ElementLabel =
@@ -482,11 +519,6 @@ module Experiments =
         let experiments = c.experiments |> List.filter (fun e -> e.id <> id)
         let draft = if c.draft.editingId = Some id then ExperimentDraft.empty else c.draft
         { c with experiments = experiments; draft = draft }
-
-    /// The Experiments error channel (errors as values; each case carries a `reason`).
-    type ExperimentError =
-        | UnknownExperimentErr of reason : string
-        | ExperimentUnavailableErr of reason : string
 
     /// The mock Experiments IO seam (the functional-proxy convention): a record of camelCase
     /// `Result`-returning functions. A test substitutes a stub of the SAME shape. Function-valued
