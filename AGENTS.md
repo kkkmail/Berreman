@@ -553,6 +553,12 @@ This is a spec-driven, gated repository.
   first; a slot holds a kit item or nothing, and a dial-mounted item records its raw dial reading.
   An experiment references its setup by name and revision, and recording a changed table over a
   revision an experiment references mints the next revision (`Lifecycle.decideVersioning`).
+- **Names come from the kit's naming template** (`NamingTemplates.fs`, spec 0050 S8.3): `{source}` is the polarization
+  source (Prep 1), `{light}` the light source, `{obj<k>}` / `{phi<k>}` the objects and their angles (a dial reading or
+  R1), then `{analyzer}`, `{detector}` and `{note}`; an empty second or later slot of a role, or an empty note, is left
+  out with the text before it, and `{source:CPL1=CPL}` writes an item under another name. A new setup takes the
+  template's name made free (`setupNameAmong`), one it cannot name keeps `Setup <n>`; the reference pipeline reads the
+  lab's labels through `NamingTemplate.standard`, and the grid generator is `SetupGrids.fs`.
 - **The constructor is checked against the Analytics example scripts** (`FsxAcceptanceTests`,
   trait `fsx-acceptance`, ~1.5 min): each drives the headless app to build the script's table,
   exports the run through `ExperimentExportProxy`, and compares it with `Variables.calculate`.

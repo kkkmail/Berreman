@@ -234,10 +234,17 @@ module SetupModelTests =
             scene.kit.close () |> kitValue
             reopened.library.kit.close () |> kitValue
 
+    /// Step 272's table, and the slot ids of its first polarizer and its sample.
+    type private TemplateTable =
+        {
+            table : TableAndElementRotationModel
+            polarizer : Library.ElementId
+            sample : Library.ElementId
+        }
+
     /// Over the kit `stocked` stocks and QZ2: LP1 in a linear polarizer, QZ in a sample turned to R1 45° and LPd in a
-    /// second linear polarizer, which the light meets in that order before the seeded detector, committed varying the
-    /// first polarizer; and the sample's slot id (spec 0050 S8.3).
-    let private templateCommitted (model : TableAndElementRotationModel) : TableAndElementRotationModel * Library.ElementId =
+    /// second linear polarizer, which the light meets in that order before the seeded detector (spec 0050 S8.3).
+    let private templateTable (model : TableAndElementRotationModel) : TemplateTable =
         let kit = stocked model |> updateTableAndElementRotation (AddItem qz2Draft)
         Assert.Equal<ControlCaption option>(None, kit.kitStatus)
         let polarizerPlaced, polarizer = withPolarizer kit
@@ -266,7 +273,48 @@ module SetupModelTests =
                 Setups.DetectorSlotRole (Setups.SlotPosition 1), idOf Detector
             ],
             Setups.SetupSlot.inLightOrder assigned.elements |> List.map (fun roled -> roled.role, roled.slot.id))
-        assigned |> committedVarying polarizer, sample
+        let held : TemplateTable =
+            {
+                table = assigned
+                polarizer = polarizer
+                sample = sample
+            }
+        held
+
+    /// Step 272's table committed varying its first polarizer, and the sample's slot id (spec 0050 S8.3).
+    let private templateCommitted (model : TableAndElementRotationModel) : TableAndElementRotationModel * Library.ElementId =
+        let held = templateTable model
+        held.table |> committedVarying held.polarizer, held.sample
+
+    /// The sample's option of holding the item turned to R1 of that many degrees.
+    let private plateChoice (item : ItemId) (degrees : float<deg>) : SetupGrids.SlotChoice =
+        {
+            itemOpt = Some item
+            r1 = Angle.degree degrees
+        }
+
+    /// The grid `SetupGrid.create` makes over the table's sample holding QZ at 0°, QZ at 45° or QZ2 at 0°, with
+    /// (QZ2, 0°) unticked (spec 0050 S8.3).
+    let private plateGrid (held : TemplateTable) : SetupGrids.SetupGrid =
+        let axis : SetupGrids.SlotOptions =
+            {
+                slot = held.sample
+                choices = [ plateChoice qzDraft.id 0.0<deg>; plateChoice qzDraft.id 45.0<deg>; plateChoice qz2Draft.id 0.0<deg> ]
+            }
+        let made = SetupGrids.SetupGrid.create [ axis ] held.table.elements held.table.kitItems held.table.tryItemModelChoice
+        Assert.Empty(made.unticked)
+        let qz2Pick : SetupGrids.SlotPick =
+            {
+                slot = held.sample
+                choice = plateChoice qz2Draft.id 0.0<deg>
+            }
+        let grid = made.untick { picks = [ qz2Pick ] }
+        Assert.Equal(2, grid.ticked.Length)
+        grid
+
+    /// The table's sample slot in the setup.
+    let private sampleIn (held : TemplateTable) (setup : Setups.Setup) : Setups.SetupSlot =
+        setup.slots |> List.find (fun slot -> slot.id = held.sample)
 
     [<Fact>]
     let ``CreateSetup records the table as a new kit setup and makes it the active one`` () : unit =
@@ -809,3 +857,141 @@ module SetupModelTests =
             Assert.Equal<Setups.Setup option>(Some created, swapped.activeSetupOpt)
             Assert.Equal<Setups.SetupSlot list>(created.slots, swapped.elements)
             Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'LP1-(QZ2#45)-LPd' by the swap."), swapped.kitStatus))
+
+    [<Fact>]
+    let ``GenerateSetupGrid records a setup per ticked combination, named by the kit's template, and an experiment of the draft over each`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = templateTable model
+            let chosen = held.table |> updateTableAndElementRotation (ExpChooseElement held.polarizer)
+            Assert.True(chosen.experimentCollection.canCommit)
+            Assert.Equal<Setups.Setup option>(None, chosen.activeSetupOpt)
+
+            let generated = chosen |> updateTableAndElementRotation (GenerateSetupGrid (plateGrid held))
+
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 2 experiments."), generated.kitStatus)
+            Assert.Equal<string list>([ "LP1-(QZ#0)-LPd.setup-json"; "LP1-(QZ#45)-LPd.setup-json" ], setupFilesIn folder)
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
+            let setups = generated.kit.proxy.readSetups () |> kitValue
+            Assert.Equal<SetupName list>([ SetupName "LP1-(QZ#0)-LPd"; SetupName "LP1-(QZ#45)-LPd" ], setups |> List.map (fun setup -> setup.name))
+            Assert.Equal<SetupRevision list>([ SetupRevision.first; SetupRevision.first ], setups |> List.map (fun setup -> setup.revision))
+            Assert.Equal<Setups.Setup list>(setups, generated.kitSetups)
+            for setup, degrees in List.zip setups [ 0.0<deg>; 45.0<deg> ] do
+                let plate = sampleIn held setup
+                Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (qzDraft.id, Setups.PlacementTurn), plate.content)
+                Assert.Equal((Angle.degree degrees).value, plate.placement.r1.value, 1e-12)
+
+            let draft = chosen.experimentCollection.draft
+            let experiments = generated.kit.proxy.readExperiments () |> kitValue
+            Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ], experiments |> List.map (fun experiment -> experiment.id))
+            Assert.Equal<SetupReference list>(setups |> List.map (fun setup -> setup.reference), experiments |> List.map (fun experiment -> experiment.setup))
+            for experiment in experiments do
+                Assert.Equal<Library.ElementId option>(Some held.polarizer, experiment.varied |> Option.map (fun varied -> varied.elementId))
+                Assert.Equal<Experiments.VariableParameter option>(draft.variable, experiment.varied |> Option.map (fun varied -> varied.variable))
+                Assert.Equal<Experiments.VariableRange>(draft.range, experiment.range)
+                Assert.Equal<DataAttachment option>(None, experiment.dataFileOpt)
+            Assert.Equal<Experiments.Experiment list>(experiments, generated.experimentCollection.experiments)
+
+            Assert.Equal<Setups.SetupSlot list>(chosen.elements, generated.elements)
+            Assert.Equal<Setups.Setup option>(chosen.activeSetupOpt, generated.activeSetupOpt)
+            Assert.Equal<Library.ElementId option>(draft.elementId, generated.experimentCollection.draft.elementId)
+            Assert.Equal<Experiments.VariableParameter option>(draft.variable, generated.experimentCollection.draft.variable))
+
+    [<Fact>]
+    let ``a grid over setups the kit holds writes no setup again, and a grid it cannot make writes nothing`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = templateTable model
+            let grid = plateGrid held
+            let first =
+                held.table
+                |> updateTableAndElementRotation (ExpChooseElement held.polarizer)
+                |> updateTableAndElementRotation (GenerateSetupGrid grid)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 2 experiments."), first.kitStatus)
+            let setupFiles = [ "LP1-(QZ#0)-LPd.setup-json"; "LP1-(QZ#45)-LPd.setup-json" ]
+            let setupBytes () : byte[] list = setupFiles |> List.map (fun name -> File.ReadAllBytes(Path.Combine(folder.value.value, name)))
+            let firstBytes = setupBytes ()
+
+            let again = first |> updateTableAndElementRotation (GenerateSetupGrid grid)
+
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (0 new) and 2 experiments."), again.kitStatus)
+            Assert.Equal<string list>(setupFiles, setupFilesIn folder)
+            Assert.Equal<byte[] list>(firstBytes, setupBytes ())
+            Assert.Equal<Setups.Setup list>(first.kitSetups, again.kitSetups)
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json"; "E3.experiment-json"; "E4.experiment-json" ], experimentFilesIn folder)
+            match again.kit.proxy.readExperiments () |> kitValue with
+            | [ e1; e2; e3; e4 ] ->
+                Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 3; Experiments.ExperimentId 4 ], [ e3.id; e4.id ])
+                Assert.Equal<SetupReference list>([ e1.setup; e2.setup ], [ e3.setup; e4.setup ])
+                Assert.Equal<SetupReference list>(first.kitSetups |> List.map (fun setup -> setup.reference), [ e3.setup; e4.setup ])
+                Assert.Equal<Experiments.Experiment list>([ e1; e2; e3; e4 ], again.experimentCollection.experiments)
+            | experiments -> Assert.Fail($"expected E1 to E4, read {List.length experiments} experiment(s)")
+
+            // A ticked combination that puts the laser in the sample refuses the whole grid, the new QZ2 setup with it.
+            let laserAxis : SetupGrids.SlotOptions =
+                {
+                    slot = held.sample
+                    choices = [ plateChoice qz2Draft.id 0.0<deg>; plateChoice laserDraft.id 0.0<deg> ]
+                }
+            let laserGrid : SetupGrids.SetupGrid =
+                {
+                    axes = [ laserAxis ]
+                    unticked = []
+                }
+            let before = kitFileBytes folder
+            let refused = again |> updateTableAndElementRotation (GenerateSetupGrid laserGrid)
+            match refused.kitStatus with
+            | Some status ->
+                Assert.StartsWith("Not generated", status.value)
+                Assert.Contains("Laser", status.value)
+            | None -> Assert.Fail "a grid the table cannot make must be told in the kit status"
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+            Assert.Equal<Setups.Setup list>(again.kitSetups, refused.kitSetups)
+            Assert.Equal<Experiments.ExperimentCollection>(again.experimentCollection, refused.experimentCollection)
+            Assert.Equal<Setups.SetupSlot list>(again.elements, refused.elements))
+
+    [<Fact>]
+    let ``a grid over a draft that cannot be committed records its setups and no experiment`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = templateTable model
+            let cleared =
+                held.table
+                |> updateTableAndElementRotation (ExpChooseElement held.polarizer)
+                |> updateTableAndElementRotation ExpNew
+            Assert.False(cleared.experimentCollection.canCommit)
+
+            let generated = cleared |> updateTableAndElementRotation (GenerateSetupGrid (plateGrid held))
+
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 0 experiments."), generated.kitStatus)
+            Assert.Equal<string list>([ "LP1-(QZ#0)-LPd.setup-json"; "LP1-(QZ#45)-LPd.setup-json" ], setupFilesIn folder)
+            Assert.Empty(experimentFilesIn folder)
+            Assert.Equal<Setups.Setup list>(generated.kit.proxy.readSetups () |> kitValue, generated.kitSetups)
+            Assert.Equal<Experiments.ExperimentCollection>(cleared.experimentCollection, generated.experimentCollection)
+            Assert.Equal<Setups.SetupSlot list>(cleared.elements, generated.elements)
+            Assert.Equal<Setups.Setup option>(cleared.activeSetupOpt, generated.activeSetupOpt))
+
+    [<Fact>]
+    let ``a kit opened read-only generates nothing`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = templateTable model
+            // The table recorded, so the read-only kit can draw it and the grid alone is refused.
+            let bench = held.table |> createdAs "Bench"
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench'."), bench.kitStatus)
+            withReadOnlyReopen folder (fun readOnly ->
+                Assert.Equal<ControlAvailability>(ControlWithheld, readOnly.kitWrites)
+                let drawn =
+                    readOnly
+                    |> updateTableAndElementRotation (ActivateSetup (SetupName "Bench"))
+                    |> updateTableAndElementRotation (ExpChooseElement held.polarizer)
+                let grid = plateGrid held
+                match grid.generate drawn.elements drawn.kitItems drawn.tryItemModelChoice drawn.kit.kitFile.namingTemplate drawn.kitSetups with
+                | Ok setups -> Assert.Equal(2, setups.Length)
+                | Error error -> Assert.Fail $"the grid must be one the read-only kit could make: {error.describe}"
+                let before = kitFileBytes folder
+
+                let refused = drawn |> updateTableAndElementRotation (GenerateSetupGrid grid)
+
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatus)
+                Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+                Assert.Equal<Setups.Setup list>(drawn.kitSetups, refused.kitSetups)
+                Assert.Equal<Experiments.ExperimentCollection>(drawn.experimentCollection, refused.experimentCollection)
+                Assert.Equal<Setups.SetupSlot list>(drawn.elements, refused.elements)
+                Assert.Equal<Setups.Setup option>(drawn.activeSetupOpt, refused.activeSetupOpt)))

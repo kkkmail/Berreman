@@ -1087,6 +1087,8 @@ type TableAndElementRotationMsg =
     | AssignSlot of Library.ElementId * ItemId option
     /// The table as the setup that holds this item in that slot, a held one or a new one (spec 0050 S8.2; 001 §P `SwapSlot`).
     | SwapSlot of Library.ElementId * ItemId
+    /// Every ticked combination of the grid over the table, as setups and experiments of the kit (spec 0050 S8.3; 001 §P).
+    | GenerateSetupGrid of SetupGrids.SetupGrid
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
     | SwitchConstructorMode of ConstructorMode
     /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
@@ -2751,6 +2753,67 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         {
                             model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                         })
+    // Spec 0050 S8.3: the setups the kit lacks, then the draft over every setup, as ExpCommit records them; the first
+    // failed write stops the run, keeping what was written. The table, the active setup and the draft's choices stay.
+    | GenerateSetupGrid grid ->
+        guardKitWrite model (fun () ->
+            match grid.generate model.elements model.kitItems model.tryItemModelChoice model.kit.kitFile.namingTemplate model.kitSetups with
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not generated — {error.describe}")
+                }
+            | Ok setups ->
+                let library : KitLibraryContext =
+                    {
+                        kit = model.kit
+                        imports = model.catalogueImports
+                    }
+                let fresh = setups |> List.distinct |> List.filter (fun setup -> not (List.contains setup model.kitSetups))
+                let heldIds = model.experimentCollection.experiments |> List.map (fun experiment -> experiment.id)
+                let committed =
+                    match model.draftCapture with
+                    | Some capture ->
+                        Experiments.chooseMeasurement capture model.experimentCollection
+                        |> Experiments.commitOverSetups (setups |> List.map (fun setup -> setup.reference))
+                    | None -> model.experimentCollection
+                let appended = committed.experiments |> List.filter (fun experiment -> not (List.contains experiment.id heldIds))
+                let writtenInOrder
+                    (record : 'Written -> Result<unit, KitLibraryError>)
+                    (held : TableAndElementRotationModel -> 'Written -> TableAndElementRotationModel)
+                    (state : Result<TableAndElementRotationModel, TableAndElementRotationModel * KitLibraryError>)
+                    (writes : 'Written list)
+                    : Result<TableAndElementRotationModel, TableAndElementRotationModel * KitLibraryError> =
+                    writes
+                    |> List.fold (fun written write ->
+                        written
+                        |> Result.bind (fun current ->
+                            match record write with
+                            | Ok () -> Ok (held current write)
+                            | Error error -> Error (current, error))) state
+                let setupHeld (current : TableAndElementRotationModel) (setup : Setups.Setup) : TableAndElementRotationModel =
+                    {
+                        current.withSetupRecorded setup with activeSetupOpt = current.activeSetupOpt
+                    }
+                let experimentHeld (current : TableAndElementRotationModel) (experiment : Experiments.Experiment) : TableAndElementRotationModel =
+                    {
+                        current with
+                            experimentCollection =
+                                {
+                                    committed with experiments = current.experimentCollection.experiments @ [ experiment ]
+                                }
+                    }
+                let setupsWritten = writtenInOrder library.recordSetup setupHeld (Ok model) fresh
+                match writtenInOrder library.recordExperiment experimentHeld setupsWritten appended with
+                | Ok generated ->
+                    let made = setups |> List.distinct |> List.length
+                    {
+                        generated with
+                            kitStatus = Some (ControlCaption $"Generated {made} setups ({fresh.Length} new) and {appended.Length} experiments.")
+                    }
+                | Error (written, error) ->
+                    {
+                        written with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    })
     // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
     | SwitchConstructorMode mode ->
         {
