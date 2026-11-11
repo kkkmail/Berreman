@@ -9,6 +9,7 @@ open OpticalConstructor.Domain.MeasuredData            // series / point / Exper
 open OpticalConstructor.Domain.ExperimentData
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.ExperimentDataLoad
+open OpticalConstructor.Domain.ImportProfiles
 
 /// Exact measured-data attachment signatures over a canned kit-path map (spec 0038 step 035; spec 0050 S4.2).
 module ExperimentDataProxyTests =
@@ -175,9 +176,9 @@ module ExperimentDataProxyTests =
         let slots = intensityDetectorSlots
         Assert.Equal<Library.DetectorKind>(Library.Intensity, ExperimentDataLoad.detectorKindOf library slots)
 
-        let load (experiment : Experiment) : Result<MeasuredSeries, ExperimentDataError> =
+        let load (experiment : Experiment) : Result<MappedPoints, ExperimentDataError> =
             ExperimentDataLoad.loadAndValidate library (seededMock ()) slots experiment intensityData
-        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(Ok (IntensityData intensityFixture), load oneAxis)
+        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(Ok (SeriesPoints (IntensityData intensityFixture)), load oneAxis)
 
         // As before, the one axis's range is the check: 450…700 nm misses the 400 nm abscissa.
         match load { oneAxis with scan = ExperimentScan.oneAxis (sweepOver 450.0 700.0) CaptureTransmitted None } with
@@ -197,16 +198,16 @@ module ExperimentDataProxyTests =
                 oneAxis with
                     scan = { oneAxis.scan with blocks = [ { axes = [ sweepOver 300.0 700.0; analyzerTurn ]; capture = CaptureTransmitted } ] }
             }
-        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(
+        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(
             Error (DataRangeMismatchErr "an X,Y data file holds one variable, and the scan varies 2 in 1 block(s)"), load twoAxes)
 
     [<Fact>]
     let ``loading data reads it through its import profile and refuses a profile or a row selection the X,Y files cannot serve`` () : unit =
         let library = BuiltinCatalogue.library ()
-        let load (proxy : ExperimentDataProxy) (data : MappedAttachment) : Result<MeasuredSeries, ExperimentDataError> =
+        let load (proxy : ExperimentDataProxy) (data : MappedAttachment) : Result<MappedPoints, ExperimentDataError> =
             ExperimentDataLoad.loadAndValidate library proxy intensityDetectorSlots { oneAxis with dataOpt = Some data } data
 
-        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(Ok (IntensityData intensityFixture), load (seededMock ()) intensityData)
+        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(Ok (SeriesPoints (IntensityData intensityFixture)), load (seededMock ()) intensityData)
 
         // Spec 0050 S9.1: the profile, not the detector, picks the reader; an ellipsometric series under an intensity
         // detector is the validation's units mismatch.
@@ -234,16 +235,16 @@ module ExperimentDataProxyTests =
             match ImportProfileName.tryCreate "Phone ROI CSV" with
             | Some profile -> profile
             | None -> failwith "a non-blank profile name must be kept"
-        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(
+        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(
             Error (MalformedDataFileErr "the import profile 'Phone ROI CSV' is not available"),
             load readsNothing { intensityData with profile = phoneRoi })
-        Assert.Equal<Result<MeasuredSeries, ExperimentDataError>>(
+        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(
             Error (MalformedDataFileErr "data/run-intensity.csv: an X,Y data file has no key column to select 'CPL-(QZ#45)-CPL' by"),
             load readsNothing { intensityData with rows = KeyedDataRows (DataRowKey "CPL-(QZ#45)-CPL") })
 
     [<Fact>]
     let ``the data badge follows the attachment, its file's hash and its validation`` () : unit =
-        let validated : Result<MeasuredSeries, ExperimentDataError> = Ok (IntensityData intensityFixture)
+        let validated : Result<MappedPoints, ExperimentDataError> = Ok (SeriesPoints (IntensityData intensityFixture))
         let changedHash = ContentHash "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
         let rangeProblem = DataRangeMismatchErr "a measured wavelength 800 nm lies outside the experiment range [300, 700] nm"
         let unitsProblem = DataUnitsMismatchErr "the detector records intensity (S0), but the data file is an ellipsometric Ψ/Δ series"
@@ -251,7 +252,7 @@ module ExperimentDataProxyTests =
         let emptyProblem = EmptyDataFileErr "the intensity data file has a header row but no data rows"
         let statuses : DataAttachmentStatus option list =
             [ None; Some AttachedDataUnchanged; Some (AttachedDataChanged changedHash); Some AttachedDataMissing ]
-        let outcomes : Result<MeasuredSeries, ExperimentDataError> option list =
+        let outcomes : Result<MappedPoints, ExperimentDataError> option list =
             [ None; Some validated; Some (Error rangeProblem); Some (Error parseProblem) ]
 
         // No data is no data, whatever the file's status and the validation say.
@@ -271,7 +272,7 @@ module ExperimentDataProxyTests =
         // Otherwise the validation decides, whether the file read unchanged or its status was not read.
         Assert.Equal<MeasuredPointCount>(MeasuredPointCount 3, (IntensityData intensityFixture).pointCount)
         for statusOpt in [ None; Some AttachedDataUnchanged ] do
-            let badgeOf (outcomeOpt : Result<MeasuredSeries, ExperimentDataError> option) : ExperimentDataBadge =
+            let badgeOf (outcomeOpt : Result<MappedPoints, ExperimentDataError> option) : ExperimentDataBadge =
                 ExperimentDataBadge.ofCheck mapped statusOpt outcomeOpt
             Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (IntensityData intensityFixture).pointCount, badgeOf (Some validated))
             Assert.Equal<ExperimentDataBadge>(OutOfRangeBadge rangeProblem, badgeOf (Some (Error rangeProblem)))

@@ -1886,9 +1886,9 @@ type TableAndElementRotationModel with
         | Some id -> BeamLayout.effectiveCapture (availableCaptures model id) draft.measurement
         | None -> None
 
-/// The experiment's data badge: its file's status through the kit and, while unchanged, its reading and validation
-/// against the detector its setup revision holds. A revision the kit's setups lack fails as a units mismatch, that
-/// detector being unknown (spec 0038 Part L; spec 0050 S8.2, S9.1).
+/// The experiment's data badge: its file's status through the kit and, while unchanged, its mapped points validated against
+/// the detector its setup revision holds and its scan. A revision the kit's setups lack fails as a units mismatch, that
+/// detector being unknown (spec 0038 Part L; spec 0050 S8.2, S9.1, S9.2).
 let private checkExperimentData (model : TableAndElementRotationModel) (experiment : Experiments.Experiment) : ExperimentDataBadge =
     match experiment.dataOpt with
     | Some data ->

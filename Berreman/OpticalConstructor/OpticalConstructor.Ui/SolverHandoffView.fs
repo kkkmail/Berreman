@@ -91,8 +91,8 @@ type Experiments.Experiment with
         | None -> ControlCaption "(no file attached)"
 
 /// The basic validation, in order and with no solver math: the setup revision resolves among `setups` and every slot but
-/// the sample is specified (`UnspecifiedElements`), a data file is attached (`MissingDataFile`), and it reads and fits the
-/// range through `ExperimentDataLoad.loadAndValidate` (spec 0038 Part L step 039; spec 0050 S8.2).
+/// the sample is specified (`UnspecifiedElements`), a data file is attached (`MissingDataFile`), and its mapped points read
+/// and fit the scan through `ExperimentDataLoad.loadAndValidate` (spec 0038 Part L step 039; spec 0050 S8.2, S9.2).
 let validateExperiment
     (library : Library.LibraryProxy)
     (dataProxy : ExperimentData.ExperimentDataProxy)
@@ -118,7 +118,7 @@ let validateExperiment
             | None -> MissingDataFile (ControlCaption "no measured-data file is attached to this experiment")
             | Some data ->
                 match ExperimentDataLoad.loadAndValidate library dataProxy slots experiment data with
-                | Ok series -> HandoffReady series.pointCount
+                | Ok points -> HandoffReady points.pointCount
                 | Error ((MeasuredData.MalformedDataFileErr _ | MeasuredData.EmptyDataFileErr _) as err) -> DataFileParseError err.caption
                 | Error ((MeasuredData.DataRangeMismatchErr _ | MeasuredData.DataUnitsMismatchErr _) as err) -> DataFileValidationError err.caption
 

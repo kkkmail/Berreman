@@ -5,12 +5,14 @@ open System.Globalization
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 
-/// The built-in import profiles, the profile an experiment names, and the points a profile maps a lab file to
-/// (spec 0050 S9.2; 001 §K).
+/// The built-in import profiles, the profile an experiment names, the points a profile maps a lab file to, and their one
+/// validation against an experiment's scan and detector (spec 0050 S9.2; 001 §K).
 module ImportProfiles =
 
     /// One cell of a lab file's row, as its file wrote it (spec 0050 S9.2).
@@ -180,6 +182,105 @@ module ImportProfiles =
             | CapturePoints rows -> MeasuredPointCount (List.length rows)
             | ObservationPoints observations -> MeasuredPointCount (List.length observations)
             | ColumnPoints rows -> MeasuredPointCount (List.length rows)
+
+    /// One quantity a scan varies, one slot's variable, with every range an axis gives it (spec 0050 S9.2).
+    type ScanQuantity =
+        {
+            elementId : ElementId
+            label : ElementLabel
+            variable : VariableParameter
+            ranges : VariableRange list
+        }
+
+        /// Whether some range admits `x`, in the quantity's display unit, as `VariableRange.admits` reads it (spec 0050 S9.2).
+        member this.admits (x : float) : bool = this.ranges |> List.exists (fun range -> range.admits x)
+
+    type ExperimentScan with
+
+        /// The distinct slot variables of `axes` in order of first appearance, each labelled by its first axis and ranged by
+        /// its axes in order, so A1's and A2's azimuth on one plate is one quantity (spec 0050 S9.2; 001 §Q AT-2).
+        member this.quantities : ScanQuantity list =
+            let axes = this.axes
+
+            axes
+            |> List.distinctBy (fun (axis : ScanAxis) -> axis.elementId, axis.variable)
+            |> List.map (fun (first : ScanAxis) ->
+                let quantity : ScanQuantity =
+                    {
+                        elementId = first.elementId
+                        label = first.label
+                        variable = first.variable
+                        ranges =
+                            axes
+                            |> List.filter (fun (axis : ScanAxis) -> axis.elementId = first.elementId && axis.variable = first.variable)
+                            |> List.map (fun (axis : ScanAxis) -> axis.range)
+                    }
+
+                quantity)
+
+    type MappedPoints with
+
+        /// The one validation of mapped points against the experiment's detector and scan: the points unchanged, or the
+        /// first mismatch; observations carry their own configurations and pass (spec 0050 S9.2; 001 §K).
+        member this.validatedFor (detector : DetectorKind) (scan : ExperimentScan) : Result<MappedPoints, ExperimentDataError> =
+            let quantities = scan.quantities
+
+            match this with
+            | SeriesPoints series ->
+                // Spec 0050 S9.1: an X,Y file holds one variable; a dark line is ranged as R1's default.
+                let validated =
+                    match scan.blocks with
+                    | [ { axes = [ axis ] } ] -> validateAgainstExperiment (Some axis.variable) axis.range detector series
+                    | [ { axes = [] } ] -> validateAgainstExperiment None (VariableRange.forVariable VaryR1) detector series
+                    | blocks ->
+                        Error (DataRangeMismatchErr $"an X,Y data file holds one variable, and the scan varies {scan.axes.Length} in {blocks.Length} block(s)")
+
+                validated |> Result.map SeriesPoints
+            | CapturePoints rows ->
+                match detector, quantities with
+                | Ellipsometer, _ ->
+                    Error (DataUnitsMismatchErr "the detector is an ellipsometer (records Ψ/Δ), but the data file is a Phone ROI CSV of intensities")
+                | Intensity, [] -> Ok this
+                | Intensity, [ quantity ] ->
+                    match rows |> List.tryFind (fun row -> not (quantity.admits row.description.degrees)) with
+                    | Some row ->
+                        Error (DataRangeMismatchErr $"a description {row.description.degrees}° lies outside every range of {quantity.label.value} {quantity.variable.label}")
+                    | None -> Ok this
+                | Intensity, _ ->
+                    Error (DataRangeMismatchErr $"a Phone ROI CSV holds one variable (its description), and the scan varies {quantities.Length}")
+            | ObservationPoints _ -> Ok this
+            | ColumnPoints rows ->
+                let problemOpt =
+                    rows
+                    |> List.tryPick (fun (row : MappedRow) ->
+                        match detector, row.reading with
+                        | Ellipsometer, SignalReading _ ->
+                            Some (DataUnitsMismatchErr "the detector is an ellipsometer (records Ψ/Δ), but the mapping reads a signal")
+                        | _ when row.scan.Length <> quantities.Length ->
+                            Some (DataUnitsMismatchErr $"the import profile maps {row.scan.Length} scan column(s), and the scan varies {quantities.Length}")
+                        | _ ->
+                            // The i-th scan cell is the i-th quantity's (spec 0050 S9.2; 001 §I: a dial records raw readings).
+                            List.zip row.scan quantities
+                            |> List.tryPick (fun (cell : ScanCell, quantity : ScanQuantity) ->
+                                let column = cell.column
+                                let named = $"{quantity.label.value} {quantity.variable.label}"
+
+                                match column.valueUnit.spectralUnitOpt, quantity.variable, column.reading with
+                                | None, VaryWaveLength, _ ->
+                                    Some (DataUnitsMismatchErr $"column {column.column.value} holds an angle ({column.valueUnit.text}), and {named} is a wavelength")
+                                | Some _, (VaryR1 | VaryR2 | VaryDialReading), _ ->
+                                    Some (DataUnitsMismatchErr $"column {column.column.value} holds a spectral value ({column.valueUnit.text}), and {named} is an angle")
+                                | _, (VaryWaveLength | VaryR1 | VaryR2), RawDialReading ->
+                                    Some (DataUnitsMismatchErr $"column {column.column.value} holds a raw dial reading, and {named} is a physical value")
+                                | _, VaryDialReading, PhysicalScanValue ->
+                                    Some (DataUnitsMismatchErr $"column {column.column.value} holds a physical value, and {named} is a raw dial reading")
+                                | _ when quantity.admits cell.displayValue.value -> None
+                                | _ ->
+                                    Some (DataRangeMismatchErr $"a scan value {cell.displayValue.value} {quantity.variable.unitLabel} lies outside every range of {named}")))
+
+                match problemOpt with
+                | Some problem -> Error problem
+                | None -> Ok this
 
     /// A Mueller element m<i><j> at 4i + j, 0 to 15 (spec 0050 S9.2).
     type MuellerElementIndex =
