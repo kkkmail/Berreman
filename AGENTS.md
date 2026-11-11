@@ -560,6 +560,11 @@ This is a spec-driven, gated repository.
   out with the text before it, and `{source:CPL1=CPL}` writes an item under another name. A new setup takes the
   template's name made free (`setupNameAmong`), one it cannot name keeps `Setup <n>`; the reference pipeline reads the
   lab's labels through `NamingTemplate.standard`, and the grid generator is `SetupGrids.fs`.
+- **An experiment is a scan over a setup revision** (`Experiments.fs`, spec 0050 S9.1): blocks of axes, each axis one
+  variable of one slot over its range (a dial-mounted item scans its raw reading); a block is the product of its axes,
+  the first outermost, read on its capture; its name comes from the kit's template (else `E<n>`) and is its file's
+  stem; its role, session and notes and its mapped attachment (import profile and row selection) live in its file; its
+  data badge is `ExperimentDataBadge.ofCheck`.
 - **The slot bar is the quick swap** (`SlotBarView.fs`, spec 0050 S8.4): one chip per slot in light order, directly
   above the table, each listing the kit items that fit its slot (`SetupSlot.fittingItems`); choosing one is `SwapSlot`
   (the held setup of that content, else a new one), Tab moves between chips and a typed letter picks (`pickedByLetter`).

@@ -1424,3 +1424,75 @@ module KitWindowTests =
                         let id = ConstructorUiId.experimentEditButton experimentId.uiKey
                         Assert.True((controlById window id).IsEffectivelyVisible, $"{id.value} must show in the reopened window"))
             finally reopened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    /// Types `text` into the field carrying `id` as its `Name`, as the bay's committing fields do, and commits it with
+    /// Enter (spec 0050 S9.1).
+    let private typeCommitted (window : Window) (id : ConstructorUiId) (text : string) : unit =
+        let field = Assert.IsType<TextBox>(namedControl window id)
+        Assert.True(field.IsEffectivelyVisible, $"{id.value} must be visible")
+        field.Focus() |> ignore
+        Dispatcher.UIThread.RunJobs()
+        window.KeyTextInput text
+        Dispatcher.UIThread.RunJobs()
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None)
+        Dispatcher.UIThread.RunJobs()
+        window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None)
+        Dispatcher.UIThread.RunJobs()
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a two-variable experiment recorded through the bay keeps its scan, role, session and notes in its kit file`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let folder = TestAppScope.freshKitFolder owner
+            let e1 = Experiments.ExperimentId 1
+            let opened = openedAt folder ReadWriteKitAccess ctx
+            let sample =
+                try
+                    let loaded = kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
+                    let plated =
+                        loaded
+                        |> updateTableAndElementRotation (
+                            AddElementBoundTo (Placement.Sample, Some Library.SampleIds.glassPlate1mmId.toElementValueId))
+                    let slotOfKind (kind : Placement.CatalogueKind) : Setups.SetupSlot =
+                        plated.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)
+                    let sampleSlot = slotOfKind Placement.Sample
+                    let pointOf (slot : Setups.SetupSlot) : Placement.TablePoint = slot.placement.placementPoint
+                    Assert.True(
+                        (pointOf (slotOfKind Placement.LightSource)).x < (pointOf sampleSlot).x
+                        && (pointOf sampleSlot).x < (pointOf (slotOfKind Placement.Detector)).x,
+                        "the sample must stand between the seeded source and detector")
+                    let bay = plated |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+                    Assert.Empty(bay.experimentCollection.experiments)
+                    let candidate = ConstructorUiId.experimentCandidate sampleSlot.id.uiKey
+                    withKitWindow bay (fun window ->
+                        pressBox window candidate
+                        pressBox window (ConstructorUiId.experimentVariable ExperimentControls.VaryR2.uiKey)
+                        pressBox window ConstructorUiId.experimentAddScanAxisButton
+                        pressBox window candidate
+                        pressBox window (ConstructorUiId.experimentVariable ExperimentControls.VaryR1.uiKey)
+                        pressBox window ConstructorUiId.experimentAddButton
+                        pressBox window (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey)
+                        typeCommitted window ConstructorUiId.experimentSessionField "Day 1"
+                        typeCommitted window ConstructorUiId.experimentNotesField "LR re-seated"
+                        match tryControlById window ConstructorUiId.kitStatus with
+                        | Some status -> Assert.Fail $"no kit write may be refused: {Assert.IsType<TextBlock>(status).Text}"
+                        | None -> ()
+                        Assert.Equal("no data", textOf window (ConstructorUiId.experimentRowBadge e1.uiKey)))
+                    sampleSlot.id
+                finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
+
+            // Spec 0050 S9.1: the standard template cannot name a table with no item in Prep 1, so the name is `E1`.
+            Assert.Equal<string list>([ "E1.experiment-json" ], kitFilesIn folder "*.experiment-json")
+            let reopened = openedAt folder ReadWriteKitAccess ctx
+            try
+                let stored = Assert.Single(reopened.library.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
+                Assert.Equal<Experiments.ExperimentId>(e1, stored.id)
+                let block = Assert.Single stored.scan.blocks
+                Assert.Equal<Experiments.VariableParameter list>(
+                    [ Experiments.VaryR2; Experiments.VaryR1 ], block.axes |> List.map (fun axis -> axis.variable))
+                Assert.Equal<Library.ElementId list>([ sample; sample ], block.axes |> List.map (fun axis -> axis.elementId))
+                Assert.Equal(Experiments.CalibrationRun, stored.role)
+                Assert.Equal<Experiments.SessionName option>(Some (Experiments.SessionName "Day 1"), stored.sessionOpt)
+                Assert.Equal<Experiments.ExperimentNotes>(Experiments.ExperimentNotes "LR re-seated", stored.notes)
+            finally reopened.library.kit.close () |> SceneTestFixture.kitSuccess)
