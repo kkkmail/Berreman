@@ -2109,6 +2109,22 @@ type TableAndElementRotationModel with
     member model.recordedSlots : Setups.SetupSlot list =
         model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
 
+    /// The slot bar: a chip per slot in light order, read as recorded so an object shows the angle a name writes, listing
+    /// `slotChipItems`; the open chip; and Record experiment while the kit takes writes (spec 0050 S8.3, S8.4).
+    member model.slotBarState : SlotBarView.SlotBarState =
+        {
+            chips =
+                Setups.SetupSlot.inLightOrder model.recordedSlots
+                |> List.map (fun roled ->
+                    {
+                        SlotBarView.SlotChipState.roled = roled
+                        caption = roled.chipCaption model.kitItems
+                        fitting = model.slotChipItems roled.slot
+                    })
+            openOpt = model.slotChipOpenOpt
+            recordAvailability = model.kitWrites
+        }
+
     /// `active` with the table written over it, minting its next revision when an experiment references the current
     /// one (spec 0050 S8.2).
     member model.tableWrittenOver (active : Setups.Setup) : Setups.Setup =
@@ -4448,6 +4464,21 @@ let private experimentHandlers (model : TableAndElementRotationModel) (dispatch 
         openChartWindow = fun () -> dispatch OpenExperimentChartWindow
     }
 
+/// The slot bar's handlers. A typed letter is resolved against the table's slot of that id and the items its chip lists,
+/// swapping in the pick; no pick sends nothing (spec 0050 S8.4).
+let private slotBarHandlers (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : SlotBarView.SlotBarHandlers =
+    {
+        toggleChip = fun slotId -> dispatch (ToggleSlotChip slotId)
+        swapSlot = fun slotId itemId -> dispatch (SwapSlot (slotId, itemId))
+        pickByLetter =
+            fun slotId letter ->
+                model.elements
+                |> List.tryFind (fun slot -> slot.id = slotId)
+                |> Option.bind (fun slot -> slot.pickedByLetter letter (model.slotChipItems slot))
+                |> Option.iter (fun picked -> dispatch (SwapSlot (slotId, picked.id)))
+        recordExperiment = fun () -> dispatch RecordExperiment
+    }
+
 // ---------------------------------------------------------------------------
 // Spec 0027 (026) — the DETAILS bay: the selected element's bound Library entry shown as "what it is" (the
 // heading + full description) and, for a layered sample, a layer-stack BAND view (the reusable
@@ -5378,36 +5409,42 @@ let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
     // a full-surface bay never realizes the canvas and must not wire the table gestures.
     // Spec 0046: a RIGHT click opens the element menu on release (its press starts no drag); the menu
     // overlay sits above the surface as a sibling, so its rows get their own clicks.
+    // Spec 0050 S8.4: the slot bar sits above the table.
     let tableSurface () : IView =
-        Panel.create [
-            Panel.children [
-                Border.create [
-                    Border.background (brush (Color.FromRgb(250uy, 250uy, 250uy)))
-                    Border.onPointerPressed (fun e ->
-                        e.Handled <- true
-                        match e.GetCurrentPoint(null).Properties.IsRightButtonPressed with
-                        | true -> ()
-                        | false -> dispatch (PointerDown (toScreen e)))
-                    Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-                    Border.onPointerReleased (fun e ->
-                        e.Handled <- true
-                        match e.InitialPressMouseButton with
-                        | MouseButton.Right -> dispatch (OpenElementMenuAt (toScreen e))
-                        | _ -> dispatch (PointerUp (toScreen e)))
-                    // Spec 0046: a plain wheel scrolls the PAGE until the table is fully in view (left
-                    // unhandled, it bubbles to the page's ScrollViewer); then — and always with a modifier —
-                    // it is the table's gesture.
-                    Border.onPointerWheelChanged (fun e ->
-                        let mods = wheelModifiers e.KeyModifiers
-                        let notches = WheelNotches (if e.Delta.Y >= 0.0 then 1 else -1)
-                        match wheelTarget mods (pageScrollOf e.Source) notches with
-                        | WheelToPage -> ()
-                        | WheelToTable ->
-                            e.Handled <- true
-                            dispatch (Wheel (mods, notches)))
-                    Border.child model.mainTableCanvas
+        DockPanel.create [
+            DockPanel.children [
+                Border.create [ Border.dock Dock.Top; Border.child (SlotBarView.slotBarView model.slotBarState (slotBarHandlers model dispatch)) ]
+                Panel.create [
+                    Panel.children [
+                        Border.create [
+                            Border.background (brush (Color.FromRgb(250uy, 250uy, 250uy)))
+                            Border.onPointerPressed (fun e ->
+                                e.Handled <- true
+                                match e.GetCurrentPoint(null).Properties.IsRightButtonPressed with
+                                | true -> ()
+                                | false -> dispatch (PointerDown (toScreen e)))
+                            Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
+                            Border.onPointerReleased (fun e ->
+                                e.Handled <- true
+                                match e.InitialPressMouseButton with
+                                | MouseButton.Right -> dispatch (OpenElementMenuAt (toScreen e))
+                                | _ -> dispatch (PointerUp (toScreen e)))
+                            // Spec 0046: a plain wheel scrolls the PAGE until the table is fully in view (left
+                            // unhandled, it bubbles to the page's ScrollViewer); then — and always with a modifier —
+                            // it is the table's gesture.
+                            Border.onPointerWheelChanged (fun e ->
+                                let mods = wheelModifiers e.KeyModifiers
+                                let notches = WheelNotches (if e.Delta.Y >= 0.0 then 1 else -1)
+                                match wheelTarget mods (pageScrollOf e.Source) notches with
+                                | WheelToPage -> ()
+                                | WheelToTable ->
+                                    e.Handled <- true
+                                    dispatch (Wheel (mods, notches)))
+                            Border.child model.mainTableCanvas
+                        ]
+                        elementMenuOverlay model dispatch
+                    ]
                 ]
-                elementMenuOverlay model dispatch
             ]
         ] :> IView
     let bays = mainBays model dispatch

@@ -241,6 +241,7 @@
         <Compile Include="KitWindowTests.fs" />
         <Compile Include="DataLocationsWindowTests.fs" />
         <Compile Include="ItemsPanelTests.fs" />
+        <Compile Include="SlotBarTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

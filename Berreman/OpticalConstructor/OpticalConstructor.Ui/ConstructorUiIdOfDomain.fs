@@ -167,6 +167,11 @@ module ConstructorUiIdOfDomain =
             | index when index > 0 -> ControlCaption (labelled.Substring(0, index))
             | _ -> ControlCaption labelled
 
+    type Setups.SlotRole with
+
+        /// The role as the key of its slot-bar ids: its `text` without spaces (`Source`, `Prep1`, `Obj2`) (spec 0050 S8.4).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey (this.text.Replace(" ", ""))
+
     type ConstructorUiId with
 
         /// Draws this kit setup on the table (spec 0050 S8.2).
@@ -174,6 +179,13 @@ module ConstructorUiIdOfDomain =
 
         /// An element's invisible hover target on the Main table, which carries its tooltip (spec 0046).
         static member elementHover (elementId : ElementId) : ConstructorUiId = ConstructorUiId $"ElementHover_{elementId.value}"
+
+        /// A slot's chip on the slot bar: `SlotChip_<role.uiKey>` (spec 0050 S8.4; 001 §O "Automation").
+        static member slotChip (role : Setups.SlotRole) : ConstructorUiId = ConstructorUiId $"SlotChip_{role.uiKey.value}"
+
+        /// An item of a chip's open list: `SlotChipChoice_<role.uiKey>_<the item's GUID>` (spec 0050 S8.4).
+        static member slotChipChoice (role : Setups.SlotRole) (item : Kit.ItemId) : ConstructorUiId =
+            ConstructorUiId $"SlotChipChoice_{role.uiKey.value}_{item.value}"
 
         /// The element menu's "Place on the reflected ray of" this element (spec 0046).
         static member elementMenuPlaceOnReflectedOf (elementId : ElementId) : ConstructorUiId =
@@ -777,3 +789,32 @@ module ConstructorUiIdOfDomain =
                     |> List.map (fun parameter -> $"{parameter.name.value} {parameter.gridCells.value.value}")
                     |> String.concat ", "
                 ControlCaption $"Revision {this.revision.value}: {values}"
+
+    type Kit.ItemLabel with
+
+        /// The label as a slot-bar chip or a chip's list names the item (spec 0050 S8.4).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type Berreman.Geometry.Angle with
+
+        /// The angle in degrees as the rotation bar writes them (`BarDegrees.text`), then `°` (spec 0050 S8.4).
+        member this.degreeCaption : ControlCaption = ControlCaption $"{(BarDegrees this.degrees).text}°"
+
+    type Setups.RoledSlot with
+
+        /// The chip's `<role>: <item label>`, `—` for nothing and `(not in this kit)` for an item `items` lacks; an
+        /// object holding an item adds ` @ ` and its `turnAngle`, the angle a name writes (spec 0050 S8.3, S8.4).
+        member this.chipCaption (items : Kit.Item list) : ControlCaption =
+            match this.slot.content.itemOpt with
+            | None -> ControlCaption $"{this.role.text}: —"
+            | Some held ->
+                let label =
+                    match items |> List.tryFind (fun item -> item.id = held) with
+                    | Some item -> item.label.value
+                    | None -> "(not in this kit)"
+                match this.role with
+                | Setups.ObjectSlotRole _ -> ControlCaption $"{this.role.text}: {label} @ {this.slot.turnAngle.degreeCaption.value}"
+                | Setups.SourceSlotRole
+                | Setups.PrepSlotRole _
+                | Setups.AnalyzerSlotRole _
+                | Setups.DetectorSlotRole _ -> ControlCaption $"{this.role.text}: {label}"

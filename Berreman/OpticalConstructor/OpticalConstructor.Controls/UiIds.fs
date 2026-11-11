@@ -800,6 +800,14 @@ type ConstructorUiId =
     /// The strip's Experiments step: shows the Experiments bay (spec 0050 S7.2).
     static member flowExperimentsStep : ConstructorUiId = ConstructorUiId "FlowExperimentsStep"
 
+    // --- The slot bar over the table (SlotBarView). ---
+    /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).
+    static member slotBar : ConstructorUiId = ConstructorUiId "SlotBar"
+    /// The open chip's list of the kit's items that fit its slot (spec 0050 S8.4).
+    static member slotChipChoiceList : ConstructorUiId = ConstructorUiId "SlotChipChoiceList"
+    /// Record experiment: a new experiment of the draft over the active setup (spec 0050 S8.4; 001 §O).
+    static member recordExperimentButton : ConstructorUiId = ConstructorUiId "RecordExperimentButton"
+
     // --- The Data locations window (DataLocationsView, DataLocationsWindow). ---
     /// The single-instance window listing every data location (001 §G, spec 0050 S5.3).
     static member dataLocationsWindow : ConstructorUiId = ConstructorUiId "DataLocationsWindow"

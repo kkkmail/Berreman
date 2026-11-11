@@ -210,7 +210,7 @@ module KitWindowTests =
 
     /// Mounts `mainView` over the inverse model loaded from the kit opened with `access`, `storedBench` drawn, with a
     /// draft ready to commit and the Experiments bay selected, and checks every write control against `expected` (spec
-    /// 0050 S5.3, S8.2).
+    /// 0050 S5.3, S8.2, S8.4).
     let private assertWriteControls (folder : KitFolder) (ctx : AppContext) (access : KitAccess) (expected : ControlAvailability) : unit =
         let opened = openedAt folder access ctx
         try
@@ -234,6 +234,12 @@ module KitWindowTests =
                     match expected with
                     | ControlOffered -> Assert.True(control.IsEnabled, $"{id.value} must be enabled over a read-write kit")
                     | ControlWithheld -> Assert.False(control.IsEnabled, $"{id.value} must be disabled over a read-only kit")
+                // Spec 0050 S8.4: the slot bar's Record experiment is present only while the kit takes writes.
+                match expected, tryControlById window ConstructorUiId.recordExperimentButton with
+                | ControlOffered, Some _
+                | ControlWithheld, None -> ()
+                | ControlOffered, None -> Assert.Fail "Record experiment must be on the slot bar of a read-write kit"
+                | ControlWithheld, Some _ -> Assert.Fail "Record experiment must not be on the slot bar of a read-only kit"
             finally
                 window.Close()
                 Dispatcher.UIThread.RunJobs()
