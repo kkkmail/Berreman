@@ -625,6 +625,8 @@ type TableAndElementRotationModel =
         kitItems : Item list
         /// The slot whose chip's list is open, `None` while every chip is closed (spec 0050 S8.4).
         slotChipOpenOpt : Library.ElementId option
+        /// The grid panel's draft while the panel is open, `None` while it is closed (spec 0050 S8.4).
+        setupGridOpt : SetupGrids.SetupGridDraft option
         /// The flow strip's step the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
         flowStep : ConstructorFlowStep
         /// The item-model store the add form offers (spec 0050 S7.2, step 209).
@@ -796,6 +798,7 @@ let initWith
         activeSetupOpt = None
         kitItems = []
         slotChipOpenOpt = None
+        setupGridOpt = None
         // Spec 0050 S7.2: a window opens on the table and its Add bay, as before the strip.
         flowStep = SetupsFlowStep
         itemModels = ItemModels.ItemModelProxy.createInMemory ()
@@ -1096,6 +1099,18 @@ type TableAndElementRotationMsg =
     | RecordExperiment
     /// Opens that slot's chip list, or closes it when it is the open one (spec 0050 S8.4).
     | ToggleSlotChip of Library.ElementId
+    /// Opens the grid panel, keeping a draft already open (spec 0050 S8.4).
+    | OpenSetupGrid
+    /// Closes the grid panel, forgetting its draft (spec 0050 S8.4).
+    | CloseSetupGrid
+    /// Tries the item in that slot, or stops trying it (spec 0050 S8.4).
+    | ToggleSetupGridItem of Library.ElementId * ItemId
+    /// Tries that slot's items at this R1 too (spec 0050 S8.4).
+    | AddSetupGridAngle of Library.ElementId * BarDegrees
+    /// Stops trying that slot's items at that R1 (spec 0050 S8.4).
+    | RemoveSetupGridAngle of Library.ElementId * Angle
+    /// Unticks a ticked combination of the grid, or ticks it again (spec 0050 S8.4).
+    | ToggleSetupGridCombination of SetupGrids.GridCombination
     /// The kit bar's forward / inverse switch, which keeps the kit and the model (spec 0050 S5.3).
     | SwitchConstructorMode of ConstructorMode
     /// The Kit menu's Show in Explorer: the kit's folder in the shell's explorer (spec 0050 S5.3).
@@ -2039,6 +2054,11 @@ type TableAndElementRotationModel with
     /// dropdown lists compatible items only").
     member model.slotChipItems (slot : Setups.SetupSlot) : Item list = slot.fittingItems model.kitItems model.tryItemModelChoice
 
+    /// The open grid draft's grid over the table, which the panel's Generate sends; `None` while the panel is closed
+    /// (spec 0050 S8.4).
+    member model.setupGrid : SetupGrids.SetupGrid option =
+        model.setupGridOpt |> Option.map (fun draft -> draft.gridOver model.elements model.kitItems model.tryItemModelChoice)
+
     /// The name the window's stores give the item's model: its resolved version's `<name> v<n>`, after a preset's
     /// entry name or a sample's `<name> v<n>`; `(model not in the library)` when `tryItemModelChoice` answers `None`
     /// (spec 0050 S7.2, S8.2).
@@ -2340,6 +2360,18 @@ let private withExperimentsRecorded
 let private appendedOver (held : Experiments.ExperimentCollection) (committed : Experiments.ExperimentCollection) : Experiments.Experiment list =
     let heldIds = held.experiments |> List.map (fun experiment -> experiment.id)
     committed.experiments |> List.filter (fun experiment -> not (List.contains experiment.id heldIds))
+
+/// The open grid draft edited, or the model as it is while the panel is closed (spec 0050 S8.4).
+let private withGridDraftEdited
+    (edit : SetupGrids.SetupGridDraft -> SetupGrids.SetupGridDraft)
+    (model : TableAndElementRotationModel)
+    : TableAndElementRotationModel =
+    match model.setupGridOpt with
+    | Some draft ->
+        {
+            model with setupGridOpt = Some (edit draft)
+        }
+    | None -> model
 
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
@@ -2928,6 +2960,20 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 model with slotChipOpenOpt = openOpt
             }
         else model
+    // Spec 0050 S8.4: the grid panel's edits write nothing, so a read-only kit takes them; a fit the grid refuses is
+    // its own to untick (S8.3), and GenerateSetupGrid leaves the draft open, so a grid can be edited and sent again.
+    | OpenSetupGrid ->
+        {
+            model with setupGridOpt = Some (model.setupGridOpt |> Option.defaultValue SetupGrids.SetupGridDraft.empty)
+        }
+    | CloseSetupGrid ->
+        {
+            model with setupGridOpt = None
+        }
+    | ToggleSetupGridItem (slotId, itemId) -> model |> withGridDraftEdited (fun draft -> draft.withItemToggled slotId itemId)
+    | AddSetupGridAngle (slotId, degrees) -> model |> withGridDraftEdited (fun draft -> draft.withGridAngle slotId degrees.wrappedAngle)
+    | RemoveSetupGridAngle (slotId, angle) -> model |> withGridDraftEdited (fun draft -> draft.withoutGridAngle slotId angle)
+    | ToggleSetupGridCombination combination -> model |> withGridDraftEdited (fun draft -> draft.withCombinationToggled combination)
     // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
     | SwitchConstructorMode mode ->
         {

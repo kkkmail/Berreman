@@ -25,8 +25,9 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// SaveSetup writes it over the active one, ActivateSetup draws one, the window keeping its view, snap mode and pivot,
 /// AssignSlot puts a kit item into a slot, SwapSlot makes the table the setup holding the swapped item, and a commit
 /// records the table as the active setup its experiment references, a new one named by the kit's naming template,
-/// RecordExperiment appends one more over it each time, and a slot's chip lists the items that fit it, one list open at a
-/// time (spec 0050 S8.2–S8.4; 001 §J, §P).
+/// RecordExperiment appends one more over it each time, a slot's chip lists the items that fit it, one list open at a
+/// time, and the grid panel's messages edit its draft, whose grid GenerateSetupGrid records (spec 0050 S8.2–S8.4; 001 §J,
+/// §P).
 module SetupModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -1249,3 +1250,145 @@ module SetupModelTests =
             Assert.Equal<Library.ElementId option>(None, switched.slotChipOpenOpt)
             Assert.Equal<Setups.Setup option>(Some qz2Setup, switched.activeSetupOpt)
             Assert.Equal<ControlCaption option>(Some (ControlCaption $"Loaded setup '{qz2Setup.name.value}'."), switched.kitStatus))
+
+    // Spec 0050 S8.4: the grid panel's messages edit its draft, and GenerateSetupGrid records the draft's grid.
+
+    /// The grid's one-pick combination of the sample holding the item turned to R1 of that many degrees.
+    let private plateCombination (sample : Library.ElementId) (item : ItemId) (degrees : float<deg>) : SetupGrids.GridCombination =
+        let pick : SetupGrids.SlotPick =
+            {
+                slot = sample
+                choice = plateChoice item degrees
+            }
+        { picks = [ pick ] }
+
+    /// The open draft's grid over the table, failing while the panel is closed.
+    let private openGrid (model : TableAndElementRotationModel) : SetupGrids.SetupGrid =
+        match model.setupGrid with
+        | Some grid -> grid
+        | None -> failwith "the grid panel must be open"
+
+    /// The panel opened over step 272's table, its sample trying QZ and QZ2 at 0° and 45°.
+    let private platesTried (held : TemplateTable) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        model
+        |> updateTableAndElementRotation OpenSetupGrid
+        |> updateTableAndElementRotation (ToggleSetupGridItem (held.sample, qzDraft.id))
+        |> updateTableAndElementRotation (ToggleSetupGridItem (held.sample, qz2Draft.id))
+        |> updateTableAndElementRotation (AddSetupGridAngle (held.sample, BarDegrees 0.0))
+        |> updateTableAndElementRotation (AddSetupGridAngle (held.sample, BarDegrees 45.0))
+
+    [<Fact>]
+    let ``the grid panel's draft lists the product of the items and angles tried in a slot, and writes nothing`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = templateTable model
+            let table = held.table
+            let before = kitFileBytes folder
+            let at (item : ItemId) (degrees : float<deg>) : SetupGrids.GridCombination = plateCombination held.sample item degrees
+            let listsTicked (expected : SetupGrids.GridCombination list) (current : TableAndElementRotationModel) : unit =
+                let grid = openGrid current
+                Assert.Equal<Library.ElementId list>([ held.sample ], grid.axes |> List.map (fun axis -> axis.slot))
+                Assert.Equal<SetupGrids.GridCombination list>(expected, grid.combinations)
+                Assert.Equal<SetupGrids.GridCombination list>(expected, grid.ticked)
+                Assert.Empty(grid.unticked)
+            Assert.Equal<SetupGrids.SetupGridDraft option>(None, table.setupGridOpt)
+            Assert.Equal<SetupGrids.SetupGrid option>(None, table.setupGrid)
+
+            let opened = table |> updateTableAndElementRotation OpenSetupGrid
+            Assert.Equal<SetupGrids.SetupGridDraft option>(Some SetupGrids.SetupGridDraft.empty, opened.setupGridOpt)
+            Assert.Empty((openGrid opened).axes)
+
+            let tried = platesTried held table
+            tried |> listsTicked [ at qzDraft.id 0.0<deg>; at qzDraft.id 45.0<deg>; at qz2Draft.id 0.0<deg>; at qz2Draft.id 45.0<deg> ]
+
+            let at0 = tried |> updateTableAndElementRotation (RemoveSetupGridAngle (held.sample, Angle.degree 45.0<deg>))
+            at0 |> listsTicked [ at qzDraft.id 0.0<deg>; at qz2Draft.id 0.0<deg> ]
+            let qzAlone = at0 |> updateTableAndElementRotation (ToggleSetupGridItem (held.sample, qz2Draft.id))
+            qzAlone |> listsTicked [ at qzDraft.id 0.0<deg> ]
+            // The table's angle convention: −45° on the bar is R1 315°.
+            let wrapped = qzAlone |> updateTableAndElementRotation (AddSetupGridAngle (held.sample, BarDegrees (-45.0)))
+            wrapped |> listsTicked [ at qzDraft.id 0.0<deg>; at qzDraft.id 315.0<deg> ]
+
+            for current in [ opened; tried; at0; qzAlone; wrapped ] do
+                Assert.Equal<Setups.SetupSlot list>(table.elements, current.elements)
+                Assert.Equal<Setups.Setup list>(table.kitSetups, current.kitSetups)
+                Assert.Equal<Experiments.ExperimentCollection>(table.experimentCollection, current.experimentCollection)
+                Assert.Equal<ControlCaption option>(table.kitStatus, current.kitStatus)
+            Assert.Empty(setupFilesIn folder)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
+
+    [<Fact>]
+    let ``unticking a combination in the panel leaves it out, and closing the panel forgets the draft`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = templateTable model
+            let before = kitFileBytes folder
+            let at (item : ItemId) (degrees : float<deg>) : SetupGrids.GridCombination = plateCombination held.sample item degrees
+            let tried = platesTried held held.table
+            let all = [ at qzDraft.id 0.0<deg>; at qzDraft.id 45.0<deg>; at qz2Draft.id 0.0<deg>; at qz2Draft.id 45.0<deg> ]
+            Assert.Equal<SetupGrids.GridCombination list>(all, (openGrid tried).ticked)
+
+            let unticked = tried |> updateTableAndElementRotation (ToggleSetupGridCombination (at qz2Draft.id 0.0<deg>))
+            let leftOut = openGrid unticked
+            Assert.Equal<SetupGrids.GridCombination list>(all, leftOut.combinations)
+            Assert.Equal<SetupGrids.GridCombination list>([ at qzDraft.id 0.0<deg>; at qzDraft.id 45.0<deg>; at qz2Draft.id 45.0<deg> ], leftOut.ticked)
+            Assert.Equal<SetupGrids.GridCombination list>([ at qz2Draft.id 0.0<deg> ], leftOut.unticked)
+            let reticked = unticked |> updateTableAndElementRotation (ToggleSetupGridCombination (at qz2Draft.id 0.0<deg>))
+            Assert.Equal<SetupGrids.GridCombination list>(all, (openGrid reticked).ticked)
+            Assert.Empty((openGrid reticked).unticked)
+
+            // Opening the panel again keeps the draft already open.
+            let reopened = unticked |> updateTableAndElementRotation OpenSetupGrid
+            Assert.Equal<SetupGrids.SetupGridDraft option>(unticked.setupGridOpt, reopened.setupGridOpt)
+
+            let closed = unticked |> updateTableAndElementRotation CloseSetupGrid
+            Assert.Equal<SetupGrids.SetupGridDraft option>(None, closed.setupGridOpt)
+            Assert.Equal<SetupGrids.SetupGrid option>(None, closed.setupGrid)
+            // With the panel closed, an edit leaves the model as it is.
+            let closedEdits : TableAndElementRotationMsg list =
+                [
+                    ToggleSetupGridItem (held.sample, qzDraft.id)
+                    AddSetupGridAngle (held.sample, BarDegrees 30.0)
+                    RemoveSetupGridAngle (held.sample, Angle.degree 0.0<deg>)
+                    ToggleSetupGridCombination (at qzDraft.id 0.0<deg>)
+                ]
+            for edit in closedEdits do
+                Assert.Same(closed, closed |> updateTableAndElementRotation edit)
+
+            let fresh = closed |> updateTableAndElementRotation OpenSetupGrid
+            Assert.Equal<SetupGrids.SetupGridDraft option>(Some SetupGrids.SetupGridDraft.empty, fresh.setupGridOpt)
+            Assert.Empty((openGrid fresh).axes)
+            Assert.Empty((openGrid fresh).unticked)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
+
+    [<Fact>]
+    let ``the panel's grid generates its ticked setups through GenerateSetupGrid and stays open`` () : unit =
+        withSetupKit (fun folder model ->
+            let held = templateTable model
+            let at (item : ItemId) (degrees : float<deg>) : SetupGrids.GridCombination = plateCombination held.sample item degrees
+            let chosen = held.table |> updateTableAndElementRotation (ExpChooseElement held.polarizer)
+            Assert.True(chosen.experimentCollection.canCommit)
+            let drafted = platesTried held chosen |> updateTableAndElementRotation (ToggleSetupGridCombination (at qz2Draft.id 45.0<deg>))
+            let grid = openGrid drafted
+            Assert.Equal<SetupGrids.GridCombination list>([ at qzDraft.id 0.0<deg>; at qzDraft.id 45.0<deg>; at qz2Draft.id 0.0<deg> ], grid.ticked)
+
+            let generated = drafted |> updateTableAndElementRotation (GenerateSetupGrid grid)
+
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 3 setups (3 new) and 3 experiments."), generated.kitStatus)
+            let names = [ "LP1-(QZ#0)-LPd"; "LP1-(QZ#45)-LPd"; "LP1-(QZ2#0)-LPd" ]
+            Assert.Equal<string list>(names |> List.map (fun name -> $"{name}.setup-json"), setupFilesIn folder)
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json"; "E3.experiment-json" ], experimentFilesIn folder)
+            let setups = generated.kit.proxy.readSetups () |> kitValue
+            Assert.Equal<SetupName list>(names |> List.map SetupName, setups |> List.map (fun setup -> setup.name))
+            Assert.Equal<Setups.Setup list>(setups, generated.kitSetups)
+            let experiments = generated.kit.proxy.readExperiments () |> kitValue
+            Assert.Equal<Experiments.ExperimentId list>(
+                [ Experiments.ExperimentId 1; Experiments.ExperimentId 2; Experiments.ExperimentId 3 ],
+                experiments |> List.map (fun experiment -> experiment.id))
+            let firstRevisionOf (name : string) : SetupReference = { name = SetupName name; revision = SetupRevision.first }
+            Assert.Equal<SetupReference list>(names |> List.map firstRevisionOf, experiments |> List.map (fun experiment -> experiment.setup))
+            Assert.Equal<Experiments.Experiment list>(experiments, generated.experimentCollection.experiments)
+
+            // The draft stays open over the same grid, so it can be edited and generated again.
+            Assert.Equal<SetupGrids.SetupGridDraft option>(drafted.setupGridOpt, generated.setupGridOpt)
+            Assert.Equal<SetupGrids.SetupGrid option>(Some grid, generated.setupGrid)
+            Assert.Equal<Setups.SetupSlot list>(chosen.elements, generated.elements)
+            Assert.Equal<Setups.Setup option>(chosen.activeSetupOpt, generated.activeSetupOpt))
