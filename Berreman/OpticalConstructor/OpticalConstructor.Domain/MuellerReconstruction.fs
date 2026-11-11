@@ -1,12 +1,14 @@
 namespace OpticalConstructor.Domain
 
-open System.Text.RegularExpressions
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.Library                // PolarizerKind / IdealLinear (step 007 source & analyzer models)
 open OpticalConstructor.Domain.MeasuredData           // MeasuredIntensity: a capture's averaged intensity (spec 0048 E020)
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.NamingTemplates
 
 /// Spec 0042 (001) — the pure Mueller-reconstruction primitives. A *retarder* (wave plate) delays one
 /// linear eigen-polarization relative to the other by a phase `Retardance`; its Mueller matrix is the
@@ -320,12 +322,15 @@ module MuellerReconstruction =
     // mirroring the `MuellerSolverProxy` mock.
     // -----------------------------------------------------------------------------------------------------
 
-    /// The label of the experiment a Mueller capture belongs to, e.g. `CPL-(QZ#90-LR#90)-CPL`: the source, the
-    /// objects with their azimuths, the analyzer and an optional note (read by its `parsed` member).
+    /// The label of the experiment a Mueller capture belongs to, e.g. `CPL-(QZ#90-LR#90)-CPL`; it reads through
+    /// `NamingTemplate.standard` (spec 0050 S8.3).
     type MuellerExperimentLabel =
         | MuellerExperimentLabel of string
 
         member this.value = let (MuellerExperimentLabel l) = this in l
+
+        /// The label's text as a name (spec 0050 S8.3).
+        member this.nameText : NameText = let (MuellerExperimentLabel l) = this in NameText l
 
     /// A capture's ordinal within its data set.
     type CaptureIndex =
@@ -404,10 +409,10 @@ module MuellerReconstruction =
         }
 
     // -----------------------------------------------------------------------------------------------------
-    // Spec 0042 (007, IMPLEMENT) — the per-row GLUE (§2.2 / Part D): the experiment-label parser, the family /
-    // matrix-kind classification, the per-family source & analyzer MODELS, and the base → effective state
-    // builders. Every function is a tiny pure function with a concrete elevated signature, mirroring the
-    // reference `matrix_glue.py` / `cpl_cpl_analyzer.py` grammar 1:1. The effective states are built ONLY from
+    // Spec 0042 (007, IMPLEMENT) — the per-row GLUE (§2.2 / Part D): the family / matrix-kind classification, the
+    // per-family source & analyzer MODELS, and the base → effective state builders. Every function is a tiny pure
+    // function with a concrete elevated signature, mirroring the reference `matrix_glue.py` /
+    // `cpl_cpl_analyzer.py` grammar 1:1. The effective states are built ONLY from
     // the EXISTING Propagation.fs seams (`Angle.rotationMueller`, `Propagation.analyzerMueller IdealLinear`,
     // `MuellerMatrix.element`) plus the step-001 `retarderMueller` and the
     // step-002 `kron4` — no new 4×4 algebra is introduced. The Stage-1 AIR calibration constants that POPULATE a
@@ -435,108 +440,55 @@ module MuellerReconstruction =
         | Lr
         | QzLrProduct
 
-    /// One piece of a Mueller experiment label: the source or analyzer polarizer token (`LP`, `CPL`), an object
-    /// name (`QZ`, `LR`, `AIR`) or the note suffix.
-    type MuellerLabelToken =
-        | MuellerLabelToken of string
+    type NameReading with
 
-        member this.value = let (MuellerLabelToken t) = this in t
-
-    /// One parsed object token inside an experiment label's parenthesised list — a `NAME#angle` entry such as
-    /// `QZ#90`. Its labelled rotation is the engine `Angle`, since the label rotation IS used as the object
-    /// frame φ directly (spec §0).
-    type ParsedObject =
-        {
-            name : MuellerLabelToken
-            labelAngle : Angle
-        }
-
-    /// An experiment label parsed into its grammar pieces — the F# port of the reference `parse_experiment_name`
-    /// (cpl_cpl_analyzer.py:31): a source token, a parenthesised dash-joined object list, an analyzer token, and
-    /// an optional note suffix (e.g. `CPL-(QZ#90-LR#90)-CPL`). A label that does not match the grammar parses to
-    /// the empty shape (`sourceToken = None`, `analyzerToken = None`, no objects) — never a throw.
-    type ParsedExperiment =
-        {
-            sourceToken : MuellerLabelToken option
-            analyzerToken : MuellerLabelToken option
-            note : MuellerLabelToken
-            objects : ParsedObject list
-        }
-
-        /// The experiment family — the reference `family_from_experiment` (matrix_glue.py:92): a token is the
-        /// circular family iff it contains `CPL` (the reference `canonical_polarizer`), otherwise the linear
-        /// family. Total over the four families.
+        /// The reference `family_from_experiment` (matrix_glue.py:92): the source (Prep 1) and analyzer parts are each
+        /// circular when their text contains `CPL`, an absent part being linear (spec 0050 S8.3).
         member this.family : Family =
-            let isCpl (tokenOpt : MuellerLabelToken option) : bool =
-                match tokenOpt with
-                | Some token -> token.value.Contains("CPL")
+            let isCircular (role : SlotRole) : bool =
+                match this.tryFindPart role with
+                | Some part -> part.value.Contains "CPL"
                 | None -> false
-            match isCpl this.sourceToken, isCpl this.analyzerToken with
+
+            match isCircular (PrepSlotRole (SlotPosition 1)), isCircular (AnalyzerSlotRole (SlotPosition 1)) with
             | false, false -> LpLp
             | false, true -> LpCpl
             | true, false -> CplLp
             | true, true -> CplCpl
 
-        /// The object frame rotation φ and the effective matrix kind — the reference
-        /// `object_rotation_from_parsed` (matrix_glue.py:101). No objects → an AIR calibration at φ = 0; one
-        /// object → its labelled azimuth and the object's kind (QZ / LR, else AIR); two objects → the QZ·LR
-        /// product at the first object's azimuth. The label rotation is used as φ directly (spec §0).
+        /// The reference `object_rotation_from_parsed` (matrix_glue.py:101) over the Obj parts that have an angle, in
+        /// position order: none is AIR at φ = 0, one its angle and kind, two or more the QZ·LR product at the first's
+        /// angle (spec 0050 S8.3).
         member this.objectRotation : Angle * MatrixKind =
-            match this.objects with
+            let objects =
+                this.parts
+                |> List.choose (fun slotPart ->
+                    match slotPart.role with
+                    | ObjectSlotRole position ->
+                        this.tryFindAngle position |> Option.map (fun angle -> position, slotPart.part, angle)
+                    | SourceSlotRole
+                    | PrepSlotRole _
+                    | AnalyzerSlotRole _
+                    | DetectorSlotRole _ -> None)
+                |> List.sortBy (fun (position, _, _) -> position)
+
+            match objects with
             | [] -> Angle.zero, Air
-            | [ o ] ->
+            | [ (_, part, angle) ] ->
                 let kind =
-                    match o.name.value.ToUpperInvariant() with
+                    match part.value.ToUpperInvariant() with
                     | "QZ" -> Qz
                     | "LR" -> Lr
                     | _ -> Air
-                o.labelAngle, kind
-            | first :: _ -> first.labelAngle, QzLrProduct
 
-        /// The effective matrix kind the label constrains (the kind half of `objectRotation`).
+                angle, kind
+            | (_, _, angle) :: _ -> angle, QzLrProduct
+
+        /// The kind half of `objectRotation` (spec 0050 S8.3).
         member this.matrixKind : MatrixKind = snd this.objectRotation
 
-        /// The object frame rotation φ the label carries (the angle half of `objectRotation`): the label
-        /// rotation used directly as φ (spec §0), or 0 for an AIR calibration row.
+        /// The angle half of `objectRotation`, the label's rotation used directly as φ (spec 0050 S8.3).
         member this.objectPhi : Angle = fst this.objectRotation
-
-    /// The experiment-label grammar, ported verbatim from the reference `EXPERIMENT_RE` (cpl_cpl_analyzer.py:18):
-    /// `source-(inside)-analyzer` with an optional `-note` suffix.
-    let private experimentRegex : Regex =
-        Regex(@"^(?<src>[^-]+)-\((?<inside>[^)]*)\)-(?<an>[^-]+)(?:-(?<note>.*))?$")
-
-    /// One `NAME#angle` object token, ported verbatim from the reference `OBJECT_RE` (cpl_cpl_analyzer.py:19).
-    let private objectRegex : Regex =
-        Regex(@"(?<obj>[A-Z]+)#(?<angle>-?\d+)")
-
-    type MuellerExperimentLabel with
-
-        /// This label parsed into its `ParsedExperiment` grammar pieces (the reference `parse_experiment_name`,
-        /// cpl_cpl_analyzer.py:31). The parenthesised inner list is split on `-` and each part matched as a
-        /// `NAME#angle` object; a non-matching label yields the empty parse. Total — never throws.
-        member this.parsed : ParsedExperiment =
-            let m = experimentRegex.Match(this.value)
-            if not m.Success then
-                { sourceToken = None; analyzerToken = None; note = MuellerLabelToken ""; objects = [] }
-            else
-                let inside = m.Groups.["inside"].Value
-                let parts = if inside = "" then [] else inside.Split('-') |> Array.toList
-                let objects =
-                    parts
-                    |> List.choose (fun part ->
-                        let om = objectRegex.Match(part)
-                        if om.Success then
-                            match System.Int32.TryParse(om.Groups.["angle"].Value) with
-                            | true, deg -> Some { name = MuellerLabelToken om.Groups.["obj"].Value; labelAngle = Angle.degree (float deg * 1.0<Berreman.Constants.deg>) }
-                            | _ -> None
-                        else
-                            None)
-                {
-                    sourceToken = Some (MuellerLabelToken m.Groups.["src"].Value)
-                    analyzerToken = Some (MuellerLabelToken m.Groups.["an"].Value)
-                    note = MuellerLabelToken m.Groups.["note"].Value
-                    objects = objects
-                }
 
     /// The per-family SOURCE model — how the input Stokes state is synthesized (the reference `SourceModel`,
     /// matrix_glue.py:128). `LpSource` is the ideal linear source `[1;1;0;0]`; `CplSource` prepends a retarder
@@ -906,8 +858,9 @@ module MuellerReconstruction =
         }
 
     /// Assemble the n×16 design and its corrected-signal target for one `matrix_kind` — the reference
-    /// `solve_single_object` row selection (matrix_fit_linear.py:169). A science row is kept iff its parsed
-    /// `matrixKind` equals `kind`, it is not an AIR#0 calibration row, and it is not one of the `excluded`
+    /// `solve_single_object` row selection (matrix_fit_linear.py:169). A science row is kept iff its label reads
+    /// through `NamingTemplate.standard` with a `matrixKind` equal to `kind` (a label the template does not read is
+    /// never kept, spec 0050 S8.3), it is not an AIR#0 calibration row, and it is not one of the `excluded`
     /// contaminated points (matched on experiment + capture index + analyzer dial). Each kept row is projected
     /// through `prepareRow` to its effective source Stokes state `s`, effective analyzer row `a`, and corrected
     /// signal (the caller — slice 011 — closes `prepareRow` over the calibrated per-family models + gain
@@ -926,10 +879,14 @@ module MuellerReconstruction =
                 r.experiment = e.experiment
                 && r.captureIndex = e.captureIndex
                 && abs (r.description.value - e.description.value) < 1e-9)
+        let isOfKind (r : MuellerRawRow) : bool =
+            match NamingTemplate.standard.readName r.experiment.nameText with
+            | Ok reading -> reading.matrixKind = kind
+            | Error _ -> false
         let kept =
             rows
             |> List.filter (fun r ->
-                r.experiment.parsed.matrixKind = kind
+                isOfKind r
                 && not (r.experiment.value.Contains("(AIR#0)"))
                 && not (isExcluded r))
         let prepared = kept |> List.map prepareRow

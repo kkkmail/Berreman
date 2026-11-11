@@ -6,6 +6,7 @@ open Berreman.Geometry
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.NamingTemplates
+open OpticalConstructor.Domain.MuellerReconstruction
 
 module NamingTemplateTests =
 
@@ -325,3 +326,18 @@ module NamingTemplateTests =
         | Error (MissingNameValueErr reason) -> Assert.Contains("'analyzer1'", reason)
         | Error other -> Assert.Fail($"expected MissingNameValueErr, got {other.describe}")
         | Ok name -> Assert.Fail($"expected MissingNameValueErr, got '{name.value}'")
+
+    [<Fact>]
+    let ``a lab label's reading names its reference family, matrix kind and object angle`` () : unit =
+        let reads (name : NameText) (family : Family) (kind : MatrixKind) (phi : Angle) : unit =
+            let reading = readingOf name
+            Assert.Equal<Family>(family, reading.family)
+            Assert.Equal<MatrixKind>(kind, reading.matrixKind)
+            Assert.Equal<Angle>(phi, reading.objectPhi)
+            Assert.Equal<Angle * MatrixKind>((phi, kind), reading.objectRotation)
+
+        reads (NameText "CPL-(QZ#90-LR#90)-CPL") CplCpl QzLrProduct (Angle.degree 90.0<deg>)
+        reads (NameText "CPL-(AIR#0)-CPL") CplCpl Air (Angle.degree 0.0<deg>)
+        reads (NameText "LP-(LR#90)-CPL-2") LpCpl Lr (Angle.degree 90.0<deg>)
+        reads (NameText "CPL-(QZ#45)-LP-2") CplLp Qz (Angle.degree 45.0<deg>)
+        reads (NameText "LP-(QZ#0)-LP-2R") LpLp Qz (Angle.degree 0.0<deg>)

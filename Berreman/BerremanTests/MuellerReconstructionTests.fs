@@ -6,6 +6,8 @@ open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerReconstruction
@@ -240,6 +242,13 @@ type MuellerReconstructionTests() =
         match result with
         | Ok fit -> fit
         | Error e -> failwith $"the {label} calibration cosine fit failed: %A{e}"
+
+    /// The label read through the standard naming template, failing the test with the refusal's `describe` (spec 0050
+    /// S8.3).
+    let standardReading (label : MuellerExperimentLabel) : NameReading =
+        match NamingTemplate.standard.readName label.nameText with
+        | Ok reading -> reading
+        | Error error -> failwith error.describe
 
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
@@ -557,13 +566,13 @@ type MuellerReconstructionTests() =
             if File.Exists tempArchive then File.Delete tempArchive
 
     [<Fact>]
-    member _.``parseExperiment decodes CPL-(QZ#90-LR#90)-CPL and the +90 / -90 object rotation is inert (R(2 phi) invariance)`` () =
-        // Spec 0042 (007) acceptance. The label decodes to the CPL-CPL family, the QZ·LR product kind, and an
-        // object frame rotation phi = 90 deg.
-        let parsed = (MuellerExperimentLabel "CPL-(QZ#90-LR#90)-CPL").parsed
-        Assert.Equal(CplCpl, parsed.family)
-        Assert.Equal(QzLrProduct, parsed.matrixKind)
-        Assert.True(abs (parsed.objectPhi.degrees - 90.0) < allowedDiff, $"phi = {parsed.objectPhi.degrees}")
+    member _.``the standard naming template reads CPL-(QZ#90-LR#90)-CPL as the CPL-CPL family and the QZ LR product at phi 90, and the +90 / -90 object rotation is inert (R(2 phi) invariance)`` () =
+        // Spec 0042 (007) acceptance, read through the naming template since spec 0050 S8.3. The label reads as the
+        // CPL-CPL family, the QZ·LR product kind, and an object frame rotation phi = 90 deg.
+        let reading = standardReading (MuellerExperimentLabel "CPL-(QZ#90-LR#90)-CPL")
+        Assert.Equal(CplCpl, reading.family)
+        Assert.Equal(QzLrProduct, reading.matrixKind)
+        Assert.True(abs (reading.objectPhi.degrees - 90.0) < allowedDiff, $"phi = {reading.objectPhi.degrees}")
 
         // R(phi) depends on 2*phi, so +90 deg and -90 deg differ by a full 180 deg in 2*phi and are physically
         // identical: the effective source Stokes state and the effective analyzer row built at +90 MUST equal
@@ -943,7 +952,7 @@ type MuellerReconstructionTests() =
         // ---- The per-row Stage-2+3 projection each family closes over its models + gain (enrich_frame). ----
         let prepareRow (source : SourceModel) (analyzer : AnalyzerModel) (fam : Family) (cal : GainCalibration)
                        (r : MuellerRawRow) : StokesVector * RealVector4 * DetectorIntensity =
-            let phi = r.experiment.parsed.objectPhi
+            let phi = (standardReading r.experiment).objectPhi
             let sEff = effectiveSource phi source.baseStokes
             let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer r.description)
             let signal = correctSignal darkMean r.avgTotal (familyGain fam cal r.capturedAt)
