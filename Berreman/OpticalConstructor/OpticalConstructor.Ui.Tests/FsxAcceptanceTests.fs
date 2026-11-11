@@ -196,7 +196,7 @@ module FsxAcceptanceTests =
         let varied =
             match run.variable with
             | ExperimentControls.VaryWaveLength -> ElementId "src"
-            | ExperimentControls.VaryR1 | ExperimentControls.VaryR2 -> idAt 3 table
+            | ExperimentControls.VaryR1 | ExperimentControls.VaryR2 | ExperimentControls.VaryDialReading -> idAt 3 table
         let experiment =
             table
             |> apply

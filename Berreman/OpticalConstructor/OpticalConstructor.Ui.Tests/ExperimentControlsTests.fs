@@ -573,6 +573,91 @@ module ExperimentControlsTests =
                         abs (itemPoint.y - referencePoint.y) <= 1.0e-12,
                         $"x = {itemPoint.x:R}: the dial item read {itemPoint.y:R}, the bare preset at 40° {referencePoint.y:R}")))
 
+    // ============ spec 0050 S9.1 — a dial-mounted item is scanned by its raw dial reading ============
+
+    [<Fact>]
+    let ``a dial scan draws the run at the physical angle of each reading`` () =
+        let polarizerChoice : ItemModelChoice =
+            match BuiltinCatalogue.preset Library.PresetIds.polarizerLp with
+            | Library.PolarizerItem polarizer -> PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizer)
+            | Library.SampleItem _
+            | Library.SourceItem _
+            | Library.DetectorItem _ -> failwith "The linear polarizer preset must hold a polarizer."
+        let dialDraft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "28900000-0000-4000-8000-000000000001")
+                label = ItemLabel "LPd"
+                model = polarizerChoice
+                dial = DialMounted DialNegative
+            }
+        let fixedDraft : ItemDraft = { dialDraft with id = ItemId (System.Guid.Parse "28900000-0000-4000-8000-000000000002"); label = ItemLabel "LPf"; dial = FixedMounting }
+        let zero = Angle.degree 10.0<deg>
+        let physicalOf (reading : float) : float = (DialNegative.physicalAngleOf zero (Angle.degree (reading * 1.0<deg>))).degrees
+        HeadlessSession.run (fun () ->
+            withMainScene (fun scene ->
+                // A first linear polarizer at R1 30°, so the reading's sign shows in the curve, then the analyzer holding LPd,
+                // its zero known at 10°.
+                let placed =
+                    scene
+                    |> applied (AddItem dialDraft)
+                    |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 10.0<deg>))
+                    |> applied (AddItem fixedDraft)
+                    |> updateTableAndElementRotation (AddElement LinearPolarizer)
+                    |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
+                    |> updateTableAndElementRotation (AddElement LinearPolarizer)
+                let first, analyzer = elem 2 placed, elem 3 placed
+                Assert.Equal<Library.ElementId list>(
+                    [ first.id; analyzer.id ],
+                    (List.item 1 placed.sceneLayout.elements).path |> List.map (fun step -> step.element) |> List.filter (fun id -> id = first.id || id = analyzer.id))
+                let onDial = placed |> applied (AssignSlot (analyzer.id, Some dialDraft.id))
+                let chosen =
+                    onDial
+                    |> updateTableAndElementRotation (ExpChooseElement analyzer.id)
+                    |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+
+                // Choosing it offers the dial reading in R1's place, over 0…360° in 19 points.
+                Assert.Equal<ExperimentControls.VariableChoice list>([ ExperimentControls.VaryDialReading ], chosen.experimentState.variableChoices)
+                Assert.Equal(Some Experiments.VaryDialReading, chosen.experimentCollection.draft.variable)
+                Assert.Equal(Experiments.VariableRange.forVariable Experiments.VaryDialReading, chosen.experimentCollection.draft.range)
+                let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
+                window.Content <- Component(fun _ -> mainView (chosen |> updateTableAndElementRotation (SelectBay BayNames.experiments)) ignore)
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                let shown (variable : ExperimentControls.VariableChoice) : bool =
+                    let name = (ConstructorUiId.experimentVariable variable.uiKey).value
+                    window.GetVisualDescendants() |> Seq.exists (function :? Border as b when matchesId name b && b.IsEffectivelyVisible -> true | _ -> false)
+                Assert.True(shown ExperimentControls.VaryDialReading, "the dial box was not offered")
+                Assert.False(shown ExperimentControls.VaryR1, "the R1 box was offered for a dial-mounted item")
+                window.Close()
+
+                let dialChart = chosen.experimentResult
+                Assert.Equal("Dial reading (°)", dialChart.xLabel.value)
+                Assert.Equal("Intensity vs dial reading", dialChart.title.value)
+                Assert.Equal(ExperimentChart.AngularXAxis, dialChart.xAxisKind)
+                let dialPoints = (Assert.Single dialChart.series).points
+                Assert.Equal<float list>([ for k in 0 .. 18 -> 20.0 * float k ], dialPoints |> List.map (fun p -> p.x))
+
+                // The same table with a fixed analyzer, varied in R1 over each reading's physical angle −(x − 10°).
+                let reference =
+                    onDial
+                    |> applied (AssignSlot (analyzer.id, Some fixedDraft.id))
+                    |> sweeping
+                        analyzer.id
+                        ExperimentControls.VaryR1
+                        (ExperimentControls.ExperimentRangeEnd (physicalOf 0.0))
+                        (ExperimentControls.ExperimentRangeEnd (physicalOf 360.0))
+                        (ExperimentControls.ExperimentPointCount 19)
+                Assert.Equal<ExperimentControls.VariableChoice list>([ ExperimentControls.VaryR1 ], reference.experimentState.variableChoices)
+                let referencePoints = (Assert.Single reference.experimentResult.series).points
+                Assert.Equal(List.length dialPoints, List.length referencePoints)
+                for dialPoint, referencePoint in List.zip dialPoints referencePoints do
+                    Assert.True(
+                        abs (physicalOf dialPoint.x - referencePoint.x) <= 1.0e-9,
+                        $"reading {dialPoint.x:R}: its physical angle is {physicalOf dialPoint.x:R}, the fixed analyzer turned to {referencePoint.x:R}")
+                    Assert.True(
+                        abs (dialPoint.y - referencePoint.y) <= 1.0e-12,
+                        $"reading {dialPoint.x:R}: the dial scan read {dialPoint.y:R}, the fixed analyzer at {referencePoint.x:R}° {referencePoint.y:R}")))
+
     // ============ spec 0050 S8.2 — the source slot's item is the run's source ============
 
     /// The HeNe preset on the shipped source item model (step 210).

@@ -294,19 +294,26 @@ module Setups =
             | PolarizerPresetChoice _
             | StackSampleChoice _ -> this.libraryEntryOpt |> Option.toList |> List.collect (fun entry -> entry.forKinds)
 
-    /// The dial-mounted item of `items` whose raw reading the slot holds, its dial's sign and that reading (spec 0050
-    /// S8.2; 001 §I).
-    let private tryDialReadingIn (items : Item list) (content : SlotContent) : (Item * DialSign * Angle) option =
-        match content with
-        | ItemInSlot (id, DialTurn reading) ->
-            match items |> List.tryFind (fun item -> item.id = id) with
+    type SetupSlot with
+
+        /// The item of `items` the slot holds when it sits on a dial, whatever the slot's turn, and its dial's sign: the
+        /// one lookup the table's dial angles and the scan's dial reading read (spec 0050 S8.2, S9.1; 001 §I).
+        member this.tryFindDialMounted (items : Item list) : (Item * DialSign) option =
+            match this.content.itemOpt |> Option.bind (fun id -> items |> List.tryFind (fun item -> item.id = id)) with
             | Some item ->
                 match item.dial with
-                | DialMounted sign -> Some (item, sign, reading)
+                | DialMounted sign -> Some (item, sign)
                 | FixedMounting -> None
             | None -> None
-        | ItemInSlot (_, PlacementTurn)
-        | EmptySlotContent -> None
+
+    /// The dial-mounted item of `items` whose raw reading the slot holds, its dial's sign and that reading (spec 0050
+    /// S8.2; 001 §I).
+    let private tryDialReadingIn (items : Item list) (slot : SetupSlot) : (Item * DialSign * Angle) option =
+        match slot.content, slot.tryFindDialMounted items with
+        | ItemInSlot (_, DialTurn reading), Some (item, sign) -> Some (item, sign, reading)
+        | ItemInSlot (_, DialTurn _), None
+        | ItemInSlot (_, PlacementTurn), _
+        | EmptySlotContent, _ -> None
 
     type SetupSlot with
 
@@ -353,7 +360,7 @@ module Setups =
         /// The slot as the table draws it: a dial-mounted item's reading turns R1 to its physical angle through the item's
         /// current zero; every other slot is unchanged (spec 0050 S8.2; 001 §I).
         member this.drawnWith (items : Item list) : SetupSlot =
-            match tryDialReadingIn items this.content with
+            match tryDialReadingIn items this with
             | Some (item, sign, reading) ->
                 { this with placement = { this.placement with r1 = sign.physicalAngleOf item.dialZeroAngle reading } }
             | None -> this
@@ -361,7 +368,7 @@ module Setups =
         /// `drawnWith`'s inverse: the table turns a slot in physical angles, and the setup records a dial-mounted item's
         /// reading of its R1 (spec 0050 S8.2; 001 §I "Experiments record raw dial readings").
         member this.recordedWith (items : Item list) : SetupSlot =
-            match tryDialReadingIn items this.content with
+            match tryDialReadingIn items this with
             | Some (item, sign, _) ->
                 { this with content = ItemInSlot (item.id, DialTurn (sign.readingOf item.dialZeroAngle this.placement.r1)) }
             | None -> this
@@ -498,3 +505,21 @@ module Setups =
             | Some pick when Some pick.id = heldOpt -> None
             | Some _
             | None -> pickOpt
+
+    type SetupSlot with
+
+        /// What a scan may vary on the slot: its kind's `allowedFor`, a dial-mounted item scanned by its raw reading in R1's
+        /// place, as the table records readings (spec 0050 S9.1; 001 §I "Experiments record raw dial readings").
+        member this.scanVariablesWith (items : Item list) : Experiments.VariableParameter list =
+            let allowed = Experiments.VariableParameter.allowedFor this.placement.catalogueKind
+
+            match this.tryFindDialMounted items with
+            | Some _ ->
+                allowed
+                |> List.map (fun variable ->
+                    match variable with
+                    | Experiments.VaryR1 -> Experiments.VaryDialReading
+                    | Experiments.VaryWaveLength
+                    | Experiments.VaryR2
+                    | Experiments.VaryDialReading -> variable)
+            | None -> allowed

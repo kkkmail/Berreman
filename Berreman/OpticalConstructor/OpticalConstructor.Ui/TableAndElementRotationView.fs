@@ -1741,6 +1741,7 @@ type ExperimentControls.VariableChoice with
         | ExperimentControls.VaryWaveLength -> Experiments.VaryWaveLength
         | ExperimentControls.VaryR1 -> Experiments.VaryR1
         | ExperimentControls.VaryR2 -> Experiments.VaryR2
+        | ExperimentControls.VaryDialReading -> Experiments.VaryDialReading
 
 type Experiments.VariableParameter with
 
@@ -1749,6 +1750,7 @@ type Experiments.VariableParameter with
         | Experiments.VaryWaveLength -> ExperimentControls.VaryWaveLength
         | Experiments.VaryR1 -> ExperimentControls.VaryR1
         | Experiments.VaryR2 -> ExperimentControls.VaryR2
+        | Experiments.VaryDialReading -> ExperimentControls.VaryDialReading
 
 type ExperimentControls.MeasurementChoice with
 
@@ -1797,16 +1799,16 @@ let operatingWaveLength (model : TableAndElementRotationModel) (requested : Wave
         | Library.FixedLine, _ -> source.waveLength
     | None -> WaveLength.nm 600.0<nm>
 
-/// What element `e` lets an experiment vary (spec 0046): its kind's variables — except a light source, whose
-/// wavelength varies only when the bound source is TUNABLE (a fixed line, or no bound source, varies nothing).
+/// What element `e` lets an experiment vary (spec 0046): its slot's scan variables, a dial-mounted item's reading in R1's
+/// place (spec 0050 S9.1) — except a light source, whose wavelength varies only when the bound source is TUNABLE (a fixed
+/// line, or no bound source, varies nothing).
 let variablesOfElement (model : TableAndElementRotationModel) (e : Setups.SetupSlot) : Experiments.VariableParameter list =
     match e.placement.catalogueKind with
     | LightSource ->
         match model.boundSource |> Option.map (fun source -> source.tuning) with
         | Some (Library.TunableBetween _) -> [ Experiments.VaryWaveLength ]
         | Some Library.FixedLine | None -> []
-    | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector ->
-        Experiments.VariableParameter.allowedFor e.placement.catalogueKind
+    | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector -> e.scanVariablesWith model.kitItems
 
 /// Keep a wavelength sweep inside a tunable source's limits (spec 0046); any other range as it is.
 let private clampSweep (model : TableAndElementRotationModel) (range : Experiments.VariableRange) : Experiments.VariableRange =
@@ -1814,7 +1816,9 @@ let private clampSweep (model : TableAndElementRotationModel) (range : Experimen
     | Some Experiments.VaryWaveLength, Some limits ->
         let lo, hi = limits.lower.nanometers, limits.upper.nanometers
         { range with min = Propagation.SweptValue (max lo (min hi range.min.value)); max = Propagation.SweptValue (max lo (min hi range.max.value)) }
-    | _ -> range
+    | Some Experiments.VaryWaveLength, None
+    | Some (Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading), _
+    | None, _ -> range
 
 type TableAndElementRotationModel with
 
@@ -2647,7 +2651,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | Some _ | None -> model
     | ExpChooseElement elementId ->
         // Choosing the element to vary sets the draft element AND, from the element's kind, the allowed
-        // variables (data via `VariableParameter.allowedFor`, never hard-coded here) and the default capture. Spec 0046:
+        // variables (data via `SetupSlot.scanVariablesWith`, never hard-coded here) and the default capture. Spec 0046:
         // the default is the best capture the scene's DETECTORS allow (Both when they see both branches,
         // else the one they see); with no capturing detector it falls back to the element's emission.
         // Spec 0046: what the element may vary comes from the element AND its binding (a fixed-line source
@@ -2663,7 +2667,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             let ranged =
                 match chosen.draft.variable with
                 | Some Experiments.VaryWaveLength -> Experiments.setRange model.wavelengthRange chosen
-                | Some Experiments.VaryR1 | Some Experiments.VaryR2 | None -> chosen
+                | Some Experiments.VaryR1 | Some Experiments.VaryR2 | Some Experiments.VaryDialReading | None -> chosen
             { model with experimentCollection = ranged }
         | None -> model
     | ExpChooseVariable v ->
@@ -2671,7 +2675,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         let ranged =
             match chosen.draft.variable with
             | Some Experiments.VaryWaveLength -> Experiments.setRange model.wavelengthRange chosen
-            | Some Experiments.VaryR1 | Some Experiments.VaryR2 | None -> chosen
+            | Some Experiments.VaryR1 | Some Experiments.VaryR2 | Some Experiments.VaryDialReading | None -> chosen
         { model with experimentCollection = ranged }
     | ExpChooseMeasurement m -> { model with experimentCollection = Experiments.chooseMeasurement m.measurementMode model.experimentCollection }
     | ExpSetRangeMin v ->
@@ -3867,8 +3871,8 @@ let private libraryHandlers (model : TableAndElementRotationModel) (dispatch : T
 
 // ---------------------------------------------------------------------------
 // Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step, editable experiment builder + collection.
-// The SETUP is the live scene; the user picks the element to vary (the element's kind — via
-// `Experiments.VariableParameter.allowedFor` DATA — determines the allowed variables), the T/R/both capture, and the
+// The SETUP is the live scene; the user picks the element to vary (the element's slot — via
+// `SetupSlot.scanVariablesWith` DATA — determines the allowed variables), the T/R/both capture, and the
 // range, then Adds to a persistent collection (edit / remove supported). The bay is domain-free, so the
 // host flattens the scene into candidates, the draft into the editor state, and the collection into rows.
 // ---------------------------------------------------------------------------
@@ -4175,7 +4179,7 @@ let chartForRun
         match variable with
         | Experiments.VaryR2 ->
             max 0.0 (min range.min.value range.max.value), min Propagation.r2SweepMaxDegrees.value (max range.min.value range.max.value)
-        | Experiments.VaryR1 | Experiments.VaryWaveLength -> range.min.value, range.max.value
+        | Experiments.VaryR1 | Experiments.VaryDialReading | Experiments.VaryWaveLength -> range.min.value, range.max.value
     let xs = [ for k in 0 .. n - 1 -> lo + (hi - lo) * float k / float (n - 1) ]
     let indexOf (id : Library.ElementId) : int option = model.elements |> List.tryFindIndex (fun e -> e.id = id)
     let boundOf (e : Setups.SetupSlot) : Library.LibraryEntry option =
@@ -4186,6 +4190,13 @@ let chartForRun
             | Error _ -> None
         | None -> None
     let sweptAngle (x : float) : Angle = Angle.degree (x * 1.0<deg>)
+    // The varied slot's R1 at a swept x: a dial-mounted item's reading x at its physical angle, else x itself, as a slot
+    // with no dial reads its R1 (`SetupSlot.turnAngle`) (spec 0050 S9.1; 001 §I).
+    let variedRotationAt : float -> Angle =
+        match variable, variedElement.tryFindDialMounted model.kitItems with
+        | Experiments.VaryDialReading, Some (item, sign) -> fun x -> sign.physicalAngleOf item.dialZeroAngle (sweptAngle x)
+        | Experiments.VaryDialReading, None
+        | (Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength), _ -> sweptAngle
     // One path step → its builder (or nothing: the source, a mirror, a lens, an unbound element). A slot holding an item
     // is read from `slotItems`, which never holds the source's: that item emits (spec 0050 S8.2).
     let builderFor (slotItems : Map<Library.ElementId, Item * ItemModelChoice>) (step : BeamLayout.PathStep) : Result<StepBuilder option, ItemEvaluationError> =
@@ -4207,8 +4218,8 @@ let chartForRun
                 match variable with
                 | Experiments.VaryWaveLength -> Ok (SweptStep (fun x -> stepAt incidence0 e.placement.r1 (WaveLength.nm (x * 1.0<nm>))))
                 | Experiments.VaryR2 when isVaried -> Ok (SweptStep (fun x -> stepAt (IncidenceAngle.create (sweptAngle x)) e.placement.r1 w0))
-                | Experiments.VaryR1 when isVaried -> Ok (SweptStep (fun x -> stepAt incidence0 (sweptAngle x) w0))
-                | Experiments.VaryR1 | Experiments.VaryR2 -> stepAt incidence0 e.placement.r1 w0 |> Result.map FixedStep
+                | Experiments.VaryR1 | Experiments.VaryDialReading when isVaried -> Ok (SweptStep (fun x -> stepAt incidence0 (variedRotationAt x) w0))
+                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> stepAt incidence0 e.placement.r1 w0 |> Result.map FixedStep
             match Map.tryFind e.id slotItems, e.placement.catalogueKind, boundOf e with
             | Some (item, choice), kind, _ ->
                 // The item's own model over its own values, bound once; an object in a sample slot (spec 0050 S8.2).
@@ -4225,8 +4236,8 @@ let chartForRun
                     let orientation : ElementOrientation = { rotation = rotation; incidence = IncidenceAngle.normal; branch = branch }
                     preset.muellerAt orientation w0 |> Result.map ExperimentRun.ElementStep
                 match variable with
-                | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> elementAt (sweptAngle x))))
-                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength ->
+                | Experiments.VaryR1 | Experiments.VaryDialReading when isVaried -> Ok (Some (SweptStep (fun x -> elementAt (variedRotationAt x))))
+                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading | Experiments.VaryWaveLength ->
                     elementAt e.placement.r1 |> Result.map (fun fixedStep -> Some (FixedStep fixedStep))
             | None, Sample, Some (Library.SampleItem sample) ->
                 // Bound once per path step, so its materials resolve once for the whole sweep.
@@ -4269,6 +4280,7 @@ let chartForRun
         match variable with
         | Experiments.VaryR1 -> "Rotation R1 (°)"
         | Experiments.VaryR2 -> "Incidence angle R2 (°)"
+        | Experiments.VaryDialReading -> "Dial reading (°)"
         | Experiments.VaryWaveLength -> "Wavelength (nm)"
     let kinds = captured |> List.map (fun (_, j) -> model.detectorKindAt j) |> List.distinct
     let yLabel =
@@ -4285,17 +4297,19 @@ let chartForRun
         | Experiments.VaryR1, (LinearPolarizer | CircularPolarizer), [ Library.Intensity ] -> "Rotating analyzer (Malus)"
         | Experiments.VaryR1, _, _ -> $"%s{quantity} vs rotation R1"
         | Experiments.VaryR2, _, _ -> $"%s{quantity} vs incidence"
+        | Experiments.VaryDialReading, _, _ -> $"%s{quantity} vs dial reading"
         | Experiments.VaryWaveLength, _, _ -> $"%s{quantity} vs wavelength"
     let varyText =
         match variable with
         | Experiments.VaryR1 -> $"the rotation R1 over %g{lo}…%g{hi}°"
         | Experiments.VaryR2 -> $"the incidence angle R2 over %g{lo}…%g{hi}°"
+        | Experiments.VaryDialReading -> $"the dial reading over %g{lo}…%g{hi}°"
         | Experiments.VaryWaveLength -> $"the wavelength over %g{lo}…%g{hi} nm"
     let description =
         let sourceText =
             match variable with
             | Experiments.VaryWaveLength -> "Source swept"
-            | Experiments.VaryR1 | Experiments.VaryR2 -> $"Source %g{w0.nanometers} nm"
+            | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> $"Source %g{w0.nanometers} nm"
         let detectorText =
             captured
             |> List.map (fun (tag, j) -> $"{tag.value}: {(model.detectorKindAt j).readsText}")
@@ -4318,7 +4332,7 @@ let chartForRun
                 | None -> true))
     match variable, kinds, captured with
     | _, _, [] -> ExperimentChart.emptyExperimentChart
-    | Experiments.VaryR1, [ Library.Intensity ], _ when noPolarizerOnPath ->
+    | (Experiments.VaryR1 | Experiments.VaryDialReading), [ Library.Intensity ], _ when noPolarizerOnPath ->
         { ExperimentChart.emptyExperimentChart with title = ControlCaption noAnalyzerTitle; description = ControlCaption noAnalyzerStatus }
     | _ when not variedIsBound && variedElement.placement.catalogueKind <> LightSource -> ExperimentChart.emptyExperimentChart
     | _ ->
@@ -4372,7 +4386,7 @@ let chartForRun
                     description = ControlCaption description
                     xAxisKind =
                         match variable with
-                        | Experiments.VaryR1 | Experiments.VaryR2 -> ExperimentChart.AngularXAxis
+                        | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> ExperimentChart.AngularXAxis
                         | Experiments.VaryWaveLength -> ExperimentChart.NonAngularXAxis
                 }
 

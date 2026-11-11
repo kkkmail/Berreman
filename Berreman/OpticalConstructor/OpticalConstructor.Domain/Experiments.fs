@@ -16,6 +16,8 @@ module Experiments =
         | VaryWaveLength
         | VaryR1
         | VaryR2
+        /// A dial-mounted item's raw dial reading, the angle its slot records (spec 0050 S9.1; 001 §I).
+        | VaryDialReading
 
         /// A short, stable code (the automation ids and the Controls-layer mirror map back through this).
         member this.code : string =
@@ -23,6 +25,7 @@ module Experiments =
             | VaryWaveLength -> "wavelength"
             | VaryR1 -> "r1"
             | VaryR2 -> "r2"
+            | VaryDialReading -> "dial"
 
         /// A human-readable name for the varied quantity.
         member this.label : string =
@@ -30,12 +33,13 @@ module Experiments =
             | VaryWaveLength -> "Wavelength"
             | VaryR1 -> "Rotation R1"
             | VaryR2 -> "Incidence R2"
+            | VaryDialReading -> "Dial reading"
 
         /// The display unit of the varied quantity.
         member this.unitLabel : string =
             match this with
             | VaryWaveLength -> "nm"
-            | VaryR1 | VaryR2 -> "°"
+            | VaryR1 | VaryR2 | VaryDialReading -> "°"
 
         /// What each catalogue kind permits varying (spec 028) — declared HERE as DATA (attached to the element
         /// through its kind) so the Experiments bay READS the allowed set rather than hard-coding it. A light
@@ -101,11 +105,12 @@ module Experiments =
 
         /// The default range for a variable (spec 028): R1 0…360° (73 pts); R2 0…89° incidence (91 pts —
         /// 90° itself is not computable, so the top is 89, drawn to 90 by the chart); wavelength 200…800 nm
-        /// (91 pts).
+        /// (91 pts); a dial reading 0…360° in steps of 20 (19 pts; spec 0050 S9.1, 001 §K).
         static member forVariable (v : VariableParameter) : VariableRange =
             match v with
             | VaryR1 -> { min = SweptValue 0.0; max = SweptValue 360.0; points = CurvePointCount 73 }
             | VaryR2 -> { min = SweptValue 0.0; max = SweptValue 89.0; points = CurvePointCount 91 }
+            | VaryDialReading -> { min = SweptValue 0.0; max = SweptValue 360.0; points = CurvePointCount 19 }
             | VaryWaveLength -> { min = SweptValue 200.0; max = SweptValue 800.0; points = CurvePointCount 91 }
 
         /// `max 2 points` values evenly spaced from `min` to `max`, both ends included: the grid `chartForRun` draws, in its

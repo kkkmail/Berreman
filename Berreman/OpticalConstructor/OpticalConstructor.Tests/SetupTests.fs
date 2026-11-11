@@ -609,3 +609,34 @@ module SetupTests =
         assertAngle (Angle.degree 45.0<deg>) fixedPlate.turnAngle
 
         assertAngle (Angle.degree 15.0<deg>) (turnedTo (Angle.degree 15.0<deg>) sampleA).turnAngle
+
+    // ================================ spec 0050 S9.1: a dial-mounted item's scan ================================
+
+    [<Fact>]
+    let ``a dial-mounted item's slot scans its dial reading where a fixed one scans R1`` () : unit =
+        // LPd sits on a dial that reads backwards, its zero known at 10°.
+        let dialLpd =
+            itemOf (ItemId (Guid.Parse "9eaf0b1c-2d3e-4f4a-95b6-7c8d9eaf0bda")) (ItemLabel "LPd") linearPolarizerChoice (DialMounted DialNegative)
+            |> withDialZero (Angle.degree 10.0<deg>)
+
+        let kitItems = [ laser; fixedLp; plate; cpl1; fixedLp2; plateOnDial; dialLpd ]
+
+        let scans : (SetupSlot * VariableParameter list) list =
+            [
+                assigned fixedLp linearPolarizerChoice lpA, [ VaryR1 ]
+                assigned dialLpd linearPolarizerChoice lpA, [ VaryDialReading ]
+                assigned plateOnDial glassPlateChoice sampleA, [ VaryDialReading; VaryR2 ]
+                // A fixed item, an empty slot and a source scan what their kind allows.
+                assigned plate glassPlateChoice sampleA, [ VaryR1; VaryR2 ]
+                lpA, [ VaryR1 ]
+                src, [ VaryWaveLength ]
+            ]
+
+        for slot, expected in scans do
+            Assert.Equal<VariableParameter list>(expected, slot.scanVariablesWith kitItems)
+
+        // An item the list does not hold reads no dial.
+        Assert.Equal<VariableParameter list>([ VaryR1 ], (assigned dialLpd linearPolarizerChoice lpA).scanVariablesWith [ fixedLp ])
+
+        let readings = [ for k in 0 .. 18 -> Propagation.SweptValue (20.0 * float k) ]
+        Assert.Equal<Propagation.SweptValue list>(readings, (VariableRange.forVariable VaryDialReading).sweptValues)

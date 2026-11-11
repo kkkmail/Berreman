@@ -209,6 +209,7 @@ module OutOfBandDiagnostic =
                 }
         | Some VaryR1
         | Some VaryR2
+        | Some VaryDialReading
         | None -> FixedWavelength fixedWavelength
 
     /// The wavelengths an `Experiment` requests (spec 0038 step 031): its scan's wavelength axes from the lowest `min`

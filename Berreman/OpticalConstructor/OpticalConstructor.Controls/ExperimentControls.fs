@@ -38,6 +38,8 @@ module ExperimentControls =
         | VaryWaveLength
         | VaryR1
         | VaryR2
+        /// A dial-mounted item's raw dial reading (spec 0050 S9.1).
+        | VaryDialReading
 
         /// The stable code (drives its automation id).
         member this.uiKey : ConstructorUiKey =
@@ -45,6 +47,7 @@ module ExperimentControls =
             | VaryWaveLength -> ConstructorUiKey "wavelength"
             | VaryR1 -> ConstructorUiKey "r1"
             | VaryR2 -> ConstructorUiKey "r2"
+            | VaryDialReading -> ConstructorUiKey "dial"
 
         /// A short label (the selector button text).
         member this.caption : ControlCaption =
@@ -52,6 +55,7 @@ module ExperimentControls =
             | VaryWaveLength -> ControlCaption "Wavelength"
             | VaryR1 -> ControlCaption "Rotation R1"
             | VaryR2 -> ControlCaption "Incidence R2"
+            | VaryDialReading -> ControlCaption "Dial reading"
 
     /// What the experiment captures — a domain-free mirror of the domain `MeasurementMode`.
     type MeasurementChoice =
@@ -562,8 +566,9 @@ module ExperimentControls =
                         (fun () -> handlers.chooseElement c.elementId)))
         ] :> IView
 
-    /// Every variable, in a fixed order (so the selector boxes keep stable names / positions).
-    let private allVariables : VariableChoice list = [ VaryWaveLength; VaryR1; VaryR2 ]
+    /// Every variable, in a fixed order (so the selector boxes keep stable names / positions); the dial reading is last
+    /// (spec 0050 S9.1).
+    let private allVariables : VariableChoice list = [ VaryWaveLength; VaryR1; VaryR2; VaryDialReading ]
 
     /// The variable-selection row (step 2). ALL variable boxes are always present (stable names) and only
     /// the ones the chosen element permits are shown — see `optionBoxV` for why the set is toggled by

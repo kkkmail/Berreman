@@ -290,4 +290,5 @@ module MeasuredData =
                 | None -> Ok series
             | Some VaryR1
             | Some VaryR2
+            | Some VaryDialReading
             | None -> Ok series
