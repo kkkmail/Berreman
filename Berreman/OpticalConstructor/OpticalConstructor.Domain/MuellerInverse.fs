@@ -281,6 +281,15 @@ module MuellerInverse =
                 }
             ]
 
+        /// The engine's optical properties of a triclinic (class 1) gyrotropic crystal with these nine
+        /// constants: its biaxial permittivity and full symmetric gyration tensor (spec 0050 §3.16).
+        member this.opticalProperties : OpticalProperties =
+            {
+                eps = Eps.fromRefractionIndex (this.index1, this.index2, this.index3)
+                mu = Mu.vacuum
+                rho = Rho.type_1_Crystal this.g11 this.g22 this.g33 this.g23 this.g13 this.g12
+            }
+
     /// One measurement: a configuration paired with the Mueller matrix recorded in it.
     type MuellerObservation =
         {

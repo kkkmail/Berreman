@@ -7,7 +7,6 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
-open OpticalProperties.Active
 open OpticalConstructor.Domain.MuellerInverse
 
 /// Spec 0044 — the TRICLINIC (class 1) gyrotropic sample every biaxial suite in this assembly shares:
@@ -88,19 +87,9 @@ module BiaxialSample =
             g12 = g12
         }
 
-    /// Build the engine's optical properties for a triclinic (class 1) gyrotropic crystal from the nine
-    /// unknowns — the ONE material-specific function in the whole pipeline, and the reason
-    /// `MuellerInverse` takes it as a parameter rather than knowing it.
-    ///
-    /// It delegates entirely to the engine's own builders — `Eps.fromRefractionIndex` for the biaxial
-    /// permittivity and `Active.Rho.type_1_Crystal` for the full symmetric gyration tensor — so neither
-    /// diag(n₁², n₂², n₃²) nor the six-component ρ layout is re-derived here.
-    let buildTriclinic (p : TriclinicParameters) : OpticalProperties =
-        {
-            eps = Eps.fromRefractionIndex (p.index1, p.index2, p.index3)
-            mu = Mu.vacuum
-            rho = Rho.type_1_Crystal p.g11 p.g22 p.g33 p.g23 p.g13 p.g12
-        }
+    /// The engine's optical properties of a triclinic sample: the builder every biaxial suite's forward
+    /// model and direct tensor assertions take.
+    let buildTriclinic (p : TriclinicParameters) : OpticalProperties = p.opticalProperties
 
     /// Spec R4: three internal reflections, stated explicitly at the composition root rather than
     /// inherited from `SolverParameters.defaultValue`, because `numberOfReflections` changes the physics
