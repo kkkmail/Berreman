@@ -181,6 +181,7 @@
         <Compile Include="ImportProfiles.fs" />
         <Compile Include="ExperimentDataProxy.fs" />
         <Compile Include="ExperimentDataLoad.fs" />
+        <Compile Include="DataSplits.fs" />
     </ItemGroup>
 
     <ItemGroup>

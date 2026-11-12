@@ -190,8 +190,15 @@ module ImportProfileTests =
             avgTotal = MeasuredIntensity 0.5
         }
 
+    /// Phone ROI capture rows labelled in order, numbered from 1, the n-th at the analyzer azimuth 45° × (n − 1)
+    /// (spec 0050 S9.3).
+    let capturesLabelled (labels : MuellerExperimentLabel list) : MuellerRawRow list =
+        labels
+        |> List.mapi (fun index label ->
+            { captureAt (CaptureIndex (index + 1)) (Angle.degree (45.0<deg> * float index)) with experiment = label })
+
     /// A Z-cut plate's transmitted Mueller matrix at normal incidence, measured as the identity (spec 0050 S9.2).
-    let private observationOf (key : DataRowKey) : KeyedObservation =
+    let observationOf (key : DataRowKey) : KeyedObservation =
         let configuration : MeasurementConfiguration =
             {
                 cut = ZCut
@@ -206,7 +213,7 @@ module ImportProfileTests =
         { key = key; observation = observation }
 
     /// Step 300's two-point intensity series, 0 → 1.0 and 90 → 0.0.
-    let private twoPointIntensity : IntensitySeries =
+    let twoPointIntensity : IntensitySeries =
         {
             points =
                 [
@@ -525,6 +532,17 @@ module ImportProfileTests =
 
     // ============================ spec 0050 S9.2: an experiment's rows of a data file ============================
 
+    /// A `Lab scan` row, one scan column and a signal with its σ (spec 0050 S9.2).
+    let labScanRow (keyOpt : DataRowKey option) (magnitude : Units.UnitMagnitude) : MappedRow =
+        {
+            keyOpt = keyOpt
+            scan = [ scanCellOf DegreeColumnUnit magnitude ]
+            reading = SignalReading (MeasuredIntensity 0.5, Some (MeasuredSigma 0.01))
+            timestampOpt = None
+            captureIndexOpt = None
+            observableOpt = None
+        }
+
     [<Fact>]
     let ``a row selection keeps every row or the rows of one key`` () : unit =
         let k1 = DataRowKey "K1"
@@ -539,17 +557,6 @@ module ImportProfileTests =
 
         let k1Observation = observationOf k1
         let observations = ObservationPoints [ k1Observation; observationOf k2 ]
-
-        // `Lab scan` rows, one scan column and a signal with its σ.
-        let labScanRow (keyOpt : DataRowKey option) (magnitude : Units.UnitMagnitude) : MappedRow =
-            {
-                keyOpt = keyOpt
-                scan = [ scanCellOf DegreeColumnUnit magnitude ]
-                reading = SignalReading (MeasuredIntensity 0.5, Some (MeasuredSigma 0.01))
-                timestampOpt = None
-                captureIndexOpt = None
-                observableOpt = None
-            }
 
         let k1Row = labScanRow (Some k1) (Units.UnitMagnitude 0.0)
         let labRows = ColumnPoints [ k1Row; labScanRow (Some k2) (Units.UnitMagnitude 20.0) ]
@@ -577,6 +584,42 @@ module ImportProfileTests =
         assertValidation
             (Error (MalformedDataFileErr "the import profile maps no key column to select 'K1' by"))
             (unkeyed.selectedBy (KeyedDataRows k1))
+
+    // ============================ spec 0050 S9.3: the one reading of a point's key ============================
+
+    [<Fact>]
+    let ``a point's key is the one selection reads, and a selection keeps the points of its key`` () : unit =
+        let k1 = DataRowKey "K1"
+        let k2 = DataRowKey "K2"
+        let k1Label = MuellerExperimentLabel "K1"
+
+        let labelled = capturesLabelled [ k1Label; MuellerExperimentLabel "K2"; k1Label ]
+        let captures = CapturePoints labelled
+        let k1Observation = observationOf k1
+        let observations = ObservationPoints [ k1Observation; observationOf k2 ]
+        let k1Row = labScanRow (Some k1) (Units.UnitMagnitude 0.0)
+        let labRows = ColumnPoints [ k1Row; labScanRow None (Units.UnitMagnitude 10.0); labScanRow (Some k2) (Units.UnitMagnitude 20.0) ]
+        let series = SeriesPoints (IntensityData twoPointIntensity)
+
+        Assert.Equal(k1, k1Label.rowKey)
+        Assert.Equal<DataRowKey option list>([ Some k1; Some k2; Some k1 ], captures.pointKeys)
+        Assert.Equal<DataRowKey option list>([ Some k1; Some k2 ], observations.pointKeys)
+        Assert.Equal<DataRowKey option list>([ Some k1; None; Some k2 ], labRows.pointKeys)
+        Assert.Equal<DataRowKey option list>([ None; None ], series.pointKeys)
+
+        // The selection of K1 keeps exactly the points `pointKeys` names K1: two, one and one, as step 305's fact keeps them.
+        assertValidation (Ok (CapturePoints [ labelled[0]; labelled[2] ])) (captures.selectedBy (KeyedDataRows k1))
+        assertValidation (Ok (ObservationPoints [ k1Observation ])) (observations.selectedBy (KeyedDataRows k1))
+        assertValidation (Ok (ColumnPoints [ k1Row ])) (labRows.selectedBy (KeyedDataRows k1))
+
+        for points in [ captures; observations; labRows ] do
+            let named = points.pointKeys |> List.filter (fun keyOpt -> keyOpt = Some k1)
+
+            match points.selectedBy (KeyedDataRows k1) with
+            | Ok selected ->
+                Assert.Equal<DataRowKey option list>(named, selected.pointKeys)
+                Assert.Equal(MeasuredPointCount named.Length, selected.pointCount)
+            | Error error -> Assert.Fail($"the selection of K1 was refused: %A{error}")
 
     // ============================ spec 0050 S9.2: what a picked lab file suggests ============================
 

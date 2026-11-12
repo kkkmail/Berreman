@@ -218,6 +218,11 @@ module ImportProfiles =
 
                 quantity)
 
+    type MuellerExperimentLabel with
+
+        /// A Phone ROI row's experiment label as the key it is selected and split by (spec 0050 S9.3).
+        member this.rowKey : DataRowKey = DataRowKey this.value
+
     type MappedPoints with
 
         /// The one validation of mapped points against the experiment's detector and scan: the points unchanged, or the
@@ -282,28 +287,35 @@ module ImportProfiles =
                 | Some problem -> Error problem
                 | None -> Ok this
 
-        /// The experiment's rows of the points: every point, or the captures, observations and mapped rows of its key;
-        /// a series or rows without a key cannot be selected by one, and no row of the key is an empty file (spec 0050
-        /// S9.2; 001 §K).
+        /// Each point's key in point order: none for a series point, a capture's label, an observation's key and a mapped
+        /// row's key column. The one reading of a point's key, which selection and splitting share (spec 0050 S9.3).
+        member this.pointKeys : DataRowKey option list =
+            match this with
+            | SeriesPoints (IntensityData series) -> series.points |> List.map (fun _ -> None)
+            | SeriesPoints (EllipsometricData series) -> series.points |> List.map (fun _ -> None)
+            | CapturePoints captures -> captures |> List.map (fun capture -> Some capture.experiment.rowKey)
+            | ObservationPoints observations -> observations |> List.map (fun observation -> Some observation.key)
+            | ColumnPoints rows -> rows |> List.map (fun row -> row.keyOpt)
+
+        /// The experiment's rows of the points: every point, or those whose `pointKeys` entry is the key; a series or rows
+        /// without a key cannot be selected by one, and no row of the key is an empty file (spec 0050 S9.2, S9.3; 001 §K).
         member this.selectedBy (rows : DataRowSelection) : Result<MappedPoints, ExperimentDataError> =
             match rows with
             | AllDataRows -> Ok this
             | KeyedDataRows key ->
-                let kept (selected : 'Point list) (points : 'Point list -> MappedPoints) : Result<MappedPoints, ExperimentDataError> =
-                    match selected with
-                    | [] -> Error (EmptyDataFileErr $"no row of the data file holds the key '{key.value}'")
-                    | _ -> Ok (points selected)
+                let keys = this.pointKeys
 
-                match this with
-                | SeriesPoints _ -> Error (MalformedDataFileErr $"an X,Y data file has no key column to select '{key.value}' by")
-                | CapturePoints captures ->
-                    kept (captures |> List.filter (fun capture -> capture.experiment.value = key.value)) CapturePoints
-                | ObservationPoints observations ->
-                    kept (observations |> List.filter (fun observation -> observation.key = key)) ObservationPoints
-                | ColumnPoints mapped ->
-                    match mapped |> List.choose (fun row -> row.keyOpt) with
-                    | [] -> Error (MalformedDataFileErr $"the import profile maps no key column to select '{key.value}' by")
-                    | _ -> kept (mapped |> List.filter (fun row -> row.keyOpt = Some key)) ColumnPoints
+                let kept (points : 'Point list) (mapped : 'Point list -> MappedPoints) : Result<MappedPoints, ExperimentDataError> =
+                    match List.zip keys points |> List.filter (fun (keyOpt, _) -> keyOpt = Some key) |> List.map snd with
+                    | [] -> Error (EmptyDataFileErr $"no row of the data file holds the key '{key.value}'")
+                    | selected -> Ok (mapped selected)
+
+                match this, List.choose id keys with
+                | SeriesPoints _, _ -> Error (MalformedDataFileErr $"an X,Y data file has no key column to select '{key.value}' by")
+                | ColumnPoints _, [] -> Error (MalformedDataFileErr $"the import profile maps no key column to select '{key.value}' by")
+                | CapturePoints captures, _ -> kept captures CapturePoints
+                | ObservationPoints observations, _ -> kept observations ObservationPoints
+                | ColumnPoints mapped, _ -> kept mapped ColumnPoints
 
         /// The points in order without those an exclusion names, the case and a series' kind kept; an exclusion naming
         /// no point changes nothing. The one rule from an attachment's exclusions to the points read (spec 0050 S9.3).
