@@ -1123,6 +1123,8 @@ type TableAndElementRotationMsg =
     | ToggleSplitOffer of DataRowKey
     /// Forgets the held split, writing nothing (spec 0050 S9.3).
     | CancelDataSplit
+    /// Applies the held split: attaches its file once, maps each matched group and creates each ticked offer (spec 0050 S9.3; 001 §P).
+    | MatchByTemplate
     /// Records that role for the experiment in its kit file (spec 0050 S9.1; 001 §P `SetExperimentRole`).
     | SetExperimentRole of Experiments.ExperimentId * Experiments.ExperimentRole
     /// Records the typed session for the experiment in its kit file, a blank text clearing it (spec 0050 S9.1).
@@ -2558,6 +2560,97 @@ let private experimentTargetsOver (setups : Setups.Setup list) (model : TableAnd
     let taken = collection.experiments |> List.map (fun experiment -> experiment.name)
     model.kit.kitFile.namingTemplate.experimentTargets setups model.kitItems taken collection.nextId
 
+/// One kit write of an applied split, in its groups' order (spec 0050 S9.3).
+type private SplitWrite =
+    | SplitSetupWrite of setup : Setups.Setup
+    | SplitExperimentWrite of experiment : Experiments.Experiment
+
+    member this.setupOpt : Setups.Setup option =
+        match this with
+        | SplitSetupWrite setup -> Some setup
+        | SplitExperimentWrite _ -> None
+
+    member this.experimentOpt : Experiments.Experiment option =
+        match this with
+        | SplitExperimentWrite experiment -> Some experiment
+        | SplitSetupWrite _ -> None
+
+/// The held split's writes over `attachment`, group by group: a matched group's experiment takes its key's rows; a ticked
+/// offer's setup, when neither the kit nor an earlier offer holds it, then the draft's scan over it appended as
+/// `RecordExperiment` appends, with its rows. Anything else writes nothing (spec 0050 S9.3; 001 §K).
+let private splitWritesOver
+    (held : DataSplitState)
+    (attachment : DataAttachment)
+    (captureOpt : Experiments.MeasurementMode option)
+    (model : TableAndElementRotationModel)
+    : SplitWrite list =
+    let keyedData (key : DataRowKey) : MappedAttachment =
+        {
+            attachment = attachment
+            profile = held.profile
+            rows = KeyedDataRows key
+            exclusions = []
+        }
+    // The experiment of that id once it holds its key's rows, so each experiment file is written once.
+    let attachedWrite
+        (collection : Experiments.ExperimentCollection)
+        (id : Experiments.ExperimentId)
+        (key : DataRowKey)
+        : Experiments.ExperimentCollection * SplitWrite list =
+        let attached = Experiments.attachDataFile id (keyedData key) collection
+        attached, attached.experiments |> List.filter (fun experiment -> experiment.id = id) |> List.map SplitExperimentWrite
+    held.split.groups
+    |> List.fold (fun (collection : Experiments.ExperimentCollection, writes : SplitWrite list) group ->
+        match group.matching, captureOpt with
+        | ExperimentForGroup name, _ ->
+            match collection.experiments |> List.tryFind (fun experiment -> experiment.name = name) with
+            | Some experiment ->
+                let attached, written = attachedWrite collection experiment.id group.key
+                attached, writes @ written
+            | None -> collection, writes
+        | SetupOfferForGroup offer, Some capture when List.contains group.key held.creating ->
+            let heldSetups = model.kitSetups @ (writes |> List.choose _.setupOpt)
+            let setupWrites = if List.contains offer.setup heldSetups then [] else [ SplitSetupWrite offer.setup ]
+            let target : Experiments.ExperimentTarget =
+                {
+                    setup = offer.setup.reference
+                    name = offer.experiment
+                }
+            let committed = Experiments.chooseMeasurement capture collection |> Experiments.commitOverSetups [ target ]
+            let attached, written = attachedWrite committed collection.nextId group.key
+            attached, writes @ setupWrites @ written
+        | SetupOfferForGroup _, _
+        | GroupWithoutMatch _, _ -> collection, writes) (model.experimentCollection, [])
+    |> snd
+
+/// The model holding `write` once it is recorded: a setup among `kitSetups` in name order, the active one kept; an
+/// experiment in its id's place or appended to the model's own collection, so the draft is kept, with its badge checked by
+/// the one validation (spec 0050 S9.3).
+let private withSplitWriteHeld (current : TableAndElementRotationModel) (write : SplitWrite) : TableAndElementRotationModel =
+    match write with
+    | SplitSetupWrite setup ->
+        {
+            current.withSetupRecorded setup with activeSetupOpt = current.activeSetupOpt
+        }
+    | SplitExperimentWrite experiment ->
+        let collection = current.experimentCollection
+        let placed =
+            if collection.experiments |> List.exists (fun experimentHeld -> experimentHeld.id = experiment.id) then
+                collection.withStoredExperiment experiment
+            else
+                {
+                    collection with
+                        experiments = collection.experiments @ [ experiment ]
+                        nextId = experiment.id.next
+                }
+        let recorded =
+            {
+                current with experimentCollection = placed
+            }
+        {
+            recorded with experimentDataStatus = recorded.experimentDataStatus |> Map.add experiment.id (checkExperimentData recorded experiment)
+        }
+
 /// The open grid draft edited, or the model as it is while the panel is closed (spec 0050 S8.4).
 let private withGridDraftEdited
     (edit : SetupGrids.SetupGridDraft -> SetupGrids.SetupGridDraft)
@@ -3063,6 +3156,56 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | Some _
         | None -> model
     | CancelDataSplit -> { model with dataSplitOpt = None }
+    // Spec 0050 S9.3 (.spec-md §10.3 confirm): one attach, then the groups' writes in order as GenerateSetupGrid writes
+    // (step 276), the first failure stopping the run with what was written; the table, the active setup, the draft and
+    // the review stay. A ticked offer needs the draft RecordExperiment needs (step 278).
+    | MatchByTemplate ->
+        guardKitWrite model (fun () ->
+            match model.dataSplitOpt with
+            | None -> model
+            | Some held ->
+                let captureOpt = if model.experimentCollection.canCommit then model.draftCapture else None
+                match held.creating, captureOpt with
+                | _ :: _, None ->
+                    model
+                    |> refusedWith (
+                        ControlCaption "Not split — a new experiment records the Experiments draft's scan: choose a variable there, or tick no offer."
+                    )
+                | _ ->
+                    match model.experimentData.attachDataFile held.file with
+                    | Error error -> model |> refusedWith (ControlCaption $"Not attached — {error.describe}")
+                    | Ok attachment ->
+                        let library : KitLibraryContext =
+                            {
+                                kit = model.kit
+                                imports = model.catalogueImports
+                            }
+                        let record (write : SplitWrite) : Result<unit, KitLibraryError> =
+                            match write with
+                            | SplitSetupWrite setup -> library.recordSetup setup
+                            | SplitExperimentWrite experiment -> library.recordExperiment experiment
+                        let writes = splitWritesOver held attachment captureOpt model
+                        match writtenInOrder record withSplitWriteHeld writes model with
+                        | Ok written ->
+                            let experiments = writes |> List.choose _.experimentOpt
+                            let created = appendedOver model.experimentCollection written.experimentCollection
+                            let setups = writes |> List.choose _.setupOpt
+                            let counts =
+                                $"{experiments.Length - created.Length} matched, {created.Length} created with {setups.Length} new setup(s)"
+                            let left = held.split.groups.Length - experiments.Length
+                            {
+                                written with
+                                    dataSplitOpt = None
+                                    kitStatus =
+                                        Some (
+                                            ControlCaption
+                                                $"Attached {held.file.leafName.value} to {experiments.Length} experiment(s): {counts}; {left} group(s) left unattached."
+                                        )
+                            }
+                        | Error (written, error) ->
+                            {
+                                written with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                            })
     | SetExperimentRole (experimentId, role) -> model |> recordExperimentEdit experimentId (fun held -> held.withRole role)
     | SetExperimentSession (experimentId, text) ->
         model |> recordExperimentEdit experimentId (fun held -> held.withSessionOpt (ExperimentSessionName.tryCreate text.value))

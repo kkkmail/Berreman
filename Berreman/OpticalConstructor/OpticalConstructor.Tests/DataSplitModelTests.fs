@@ -11,6 +11,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.DataSplits
+open OpticalConstructor.Domain.ExperimentDataLoad
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
@@ -25,7 +26,8 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// The constructor's split messages over a kit opened read-write: SplitByColumn reads a picked file through the chosen
 /// profile and holds its groups matched, offered and unmatched, writing nothing; ToggleSplitOffer ticks an offered group
-/// for creation; and CancelDataSplit forgets the split (spec 0050 S9.3; 001 §K, §P).
+/// for creation; CancelDataSplit forgets the split; and MatchByTemplate applies it, attaching the file once and writing
+/// each matched group and ticked offer (spec 0050 S9.3; 001 §K, §P).
 module DataSplitModelTests =
 
     let private kitValue (result : Result<'Value, KitError>) : 'Value =
@@ -190,6 +192,28 @@ module DataSplitModelTests =
     let private heldSplit (model : TableAndElementRotationModel) : DataSplitState =
         model.dataSplitOpt |> Option.defaultWith (fun () -> failwith "A split must be held.")
 
+    /// The kit's attachment of its copy of the picked file in `data/`, as the kit reads it.
+    let private copiedAttachment (model : TableAndElementRotationModel) (file : FileName) : DataAttachment =
+        match model.kit.proxy.readDataFile (KitRelativePath $"data/{file.leafName.value}") with
+        | Ok stored -> stored.attachment
+        | Error error -> failwith error.describe
+
+    /// The attachment mapped by the Phone ROI profile to the rows of that key, with no exclusion.
+    let private keyedBy (attachment : DataAttachment) (key : DataRowKey) : MappedAttachment =
+        {
+            attachment = attachment
+            profile = ImportProfileName.phoneRoiCsv
+            rows = KeyedDataRows key
+            exclusions = []
+        }
+
+    /// The kit files `after` holds and `before` does not, by relative path in ordinal order.
+    let private addedFiles (before : Map<string, FileByteContent>) (after : Map<string, FileByteContent>) : string list =
+        after.Keys
+        |> Seq.filter (fun path -> not (before.ContainsKey path))
+        |> Seq.sortWith (fun first second -> String.CompareOrdinal(first, second))
+        |> List.ofSeq
+
     [<Fact>]
     let ``splitting a picked file lists its groups matched, offered and unmatched, and writes nothing`` () : unit =
         withSplitKit (fun folder kit ->
@@ -289,3 +313,145 @@ module DataSplitModelTests =
                 Assert.Equal<TableAndElementRotationModel>({ split with kitStatus = Some (ControlCaption told) }, kept)
             Assert.Contains("could not read the picked data file", readReason)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
+
+    [<Fact>]
+    let ``applying a split attaches the file once and gives each matched experiment the rows of its key, and an unticked offer creates nothing`` () : unit =
+        withSplitKit (fun folder kit ->
+            let e1 = Assert.Single(kit.committed.experimentCollection.experiments)
+            let split = kit.committed |> updateTableAndElementRotation (SplitByColumn (kit.phoneRoiFile, ImportProfileName.phoneRoiCsv))
+            let before = kitFileBytes folder
+
+            let applied = split |> updateTableAndElementRotation MatchByTemplate
+
+            let after = kitFileBytes folder
+            let copied = Path.Combine("data", kit.phoneRoiFile.leafName.value)
+            // The file is copied into the kit once, byte for byte, and no setup or experiment file is added.
+            Assert.Equal<string list>([ copied ], addedFiles before after)
+            Assert.Equal<FileByteContent>(FileByteContent (File.ReadAllBytes kit.phoneRoiFile.value), after[copied])
+            let attachment = copiedAttachment applied kit.phoneRoiFile
+            let matched =
+                {
+                    e1 with dataOpt = Some (keyedBy attachment (DataRowKey "LP1-(QZ#45)-LPd"))
+                }
+            Assert.Equal<Experiments.Experiment list>([ matched ], applied.experimentCollection.experiments)
+            Assert.Equal<Experiments.Experiment list>([ matched ], applied.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredPointCount 2), applied.dataBadgeOf matched)
+            Assert.Equal<DataSplitState option>(None, applied.dataSplitOpt)
+            let told = "Attached phone-roi.csv to 1 experiment(s): 1 matched, 0 created with 0 new setup(s); 3 group(s) left unattached."
+            Assert.Equal<ControlCaption option>(Some (ControlCaption told), applied.kitStatus)
+            // The table, the setups, the active setup, the draft and the review stay (spec 0050 S9.3).
+            let expected =
+                {
+                    split with
+                        experimentCollection =
+                            {
+                                split.experimentCollection with experiments = [ matched ]
+                            }
+                        experimentDataStatus = split.experimentDataStatus |> Map.add e1.id (ValidatedDataBadge (MeasuredPointCount 2))
+                        dataSplitOpt = None
+                        kitStatus = Some (ControlCaption told)
+                }
+            Assert.Equal<TableAndElementRotationModel>(expected, applied))
+
+    [<Fact>]
+    let ``a ticked offer records its setup when the kit lacks it and a new experiment of the draft's scan with its rows`` () : unit =
+        withSplitKit (fun folder kit ->
+            let heldSetup = Assert.Single(kit.committed.kitSetups)
+            let e1 = Assert.Single(kit.committed.experimentCollection.experiments)
+            let secondRun = DataRowKey "LP1-(QZ#45)-LPd-2"
+            let newBench = DataRowKey "LP1-(QZ2#0)-LPd"
+            let ticked =
+                kit.committed
+                |> updateTableAndElementRotation (SplitByColumn (kit.phoneRoiFile, ImportProfileName.phoneRoiCsv))
+                |> updateTableAndElementRotation (ToggleSplitOffer secondRun)
+                |> updateTableAndElementRotation (ToggleSplitOffer newBench)
+            Assert.Equal<DataRowKey list>([ secondRun; newBench ], (heldSplit ticked).creating)
+            let draft = ticked.experimentCollection.draft
+            Assert.Equal<Experiments.ExperimentId option>(Some e1.id, draft.editingId)
+            Assert.Equal<Experiments.ExperimentScan option>(Some e1.scan, draft.scanOpt)
+            let before = kitFileBytes folder
+
+            let applied = ticked |> updateTableAndElementRotation MatchByTemplate
+
+            let after = kitFileBytes folder
+            let heldSetupFile = "LP1-(QZ#45)-LPd.setup-json"
+            Assert.Equal<string list>(
+                [
+                    "LP1-(QZ#45)-LPd-2.experiment-json"
+                    "LP1-(QZ2#0)-LPd.experiment-json"
+                    "LP1-(QZ2#0)-LPd.setup-json"
+                    Path.Combine("data", kit.phoneRoiFile.leafName.value)
+                ],
+                addedFiles before after)
+            Assert.Equal<FileByteContent>(before[heldSetupFile], after[heldSetupFile])
+            let newSetup =
+                match applied.kitSetups with
+                | [ held; made ] ->
+                    Assert.Equal<Setups.Setup>(heldSetup, held)
+                    made
+                | setups -> failwith $"expected the held setup and one new one, held {List.length setups}"
+            let newSetupReference : SetupReference =
+                {
+                    name = SetupName "LP1-(QZ2#0)-LPd"
+                    revision = SetupRevision.first
+                }
+            Assert.Equal<SetupReference>(newSetupReference, newSetup.reference)
+            Assert.Equal<Setups.Setup list>([ heldSetup; newSetup ], applied.kit.proxy.readSetups () |> kitValue)
+            let attachment = copiedAttachment applied kit.phoneRoiFile
+            // Each new experiment is the draft's scan over its offer's setup, appended as RecordExperiment appends, with its rows.
+            let createdOf (id : int) (name : string) (setup : SetupReference) (key : DataRowKey) : Experiments.Experiment =
+                {
+                    e1 with
+                        id = Experiments.ExperimentId id
+                        name = Experiments.ExperimentName name
+                        setup = setup
+                        dataOpt = Some (keyedBy attachment key)
+                }
+            let experiments =
+                [
+                    {
+                        e1 with dataOpt = Some (keyedBy attachment (DataRowKey "LP1-(QZ#45)-LPd"))
+                    }
+                    createdOf 2 "LP1-(QZ#45)-LPd-2" heldSetup.reference secondRun
+                    createdOf 3 "LP1-(QZ2#0)-LPd" newSetup.reference newBench
+                ]
+            Assert.Equal<Experiments.Experiment list>(experiments, applied.experimentCollection.experiments)
+            Assert.Equal<Experiments.Experiment list>(experiments, applied.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 4, applied.experimentCollection.nextId)
+            // E1's draft still edits what it edited.
+            Assert.Equal<Experiments.ExperimentDraft>(draft, applied.experimentCollection.draft)
+            Assert.Equal<ExperimentDataBadge list>(
+                [ ValidatedDataBadge (MeasuredPointCount 2); ValidatedDataBadge (MeasuredPointCount 1); ValidatedDataBadge (MeasuredPointCount 1) ],
+                experiments |> List.map applied.dataBadgeOf)
+            Assert.Equal<DataSplitState option>(None, applied.dataSplitOpt)
+            Assert.Equal<ControlCaption option>(
+                Some (ControlCaption "Attached phone-roi.csv to 3 experiment(s): 1 matched, 2 created with 1 new setup(s); 1 group(s) left unattached."),
+                applied.kitStatus)
+            Assert.Equal<Setups.SetupSlot list>(ticked.elements, applied.elements)
+            Assert.Equal<Setups.Setup option>(ticked.activeSetupOpt, applied.activeSetupOpt)
+            Assert.Equal<ReviewedData option>(ticked.reviewedDataOpt, applied.reviewedDataOpt))
+
+    [<Fact>]
+    let ``a split with a ticked offer and no draft scan, or with no split, writes nothing`` () : unit =
+        withSplitKit (fun folder kit ->
+            let before = kitFileBytes folder
+            let fileBefore = File.ReadAllBytes kit.phoneRoiFile.value
+            let blank =
+                kit.committed
+                |> updateTableAndElementRotation (SplitByColumn (kit.phoneRoiFile, ImportProfileName.phoneRoiCsv))
+                |> updateTableAndElementRotation (ToggleSplitOffer (DataRowKey "LP1-(QZ2#0)-LPd"))
+                |> updateTableAndElementRotation ExpNew
+            Assert.False(blank.experimentCollection.canCommit, "ExpNew leaves the draft no axis")
+
+            let refused = blank |> updateTableAndElementRotation MatchByTemplate
+
+            let told = "Not split — a new experiment records the Experiments draft's scan: choose a variable there, or tick no offer."
+            Assert.Equal<TableAndElementRotationModel>({ blank with kitStatus = Some (ControlCaption told) }, refused)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+
+            // With no split held, nothing is applied.
+            let cancelled = blank |> updateTableAndElementRotation CancelDataSplit
+            Assert.Equal<TableAndElementRotationModel>(cancelled, cancelled |> updateTableAndElementRotation MatchByTemplate)
+            Assert.Equal<TableAndElementRotationModel>(kit.committed, kit.committed |> updateTableAndElementRotation MatchByTemplate)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+            Assert.Equal<byte[]>(fileBefore, File.ReadAllBytes kit.phoneRoiFile.value))
