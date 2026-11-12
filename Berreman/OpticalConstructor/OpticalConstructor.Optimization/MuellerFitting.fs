@@ -15,6 +15,8 @@ module MuellerFitting =
     type MuellerFitError =
         | ObservationForwardErr of ForwardModelError
         | NonlinearFitErr of NonlinearSolverError
+        /// A generated matrix could not be normalized.
+        | MuellerNormalizationErr of InversionError
 
     /// One measurement configuration, its incidence and sample azimuth given in degrees.
     /// `IncidenceAngle.create` folds the incidence into [0, 90) deg, so a negative one is not a tilt the other way.

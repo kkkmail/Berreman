@@ -40,6 +40,7 @@
              backend lives here, because this is the only project that may name ALGLIB. -->
         <Compile Include="MuellerInverseSolver.fs" />
         <Compile Include="MuellerFitting.fs" />
+        <Compile Include="BenchNoise.fs" />
         <Compile Include="Synthesis.fs" />
     </ItemGroup>
 

@@ -8,169 +8,9 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
 open Xunit
 open BerremanTests.MatrixComparison
-
-// =====================================================================================================
-// The MEASUREMENT-ERROR model (manual task 010, generalized for task 014).
-//
-// Everything above this line lets a suite feed its fit the data the forward model produced exactly, at
-// angles the sample was exactly at. That measures the INVERSE MACHINERY. What follows measures the
-// EXPERIMENT: what a real, decent-but-ordinary optical bench recovers, and — the point of the exercise —
-// with what error bar.
-//
-// TWO error sources are modelled, because they are the two an angle-resolved Mueller measurement
-// actually has, and they enter the problem at completely different places:
-//
-//   1. ROTATION-ANGLE ERROR (an error in the INDEPENDENT variable). The log says the sample sat at
-//      70.0 deg incidence and 45.0 deg azimuth; it really sat at 70.0 +- e and 45.0 +- e. The forward
-//      model is therefore evaluated at the TRUE (perturbed) angles, while the observation is filed
-//      against the NOMINAL ones — because the nominal ones are all the experimenter has. Within one
-//      experiment this does NOT average away: every configuration's angle error is fixed for the whole
-//      of it, so the fit minimizes a model that is wrong in a fixed way and its answer is displaced
-//      systematically. Whether those displacements also average ACROSS experiments is a question an
-//      ensemble answers rather than assumes, which is why the statistics below report a bias as well as
-//      a scatter.
-//
-//   2. DETECTOR ERROR (an error in the DEPENDENT variable). The receiver reads each element of the
-//      normalized Mueller matrix a little high or a little low. This is ordinary measurement noise and
-//      it does average away, in the usual 1/sqrt(N) manner, across the residual entries.
-//
-// WHAT IS NOT MODELLED, and deliberately: the plate thickness and the wavelength are taken as known
-// exactly (spec R2 fixes thickness as a known per-configuration quantity, and a stabilized HeNe line is
-// known far better than anything else here), and the ABSOLUTE throughput is irrelevant by construction
-// because every comparison in `MuellerInverse` is between NORMALIZED matrices — source brightness,
-// detector gain and exposure drop out exactly. Modelling a gain error would therefore be modelling
-// nothing.
-//
-// THE MAGNITUDES are for a decent but ordinary optical lab, NOT for a metrology-grade instrument, and
-// they were taken from what the equipment actually delivers:
-//
-//   * ROTATION, 0.2 deg max error. A plain manual rotation mount carries a scale graduated in 2 deg
-//     steps; a high-precision manual mount reaches 5 arcmin (0.083 deg) on its vernier; a motorized
-//     mount such as a DC-servo rotation stage quotes ~0.1 % on-axis accuracy but +-0.3 deg of backlash,
-//     and published polarimeter builds report stage repeatability of 0.1-0.2 deg, with wave-plate mount
-//     friction able to spoil a setting "by a degree or more". Research ellipsometers do reach
-//     0.001-0.016 deg — which is exactly the high-precision regime this exercise is deliberately NOT
-//     modelling. 0.2 deg sits where a careful worker with ordinary mounts actually lands.
-//
-//   * DETECTOR, 0.005 of full scale on each normalized element. Mueller-polarimetry error analyses put a
-//     single-shot CCD pixel at ~0.01 of maximum intensity and an AVERAGED Mueller matrix at "the third
-//     decimal place" for the mean and "the second decimal" for the per-pixel spread; silicon photodiode
-//     power meters are +-3-5 % on ABSOLUTE calibration (irrelevant here, see above) but ~1 % on
-//     linearity and far better on repeatability. 0.005 is between the averaged research figure of ~1e-3
-//     and the single-shot figure of ~1e-2.
-//
-// Sources for both figures are recorded in the manual task folder alongside this work.
-// =====================================================================================================
-
-/// The seed that fixes ONE noisy realization of a whole experiment. Elevated so that a seed can never be
-/// passed where an iteration count, a configuration count or a parameter index is expected.
-type NoiseSeed =
-    | NoiseSeed of int
-
-    /// The seed value (the arithmetic seam, reached only where the generator is constructed).
-    member this.value = let (NoiseSeed s) = this in s
-
-/// The half-width of the uniform distribution a recorded ROTATION ANGLE's error is drawn from: the
-/// experiment logs "20 degrees", and the sample really sat somewhere in 20 ± this.
-type AngleUncertainty =
-    | AngleUncertainty of Angle
-
-    /// The uncertainty as the engine `Angle`.
-    member this.angle = let (AngleUncertainty a) = this in a
-
-    /// The uncertainty in radians (the arithmetic seam).
-    member this.value = let (AngleUncertainty a) = this in a.value
-
-    /// The uncertainty in degrees, which is how rotation-stage data sheets quote it.
-    member this.degrees = let (AngleUncertainty a) = this in a.degrees
-
-    /// Build an `AngleUncertainty` from a value given in degrees.
-    static member degree (d : double) : AngleUncertainty = Angle.degree (d * 1.0<Berreman.Constants.deg>) |> AngleUncertainty
-
-/// The half-width of the uniform distribution the DETECTOR's error on one NORMALIZED Mueller element is
-/// drawn from. Normalized elements are bounded by 1, so this is directly a fraction of full scale: 0.005
-/// means "the receiver reads each element to within half a percent of full scale".
-type ElementUncertainty =
-    | ElementUncertainty of double
-
-    /// The uncertainty in units of the normalized element (the arithmetic seam).
-    member this.value = let (ElementUncertainty u) = this in u
-
-/// The half-width of the uniform distribution the detector's error on the ABSOLUTE throughput is drawn
-/// from, as a FRACTION of the reading. It matters only for an absorbing sample, where `m₀₀` is a datum
-/// rather than a normalization constant.
-///
-/// It is a separate budget from `ElementUncertainty` because the two are different measurements on a real
-/// bench. The normalized elements are RATIOS taken within one acquisition, so source drift and detector
-/// gain cancel out of them; the absolute throughput is a ratio between two acquisitions — sample in,
-/// sample out — and carries the full stability of the source, the detector gain and the reference path.
-/// Photodiode power meters are ±3-5 % on absolute calibration and ~1 % on linearity, and a
-/// carefully-referenced transmittance lands near the 1 % end. It is therefore the LOOSER of the two
-/// budgets, which is exactly why the isotropic absorption stays the poorly-determined parameter even
-/// after absolute data is added.
-type ThroughputUncertainty =
-    | ThroughputUncertainty of double
-
-    /// The uncertainty as a fraction of the reading (the arithmetic seam).
-    member this.value = let (ThroughputUncertainty u) = this in u
-
-/// One measurement-error budget — everything about the apparatus that makes the recorded data differ
-/// from what the material would produce in a perfect experiment.
-///
-/// Both fields are MAX errors, not standard deviations: each error is drawn from a uniform distribution
-/// on `[−u, +u]`, so the corresponding standard deviation is `u/√3`. Uniform rather than Gaussian is the
-/// honest choice for these two sources — a rotation stage's setting error is bounded by its mechanics
-/// and a detector's quantization/linearity error is bounded by its specification, neither has a tail.
-type NoiseParam =
-    {
-        /// Applied INDEPENDENTLY to the incidence angle and to the sample azimuth of every
-        /// configuration: both are read off rotation mounts of the same grade.
-        rotation : AngleUncertainty
-        /// Applied independently to each of the 15 normalized Mueller elements other than `m₀₀`.
-        element : ElementUncertainty
-        /// Applied to the ABSOLUTE throughput `m₀₀`. Ignored by every transparent path, which normalizes
-        /// `m₀₀` away; used only by `misreadAbsolute`.
-        throughput : ThroughputUncertainty
-    }
-
-    /// The measurement-error budget of the decent-but-ordinary bench described above. It is a property
-    /// of the APPARATUS and not of the sample, so both inverse-problem suites measure their crystals on
-    /// the same bench — which is what makes their ensembles directly comparable.
-    static member decentLab : NoiseParam =
-        {
-            rotation = AngleUncertainty.degree 0.2
-            element = ElementUncertainty 0.005
-            throughput = ThroughputUncertainty 0.01
-        }
-
-    /// The budget in which nothing is uncertain — the control that turns every noisy path back into the
-    /// noiseless one, so the noise machinery can be proved to be a pure overlay.
-    static member noiseless : NoiseParam =
-        {
-            rotation = AngleUncertainty.degree 0.0
-            element = ElementUncertainty 0.0
-            throughput = ThroughputUncertainty 0.0
-        }
-
-/// Ambient randomness, injected as a provider record rather than reached for directly — the repository's
-/// standing rule for ambient effects, and what makes a noisy experiment a PURE FUNCTION of its seed.
-///
-/// Every draw is uniform on `[−1, +1]`, so a caller multiplies by the max error of whatever it is
-/// perturbing and never has to know what distribution it got.
-[<ReferenceEquality>]
-type UniformDeviateProvider =
-    {
-        nextDeviate : unit -> double
-    }
-
-    /// The real, seeded backend. `System.Random(seed)` is the same generator `Synthesis.fs` uses for its
-    /// reproducible annealing / GA runs; its SEEDED constructor is documented as keeping the legacy
-    /// algorithm precisely so that a seeded stream stays reproducible across runtime versions.
-    static member fromSeed (seed : NoiseSeed) : UniformDeviateProvider =
-        let rng = System.Random(seed.value)
-        { nextDeviate = fun () -> 2.0 * rng.NextDouble() - 1.0 }
 
 /// A scalar an experiment recovers: any one of the fitted unknowns, or any DERIVED quantity built from
 /// them.
@@ -322,38 +162,6 @@ module InverseFitHarness =
     /// Both suites use the same eight, which is what makes their ensembles directly comparable.
     let ensembleSeeds : NoiseSeed list = [ 1; 2; 3; 4; 5; 6; 7; 8 ] |> List.map NoiseSeed
 
-    /// Where the sample REALLY was when a nominal configuration was recorded.
-    ///
-    /// Both rotations are perturbed independently. The incidence angle is shifted through the engine's
-    /// own `IncidenceAngle + Angle` operator rather than through `IncidenceAngle.create`: `create` folds
-    /// its argument into [0, 90) modulo 90 deg, so a small NEGATIVE excursion from normal incidence would
-    /// come back as ~89.8 deg rather than as a plate tilted 0.2 deg the other way. A signed excursion is
-    /// the physically correct object here, and the operator is the seam that preserves it.
-    let disturb (draws : UniformDeviateProvider) (noise : NoiseParam) (c : MeasurementConfiguration) : MeasurementConfiguration =
-        let wobble () = noise.rotation.value * draws.nextDeviate () |> Angle
-        {
-            c with
-                incidenceAngle = c.incidenceAngle + wobble ()
-                azimuth = c.azimuth.angle + wobble () |> SampleAzimuth
-        }
-
-    /// What the receiver REPORTS for a matrix the sample actually produced.
-    ///
-    /// The matrix is normalized first and each of the 15 elements other than `m₀₀` is then read a little
-    /// high or a little low, independently. `m₀₀` is left at exactly 1 because it carries no information
-    /// at all once normalized — an error in it is an error in absolute throughput, which every
-    /// comparison in `MuellerInverse` divides out exactly.
-    let misread (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
-        match m.normalized with
-        | Ok n ->
-            RealMatrix4x4.create
-                [ for i in 0 .. 3 ->
-                    [ for j in 0 .. 3 ->
-                        if i = 0 && j = 0 then 1.0
-                        else n.element i j + noise.element.value * draws.nextDeviate () ] ]
-            |> MuellerMatrix
-        | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
-
     /// What the receiver reports for an ABSORBING sample, where the absolute throughput is a datum
     /// rather than a normalization constant.
     ///
@@ -369,12 +177,12 @@ module InverseFitHarness =
         match m.normalized with
         | Ok n ->
             let trueThroughput = m.element 0 0
-            let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * draws.nextDeviate ())
+            let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * (draws.nextDeviate ()).value)
             RealMatrix4x4.create
                 [ for i in 0 .. 3 ->
                     [ for j in 0 .. 3 ->
                         if i = 0 && j = 0 then reportedThroughput
-                        else reportedThroughput * (n.element i j + noise.element.value * draws.nextDeviate ()) ] ]
+                        else reportedThroughput * (n.element i j + noise.element.value * (draws.nextDeviate ()).value) ] ]
             |> MuellerMatrix
         | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
 
@@ -392,28 +200,6 @@ module InverseFitHarness =
         |> List.map (fun nominal ->
             match forward.muellerOf (disturb draws noise nominal) truth with
             | Ok m -> { configuration = nominal; measured = misreadAbsolute draws noise m }
-            | Error e -> failwith $"the forward model failed to generate noisy data: %A{e}")
-
-    /// ONE noisy realization of a whole experiment: for every configuration the sample truly sat at
-    /// perturbed angles, the forward model is evaluated THERE, the detector then misreads the resulting
-    /// matrix — and the observation is filed against the NOMINAL configuration, which is all the
-    /// experimenter ever knows.
-    ///
-    /// That last step is the whole point of modelling angle error at all. Filing the data against the
-    /// true angles would make the angle error invisible to the fit; filing it against the recorded ones
-    /// is what a laboratory notebook actually contains.
-    let noisyObserveWith
-        (forward : ForwardModelProxy<'Parameters>)
-        (truth : 'Parameters)
-        (noise : NoiseParam)
-        (seed : NoiseSeed)
-        (configurations : MeasurementConfiguration list)
-        : MuellerObservation list =
-        let draws = UniformDeviateProvider.fromSeed seed
-        configurations
-        |> List.map (fun nominal ->
-            match forward.muellerOf (disturb draws noise nominal) truth with
-            | Ok m -> { configuration = nominal; measured = misread draws noise m }
             | Error e -> failwith $"the forward model failed to generate noisy data: %A{e}")
 
     /// Reduce an ensemble of recovered parameter sets to one statistics row per quantity.

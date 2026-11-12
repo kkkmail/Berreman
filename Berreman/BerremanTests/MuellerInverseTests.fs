@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
 open Xunit
 open BerremanTests.MatrixComparison
 open BerremanTests.InverseFitHarness
@@ -32,8 +33,8 @@ open BerremanTests.InverseFitHarness
 /// Mueller element by up to 0.005 of full scale, and eight fixed seeds give eight complete experiments
 /// whose spread IS the uncertainty. Those facts fit from a blind `n = 1.5`, `g = 0` start, and they are
 /// what turns this suite from a measurement of the inverse MACHINERY into a measurement of the
-/// EXPERIMENT. See the commentary above `NoiseParam.decentLab` for the error model and where its magnitudes come
-/// from.
+/// EXPERIMENT. The error model is `BenchNoise`; where its magnitudes come from is
+/// specs/0044/.manual/011-noisy-measurement-tests.md.
 ///
 /// Deliberately NOT asserted here — each is a candidate for a future slice:
 ///   - multistart / global search, needed once the retardance order is unknown;
@@ -291,9 +292,9 @@ type MuellerInverseTests() =
 
     // =================================================================================================
     // Manual task 010 — the noisy experiments. The measurement-error model itself — what is perturbed,
-    // by how much, and where those magnitudes come from — lives in `InverseFitHarness`, because it
-    // describes the APPARATUS rather than this crystal, and `BiaxialInverseTests` measures its own
-    // sample on the same bench.
+    // by how much, and where those magnitudes come from — is the shared `BenchNoise`
+    // (specs/0044/.manual/011-noisy-measurement-tests.md), because it describes the APPARATUS rather
+    // than this crystal, and `BiaxialInverseTests` measures its own sample on the same bench.
     // =================================================================================================
 
     /// The BLIND start guess the noisy facts fit from: `n_o = n_e = 1.5` and no optical activity at all.
@@ -327,7 +328,7 @@ type MuellerInverseTests() =
 
     /// This suite's noisy data: the shared bench applied to quartz.
     let noisyObserve (noise : NoiseParam) (seed : NoiseSeed) (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        noisyObserveWith forward quartz noise seed configurations
+        noisyObserveWith forward quartz noise seed configurations |> expectOk
 
     /// Run ONE noisy experiment end to end: generate its data, fit it, and keep everything the ensemble
     /// will want to ask it afterwards.
@@ -1026,7 +1027,8 @@ type MuellerInverseTests() =
             Assert.True(restoredNorms.[i] > 1.0e-6, $"adding the second cut must make {parameterNames.[i]} observable: {restoredReport}")
 
     // =================================================================================================
-    // Manual task 010 — the NOISY facts. See the measurement-error commentary above `NoiseParam.decentLab`.
+    // Manual task 010 — the NOISY facts. The measurement-error model is `BenchNoise`, recorded in
+    // specs/0044/.manual/011-noisy-measurement-tests.md.
     // =================================================================================================
 
     [<Fact>]
@@ -1038,7 +1040,7 @@ type MuellerInverseTests() =
 
         // REPRODUCIBILITY. A seed determines the stream completely, and different seeds give different
         // streams. This is the property that makes a failing ensemble run a debuggable one.
-        let firstTen (d : UniformDeviateProvider) = [ for _ in 1 .. 10 -> d.nextDeviate () ]
+        let firstTen (d : UniformDeviateProvider) = [ for _ in 1 .. 10 -> (d.nextDeviate ()).value ]
         let fromSeven = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 7))
         let fromSevenAgain = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 7))
         let fromEight = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 8))
@@ -1085,7 +1087,7 @@ type MuellerInverseTests() =
         let clean = observe c1 |> List.exactlyOne
         match clean.measured.normalized with
         | Ok trueNormalized ->
-            let reported = misread (UniformDeviateProvider.fromSeed (NoiseSeed 5)) NoiseParam.decentLab clean.measured
+            let reported = misread (UniformDeviateProvider.fromSeed (NoiseSeed 5)) NoiseParam.decentLab clean.measured |> expectOk
             Assert.True(abs (reported.element 0 0 - 1.0) < 1.0e-15, "m00 must stay at exactly 1")
             let deviations =
                 [ for i in 0 .. 3 do

@@ -10,6 +10,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample

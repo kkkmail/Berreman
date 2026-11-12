@@ -10,6 +10,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Optimization.BenchNoise
 
 /// The parameter vocabulary of items and item models in `ItemModels` (spec 0050 S7.1, 001 §I).
 module ItemModelsTests =
@@ -171,6 +172,37 @@ module ItemModelsTests =
             ]
 
         Assert.Equal<ItemParameterAxis list>(expected, ItemParameterAxis.detectorNoiseAxes noiseRotation noiseElement noiseThroughput)
+
+    /// The bench budgets Optimization promoted are the shipped detectors' noise defaults (spec 0050 S10.1; 001 §Q).
+    [<Fact>]
+    let ``the promoted bench budgets equal the detector catalogue defaults`` () : unit =
+        Assert.Equal(0.2, NoiseParam.decentLab.rotation.degrees, 1e-12)
+        Assert.Equal<float>(0.005, NoiseParam.decentLab.element.value)
+        Assert.Equal<float>(0.01, NoiseParam.decentLab.throughput.value)
+        Assert.Equal<float>(0.0, NoiseParam.noiseless.rotation.value)
+        Assert.Equal<float>(0.0, NoiseParam.noiseless.element.value)
+        Assert.Equal<float>(0.0, NoiseParam.noiseless.throughput.value)
+
+        let shippedNoise : ItemParameterAxis list list =
+            BuiltinCatalogue.itemModels ()
+            |> List.choose (fun held ->
+                match held.entry.model with
+                | IntensityDetectorModel noise
+                | MuellerPolarimeterModel noise
+                | EllipsometerModel noise -> Some noise
+                | SourcePresetItemModel
+                | IdealPolarizerItemModel
+                | StackSampleItemModel
+                | OpticalElementModel _
+                | EmptySlotModel -> None)
+
+        Assert.Equal(3, shippedNoise.Length)
+
+        for noise in shippedNoise do
+            assertAxesWithin NoiseParam.decentLab.parameterAxes noise
+
+        for budget in [ typeof<AngleUncertainty>; typeof<ElementUncertainty>; typeof<ThroughputUncertainty>; typeof<NoiseParam> ] do
+            Assert.Equal("Softellect.Berreman.OpticalConstructor.Optimization", budget.Assembly.GetName().Name)
 
     let private quarterWave = ParameterValue (Math.PI / 2.0)
 

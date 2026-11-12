@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
@@ -232,9 +233,10 @@ type BiaxialInverseTests() =
     // what error bar.
     //
     // The measurement-error model — what is perturbed, by how much, and where those magnitudes come
-    // from — lives in `InverseFitHarness` and is pinned by `MuellerInverseTests`. It describes the
-    // APPARATUS rather than the sample, so this suite measures its crystal on exactly the same bench,
-    // with exactly the same eight seeds, which is what makes the two ensembles comparable at all.
+    // from — is `BenchNoise`, recorded in specs/0044/.manual/011-noisy-measurement-tests.md, and is
+    // pinned by `MuellerInverseTests`. It describes the APPARATUS rather than the sample, so this suite
+    // measures its crystal on exactly the same bench, with exactly the same eight seeds, which is what
+    // makes the two ensembles comparable at all.
     //
     // THE QUESTION THIS SUITE ADDS. The uniaxial ensemble showed that four constants survive a 0.2 deg /
     // 0.005 bench with the two refractive indices at ~0.05 % and the poorly-determined gyration component
@@ -283,7 +285,7 @@ type BiaxialInverseTests() =
     /// Run ONE noisy experiment end to end: generate its data on the shared bench, fit it from the blind
     /// start, and keep everything the ensemble will want to ask it afterwards.
     let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<TriclinicParameters> =
-        let observations = noisyObserveWith forward triclinic noise seed fullConfigurations
+        let observations = noisyObserveWith forward triclinic noise seed fullConfigurations |> expectOk
         {
             seed = seed
             fit = fitObservations forward wideBox observations (scalingAround blindStart) |> expectOk
@@ -820,10 +822,11 @@ type BiaxialInverseTests() =
         // scale. The fit then runs from the blind isotropic start against the RECORDED angles. Eight such
         // experiments give eight independent answers, and their spread is the uncertainty.
         //
-        // WHY BOTH A BIAS AND A SCATTER ARE REPORTED, and why they differ in kind: see the commentary in
-        // `InverseFitHarness`. In short, the detector error averages away and the rotation error is fixed
-        // within one experiment and so displaces its answer systematically — whether it also averages
-        // ACROSS experiments is the question an ensemble exists to answer.
+        // WHY BOTH A BIAS AND A SCATTER ARE REPORTED, and why they differ in kind: see `BenchNoise` and
+        // specs/0044/.manual/011-noisy-measurement-tests.md. In short, the detector error averages away
+        // and the rotation error is fixed within one experiment and so displaces its answer
+        // systematically — whether it also averages ACROSS experiments is the question an ensemble
+        // exists to answer.
         //
         // RUNTIME. Eight full nine-parameter fits from a blind start dominate this class. They are run
         // SERIALLY: the uniaxial suite measured concurrency on the same forward model and found it slower
