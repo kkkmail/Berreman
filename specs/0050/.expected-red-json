@@ -274,6 +274,7 @@
   "322": {},
   "323": {},
   "324": {},
+  "325": {},
   "33": {
     "constructor-unit-tests": [
       "OpticalConstructor.Tests.BuiltInCatalogueParityTests.every built-in material and category in the catalogue equals its seed",

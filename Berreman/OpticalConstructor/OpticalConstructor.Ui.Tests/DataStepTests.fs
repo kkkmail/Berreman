@@ -36,8 +36,8 @@ open global.Elmish
 
 /// The Inverse constructor's Data step over a folder kit holding `E1`: a held split names its key column and lists each
 /// group matched, offered with its toggle or unmatched with its reason, above Apply split and Cancel in one row; a
-/// reviewed experiment lists and plots its points, an excluded one marked (spec 0050 S9.3; 001 §K, §O). Its windows are
-/// found and pressed through `SlotBarTests`' helpers.
+/// reviewed experiment lists and plots its points, an excluded one marked, and re-points its setup with an audit note
+/// (spec 0050 S9.3; 001 §K, §O). Its windows are found and pressed through `SlotBarTests`' helpers.
 module DataStepTests =
 
     let private owner : FolderName = FolderName "DataStepTests"
@@ -280,6 +280,46 @@ module DataStepTests =
                         experimentDataStatus = Map.ofList [ e1.id, badge ]
                 })
 
+    /// E1's setup in the correction facts, the one its correction re-pointed it to.
+    let private setup1 : Setup =
+        {
+            name = SetupName "Setup 1"
+            revision = SetupRevision.first
+            slots = []
+            history = []
+        }
+
+    /// E1's one correction: from `'Setup 0' revision 1` to `setup1`, because `LP1 was at 30`.
+    let private lp1Correction : SetupCorrection =
+        let setup0 : SetupReference =
+            {
+                name = SetupName "Setup 0"
+                revision = SetupRevision.first
+            }
+        {
+            previous = setup0
+            corrected = setup1.reference
+            note = CorrectionNote "LP1 was at 30"
+        }
+
+    /// Runs over the class's review model whose kit holds `setup1` and `benchB`, with `e1WithData` over `setup1` holding
+    /// `lp1Correction`, reviewed.
+    let private withCorrectionModel (run : TableAndElementRotationModel -> unit) : unit =
+        withReviewModel (fun model ->
+            let corrected =
+                {
+                    e1WithData with
+                        setup = setup1.reference
+                        corrections = [ lp1Correction ]
+                }
+            let held =
+                {
+                    model with
+                        kitSetups = [ setup1; benchB ]
+                        experimentCollection = { model.experimentCollection with experiments = [ corrected ] }
+                }
+            run (held |> updateTableAndElementRotation (ReviewExperimentData (ExperimentId 1))))
+
     /// The AutomationIds under the control carrying `id` that start with `prefix`, in visual order.
     let private idsUnder (window : Window) (id : ConstructorUiId) (prefix : string) : string list =
         (SlotBarTests.controlById window id).GetVisualDescendants()
@@ -318,6 +358,9 @@ module DataStepTests =
         Assert.Equal("DataPoint_2", (ConstructorUiId.dataPointRow (MappedPointNumber 2)).value)
         Assert.Equal("DataExcludePoint_2", (ConstructorUiId.dataExcludePointButton (MappedPointNumber 2)).value)
         Assert.Equal("DataIncludePoint_2", (ConstructorUiId.dataIncludePointButton (MappedPointNumber 2)).value)
+        Assert.Equal("DataCorrectionNoteField", ConstructorUiId.dataCorrectionNoteField.value)
+        Assert.Equal("DataCorrectionTrail", ConstructorUiId.dataCorrectionTrail.value)
+        Assert.Equal("DataCorrectSetup_Bench B", (ConstructorUiId.dataCorrectSetupChoice benchB.name).value)
 
     [<Fact>]
     let ``the split panel names its key column and lists each group matched, offered or unmatched, with Apply and Cancel in one row`` () : unit =
@@ -683,3 +726,139 @@ module DataStepTests =
                     Assert.True((SlotBarTests.controlById window ConstructorUiId.dataReviewPanel).IsEffectivelyVisible, "the review panel must show")
                     Assert.True((SlotBarTests.controlById window ConstructorUiId.dataPointsChart).IsEffectivelyVisible, "the points chart must show")
                     Assert.Equal<string list>([ "DataPoint_1"; "DataPoint_2"; "DataPoint_3" ], idsUnder window ConstructorUiId.dataReviewPanel "DataPoint_"))))
+
+    [<Fact>]
+    let ``the correction panel offers every other setup of the kit and lists the audit trail`` () : unit =
+        HeadlessSession.run (fun () ->
+            withCorrectionModel (fun reviewed ->
+                let choiceOf (setup : Setup) : ConstructorUiId = ConstructorUiId.dataCorrectSetupChoice setup.name
+                let setupLine = "Setup: 'Setup 1' revision 1"
+                let trailLine = "'Setup 0' revision 1 → 'Setup 1' revision 1: LP1 was at 30"
+                withDataStepWindow reviewed (fun window _ ->
+                    let panelTexts = textsUnder window ConstructorUiId.dataReviewPanel
+                    Assert.Contains(setupLine, panelTexts)
+                    Assert.Contains("Audit note:", panelTexts)
+                    let field = Assert.IsType<TextBox>(SlotBarTests.controlById window ConstructorUiId.dataCorrectionNoteField)
+                    Assert.Equal("", string field.Text)
+
+                    // One choice, Bench B's, offered over a read-write kit: E1's own setup is not offered.
+                    Assert.Equal<string list>([ "DataCorrectSetup_Bench B" ], idsUnder window ConstructorUiId.dataReviewPanel "DataCorrectSetup_")
+                    Assert.Equal("Re-point to 'Bench B' revision 1", SlotBarTests.boxLabelOf window (choiceOf benchB))
+                    SlotBarTests.assertAbsent window (choiceOf setup1)
+                    let choice = SlotBarTests.controlById window (choiceOf benchB)
+                    Assert.True(choice.IsEffectivelyEnabled, "the re-point must be offered over a read-write kit")
+
+                    // The trail's one line, oldest first.
+                    Assert.Equal<string list>([ trailLine ], textsUnder window ConstructorUiId.dataCorrectionTrail)
+
+                    // The block closes the panel, under the last point: the setup, the note, the choice, then the trail.
+                    let lineOf (text : string) : Control =
+                        (SlotBarTests.controlById window ConstructorUiId.dataReviewPanel).GetVisualDescendants()
+                        |> Seq.choose (function :? TextBlock as block when block.Text = text -> Some (block :> Control) | _ -> None)
+                        |> Seq.exactlyOne
+                    let tops =
+                        [
+                            SlotBarTests.controlById window (ConstructorUiId.dataPointRow (MappedPointNumber 3))
+                            lineOf setupLine
+                            field :> Control
+                            choice
+                            SlotBarTests.controlById window ConstructorUiId.dataCorrectionTrail
+                        ]
+                        |> List.map (fun control -> (SlotBarTests.topLeftOf window control).Y)
+                    Assert.Equal<float list>(List.sort tops, tops)
+                    Assert.Equal(5, tops |> List.distinct |> List.length))
+
+                // Spec 0050 S9.3: an experiment never corrected has no trail, and every setup of the kit but its own is offered.
+                let uncorrected =
+                    {
+                        reviewed with
+                            experimentCollection =
+                                {
+                                    reviewed.experimentCollection with
+                                        experiments = reviewed.experimentCollection.experiments |> List.map (fun held -> { held with corrections = [] })
+                                }
+                            kitSetups = [ darkSetup; setup1; benchB ]
+                    }
+                withDataStepWindow uncorrected (fun window _ ->
+                    Assert.Contains(setupLine, textsUnder window ConstructorUiId.dataReviewPanel)
+                    SlotBarTests.assertAbsent window ConstructorUiId.dataCorrectionTrail
+                    Assert.Equal<string list>(
+                        [ "DataCorrectSetup_Dark"; "DataCorrectSetup_Bench B" ],
+                        idsUnder window ConstructorUiId.dataReviewPanel "DataCorrectSetup_")
+                    Assert.Equal("Re-point to 'Dark' revision 1", SlotBarTests.boxLabelOf window (choiceOf darkSetup)))
+
+                // Corrected again to Bench B: the trail reads oldest first, and Setup 1 is now offered instead.
+                let toBenchB : SetupCorrection =
+                    {
+                        previous = setup1.reference
+                        corrected = benchB.reference
+                        note = CorrectionNote "LR was at -45"
+                    }
+                let twice =
+                    {
+                        reviewed with
+                            experimentCollection =
+                                {
+                                    reviewed.experimentCollection with
+                                        experiments =
+                                            reviewed.experimentCollection.experiments
+                                            |> List.map (fun held ->
+                                                {
+                                                    held with
+                                                        setup = benchB.reference
+                                                        corrections = [ lp1Correction; toBenchB ]
+                                                })
+                                }
+                    }
+                withDataStepWindow twice (fun window _ ->
+                    Assert.Contains("Setup: 'Bench B' revision 1", textsUnder window ConstructorUiId.dataReviewPanel)
+                    Assert.Equal<string list>(
+                        [ trailLine; "'Setup 1' revision 1 → 'Bench B' revision 1: LR was at -45" ],
+                        textsUnder window ConstructorUiId.dataCorrectionTrail)
+                    Assert.Equal<string list>([ "DataCorrectSetup_Setup 1" ], idsUnder window ConstructorUiId.dataReviewPanel "DataCorrectSetup_"))))
+
+    [<Fact>]
+    let ``pressing a setup sends CorrectSetup with the typed audit note`` () : unit =
+        HeadlessSession.run (fun () ->
+            withCorrectionModel (fun reviewed ->
+                let notesOf (messages : ResizeArray<TableAndElementRotationMsg>) : ControlCaption list =
+                    messages |> Seq.choose (function SetCorrectionNote note -> Some note | _ -> None) |> List.ofSeq
+                let correctionsOf (messages : ResizeArray<TableAndElementRotationMsg>) : (ExperimentId * SetupReference * ControlCaption) list =
+                    messages |> Seq.choose (function CorrectSetup (id, reference, note) -> Some (id, reference, note) | _ -> None) |> List.ofSeq
+                let lrNote = ControlCaption "LR was at -45"
+                let choice = ConstructorUiId.dataCorrectSetupChoice benchB.name
+                withRecordingWindow reviewed (fun window messages ->
+                    // The note commits on Enter and on losing focus; a commit is idempotent (step 325's reason field).
+                    let field = Assert.IsType<TextBox>(SlotBarTests.controlById window ConstructorUiId.dataCorrectionNoteField)
+                    field.Text <- lrNote.value
+                    field.RaiseEvent(KeyEventArgs(RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter))
+                    Assert.Equal<ControlCaption list>([ lrNote ], notesOf messages |> List.distinct)
+                    messages.Clear()
+                    field.RaiseEvent(FocusChangedEventArgs(InputElement.LostFocusEvent))
+                    Assert.Equal<ControlCaption list>([ lrNote ], notesOf messages |> List.distinct)
+                    messages.Clear()
+
+                    // Spec 0050 S4.3, S9.3: the recording dispatch keeps the draft blank, so the note sent is the field's
+                    // live text, and not the reason field's.
+                    let reasonField = Assert.IsType<TextBox>(SlotBarTests.controlById window ConstructorUiId.dataExclusionReasonField)
+                    reasonField.Text <- "stray light"
+                    SlotBarTests.pressBox window choice
+                    Assert.Equal<(ExperimentId * SetupReference * ControlCaption) list>(
+                        [ ExperimentId 1, benchB.reference, lrNote ],
+                        correctionsOf messages)
+                    Assert.Equal<ControlCaption list>([ lrNote ], notesOf messages)
+                    Assert.Empty(messages |> Seq.filter (function SetExclusionReason _ | ExcludePoint _ -> true | _ -> false)))
+
+                // Spec 0050 S9.3: while the kit takes no writes, the re-point is disabled and sends nothing.
+                let readOnly =
+                    {
+                        reviewed with kit = { reviewed.kit with access = ReadOnlyKitAccess }
+                    }
+                Assert.Equal<ControlAvailability>(ControlWithheld, readOnly.kitWrites)
+                withRecordingWindow readOnly (fun window messages ->
+                    Assert.False((SlotBarTests.controlById window choice).IsEffectivelyEnabled, "the re-point must be disabled while the kit takes no writes")
+                    Assert.Equal("Re-point to 'Bench B' revision 1", SlotBarTests.boxLabelOf window choice)
+                    let field = Assert.IsType<TextBox>(SlotBarTests.controlById window ConstructorUiId.dataCorrectionNoteField)
+                    field.Text <- lrNote.value
+                    SlotBarTests.pressBox window choice
+                    Assert.Empty(correctionsOf messages))))

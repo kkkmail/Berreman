@@ -150,6 +150,16 @@ let private stepPanelFrame : IAttr<Border> list =
         Border.horizontalAlignment HorizontalAlignment.Left
     ]
 
+/// The verbs in a box that is disabled and dimmed while withheld, for a verb look with no availability of its own
+/// (spec 0050 S5.3, S9.3).
+let private availabilityBox (availability : ControlAvailability) (verbs : IView) : IView =
+    Border.create [
+        Border.isEnabled availability.isEnabled
+        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
+        Border.child verbs
+    ]
+    :> IView
+
 /// The held split: its file, key column and profile, one row per group in file order, then Apply split and, after a
 /// gap, Cancel; Apply is disabled while the kit takes no writes (spec 0050 S9.3; .spec-md §10.3, §10.5).
 let private dataSplitPanel (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (held : DataSplitState) : IView =
@@ -163,20 +173,14 @@ let private dataSplitPanel (model : TableAndElementRotationModel) (dispatch : Ta
             TextBlock.margin (Thickness(0.0, 0.0, 0.0, 6.0))
         ]
         :> IView
-    // `actionButton` has no availability; `MatchByTemplate` guards the kit's writes itself (step 320).
+    // `MatchByTemplate` guards the kit's writes itself (step 320).
     let apply =
-        Border.create [
-            Border.isEnabled model.kitWrites.isEnabled
-            Border.opacity (match model.kitWrites with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.child (
-                MaterialsWindowView.actionButton
-                    ConstructorUiId.dataSplitApplyButton
-                    (ControlCaption "Apply split")
-                    MaterialsWindowView.positiveBackground
-                    (fun () -> dispatch MatchByTemplate)
-            )
-        ]
-        :> IView
+        MaterialsWindowView.actionButton
+            ConstructorUiId.dataSplitApplyButton
+            (ControlCaption "Apply split")
+            MaterialsWindowView.positiveBackground
+            (fun () -> dispatch MatchByTemplate)
+        |> availabilityBox model.kitWrites
     let cancel =
         MaterialsWindowView.actionButton
             ConstructorUiId.dataSplitCancelButton
@@ -203,9 +207,9 @@ let private dataSplitPanel (model : TableAndElementRotationModel) (dispatch : Ta
     )
     :> IView
 
-/// The reason field's live text, else the draft's: a verb box takes no focus, so a typed reason is not yet committed
-/// when Exclude is pressed (the Create setup precedent, spec 0050 S4.3, S9.3).
-let private typedReason (event : PointerPressedEventArgs) (draft : ControlCaption) : ControlCaption =
+/// The live text of the field carrying `fieldId`, else the draft's: a verb box takes no focus, so a typed text is not yet
+/// committed when the verb is pressed (the Create setup precedent, spec 0050 S4.3, S9.3).
+let private typedText (event : PointerPressedEventArgs) (fieldId : ConstructorUiId) (draft : ControlCaption) : ControlCaption =
     match event.Source with
     | :? Visual as source ->
         match TopLevel.GetTopLevel source with
@@ -213,12 +217,49 @@ let private typedReason (event : PointerPressedEventArgs) (draft : ControlCaptio
         | owner ->
             owner.GetVisualDescendants()
             |> Seq.tryPick (function
-                | :? TextBox as field when AutomationProperties.GetAutomationId field = ConstructorUiId.dataExclusionReasonField.value ->
+                | :? TextBox as field when AutomationProperties.GetAutomationId field = fieldId.value ->
                     let typed = ControlCaption (string field.Text)
                     Some typed
                 | _ -> None)
             |> Option.defaultValue draft
     | _ -> draft
+
+/// One field of the review: its label docked beside a text box showing `text`, which commits what is typed through
+/// `toMsg` on Enter and on losing focus (spec 0050 S9.3).
+let private reviewField
+    (dispatch : TableAndElementRotationMsg -> unit)
+    (fieldId : ConstructorUiId)
+    (label : ControlCaption)
+    (accessibleName : ControlCaption)
+    (text : ControlCaption)
+    (toMsg : ControlCaption -> TableAndElementRotationMsg)
+    : IView =
+    let commit (source : obj) : unit =
+        match source with
+        | :? TextBox as field ->
+            let typed = ControlCaption (string field.Text)
+            dispatch (toMsg typed)
+        | _ -> ()
+    DockPanel.create [
+        DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
+        DockPanel.children [
+            TextBlock.create [
+                TextBlock.dock Dock.Left
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                TextBlock.text label.value
+            ]
+            TextBox.create [
+                fieldId.automationAttribute<TextBox> ()
+                AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, accessibleName.value, ValueNone)
+                TextBox.minWidth 220.0
+                TextBox.text text.value
+                TextBox.onKeyDown ((fun event -> if event.Key = Key.Enter then commit event.Source), SubPatchOptions.Always)
+                TextBox.onLostFocus ((fun event -> commit event.Source), SubPatchOptions.Always)
+            ]
+        ]
+    ]
+    :> IView
 
 /// One reviewed point's row: its number and caption, then Exclude, or why it is excluded and Include; both are disabled
 /// while the kit takes no writes (spec 0050 S9.3; 001 §K; .spec-md §10.5).
@@ -248,7 +289,7 @@ let private reviewedPointRow
             ]
         | None ->
             let exclude (event : PointerPressedEventArgs) : unit =
-                let reason = typedReason event model.dataDraft.exclusionReason
+                let reason = typedText event ConstructorUiId.dataExclusionReasonField model.dataDraft.exclusionReason
                 dispatch (SetExclusionReason reason)
                 dispatch (ExcludePoint (experimentId, point, reason))
             [ availableWorkbenchButton model.kitWrites (ConstructorUiId.dataExcludePointButton point) (ControlCaption "Exclude") exclude ]
@@ -265,9 +306,73 @@ let private reviewedPointRow
     |> Avalonia.FuncUI.DSL.View.withKey id.value
     :> IView
 
+/// The reviewed experiment's setup, the audit note, a re-point verb per other setup of the kit, disabled while the kit
+/// takes no writes, and the trail of its corrections, oldest first. Only the experiment's file is corrected, never its
+/// lab file (spec 0050 S9.3; 001 §K, §P `CorrectSetup`).
+let private setupCorrectionBlock
+    (model : TableAndElementRotationModel)
+    (dispatch : TableAndElementRotationMsg -> unit)
+    (experiment : Experiments.Experiment)
+    : IView list =
+    let setupLine =
+        TextBlock.create [
+            TextBlock.text $"Setup: {experiment.setup.describe}"
+            TextBlock.textWrapping TextWrapping.Wrap
+            TextBlock.maxWidth 360.0
+            TextBlock.margin (Thickness(0.0, 8.0, 0.0, 4.0))
+        ]
+        :> IView
+    let noteField =
+        reviewField
+            dispatch
+            ConstructorUiId.dataCorrectionNoteField
+            (ControlCaption "Audit note:")
+            (ControlCaption "Correction audit note")
+            model.dataDraft.correctionNote
+            SetCorrectionNote
+    // `verbButtonOn` re-patches its press on every render, so a setup re-recorded under its name re-points to the new revision.
+    let repointTo (setup : Setups.Setup) : IView =
+        let repoint (event : PointerPressedEventArgs) : unit =
+            let note = typedText event ConstructorUiId.dataCorrectionNoteField model.dataDraft.correctionNote
+            dispatch (SetCorrectionNote note)
+            dispatch (CorrectSetup (experiment.id, setup.reference, note))
+        let label = ControlCaption $"Re-point to {setup.reference.describe}"
+        MaterialsWindowView.verbButtonOn (ConstructorUiId.dataCorrectSetupChoice setup.name) label repoint
+    let choices =
+        WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.maxWidth 360.0
+            WrapPanel.children (model.kitSetups |> List.filter (fun setup -> setup.reference <> experiment.setup) |> List.map repointTo)
+        ]
+        :> IView
+        |> availabilityBox model.kitWrites
+    let trail : IView list =
+        match experiment.corrections with
+        | [] -> []
+        | corrections ->
+            [
+                StackPanel.create [
+                    ConstructorUiId.dataCorrectionTrail.automationAttribute<StackPanel> ()
+                    StackPanel.orientation Orientation.Vertical
+                    StackPanel.margin (Thickness(0.0, 4.0, 0.0, 0.0))
+                    StackPanel.children (
+                        corrections
+                        |> List.map (fun correction ->
+                            TextBlock.create [
+                                TextBlock.text $"{correction.previous.describe} → {correction.corrected.describe}: {correction.note.value}"
+                                TextBlock.textWrapping TextWrapping.Wrap
+                                TextBlock.maxWidth 360.0
+                            ]
+                            :> IView)
+                    )
+                ]
+                :> IView
+            ]
+    setupLine :: noteField :: choices :: trail
+
 /// The reviewed experiment's points: its name and badge, the exclusion reason, the points chart with each excluded point
-/// a ring, and a row per point; else why it has none. Keyed by the experiment, so its verbs never act for another (spec
-/// 0050 S9.3; 001 §K, §O).
+/// a ring, and a row per point, else why it has none; then its setup's correction. Keyed by the experiment, so its verbs
+/// never act for another (spec 0050 S9.3; 001 §K, §O).
 let private dataReviewPanel
     (model : TableAndElementRotationModel)
     (dispatch : TableAndElementRotationMsg -> unit)
@@ -283,33 +388,14 @@ let private dataReviewPanel
             TextBlock.margin (Thickness(0.0, 0.0, 0.0, 6.0))
         ]
         :> IView
-    let commitReason (source : obj) : unit =
-        match source with
-        | :? TextBox as field ->
-            let reason = ControlCaption (string field.Text)
-            dispatch (SetExclusionReason reason)
-        | _ -> ()
     let reasonField =
-        DockPanel.create [
-            DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
-            DockPanel.children [
-                TextBlock.create [
-                    TextBlock.dock Dock.Left
-                    TextBlock.verticalAlignment VerticalAlignment.Center
-                    TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                    TextBlock.text "Reason:"
-                ]
-                TextBox.create [
-                    ConstructorUiId.dataExclusionReasonField.automationAttribute<TextBox> ()
-                    AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, "Exclusion reason", ValueNone)
-                    TextBox.minWidth 220.0
-                    TextBox.text model.dataDraft.exclusionReason.value
-                    TextBox.onKeyDown (fun event -> if event.Key = Key.Enter then commitReason event.Source)
-                    TextBox.onLostFocus (fun event -> commitReason event.Source)
-                ]
-            ]
-        ]
-        :> IView
+        reviewField
+            dispatch
+            ConstructorUiId.dataExclusionReasonField
+            (ControlCaption "Reason:")
+            (ControlCaption "Exclusion reason")
+            model.dataDraft.exclusionReason
+            SetExclusionReason
     let points : IView list =
         match reviewed.points with
         | Ok mapped ->
@@ -349,7 +435,7 @@ let private dataReviewPanel
                 StackPanel.create [
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.spacing 2.0
-                    StackPanel.children (heading :: reasonField :: points)
+                    StackPanel.children (heading :: reasonField :: points @ setupCorrectionBlock model dispatch experiment)
                 ]
             )
         ]
@@ -358,8 +444,8 @@ let private dataReviewPanel
     :> IView
 
 /// The Data step's surface: the data files, one row per experiment, then Split a file by key…, which opens the split
-/// wizard over a picked lab file, under it the held split's panel, then the reviewed experiment's points; the attach and
-/// split verbs are withheld while the kit takes no writes (spec 0050 S9.3).
+/// wizard over a picked lab file, under it the held split's panel, then the reviewed experiment's points and setup
+/// correction; the attach and split verbs are withheld while the kit takes no writes (spec 0050 S9.3).
 let dataStepView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let dataFiles : IView =
         match model.experimentCollection.experiments with

@@ -867,6 +867,10 @@ type ConstructorUiId =
     static member dataPointDot (point : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"DataPointDot_{point.value}"
     /// An excluded point's ring on the review's chart: `DataPointExcluded_<n>` (spec 0050 S9.3; 001 §K).
     static member dataExcludedPointMark (point : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"DataPointExcluded_{point.value}"
+    /// The review's audit note, the one a re-point to another setup sends (spec 0050 S9.3; 001 §K).
+    static member dataCorrectionNoteField : ConstructorUiId = ConstructorUiId "DataCorrectionNoteField"
+    /// The reviewed experiment's audit trail: one line per setup correction, oldest first (spec 0050 S9.3; 001 §K).
+    static member dataCorrectionTrail : ConstructorUiId = ConstructorUiId "DataCorrectionTrail"
 
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).

@@ -177,6 +177,9 @@ module ConstructorUiIdOfDomain =
         /// Draws this kit setup on the table (spec 0050 S8.2).
         static member savedSetup (name : Kit.SetupName) : ConstructorUiId = ConstructorUiId $"SavedSetup_{name.value}"
 
+        /// The Data step's re-point of the reviewed experiment to this kit setup: `DataCorrectSetup_<name>` (spec 0050 S9.3).
+        static member dataCorrectSetupChoice (name : Kit.SetupName) : ConstructorUiId = ConstructorUiId $"DataCorrectSetup_{name.value}"
+
         /// An element's invisible hover target on the Main table, which carries its tooltip (spec 0046).
         static member elementHover (elementId : ElementId) : ConstructorUiId = ConstructorUiId $"ElementHover_{elementId.value}"
 
