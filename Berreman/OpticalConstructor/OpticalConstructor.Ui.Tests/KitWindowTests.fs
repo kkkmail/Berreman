@@ -1415,6 +1415,24 @@ module KitWindowTests =
         | PolarizerPresetChoice _
         | LibraryModelChoice _ -> false
 
+    /// The add form's offer of the source preset `preset`.
+    let private sourceOffer (preset : Placement.ElementValueId) (offer : ItemModelChoice) : bool =
+        match offer with
+        | SourcePresetChoice (_, source) -> source.id = preset
+        | PolarizerPresetChoice _
+        | StackSampleChoice _
+        | LibraryModelChoice _ -> false
+
+    /// The id of the model's kit item labelled `label`.
+    let private kitItemIdOf (model : TableAndElementRotationModel) (label : string) : ItemId =
+        match model.kitItems |> List.tryFind (fun item -> item.label = ItemLabel label) with
+        | Some item -> item.id
+        | None -> failwith $"The kit must hold {label}."
+
+    /// The id of the model's first table slot of that kind.
+    let private tableSlotIdOf (kind : Placement.CatalogueKind) (model : TableAndElementRotationModel) : Library.ElementId =
+        (model.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)).id
+
     /// The direct problem's sample slot and the two plates swapped into it (spec 0050 S8.4).
     type private DirectProblemPieces =
         {
@@ -1446,24 +1464,18 @@ module KitWindowTests =
                         |> withOfferAdded (ControlCaption "LP1") linearPolarizerOffer
                         |> withOfferAdded (ControlCaption "QZ") (plateOffer Library.SampleIds.glassPlate1mmId)
                         |> withOfferAdded (ControlCaption "QZ2") (plateOffer Library.SampleIds.glassPlate2mmId)
-                    let itemOf (label : string) : ItemId =
-                        match stocked.kitItems |> List.tryFind (fun item -> item.label = ItemLabel label) with
-                        | Some item -> item.id
-                        | None -> failwith $"The kit must hold {label}."
-                    let slotOf (kind : Placement.CatalogueKind) (model : TableAndElementRotationModel) : Library.ElementId =
-                        (model.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)).id
                     let withPolarizer = stocked |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
-                    let polarizer = slotOf Placement.LinearPolarizer withPolarizer
+                    let polarizer = tableSlotIdOf Placement.LinearPolarizer withPolarizer
                     let withSample = withPolarizer |> updateTableAndElementRotation (AddElement Placement.Sample)
                     let held : DirectProblemPieces =
                         {
-                            sample = slotOf Placement.Sample withSample
-                            qz = itemOf "QZ"
-                            qz2 = itemOf "QZ2"
+                            sample = tableSlotIdOf Placement.Sample withSample
+                            qz = kitItemIdOf stocked "QZ"
+                            qz2 = kitItemIdOf stocked "QZ2"
                         }
                     let ready =
                         withSample
-                        |> updateTableAndElementRotation (AssignSlot (polarizer, Some (itemOf "LP1")))
+                        |> updateTableAndElementRotation (AssignSlot (polarizer, Some (kitItemIdOf stocked "LP1")))
                         |> updateTableAndElementRotation (AssignSlot (held.sample, Some held.qz))
                         |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench"))
                         |> updateTableAndElementRotation CreateSetup
@@ -1595,14 +1607,14 @@ module KitWindowTests =
             + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,912.25\n"
         Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] (System.Text.Encoding.UTF8.GetBytes text)
 
-    /// Writes the phone's ROI file into a fresh folder under the class's test directory, beside its kits and never in
-    /// one, as a lab file is picked from outside the kit (spec 0050 S9.2).
-    let private labFileOutsideKits () : FileName =
+    /// Writes a phone's ROI file holding `bytes` into a fresh folder under the class's test directory, beside its kits and
+    /// never in one, as a lab file is picked from outside the kit (spec 0050 S9.2, S9.3).
+    let private labFileOutsideKits (bytes : byte[]) : FileName =
         let classFolder = Path.GetDirectoryName (TestAppScope.testLocations owner).kitsFolder.value
         let labFolder = Path.Combine(classFolder, "Lab", System.Guid.NewGuid().ToString("N"))
         Directory.CreateDirectory labFolder |> ignore
         let file = FileName (Path.Combine(labFolder, "phone-roi.csv"))
-        File.WriteAllBytes(file.value, phoneRoiBytes)
+        File.WriteAllBytes(file.value, bytes)
         file
 
     [<Fact>]
@@ -1639,7 +1651,7 @@ module KitWindowTests =
                     {
                         recorded with kitShell = KitWindowShell.inert.withImportWizard host dispatch
                     }
-                let labFile = labFileOutsideKits ()
+                let labFile = labFileOutsideKits phoneRoiBytes
                 let leaf = Path.GetFileName labFile.value
                 Assert.Empty host.OwnedWindows
 
@@ -1679,3 +1691,259 @@ module KitWindowTests =
                 host.Close()
                 Dispatcher.UIThread.RunJobs()
                 opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    /// A kit window hosted as `ConstructorScene.mount` hosts one: the window, its dispatch, which runs the UI jobs after
+    /// each message, and the latest model its update answered (spec 0050 S9.3).
+    type private DispatchingKitWindow =
+        {
+            window : Window
+            dispatch : TableAndElementRotationMsg -> unit
+            latest : unit -> TableAndElementRotationModel
+        }
+
+    /// Shows `kitWindowView` over `model` headless at 1400 × 900 in a `HostWindow` running `Program.mkProgram`, every
+    /// message through `updateTableAndElementRotation` and the dispatch captured by the init command, as
+    /// `ConstructorScene.mount` captures it; runs `check`, then closes the window (spec 0050 S9.3).
+    let private withDispatchingKitWindow (model : TableAndElementRotationModel) (check : DispatchingKitWindow -> unit) : unit =
+        let latest = ref model
+        let captured : (TableAndElementRotationMsg -> unit) ref = ref ignore
+        let init () : TableAndElementRotationModel * Cmd<TableAndElementRotationMsg> =
+            model, Cmd.ofEffect (fun dispatch -> captured.Value <- dispatch)
+        let update
+            (msg : TableAndElementRotationMsg)
+            (current : TableAndElementRotationModel)
+            : TableAndElementRotationModel * Cmd<TableAndElementRotationMsg> =
+            let next = updateTableAndElementRotation msg current
+            latest.Value <- next
+            next, Cmd.none
+        let window = HostWindow()
+        Program.mkProgram init update KitWindowView.kitWindowView
+        |> Program.withHost window
+        |> Program.run
+        window.Width <- 1400.0
+        window.Height <- 900.0
+        try
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let mounted : DispatchingKitWindow =
+                {
+                    window = window
+                    dispatch =
+                        fun msg ->
+                            captured.Value msg
+                            Dispatcher.UIThread.RunJobs()
+                    latest = fun () -> latest.Value
+                }
+            check mounted
+        finally
+            window.Close()
+            Dispatcher.UIThread.RunJobs()
+
+    /// The direct problem's Phone ROI captures as the lab writes them, without a byte-order mark: two of `LP1-(QZ#45)-LPd`,
+    /// a repeat of it, one of QZ2 at 0° and a dark frame (spec 0050 S9.3).
+    let private splitPhoneRoiBytes : byte[] =
+        System.Text.Encoding.UTF8.GetBytes(
+            String.concat
+                ""
+                [
+                    "experiment,capture_index,captured_at,description,avg_total\n"
+                    "LP1-(QZ#45)-LPd,0,2026-07-15T12:00:00+00:00,0,869.5\n"
+                    "LP1-(QZ#45)-LPd,1,2026-07-15T12:01:00+00:00,45,912.25\n"
+                    "LP1-(QZ#45)-LPd-2,0,2026-07-15T12:02:00+00:00,0,870\n"
+                    "LP1-(QZ2#0)-LPd,0,2026-07-15T12:03:00+00:00,0,801.5\n"
+                    "Darkness,0,2026-07-15T12:04:00+00:00,0,12.5\n"
+                ]
+        )
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the Data step splits a lab file across the kit's experiments, excludes a point and corrects a setup, all kept in the kit`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let folder = TestAppScope.freshKitFolder owner
+            let e1Id = Experiments.ExperimentId 1
+            let e1Name = Experiments.ExperimentName "LP1-(QZ#45)-LPd"
+            let createdName = Experiments.ExperimentName "LP1-(QZ2#0)-LPd"
+            let e1Setup : SetupReference =
+                {
+                    name = SetupName "LP1-(QZ#45)-LPd"
+                    revision = SetupRevision.first
+                }
+            let createdSetup : SetupReference =
+                {
+                    name = SetupName "LP1-(QZ2#0)-LPd"
+                    revision = SetupRevision.first
+                }
+            let e1Key = DataRowKey "LP1-(QZ#45)-LPd"
+            let createdKey = DataRowKey "LP1-(QZ2#0)-LPd"
+            let opened = openedAt folder ReadWriteKitAccess ctx
+            try
+                let loaded = kitWindowModel ctx opened InverseConstructor KitWindowShell.inert
+                Assert.Equal<NamingTemplate>(NamingTemplate.standard, loaded.kit.kitFile.namingTemplate)
+                // Spec 0050 S7.2: the add form offers the app's item models over the kit's, as the App's windows do.
+                let offering =
+                    {
+                        loaded with itemModels = ctx.itemModels.overlaidWith opened.overlay
+                    }
+                let stocked =
+                    offering
+                    |> withOfferAdded (ControlCaption "LP1") linearPolarizerOffer
+                    |> withOfferAdded (ControlCaption "QZ") (plateOffer Library.SampleIds.glassPlate1mmId)
+                    |> withOfferAdded (ControlCaption "QZ2") (plateOffer Library.SampleIds.glassPlate2mmId)
+                    |> withOfferAdded (ControlCaption "Laser") (sourceOffer Library.PresetIds.heNe633)
+                    |> withOfferAdded (ControlCaption "LPd") linearPolarizerOffer
+                Assert.Equal<ControlCaption option>(None, stocked.kitStatus)
+                Assert.Equal<ItemLabel list>(
+                    [ "LP1"; "QZ"; "QZ2"; "Laser"; "LPd" ] |> List.map ItemLabel |> List.sort,
+                    stocked.kitItems |> List.map (fun item -> item.label) |> List.sort)
+
+                // Step 272's table: LP1, QZ turned to R1 45° and LPd, which the light meets in that order before the
+                // seeded detector. The Inverse table seeds its sample, selected as `ExperimentControlsTests` selects a
+                // slot so the turn is its own; the adds spread the two polarizers along the beam, one on either side.
+                let sample = tableSlotIdOf Placement.Sample stocked
+                let sampleIndex = stocked.elements |> List.findIndex (fun slot -> slot.id = sample)
+                let turned =
+                    {
+                        stocked with selection = ElementSelected (SceneElementIndex sampleIndex)
+                    }
+                    |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 45.0))
+                let withPolarizer = turned |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                let polarizer = tableSlotIdOf Placement.LinearPolarizer withPolarizer
+                let placed = withPolarizer |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                let analyzer =
+                    placed.elements
+                    |> List.find (fun slot -> slot.placement.catalogueKind = Placement.LinearPolarizer && slot.id <> polarizer)
+                let recorded =
+                    placed
+                    |> updateTableAndElementRotation (AssignSlot (polarizer, Some (kitItemIdOf stocked "LP1")))
+                    |> updateTableAndElementRotation (AssignSlot (sample, Some (kitItemIdOf stocked "QZ")))
+                    |> updateTableAndElementRotation (AssignSlot (analyzer.id, Some (kitItemIdOf stocked "LPd")))
+                    |> updateTableAndElementRotation (ExpChooseElement polarizer)
+                    |> updateTableAndElementRotation ExpCommit
+                Assert.Equal<(SlotRole * Library.ElementId) list>(
+                    [
+                        SourceSlotRole, tableSlotIdOf Placement.LightSource recorded
+                        PrepSlotRole (SlotPosition 1), polarizer
+                        ObjectSlotRole (SlotPosition 1), sample
+                        AnalyzerSlotRole (SlotPosition 1), analyzer.id
+                        DetectorSlotRole (SlotPosition 1), tableSlotIdOf Placement.Detector recorded
+                    ],
+                    SetupSlot.inLightOrder recorded.elements |> List.map (fun roled -> roled.role, roled.slot.id))
+                Assert.Equal<ControlCaption option>(None, recorded.kitStatus)
+                Assert.Equal<SetupReference list>([ e1Setup ], recorded.kitSetups |> List.map (fun setup -> setup.reference))
+                let recordedE1 = Assert.Single recorded.experimentCollection.experiments
+                Assert.Equal<Experiments.ExperimentId>(e1Id, recordedE1.id)
+                Assert.Equal<Experiments.ExperimentName>(e1Name, recordedE1.name)
+                Assert.Equal<SetupReference>(e1Setup, recordedE1.setup)
+
+                let labFile = labFileOutsideKits splitPhoneRoiBytes
+                let leaf = Path.GetFileName labFile.value
+                let dataFolder = Path.Combine(folder.value.value, "data")
+                // Spec 0050 S9.3; 001 §K: the kit holds the lab file once, with the picked bytes, through every write.
+                let assertLabFileKept () : unit =
+                    let held = Directory.GetFiles dataFolder |> Array.map Path.GetFileName |> List.ofArray
+                    Assert.Equal<string list>([ leaf ], held)
+                    Assert.Equal<byte[]>(splitPhoneRoiBytes, File.ReadAllBytes(Path.Combine(dataFolder, leaf)))
+                    Assert.Equal<byte[]>(splitPhoneRoiBytes, File.ReadAllBytes labFile.value)
+                // The experiment of that name as its kit file reads back.
+                let storedNamed (name : Experiments.ExperimentName) : Experiments.Experiment =
+                    let stored = (KitProxy.create folder).readExperiments () |> SceneTestFixture.kitSuccess
+                    match stored |> List.tryFind (fun held -> held.name = name) with
+                    | Some experiment -> experiment
+                    | None -> failwith $"The kit must hold the experiment '{name.value}'."
+                let mappedOf (experiment : Experiments.Experiment) : MappedAttachment =
+                    match experiment.dataOpt with
+                    | Some data -> data
+                    | None -> failwith $"'{experiment.name.value}' must hold the lab file"
+
+                withDispatchingKitWindow recorded (fun mounted ->
+                    let window = mounted.window
+                    pressBox window ConstructorUiId.flowDataStep
+                    let panel = controlById window ConstructorUiId.dataStepPanel
+                    Assert.True(panel.IsEffectivelyVisible, "Data must show the Data step")
+
+                    // Spec 0050 S9.3: what the split wizard's Split sends (step 321).
+                    mounted.dispatch (SplitByColumn (labFile, ImportProfileName.phoneRoiCsv))
+                    let keyColumn = controlById window ConstructorUiId.dataSplitKeyColumn
+                    Assert.True(keyColumn.IsEffectivelyVisible, "the split must name its key column")
+                    pressBox window (ConstructorUiId.dataSplitOfferToggle createdKey)
+                    pressBox window ConstructorUiId.dataSplitApplyButton
+
+                    Assert.Equal(
+                        $"Attached {leaf} to 2 experiment(s): 1 matched, 1 created with 1 new setup(s); 2 group(s) left unattached.",
+                        textOf window ConstructorUiId.kitStatus)
+                    assertLabFileKept ()
+                    Assert.Equal<string list>(
+                        [ "LP1-(QZ#45)-LPd.setup-json"; "LP1-(QZ2#0)-LPd.setup-json" ],
+                        kitFilesIn folder "*.setup-json")
+                    Assert.Equal<string list>(
+                        [ "LP1-(QZ#45)-LPd.experiment-json"; "LP1-(QZ2#0)-LPd.experiment-json" ],
+                        kitFilesIn folder "*.experiment-json")
+                    let attached = mappedOf (storedNamed e1Name)
+                    Assert.Equal<KitRelativePath>(KitRelativePath $"data/{leaf}", attached.attachment.path)
+                    Assert.Equal<ImportProfileName>(ImportProfileName.phoneRoiCsv, attached.profile)
+                    Assert.Equal<DataRowSelection>(KeyedDataRows e1Key, attached.rows)
+                    Assert.Empty(attached.exclusions)
+                    let created = storedNamed createdName
+                    Assert.Equal<SetupReference>(createdSetup, created.setup)
+                    let expectedCreated : MappedAttachment =
+                        {
+                            attached with rows = KeyedDataRows createdKey
+                        }
+                    Assert.Equal<MappedAttachment>(expectedCreated, mappedOf created)
+
+                    // The matrix entry reviews E1: its two points, each in its row.
+                    pressBox window (ConstructorUiId.experimentMatrixEntry e1Id)
+                    let review = controlById window ConstructorUiId.dataReviewPanel
+                    Assert.True(review.IsEffectivelyVisible, "the matrix entry must show the review panel")
+                    let pointRowIds =
+                        review.GetVisualDescendants()
+                        |> Seq.choose (function
+                            | :? Control as control -> Option.ofObj (AutomationProperties.GetAutomationId control)
+                            | _ -> None)
+                        |> Seq.filter (fun automationId -> automationId.StartsWith "DataPoint_")
+                        |> List.ofSeq
+                    Assert.Equal<string list>(
+                        [ 1; 2 ] |> List.map (fun number -> (ConstructorUiId.dataPointRow (MappedPointNumber number)).value),
+                        pointRowIds)
+
+                    mounted.dispatch (SetExclusionReason (ControlCaption "saturated"))
+                    pressBox window (ConstructorUiId.dataExcludePointButton (MappedPointNumber 2))
+                    let expectedExcluded : MappedAttachment =
+                        {
+                            attached with
+                                exclusions =
+                                    [
+                                        {
+                                            point = MappedPointNumber 2
+                                            reason = ExclusionReason "saturated"
+                                        }
+                                    ]
+                        }
+                    Assert.Equal<MappedAttachment>(expectedExcluded, mappedOf (storedNamed e1Name))
+                    Assert.Equal(
+                        $"{e1Name.value} · excluded points (1 excluded, 1 validated)",
+                        boxLabelOf window (ConstructorUiId.experimentMatrixEntry e1Id))
+                    assertLabFileKept ()
+
+                    mounted.dispatch (SetCorrectionNote (ControlCaption "QZ was at 0"))
+                    pressBox window (ConstructorUiId.dataCorrectSetupChoice createdSetup.name)
+                    let corrected = storedNamed e1Name
+                    Assert.Equal<SetupReference>(createdSetup, corrected.setup)
+                    let expectedCorrection : SetupCorrection =
+                        {
+                            previous = e1Setup
+                            corrected = createdSetup
+                            note = CorrectionNote "QZ was at 0"
+                        }
+                    Assert.Equal<SetupCorrection list>([ expectedCorrection ], corrected.corrections)
+                    Assert.Equal<Experiments.ExperimentId>(e1Id, corrected.id)
+                    Assert.Equal<MappedAttachment>(expectedExcluded, mappedOf corrected)
+                    Assert.Equal<string list>(
+                        [ "LP1-(QZ#45)-LPd.experiment-json"; "LP1-(QZ2#0)-LPd.experiment-json" ],
+                        kitFilesIn folder "*.experiment-json")
+                    Assert.Equal<Experiments.Experiment option>(
+                        Some corrected,
+                        mounted.latest().experimentCollection.experiments |> List.tryFind (fun held -> held.id = e1Id))
+                    assertLabFileKept ())
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)

@@ -571,6 +571,12 @@ This is a spec-driven, gated repository.
   in `.kit-json`, never replaced once saved; `ChosenImportProfile.mapText` is the one read and `MappedPoints.validatedFor`
   the one validation; the app writes only observation files (`KeyedObservation.observationFileText`); Attach data file…
   opens the wizard, whose Attach sends `SaveImportProfile` then `AttachDataFile`.
+- **The Data step never edits a lab file** (`DataSplits.fs`, `ExperimentMatrices.fs`, `DataStepView.fs`, spec 0050 S9.3): an
+  exclusion numbers a point of its mapped attachment (`MappedPointNumber`, one per point, with its reason) and a new
+  attachment starts with none; `MappedPoints.keptBy` is the one rule from exclusions to the points validated and fitted; a
+  correction re-points `Experiment.setup` and appends its audit note, the name kept; a split groups a file by its profile's
+  key column (`splitGroups`) and `DataSplit.ofGroups` matches by name, then by the template, else offers the setup the name
+  describes; `MatchByTemplate` attaches the file once, each group as `KeyedDataRows`.
 - **The slot bar is the quick swap** (`SlotBarView.fs`, spec 0050 S8.4): one chip per slot in light order, directly
   above the table, each listing the kit items that fit its slot (`SetupSlot.fittingItems`); choosing one is `SwapSlot`
   (the held setup of that content, else a new one), Tab moves between chips and a typed letter picks (`pickedByLetter`).
@@ -590,8 +596,8 @@ This is a spec-driven, gated repository.
   WrapPanel (or a wrapping TextBlock) inside a horizontal StackPanel: it gets an unbounded width and never
   wraps — dock the label in a DockPanel instead. A plain wheel over the Main table scrolls the page until
   the table is fully in view, then zooms it (`wheelTarget`); with a modifier it is always the table's.
-- **Main ribbon:** Add (opens first) · Rotate · Move · Render · Select · Experiments · Details. The
-  Experiments bay's "Data files" section (Attach data file…) is the Inverse constructor's alone; a
+- **Main ribbon:** Add (opens first) · Rotate · Move · Render · Select · Experiments · Details. Attach data
+  file… lives in the Inverse constructor's Data step (`DataStepView.fs`), not in the Experiments bay; a
   collected experiment's View opens its chart (there is no separate Open chart button).
 - **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
   `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
