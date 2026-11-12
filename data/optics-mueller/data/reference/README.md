@@ -2,8 +2,8 @@
 
 This folder, the optics-mueller kit's `data/reference/`, holds the reference implementation and the
 reference numerical results that `Berreman/BerremanTests/MuellerReconstructionTests.fs` was written
-against. The measured Mueller-matrix polarimetry data it inventories, which the tests consume, is
-`Berreman/Data/MuellerMatrix/data.zip`.
+against. The measured Mueller-matrix polarimetry data it inventories, which the tests consume, is this
+kit's lab files under `data/raw/`.
 
 Everything here is **data and documentation**. No project builds it, references it, or executes it.
 In particular, **BNM never invokes Python at build or test time** — the tests are pure F#.
@@ -19,15 +19,16 @@ In particular, **BNM never invokes Python at build or test time** — the tests 
 | Commit | `2f1a35b70f877e41fa9b576fadd138d7dc80b858` |
 | Copied on | 2026-08-02 |
 
-The copies below are byte-identical to the source except that CRLF line endings were converted to LF
-to satisfy this repository's `.gitattributes` policy.
+The copies below are byte-identical to the source except that the scripts and summaries had their CRLF
+line endings converted to LF to satisfy this repository's `.gitattributes` policy; the lab CSVs keep
+their recorded bytes.
 
 Before this copy, `MuellerReconstructionTests` located the CSV data by walking up from its output
 directory to a sibling `optics-mueller` checkout, and skipped when that checkout was absent. That
-dependency is retired: the data lives in `Berreman/Data/MuellerMatrix/data.zip`, the tests read it through
-`OpticalConstructor.Storage.MuellerDataStore`, and **no code path references `optics-mueller` any
-more**. The scripts and reference results are kept so that the F# port remains auditable after the
-external checkout is gone.
+dependency is retired: the lab files live in this kit, `MuellerReconstructionTests` reads them
+read-only through the Phone ROI CSV import profile (`MuellerDataStore.parseMuellerCsv`), and **no code
+path references the external checkout**. The scripts and reference results are kept so that the F# port
+remains auditable after the external checkout is gone.
 
 ---
 
@@ -37,9 +38,9 @@ external checkout is gone.
 
 | File | Description |
 |---|---|
-| `Berreman/Data/MuellerMatrix/data.zip` | The measured capture data. Inventory below. |
+| `data/raw/` | The lab files, moved byte for byte out of the former `Berreman/Data/MuellerMatrix/data.zip` by spec 0050 S9.4. Inventory below. |
 
-`Berreman/Data/MuellerMatrix/data.zip` holds 18 files. Seven of them are the science data the tests consume, all under
+`data/raw/` holds 15 CSVs. Seven of them are the science data the tests consume, all under
 `data/raw/final/`:
 
 | Entry | Data rows | Content |
@@ -52,9 +53,9 @@ external checkout is gone.
 | `data/raw/final/darkness_checks.csv` | 6 | dark frames; their mean `avg_total` is the dark level (869.666) |
 | `data/raw/final/bullshit_checks.csv` | 2 | diagnostic captures; the earliest one is the CPL-LP gain split time |
 
-The remaining eleven entries are earlier exploratory work, retained for completeness and **not read by
-any test**: eight CSVs under `data/raw/` (`cpl_cpl*.csv`, `cpl_lr45_*.csv`, region-of-interest and
-beam-shape variants) and three beam-shape descriptions under `data/shapes/`.
+The other eight CSVs are earlier exploratory work under `data/raw/`, retained for completeness and **not
+read by any test**: `cpl_cpl*.csv`, `cpl_lr45_*.csv`, region-of-interest and beam-shape variants. The
+archive's three beam-shape descriptions are in `data/reference/shapes/`.
 
 Every CSV carries the same 16-column header — `experiment, capture_index, captured_at, description,
 iso, exposure_ns, focus_distance, region_x, region_y, region_w, region_h, n_pixels, avg_R, avg_G,

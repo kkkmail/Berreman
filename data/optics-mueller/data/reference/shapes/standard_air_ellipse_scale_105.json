@@ -1,0 +1,19 @@
+{
+  "kind": "ellipse-v1-standard-scaled",
+  "standard_name": "images_final_air_medoid_thr010_v1_scale_105",
+  "base_shape_file": "C:\\GitHub\\optics-mueller\\data\\shapes\\standard_air_ellipse_v1.json",
+  "scale_factor": 1.05,
+  "image_width": 4080,
+  "image_height": 3060,
+  "ellipse": {
+    "cx": 2086.8043253786,
+    "cy": 1554.1426167600798,
+    "rx": 1230.1986868311075,
+    "ry": 1145.9525884326187,
+    "theta_deg": 80.77842612085473
+  },
+  "notes": [
+    "Same center and orientation as standard_air_ellipse_v1.json.",
+    "Radii scaled by 1.05 for ellipse support sensitivity checks."
+  ]
+}

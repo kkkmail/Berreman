@@ -1,0 +1,30 @@
+{
+  "kind": "ellipse-v1-standard",
+  "standard_name": "images_final_air_medoid_thr010_v1",
+  "selection_method": {
+    "type": "medoid-max-mean-iou",
+    "source_summary_csv": "C:\\GitHub\\optics-mueller\\analysis\\beam-shapes\\images-final-air-compare-thr010\\pairwise_shape_diffs.csv",
+    "source_shape_records_csv": "C:\\GitHub\\optics-mueller\\analysis\\beam-shapes\\images-final-air-compare-thr010\\shape_records.csv",
+    "candidate_count": 10,
+    "threshold_rel": 0.1,
+    "chosen_experiment": "LP-(AIR#0)-CPL-2R",
+    "chosen_group": "LP-CPL",
+    "chosen_shape_json": "C:\\GitHub\\optics-mueller\\analysis\\beam-shapes\\images-final-air-by-experiment-thr010\\LP-_AIR_0_-CPL-2R\\beam_shape.json",
+    "mean_iou_vs_all": 0.9360069681850643,
+    "min_iou_vs_all": 0.8458879010929484,
+    "mean_area_rel_diff_vs_all": 0.06317528436934056
+  },
+  "image_width": 4080,
+  "image_height": 3060,
+  "ellipse": {
+    "cx": 2086.8043253786,
+    "cy": 1554.1426167600798,
+    "rx": 1171.6177969820071,
+    "ry": 1091.3834175548748,
+    "theta_deg": 80.77842612085473
+  },
+  "notes": [
+    "Chosen as the single measured AIR ellipse with the highest mean pairwise sampled IoU across all currently measured AIR families in images_final.",
+    "Coordinates are in full-frame image pixels and are meant to be consumed directly by tools/export_optics_csv.fsx via --shape-file."
+  ]
+}

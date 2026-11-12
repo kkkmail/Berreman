@@ -11,20 +11,24 @@ open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerReconstruction
-open OpticalConstructor.Storage                        // MuellerDataStore — the REAL parseMuellerCsv / createArchiveBacked
-open OpticalConstructor.Storage.MuellerDataStore       // DataFileText.parseMuellerCsv
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Storage
+open OpticalConstructor.Storage.MuellerDataStore
+open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Storage.LabFileImport
 open Xunit
 open BerremanTests.MatrixComparison
 
 /// Spec 0042 — acceptance suite for the Mueller-reconstruction pipeline (`MuellerReconstruction` + the
-/// archive-backed `MuellerDataStore` + the vendored-MathNet SVD solver). Most facts reuse the
+/// Phone ROI CSV parser + the vendored-MathNet SVD solver). Most facts reuse the
 /// element-by-element Mueller compare loop from `MuellerMatrixTests.fs:20` and the shared `allowedDiff`
 /// tolerance (`MatrixComparison.fs:13`).
 ///
 /// Spec 0044 §8 retired the external data dependency and tightened the measured-data acceptance:
-///   - the measured data is COMMITTED (`Berreman/Data/MuellerMatrix/data.zip`) and reached through the
-///     re-keyed `MuellerDataProxy`, which takes a `MuellerDataSet` (an identity) rather than a
-///     `DataFilePath` (a location) — no test here names a path, an archive or an entry;
+///   - the measured data is the optics-mueller kit's lab files, found from the repository root and read
+///     read-only through the Phone ROI CSV import profile (spec 0050 S9.4);
 ///   - nothing walks up to, or otherwise probes for, an external checkout, and the two
 ///     data-backed facts no longer skip: absent data is now a defect and fails;
 ///   - the §7.2 matrices and the Stage-1 constants are asserted against the reference pipeline's own
@@ -183,18 +187,32 @@ type MuellerReconstructionTests() =
     /// §9 at ~20× the observed worst deviation of 4.9e-11.
     let dataMatrixTol = 1.0e-9
 
-    /// Load one measured data set through the REAL archive-backed store, failing the test on any typed error.
-    ///
-    /// Spec 0044 §8.4: the measured data is COMMITTED to the repository (`Berreman/Data/MuellerMatrix/data.zip`,
-    /// copied next to this assembly by `BerremanTests.fsproj`), so a load failure is a DEFECT, not an
-    /// environmental condition. The previous behaviour — walk up the directory tree looking for a sibling
-    /// external checkout and `Assert.Skip` when it was absent — is gone, together with every reference to
-    /// that checkout. Note what this helper does NOT mention: no path, no archive, no entry name. It names
-    /// a `MuellerDataSet` and the store resolves everything else (§8.3 / R5).
-    let loadDataSet (data : MuellerDataProxy) (dataSet : MuellerDataSet) : MuellerRawRow list =
-        match data.tryLoadDataSet dataSet with
-        | Ok rows -> rows
-        | Error e -> failwith $"could not load the measured data set %A{dataSet} from the committed archive: %A{e}"
+    /// One lab file of the optics-mueller kit, read read-only through the Phone ROI CSV import profile; a missing kit
+    /// folder or any refusal fails the test with what it says (spec 0050 S9.4).
+    let loadDataSet (file : KitRelativePath) : MuellerRawRow list =
+        match OpticsMuellerKit.tryFindFolder with
+        | None -> failwith $"the optics-mueller kit folder holding '{file.value}' was not found under the repository root"
+        | Some folder ->
+            match (KitProxy.create folder).readOnlyView.readDataFile file with
+            | Error e -> failwith $"could not read the lab file '{file.value}': {e.describe}"
+            | Ok data ->
+                match (BuiltInProfileChoice PhoneRoiCsvProfile).mapText data.text with
+                | Ok (CapturePoints rows) -> rows
+                | Ok _ -> failwith $"the Phone ROI CSV profile mapped '{file.value}' to points other than capture rows"
+                | Error e -> failwith $"the Phone ROI CSV profile refused '{file.value}': %A{e}"
+
+    let kitPath (text : string) : KitRelativePath =
+        match KitRelativePath.tryCreate text with
+        | Ok path -> path
+        | Error e -> failwith e.describe
+
+    let lpLpFile = kitPath "data/raw/final/lp_lp.csv"
+    let lpCplFile = kitPath "data/raw/final/lp_cpl.csv"
+    let cplLpFile = kitPath "data/raw/final/cpl_lp.csv"
+    let cplCplDay1File = kitPath "data/raw/final/cpl_cpl_day1_main.csv"
+    let cplCplDay2File = kitPath "data/raw/final/cpl_cpl_day2_corrections.csv"
+    let darknessChecksFile = kitPath "data/raw/final/darkness_checks.csv"
+    let bullshitChecksFile = kitPath "data/raw/final/bullshit_checks.csv"
 
     /// Reduce an experiment family's raw capture rows to its AIR#0 normalized trace — the reference
     /// `load_air_traces` + `prepare_normalized_traces` (matrix_step1_air_fit.py:78, :85): keep only the AIR#0
@@ -495,35 +513,57 @@ type MuellerReconstructionTests() =
         | other -> Assert.Fail($"expected Error (MalformedRowErr _) for a malformed file, got %A{other}")
 
     [<Fact>]
-    member _.``createArchiveBacked produces a MuellerDataProxy that loads every committed data set`` () =
-        // Spec 0044 (§8.3 / §8.4) acceptance: the REAL archive-backed store resolves the committed archive by
-        // itself and loads all seven data sets. Note what this test does not contain — no path, no archive
-        // name, no entry name, no environment probing. It calls a zero-argument factory and names data sets.
-        // That is the whole contract of the 0044 re-key (R5).
-        //
-        // The expected row counts are the archive's documented inventory
-        // (data/optics-mueller/data/reference/README.md, matching spec 0042 §6): asserting them here means a
-        // truncated or wrong-build archive fails loudly at the load, rather than silently producing a
-        // slightly-wrong reconstruction downstream.
-        let proxy = MuellerDataStore.createArchiveBacked ()
+    member _.``the optics-mueller kit's final lab files load through the Phone ROI CSV profile with their documented row counts`` () =
+        // Spec 0050 S9.4: the expected row counts are the inventory of data/optics-mueller/data/reference/README.md
+        // (spec 0042 §6), so a truncated or wrong lab file fails loudly at the load rather than as a slightly wrong
+        // reconstruction downstream.
+        let expectedRowCounts : (KitRelativePath * int) list =
+            [ lpLpFile, 209
+              lpCplFile, 209
+              cplLpFile, 209
+              cplCplDay1File, 170
+              cplCplDay2File, 57
+              darknessChecksFile, 6
+              bullshitChecksFile, 2 ]
 
-        // Pin the EXACT signature by binding the field to an explicitly-typed local: the compiler rejects the
-        // file if `tryLoadDataSet` drifts from its declared shape.
-        let load : MuellerDataSet -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadDataSet
+        let rowCounts = expectedRowCounts |> List.map (fun (file, _) -> file, (loadDataSet file).Length)
+        Assert.Equal<(KitRelativePath * int) list>(expectedRowCounts, rowCounts)
 
-        let expectedRowCounts =
-            [ LpLpFamily, 209
-              LpCplFamily, 209
-              CplLpFamily, 209
-              CplCplDay1, 170
-              CplCplDay2, 57
-              DarknessChecks, 6
-              BullshitChecks, 2 ]
+    [<Fact>]
+    member _.``the optics-mueller kit holds every file of the former data archive byte for byte`` () =
+        // Spec 0050 S9.4: each file's hex SHA-256 is its former `data.zip` entry's; the `-text !eol` rule in
+        // .gitattributes keeps the lab files' CRLF and byte-order mark through a clone (001 §E).
+        let archiveHashes : (KitRelativePath * ContentHash) list =
+            [ kitPath "data/raw/cpl_cpl.csv", ContentHash "c1cbbde1c7b77acf6d23f972bb85f679e0072779d396a49aaf02b1d92e447eb5"
+              kitPath "data/raw/cpl_cpl_big_center.csv", ContentHash "515d16bb7a375b734038a8dbc6730bb6e726d99bfd11d954b986adf81d47b7b8"
+              kitPath "data/raw/cpl_cpl_small_center.csv", ContentHash "f2d97088f562cb5e8097b827b6774d1ba88baefd25b15f312515ad77b958d703"
+              kitPath "data/raw/cpl_cpl_small_small_center.csv", ContentHash "aa18398266782f7cedf15008a8e66beff28f89c81304d68e062d6f8f8216c78b"
+              kitPath "data/raw/cpl_cpl_standard_ellipse.csv", ContentHash "94b8ef01770a12617f55e1b329d1513670044cee3c0c5e340e9c5826588372e5"
+              kitPath "data/raw/cpl_lr45_standard_ellipse_scale_095.csv", ContentHash "59a7b7d7f223bf28c4623299df6a530f63787570eb346935b76d468228fbd3bc"
+              kitPath "data/raw/cpl_lr45_standard_ellipse_scale_105.csv", ContentHash "4fd5b0b5fc09cd291d57732edfd1f582c37119c230c7550d100ebd4a94493336"
+              kitPath "data/raw/cpl_lr45_standard_ellipse_subset.csv", ContentHash "53de707ce70b9792d024db41ae39eac8506656916c97b0db1ef9f1512ef50813"
+              kitPath "data/raw/final/bullshit_checks.csv", ContentHash "f2f7d28d881b57f5760562d030c12d1e554c7c8cc82d6657e9e4fb5c281c2c9e"
+              kitPath "data/raw/final/cpl_cpl_day1_main.csv", ContentHash "9920ae4768558bd865c0190878adf97dde9901e9436a299a0c49e7d48ed39664"
+              kitPath "data/raw/final/cpl_cpl_day2_corrections.csv", ContentHash "fcace7c401940d6b4a84347acd2b2afb925f5ea9c2c57e64fcc6d88e4ad26b2e"
+              kitPath "data/raw/final/cpl_lp.csv", ContentHash "9737ebe6534446ce3d4e1bcbcda222b88fae2d3c58de0cc8db1d322a5c002f39"
+              kitPath "data/raw/final/darkness_checks.csv", ContentHash "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2"
+              kitPath "data/raw/final/lp_cpl.csv", ContentHash "d014c90144a98eb1949d30716be1f01049ec9763e0e3b94ceb68d2e43c4b1ba8"
+              kitPath "data/raw/final/lp_lp.csv", ContentHash "0fc29a63fd7de90b85842af5020cd79fb1e74ac2d24b49f7c7673cbead82cd81"
+              kitPath "data/reference/shapes/standard_air_ellipse_scale_095.json", ContentHash "f8b15f8069d4986c6a68924349c66b0455b7a976da441adfdf5620af3d9e9425"
+              kitPath "data/reference/shapes/standard_air_ellipse_scale_105.json", ContentHash "e254c679a2861bf5f625a03b5d62c2e6a6f3aac38f29afdfba632521370bedeb"
+              kitPath "data/reference/shapes/standard_air_ellipse_v1.json", ContentHash "76bb56c20c63356640ad286f1f1b109eaa9714f7ea16c2606086705d88854f2d" ]
 
-        for (dataSet, expected) in expectedRowCounts do
-            match load dataSet with
-            | Ok rows -> Assert.Equal(expected, rows.Length)
-            | Error e -> Assert.Fail($"the committed archive must carry %A{dataSet}, got %A{e}")
+        match OpticsMuellerKit.tryFindFolder with
+        | None -> Assert.Fail "the optics-mueller kit folder was not found under the repository root"
+        | Some folder ->
+            let kit = (KitProxy.create folder).readOnlyView
+            let storedHashes =
+                archiveHashes
+                |> List.map (fun (path, _) ->
+                    match kit.readDataFile path with
+                    | Ok file -> path, file.contentHash
+                    | Error e -> failwith $"could not read '{path.value}' from the optics-mueller kit: {e.describe}")
+            Assert.Equal<(KitRelativePath * ContentHash) list>(archiveHashes, storedHashes)
 
     [<Fact>]
     member _.``tryLoadFromArchive maps an absent archive to a typed ArchiveUnreadable, never a throw`` () =
@@ -616,23 +656,22 @@ type MuellerReconstructionTests() =
         // This fact no longer skips. The data is committed to the repository, so a load failure is a defect
         // (§8.4 / R6) and `loadDataSet` fails the test with the typed error.
         let solver = createMathNetSvd ()
-        let data = MuellerDataStore.createArchiveBacked ()
-        let load = loadDataSet data
+        let load = loadDataSet
 
         // dark_mean = mean avg_total over the darkness checks.
-        let darkMean = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal.value)
+        let darkMean = load darknessChecksFile |> List.averageBy (fun r -> r.avgTotal.value)
 
         // LP-LP AIR → free cosine fit → the LP analyzer's zero dial z_LP.
-        let traceLpLp = reduceAirTraces darkMean (load LpLpFamily)
+        let traceLpLp = reduceAirTraces darkMean (load lpLpFile)
         let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver traceLpLp)
 
         // LP-CPL AIR → free cosine fit → the CPL analyzer's zero dial z_CPL; δ_an = arccos(visibility).
-        let traceLpCpl = reduceAirTraces darkMean (load LpCplFamily)
+        let traceLpCpl = reduceAirTraces darkMean (load lpCplFile)
         let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver traceLpCpl)
         let deltaAnDeg = lpCplFit.visibility.retardance.degrees
 
         // CPL-LP AIR, fit in the source LP frame (phased on z_LP) → the closed-form source model.
-        let traceCplLp = reduceAirTraces darkMean (load CplLpFamily)
+        let traceCplLp = reduceAirTraces darkMean (load cplLpFile)
         let (qLp, uLp) = lpFrameCoeffs solver traceCplLp lpLpFit.zeroAzimuth
         let source = sourceCplFromLpFrame qLp uLp
 
@@ -813,8 +852,8 @@ type MuellerReconstructionTests() =
     [<Fact>]
     member _.``section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and reproduces the reference pipeline exactly`` () =
         // Spec 0042 (011, WIRE) acceptance — the composition-root cross-check. Wire the REAL
-        // createArchiveBacked () (Storage) and createMathNetSvd () (Domain) proxies, load the five science
-        // data sets + the darkness and bullshit checks, RE-derive the Stage-1 AIR calibration constants
+        // createMathNetSvd () (Domain) proxy, load the optics-mueller kit's five science lab files + the
+        // darkness and bullshit checks (spec 0050 S9.4), RE-derive the Stage-1 AIR calibration constants
         // (matrix_step1_air_fit.py), populate the Stage-2 per-family source/analyzer models (matrix_glue.py
         // load_step1_models), reduce each science row to its corrected signal (Stage-3, matrix_fit_linear.py
         // assign_gain_model), and reconstruct M_QZ / M_LR / M_{QZ+LR} (solve_single_object).
@@ -837,22 +876,21 @@ type MuellerReconstructionTests() =
         //
         // ---- Composition root: the REAL proxies (the WIRE deliverable). ----
         let solver = createMathNetSvd ()
-        let store = MuellerDataStore.createArchiveBacked ()
-        let load = loadDataSet store
+        let load = loadDataSet
 
-        let lpLpRows = load LpLpFamily
-        let lpCplRows = load LpCplFamily
-        let cplLpRows = load CplLpFamily
-        let cplCplDay1Rows = load CplCplDay1
-        let cplCplDay2Rows = load CplCplDay2
+        let lpLpRows = load lpLpFile
+        let lpCplRows = load lpCplFile
+        let cplLpRows = load cplLpFile
+        let cplCplDay1Rows = load cplCplDay1File
+        let cplCplDay2Rows = load cplCplDay2File
 
         // ---- Stage-3 procedure constants supplied as DATA (spec section 0): dark mean + the CPL-LP split time. ----
-        let darkMeanValue = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal.value)
+        let darkMeanValue = load darknessChecksFile |> List.averageBy (fun r -> r.avgTotal.value)
         let darkMean = DarkMean darkMeanValue
         // The CPL-LP AIR gain splits at the FIRST BullshitCheck timestamp (matrix_fit_linear.py:82 reads the
         // diagnostics[0] capture; the earliest bullshit-check capture is that same first check).
         let splitTime =
-            match load BullshitChecks with
+            match load bullshitChecksFile with
             | [] -> failwith "the bullshit-check data set carried no rows"
             | rows -> (rows |> List.minBy (fun r -> r.capturedAt)).capturedAt
 

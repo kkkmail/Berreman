@@ -56,3 +56,6 @@
 # line-ending conversion, no diff, no merge. `!eol` clears the inert eol=lf
 # inherited from the `*` catch-all, leaving zero EOL policy on these files.
 *.nb   binary !eol
+
+# Spec 0050 S9.4: lab files are kept exactly as recorded (CRLF, byte-order mark), never normalized.
+data/optics-mueller/data/raw/** -text !eol

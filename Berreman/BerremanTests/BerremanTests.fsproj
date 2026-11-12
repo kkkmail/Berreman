@@ -32,6 +32,7 @@
         <Compile Include="RhoWithDispValueTests.fs" />
         <Compile Include="MuWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
+        <Compile Include="CommittedKits.fs" />
         <Compile Include="MuellerReconstructionTests.fs" />
         <!-- Spec 0044 (manual task 012): the fit driver MuellerInverseTests and BiaxialInverseTests
              share. It declares namespace-level types (RelativeError, SearchBox, InverseFit) that both
@@ -47,18 +48,6 @@
         <Compile Include="AbsorbingBiaxialInverseTests.fs" />
         <Compile Include="AbsorbingBiaxialNoisyTests.fs" />
         <Compile Include="LangasiteInverseTests.fs" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <!-- Spec 0044 (§8.4): the committed measured-data archive that MuellerReconstructionTests reads
-             through MuellerDataStore.createArchiveBacked (). It is copied next to the test assembly so the
-             store can resolve it from AppContext.BaseDirectory, independent of the runner's working
-             directory. Mirrors the OpticalConstructor.Tests fixtures\* copy convention. This replaces the
-             former walk-up to an external sibling checkout: the data is now in the repository, so its
-             absence is a defect and the tests FAIL rather than skip. -->
-        <Content Include="..\Data\MuellerMatrix\data.zip" Link="Data\MuellerMatrix\data.zip">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
     </ItemGroup>
 
     <ItemGroup>
@@ -85,9 +74,6 @@
              layer. This reference is the enabling edit for that file (no UI dependency,
              per R-4). -->
         <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
-        <!-- Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009): MuellerReconstructionTests.fs drives the
-             REAL MuellerDataStore.parseMuellerCsv / createFileBacked (OpticalConstructor.Storage). An
-             EXPLICIT reference to the Storage project (Storage flows Domain transitively). -->
         <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
     </ItemGroup>
 

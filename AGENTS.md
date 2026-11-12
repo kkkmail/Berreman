@@ -516,7 +516,8 @@ This is a spec-driven, gated repository.
 - **Line endings: LF.** `.gitattributes` stores all text as LF and `core.autocrlf`
   is `false`. After editing, verify you did not introduce CRLF churn
   (`git diff --numstat` vs `--ignore-cr-at-eol`) and convert back to LF if it
-  appears.
+  appears. The lab files under `data/optics-mueller/data/raw/` are the exception,
+  kept byte for byte by their `-text !eol` rule (spec 0050 S9.4), and are never converted.
 - **x64 only.** The solution declares x64 as its single platform; the root
   `Directory.Build.props` defaults `Platform` to x64 so `dotnet test --no-build`
   resolves the same `bin\x64\Release\` tree the build produces. Do not add
