@@ -123,6 +123,7 @@
         <Compile Include="ItemsPanelView.fs" />
         <Compile Include="FlowStripView.fs" />
         <Compile Include="KitWindowView.fs" />
+        <Compile Include="ImportWizardWindow.fs" />
         <Compile Include="DataLocationsView.fs" />
         <!-- Spec 0038 Part C (step 006): the ONE app-scope composition record — the
              five domain proxies plus the step-005 WorkbenchSettings, built once at

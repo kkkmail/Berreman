@@ -24,10 +24,12 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitHistory
+open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ImportDialogView
+open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -222,6 +224,51 @@ module ScrollExtentTests =
         assertReachable "ImportDialog" (fun () ->
             let imports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
             ImportDialogWindow(imports, request, ignore))
+
+    /// A picked lab file of twelve comma columns and forty rows, read in memory, so the wizard's preview is wider and
+    /// taller than the screen (spec 0050 S9.2).
+    let private wideLabFileRequest () : ImportWizardRequest =
+        let columns = [ 1 .. 12 ]
+        let header = columns |> List.map (fun column -> $"reading_%02d{column}") |> String.concat ","
+        let rowOf (row : int) : string = columns |> List.map (fun column -> $"{row * 100 + column}.25") |> String.concat ","
+        let text = (header :: ([ 1 .. 40 ] |> List.map rowOf) |> String.concat "\n") + "\n"
+        let content = FileByteContent (System.Text.Encoding.UTF8.GetBytes text)
+        let readPickedFile (picked : FileName) : Result<LabFileSource, KitError> =
+            let source : LabFileSource = { file = picked; content = content }
+            Ok source
+        {
+            experimentId = Experiments.ExperimentId 1
+            file = FileName "C:/Lab/ScrollExtentTests/twelve-columns.csv"
+            readPickedFile = readPickedFile
+            kitProfiles = []
+            defaultProfile = ImportProfileName.intensitySeries
+        }
+
+    [<Fact>]
+    let ``the import wizard leaves everything reachable`` () : unit =
+        let request = wideLabFileRequest ()
+        assertReachable "ImportWizard" (fun () -> ImportWizardWindow(request, ignore))
+        assertReachable "ImportWizard (mapping)" (fun () ->
+            let context : ImportWizardContext =
+                {
+                    request = request
+                    onApplied = ignore
+                    requestClose = ignore
+                }
+            let scanColumn : ColumnChoice =
+                {
+                    column = DataColumnNumber 12
+                    role = ScanColumnRole (DegreeColumnUnit, PhysicalScanValue)
+                }
+            let mapping =
+                context.initImportWizard
+                |> updateImportWizard StartColumnMapping
+                |> updateImportWizard (SetColumnRole (scanColumn.column, scanColumn.role))
+            Assert.Equal(12, List.length mapping.columns)
+            Assert.Equal<ColumnChoice option>(Some scanColumn, List.tryLast mapping.columns)
+            let window = HostWindow()
+            Program.mkSimple (fun () -> mapping) updateImportWizard importWizardView |> Program.withHost window |> Program.run
+            window :> Window)
 
     [<Fact>]
     let ``Material, Sample, Category and Source editors leave everything reachable`` () =

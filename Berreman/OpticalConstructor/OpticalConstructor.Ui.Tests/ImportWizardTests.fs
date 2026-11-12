@@ -20,6 +20,7 @@ open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ImportWizardView
+open OpticalConstructor.Ui.ImportWizardOpening
 
 /// Spec 0050 S9.2 (001 §K): the column-mapping wizard changes only its own state until Attach hands the kit window
 /// the profile to attach by and any new one to save.
@@ -161,7 +162,8 @@ module ImportWizardTests =
         | Some point -> point
         | None -> failwith $"{AutomationProperties.GetAutomationId control} has no position in its window."
 
-    /// Presses the box carrying `id` at its centre, as `ImportDialogTests` presses one.
+    /// Presses the box carrying `id` at its centre, as `ImportDialogTests` presses one: a press that closes the window
+    /// releases nothing.
     let private pressControl (window : Window) (id : ConstructorUiId) : unit =
         let control = controlOf window id
         control.BringIntoView() |> ignore
@@ -170,8 +172,10 @@ module ImportWizardTests =
         | Some centre ->
             window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
             Dispatcher.UIThread.RunJobs()
-            window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
+
+            if window.IsVisible then
+                window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
         | None -> Assert.Fail $"{id.value} has no position in its window."
 
     /// Picks the item shown as `caption` in the list carrying `id`, as a user's pick sets it.
@@ -645,3 +649,57 @@ module ImportWizardTests =
             Assert.Empty sent)
 
         Assert.Empty locked.calls
+
+    /// Spec 0050 S9.2: the kit window's shell opens the wizard's own window over a request, and its Attach comes back
+    /// as the kit window's messages.
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the import wizard window maps a picked file and its Attach reaches the kit window as messages`` () : unit =
+        let observed = observePhoneRoi ()
+        let dispatched = ResizeArray<TableAndElementRotationView.TableAndElementRotationMsg>()
+
+        HeadlessSession.run (fun () ->
+            let owner = Window(Width = 640.0, Height = 480.0)
+
+            try
+                owner.Show()
+                Dispatcher.UIThread.RunJobs()
+                let shell = TableAndElementRotationView.KitWindowShell.inert.withImportWizard owner dispatched.Add
+                Assert.Empty owner.OwnedWindows
+
+                shell.openImportWizard observed.context.request
+                Dispatcher.UIThread.RunJobs()
+
+                let wizard = Assert.IsType<ImportWizardWindow>(Assert.Single owner.OwnedWindows)
+                Assert.True(wizard.IsVisible)
+                Assert.Equal("Import data file", wizard.Title)
+                Assert.Equal(ConstructorUiId.importWizardWindow.value, wizard.Name)
+                Assert.Equal(ConstructorUiId.importWizardWindow.value, AutomationProperties.GetAutomationId wizard)
+                Assert.True((controlOf wizard ConstructorUiId.importWizardHeading).IsEffectivelyVisible)
+                Assert.True((controlOf wizard ConstructorUiId.importWizardPreviewGrid).IsEffectivelyVisible)
+
+                let attach = controlOf wizard ConstructorUiId.importWizardAttachButton
+                let cancel = controlOf wizard ConstructorUiId.importWizardCancelButton
+                Assert.Equal((topLeftOf wizard attach).Y, (topLeftOf wizard cancel).Y)
+                Assert.True((topLeftOf wizard cancel).X > (topLeftOf wizard attach).X + attach.Bounds.Width, "Cancel must be to the right of Attach with a gap.")
+
+                pressControl wizard (ConstructorUiId.importWizardProfileChoice ImportProfileName.phoneRoiCsv.uiKey)
+                Assert.Empty dispatched
+                Assert.True(wizard.IsVisible)
+
+                pressControl wizard ConstructorUiId.importWizardAttachButton
+
+                Assert.Equal<TableAndElementRotationView.TableAndElementRotationMsg list>(
+                    [ TableAndElementRotationView.AttachDataFile (ExperimentId 1, labFile, ImportProfileName.phoneRoiCsv) ],
+                    List.ofSeq dispatched)
+
+                Assert.False(wizard.IsVisible)
+                Assert.Empty owner.OwnedWindows
+            finally
+                for window in List.ofSeq owner.OwnedWindows do
+                    window.Close()
+
+                owner.Close())
+
+        Assert.Equal<FileName list>([ labFile ], List.ofSeq observed.reads)
+        Assert.Empty observed.calls
