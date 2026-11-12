@@ -222,7 +222,7 @@ type MuellerInverseTests() =
     /// would make the same 1e-6 step a 1 % perturbation of g and a 6e-7 relative perturbation of n - four
     /// orders of magnitude apart, and the former far outside the linear regime a Jacobian assumes.
     ///
-    /// It deliberately shadows the harness's general `scalingAround`: this is the uniaxial specialization
+    /// It deliberately shadows the general `MuellerFitting.scalingAround`: this is the uniaxial specialization
     /// of it, and every fit in this file wants exactly these axes and exactly this scale.
     let scalingAround (centre : UniaxialParameters) : ParameterScaling<UniaxialParameters> =
         {

@@ -310,74 +310,6 @@ module InverseFitHarness =
         | Ok value -> value
         | Error e -> failwith $"%A{e}"
 
-    /// The residual closure the optimizer drives: scaled vector -> normalized Mueller element
-    /// differences.
-    ///
-    /// It must be TOTAL and of fixed length, because an optimizer explores freely and will hand it
-    /// parameter values the forward model cannot solve. A forward failure therefore returns a large
-    /// finite penalty of the correct length rather than throwing or returning a short vector: the first
-    /// would abort the fit, and the second would silently change the problem being minimized.
-    let residualFor
-        (forward : ForwardModelProxy<'Parameters>)
-        (observations : MuellerObservation list)
-        (scaling : ParameterScaling<'Parameters>)
-        : ScaledVector -> ResidualVector =
-        let width = 15 * List.length observations
-        fun (v : ScaledVector) ->
-            match forwardModels forward (ofScaled scaling v) observations with
-            | Error _ -> Array.create width 1.0e3 |> ResidualVector
-            | Ok models ->
-                match residualVector observations models with
-                | Ok r -> r
-                | Error _ -> Array.create width 1.0e3 |> ResidualVector
-
-    /// The residual closure for an ABSORBING sample: the 15 normalized Mueller element differences per
-    /// observation, PLUS one log-throughput term per observation.
-    ///
-    /// WHY THE EXTRA TERM EXISTS, and why it is not optional. A general Jones matrix carries 8
-    /// independent real parameters; forming a Mueller matrix from it loses the absolute phase, leaving 7;
-    /// normalizing that Mueller matrix by `m₀₀` loses the absolute intensity, leaving 6. The one
-    /// quantity normalization discards is exactly the ISOTROPIC ABSORPTION — the part of the attenuation
-    /// that is the same for every polarization state. For a transparent sample that costs nothing,
-    /// because there is no absorption to lose and `m₀₀` carries only source brightness and detector gain.
-    /// For an ABSORBING sample it removes a real material parameter from the data, and no number of extra
-    /// geometries can put it back.
-    ///
-    /// The term is the LOG of the throughput ratio rather than its difference, because transmittance is
-    /// multiplicative and spans decades: `ln(m₀₀ model) − ln(m₀₀ measured)` is the relative error, is
-    /// dimensionless like the normalized-element residuals it sits beside, and is symmetric in over- and
-    /// under-estimation.
-    let throughputResidualFor
-        (forward : ForwardModelProxy<'Parameters>)
-        (observations : MuellerObservation list)
-        (scaling : ParameterScaling<'Parameters>)
-        : ScaledVector -> ResidualVector =
-        let width = 16 * List.length observations
-        let logThroughput (m : MuellerMatrix) =
-            let m00 = m.element 0 0
-            if m00 <= 0.0 || not (System.Double.IsFinite m00) then None else Some (log m00)
-        fun (v : ScaledVector) ->
-            match forwardModels forward (ofScaled scaling v) observations with
-            | Error _ -> Array.create width 1.0e3 |> ResidualVector
-            | Ok models ->
-                match residualVector observations models with
-                | Error _ -> Array.create width 1.0e3 |> ResidualVector
-                | Ok (ResidualVector normalized) ->
-                    let throughput =
-                        List.zip observations models
-                        |> List.map (fun (o, model) ->
-                            match logThroughput o.measured, logThroughput model with
-                            | Some measured, Some predicted -> predicted - measured
-                            | _ -> 1.0e3)
-                        |> Array.ofList
-                    Array.append normalized throughput |> ResidualVector
-
-    /// The residual Jacobian of a typed residual closure at a scaled point, by FitQuality's finite
-    /// differences (which speak the optimizer's design vector).
-    let residualJacobianAt (residual : ScaledVector -> ResidualVector) (point : ScaledVector) : ResidualJacobian =
-        let (ScaledVector x) = point
-        FitQuality.residualJacobian (fun (OptimizationInterface.DesignVector v) -> residual (ScaledVector v)) (OptimizationInterface.DesignVector x)
-
     /// FitQuality's report on a fit, at its solution.
     let fitReportOf (fit : InverseFit<'Parameters>) : FitQuality.FitReport =
         let (ScaledVector solution) = fit.solution.solution
@@ -409,27 +341,6 @@ module InverseFitHarness =
             | Some i -> w.[i] <- 1.0
             | None -> failwith $"no fitted parameter named {name}"
         w
-
-    /// The dimensionless fit space centred on a START GUESS, so the initial scaled vector is exactly
-    /// zero and `scale` sets what one unit of each coordinate means physically.
-    ///
-    /// The scale choice is the whole reason `ParameterScaling` exists. ALGLIB's Levenberg–Marquardt
-    /// differentiates with a FIXED ABSOLUTE step of 1e-6, so a unit of 1e-3 in refractive index makes
-    /// that step a 1e-9 perturbation of n, and a unit of 1e-5 in gyration makes it a 1e-11 perturbation
-    /// of g. Both are small enough to be genuinely linear and large enough to move the Mueller elements
-    /// far above the solver's own numerical noise. Handing the optimizer raw physical parameters instead
-    /// would make the same 1e-6 step a 1 % perturbation of g and a 6e-7 relative perturbation of n —
-    /// four orders of magnitude apart, and the former far outside the linear regime a Jacobian assumes.
-    let scalingAround
-        (axes : ParameterAxis<'Parameters> list)
-        (scale : 'Parameters)
-        (centre : 'Parameters)
-        : ParameterScaling<'Parameters> =
-        {
-            axes = axes
-            centre = centre
-            scale = scale
-        }
 
     /// THE CORE RUNNER. Recover the material parameters from a GIVEN set of observations, over a given
     /// scaling and a given box. Every fit in every inverse-problem suite goes through this one function,
