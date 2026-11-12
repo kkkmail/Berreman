@@ -804,7 +804,7 @@ type MuellerInverseTests() =
     member _.``both proxies compare by reference (the ReferenceEquality convention)`` () =
         // Both records' only fields are function-valued, so they have no structural equality; the
         // attribute makes them compare by identity so a host context holding one stays comparable. Mirrors
-        // the ExperimentDataProxy / MuellerSolverProxy / MuellerDataProxy convention.
+        // the ExperimentDataProxy / MuellerSolverProxy convention.
         let f : ForwardModelProxy<UniaxialParameters> = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
         let g : ForwardModelProxy<UniaxialParameters> = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
         Assert.True((f = f))

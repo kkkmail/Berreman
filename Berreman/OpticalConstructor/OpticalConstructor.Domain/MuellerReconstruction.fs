@@ -293,34 +293,8 @@ module MuellerReconstruction =
                         | e -> Error (SingularDesignErr $"the SVD least-squares solve failed: {e.Message}")
         }
 
-    // -----------------------------------------------------------------------------------------------------
-    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data LOAD seam. Declares, in the
-    // Domain, the `MuellerDataProxy`: the IO boundary that turns a `MuellerDataSet` — the IDENTITY of one
-    // measurement data set — into its parsed raw capture rows, or a typed `MuellerDataError`. It is the EDGE
-    // the least-squares reconstruction sits behind: each loaded `MuellerRawRow` carries one capture's analyzer
-    // azimuth (`description`, the engine `Angle`) and averaged intensity (`avgTotal`), the very
-    // (azimuth, intensity) pairs `kron4` / the `MuellerSolverProxy` consume. A real proxy's native/parse
-    // exceptions are caught AT this boundary and mapped to the typed `MuellerDataError` channel (never thrown
-    // across it).
-    //
-    // Spec 0044 (§8.3) RE-KEYED this seam from a LOCATION to an IDENTITY. It previously took an
-    // `Experiments.DataFilePath`, which forced every caller to know where the data physically lived — a file
-    // path, and (once the data moved into a committed archive) an entry name inside that archive. The key is
-    // now the `MuellerDataSet` DU below: pure identity, carrying NO path, NO entry name and NO archive
-    // knowledge. Everything about storage — the archive, its location on disk, and the data-set → entry
-    // mapping — lives behind the Storage-side factory, so a consumer (notably the test suite) states WHICH
-    // data set it wants and nothing at all about WHERE it is.
-    //
-    // Kept as pure DATA (the `ExperimentDataProxy` convention, ExperimentDataProxy.fs:43): a record of one
-    // camelCase `Result`-returning function, so logic that holds the proxy stays referentially transparent and
-    // a test substitutes a canned in-memory stub of the SAME shape. Its one field is function-valued and so
-    // has no structural equality, so the record is `[<ReferenceEquality>]` — a host context (Optimization /
-    // Elmish) that holds one keeps its required equality, comparing the proxy by identity.
-    //
-    // The real archive-backed construction is `MuellerDataStore.createArchiveBacked` (Storage); the mock that
-    // satisfies this surface (canned rows keyed by `MuellerDataSet`) lives with its test in `BerremanTests`,
-    // mirroring the `MuellerSolverProxy` mock.
-    // -----------------------------------------------------------------------------------------------------
+    // The capture rows of a Phone ROI CSV file, read through the Phone ROI CSV import profile (spec 0042; spec
+    // 0050 S9.4 deleted the archive-keyed seam).
 
     /// The label of the experiment a Mueller capture belongs to, e.g. `CPL-(QZ#90-LR#90)-CPL`; it reads through
     /// `NamingTemplate.standard` (spec 0050 S8.3).
@@ -352,61 +326,10 @@ module MuellerReconstruction =
             avgTotal : MeasuredIntensity
         }
 
-    /// WHICH measured Mueller data set a load is asking for — the seam's key (spec 0044 §8.3). This is pure
-    /// IDENTITY: it names a data set by what it CONTAINS, never by where it is stored. There is deliberately
-    /// no file path, no archive name and no entry name here or on any member — resolving a case to physical
-    /// storage is the Storage-side factory's job alone (`MuellerDataStore.createArchiveBacked`), which is what
-    /// lets a consumer ask for `LpLpFamily` without knowing that an archive exists at all.
-    ///
-    /// The five science sets are the experiment sweeps; `DarknessChecks` supplies the dark level subtracted
-    /// from every capture, and `BullshitChecks` the diagnostic captures whose earliest timestamp is the
-    /// CPL-LP gain split time. Note this is NOT the `Family` DU below: `Family` names a (source, analyzer)
-    /// polarizer PAIR, whereas a `MuellerDataSet` names one recorded body of captures — CPL-CPL was recorded
-    /// across two days and is therefore one `Family` but two data sets, each with its own gain rule.
-    type MuellerDataSet =
-        | LpLpFamily
-        | LpCplFamily
-        | CplLpFamily
-        | CplCplDay1
-        | CplCplDay2
-        | DarknessChecks
-        | BullshitChecks
-
-    /// Where the measured-data archive lives on disk. Only the Storage factory resolves one; above it, an
-    /// archive is met solely in a load error naming the archive the load could not use (spec 0048 E020).
-    type MuellerArchivePath =
-        | MuellerArchivePath of string
-
-        /// The raw path (the IO seam — read only where the filesystem is actually touched).
-        member this.value = let (MuellerArchivePath p) = this in p
-
-    /// A typed failure of a Mueller data-set load — never a throw across the proxy boundary. `MalformedRowErr`
-    /// carries a human-readable `reason` (a row that fails to parse, or a bad field); `EmptyFileErr` carries a
-    /// `reason` for a source that yielded no capture rows. The two archive cases (spec 0044 §8.3) name the
-    /// two distinct, separately actionable storage failures — a container that cannot be opened at all versus
-    /// a container that opens but does not hold the requested data set — each carrying enough payload to
-    /// diagnose it from a log line alone.
+    /// A typed failure of parsing a Phone ROI CSV text, never a throw (spec 0050 S9.4 removed the archive cases).
     type MuellerDataError =
         | MalformedRowErr of reason : string
         | EmptyFileErr of reason : string
-        | ArchiveUnreadableErr of archive : MuellerArchivePath * reason : string
-        | DataSetMissingErr of dataSet : MuellerDataSet * archive : MuellerArchivePath
-
-    /// The Mueller measured-data LOAD seam (the functional-proxy convention): a record of one camelCase
-    /// `Result`-returning function that resolves a `MuellerDataSet` to its parsed capture rows.
-    ///
-    /// - `tryLoadDataSet dataSet` — read + parse the named data set into its ordered `MuellerRawRow` list, or
-    ///   a typed `MuellerDataError` (a malformed row, an empty source, an unreadable archive, or a data set
-    ///   the archive does not carry); never a throw.
-    ///
-    /// The caller states only WHICH data set it wants. Where that data physically lives, and how it is
-    /// packaged, is entirely the factory's business (spec 0044 §8.3) — which is why this signature mentions
-    /// no path type at all.
-    [<ReferenceEquality>]
-    type MuellerDataProxy =
-        {
-            tryLoadDataSet : MuellerDataSet -> Result<MuellerRawRow list, MuellerDataError>
-        }
 
     // -----------------------------------------------------------------------------------------------------
     // Spec 0042 (007, IMPLEMENT) — the per-row GLUE (§2.2 / Part D): the family / matrix-kind classification, the

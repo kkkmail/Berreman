@@ -1,7 +1,5 @@
 namespace BerremanTests
 
-open System.IO
-open System.IO.Compression                             // ZipArchive — used ONLY to build a throwaway archive for a failure-path test
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
@@ -82,34 +80,6 @@ type MuellerReconstructionTests() =
                     | rows when rows.Length < 16 -> Error (RankDeficientErr (MatrixRank rows.Length))
                     | _ -> Ok cannedSolution
         }
-
-    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data LOAD seam, re-keyed by spec
-    // 0044 §8.3 from a LOCATION (`DataFilePath`) to an IDENTITY (`MuellerDataSet`). The MOCK and its canned
-    // rows are bound here, ahead of the members (FS0960: in a class type every `let` binding precedes the
-    // first member).
-    //
-    // `makeMockData` is an inline `MuellerDataProxy` stub whose `tryLoadDataSet` keys the canned
-    // `MuellerRawRow` list off the `MuellerDataSet` case itself: a seeded data set returns its rows; an
-    // unseeded one returns `Error (EmptyFileErr _)`, never a throw. Keying on the DU rather than on a path
-    // string is the whole point of the re-key — the mock, like the real store, is asked WHICH data set is
-    // wanted and is never told where anything lives. This exercises the exact signature and the typed-error
-    // case with no filesystem IO at all. The `capturedAt` timestamps are fixed literals (deterministic across
-    // runs — no ambient clock read).
-    let cannedRows : MuellerRawRow list =
-        [ { experiment = MuellerExperimentLabel "E1"; captureIndex = CaptureIndex 0; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero); description = Angle.degree 0.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 0.42 }
-          { experiment = MuellerExperimentLabel "E1"; captureIndex = CaptureIndex 1; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 5, 0, System.TimeSpan.Zero); description = Angle.degree 45.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 0.31 } ]
-
-    let makeMockData (rowsByDataSet : Map<MuellerDataSet, MuellerRawRow list>) : MuellerDataProxy =
-        {
-            tryLoadDataSet =
-                fun (dataSet : MuellerDataSet) ->
-                    match Map.tryFind dataSet rowsByDataSet with
-                    | Some rows -> Ok rows
-                    | None -> Error (EmptyFileErr $"the mock has no canned capture rows for data set %A{dataSet}")
-        }
-
-    let seededDataMock () : MuellerDataProxy =
-        makeMockData (Map.ofList [ LpLpFamily, cannedRows ])
 
     // Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009) — a committed multi-column Mueller capture CSV
     // fixture for the REAL MuellerDataStore.parseMuellerCsv. A UTF-8 BOM prefix (char 0xFEFF, built here rather
@@ -445,45 +415,6 @@ type MuellerReconstructionTests() =
         | other -> Assert.Fail($"expected Error (RankDeficientErr _), got %A{other}")
 
     [<Fact>]
-    member _.``a mock MuellerDataProxy loads canned capture rows through its exact tryLoadDataSet signature`` () =
-        // Spec 0042 (005) acceptance, re-keyed by spec 0044 §8.3: build a stub MuellerDataProxy and load
-        // canned rows through the EXACT tryLoadDataSet signature.
-        let proxy = seededDataMock ()
-
-        // Pin the EXACT signature the acceptance names by binding the field to an explicitly-typed local:
-        // the compiler rejects the file if `tryLoadDataSet` drifts from its declared shape. That the
-        // annotation reads `MuellerDataSet -> ...` and NOT `DataFilePath -> ...` is itself the assertion
-        // that the seam is keyed by identity rather than by location.
-        let loadDataSet : MuellerDataSet -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadDataSet
-
-        match loadDataSet LpLpFamily with
-        | Ok rows ->
-            Assert.Equal(2, rows.Length)
-            Assert.Equal<MuellerRawRow list>(cannedRows, rows)
-        | Error e -> Assert.Fail($"expected the canned capture rows, got %A{e}")
-
-    [<Fact>]
-    member _.``an unseeded data set yields a typed MuellerDataError from tryLoadDataSet, never a throw`` () =
-        // Spec 0042 (005) acceptance, re-keyed by spec 0044 §8.3: a data set the mock does not carry returns
-        // a typed MuellerDataError — never a throw. `CplCplDay2` is a valid data set the mock was simply not
-        // seeded with, so this exercises the miss path without any invalid input existing at all: with the
-        // seam keyed by a DU there is no such thing as an unparseable key.
-        let proxy = seededDataMock ()
-        match proxy.tryLoadDataSet CplCplDay2 with
-        | Error (EmptyFileErr reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (EmptyFileErr _) for an unseeded data set, got %A{other}")
-
-    [<Fact>]
-    member _.``a MuellerDataProxy compares by reference (the ReferenceEquality convention)`` () =
-        // The proxy's only field is function-valued, so it has no structural equality; the
-        // [<ReferenceEquality>] attribute makes it compare by identity, so a host context holding one stays
-        // comparable (mirrors the ExperimentDataProxy / MuellerSolverProxy convention).
-        let p = seededDataMock ()
-        let same = p
-        Assert.True((p = same))
-        Assert.False((p = seededDataMock ()))
-
-    [<Fact>]
     member _.``the real parseMuellerCsv parses a committed multi-column CSV fixture into MuellerRawRows (description elevated to Angle)`` () =
         // Spec 0042 (006) acceptance: parse a committed multi-column, BOM-prefixed CSV fixture through the REAL
         // MuellerDataStore.parseMuellerCsv (not a mock), yielding MuellerRawRow values whose `description` is
@@ -564,47 +495,6 @@ type MuellerReconstructionTests() =
                     | Ok file -> path, file.contentHash
                     | Error e -> failwith $"could not read '{path.value}' from the optics-mueller kit: {e.describe}")
             Assert.Equal<(KitRelativePath * ContentHash) list>(archiveHashes, storedHashes)
-
-    [<Fact>]
-    member _.``tryLoadFromArchive maps an absent archive to a typed ArchiveUnreadable, never a throw`` () =
-        // Spec 0044 (§8.3) acceptance: the storage boundary is TOTAL. A missing container is caught at the
-        // boundary and mapped to the typed ArchiveUnreadable case carrying both the location and the
-        // underlying reason — no exception crosses into the pure Domain.
-        //
-        // This is the one place a location is named at all, and deliberately so: the failure paths must stay
-        // reachable from a test without any production caller ever knowing where the data lives, which is
-        // exactly why `tryLoadFromArchive` is public while `createArchiveBacked ()` takes no argument.
-        let absent = MuellerArchivePath "C:/data/definitely-missing-mueller-archive-0044.zip"
-        match MuellerDataStore.tryLoadFromArchive absent LpLpFamily with
-        | Error (ArchiveUnreadableErr (archive, reason)) ->
-            Assert.Equal("C:/data/definitely-missing-mueller-archive-0044.zip", archive.value)
-            Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (ArchiveUnreadableErr _) for a missing archive, got %A{other}")
-
-    [<Fact>]
-    member _.``tryLoadFromArchive maps an archive without the requested entry to a typed DataSetMissing, never a throw`` () =
-        // Spec 0044 (§8.3) acceptance: the second archive failure mode is reported DISTINCTLY from the first,
-        // because the two call for different fixes — an unreadable container is a deployment problem (the
-        // Content copy did not happen), whereas a container that opens but lacks the entry is a data problem
-        // (the wrong archive was shipped). A caller that cannot tell them apart cannot act on the log line.
-        //
-        // A valid but empty archive is written to a temp file so the entry lookup genuinely misses on a
-        // genuinely-openable container; it is deleted again whatever happens.
-        let tempArchive = Path.Combine(Path.GetTempPath(), $"mueller-empty-archive-{System.Guid.NewGuid():N}.zip")
-        try
-            use (stream : FileStream) = File.Create tempArchive
-            use (zip : ZipArchive) = new ZipArchive(stream, ZipArchiveMode.Create)
-            zip.CreateEntry("unrelated.txt") |> ignore
-            zip.Dispose()
-            stream.Dispose()
-
-            match MuellerDataStore.tryLoadFromArchive (MuellerArchivePath tempArchive) CplCplDay1 with
-            | Error (DataSetMissingErr (dataSet, archive)) ->
-                Assert.Equal(CplCplDay1, dataSet)
-                Assert.Equal(tempArchive, archive.value)
-            | other -> Assert.Fail($"expected Error (DataSetMissingErr _) for an archive without the entry, got %A{other}")
-        finally
-            if File.Exists tempArchive then File.Delete tempArchive
 
     [<Fact>]
     member _.``the standard naming template reads CPL-(QZ#90-LR#90)-CPL as the CPL-CPL family and the QZ LR product at phi 90, and the +90 / -90 object rotation is inert (R(2 phi) invariance)`` () =

@@ -378,14 +378,11 @@ module LabFileImport =
             | BuiltInProfileChoice EllipsometricSeriesProfile ->
                 text.dataFileText.parseEllipsometricSeries |> Result.map (EllipsometricData >> SeriesPoints)
             | BuiltInProfileChoice PhoneRoiCsvProfile ->
-                // A text parse never answers the two archive cases; they are mapped so the match stays total.
                 text.dataFileText.parseMuellerCsv
                 |> Result.map CapturePoints
                 |> Result.mapError (fun error ->
                     match error with
                     | MalformedRowErr reason -> MalformedDataFileErr reason
-                    | EmptyFileErr reason -> EmptyDataFileErr reason
-                    | ArchiveUnreadableErr (_, reason) -> MalformedDataFileErr reason
-                    | DataSetMissingErr (_, archive) -> MalformedDataFileErr archive.value)
+                    | EmptyFileErr reason -> EmptyDataFileErr reason)
             | BuiltInProfileChoice MuellerObservationProfile -> text.parseMuellerObservations |> Result.map ObservationPoints
             | KitProfileChoice profile -> profile.mapText text |> Result.map ColumnPoints
