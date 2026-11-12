@@ -7,6 +7,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.MatrixComparison
 
@@ -303,37 +304,11 @@ type NoisyExperiment<'Parameters> =
 /// being a copy of the first with the field names changed.
 module InverseFitHarness =
 
-    /// Build one measurement configuration from plain degrees. Reaching for degrees here rather than
-    /// carrying `Angle` values through the test bodies keeps a configuration table readable as a table.
-    let configurationOf
-        (cut : SampleCut)
-        (thickness : Thickness)
-        (incidenceDeg : double)
-        (azimuthDeg : double)
-        (observable : Observable)
-        (waveLength : WaveLength)
-        : MeasurementConfiguration =
-        {
-            cut = cut
-            thickness = thickness
-            incidenceAngle = Angle.degree (incidenceDeg * 1.0<Berreman.Constants.deg>) |> IncidenceAngle.create
-            azimuth = SampleAzimuth.degree (azimuthDeg * 1.0<Berreman.Constants.deg>)
-            observable = observable
-            waveLength = waveLength
-        }
-
-    /// Generate the synthetic "measured" data for a configuration set from known truth, failing the test
-    /// on any forward-model error — a forward failure on the GROUND TRUTH is a broken test, not a datum.
-    let observeWith
-        (forward : ForwardModelProxy<'Parameters>)
-        (truth : 'Parameters)
-        (configurations : MeasurementConfiguration list)
-        : MuellerObservation list =
-        configurations
-        |> List.map (fun c ->
-            match forward.muellerOf c truth with
-            | Ok m -> { configuration = c; measured = m }
-            | Error e -> failwith $"the forward model failed to generate ground-truth data: %A{e}")
+    /// A moved product call's value, or the test fails with its typed error (spec 0050 S10.1).
+    let expectOk (result : Result<'Value, MuellerFitError>) : 'Value =
+        match result with
+        | Ok value -> value
+        | Error e -> failwith $"%A{e}"
 
     /// The residual closure the optimizer drives: scaled vector -> normalized Mueller element
     /// differences.

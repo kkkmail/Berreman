@@ -12,6 +12,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused, not re-declared
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample                       // the transparent twin, for the geometry and the scale
@@ -100,7 +101,7 @@ type AbsorbingBiaxialInverseTests() =
     let forward = createBerremanForward buildAbsorbing solverParameters
 
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        observeWith forward absorbing configurations
+        observeWith forward absorbing configurations |> expectOk
 
     let box = searchBox
 

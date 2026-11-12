@@ -11,6 +11,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
@@ -156,7 +157,7 @@ type BiaxialInverseTests() =
     let plate = Thickness.mkm 4.0<mkm>
 
     let configuration (cut : SampleCut) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
-        configurationOf cut plate incidenceDeg azimuthDeg observable waveLength
+        configurationOf cut plate (incidenceDeg * 1.0<deg>) (azimuthDeg * 1.0<deg>) observable waveLength
 
     /// The three principal cuts, in the order the transverse planes were listed above.
     let principalCuts : SampleCut list = [ ZCut; XCut; YCut ]
@@ -190,7 +191,7 @@ type BiaxialInverseTests() =
 
     /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters.
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        observeWith forward triclinic configurations
+        observeWith forward triclinic configurations |> expectOk
 
     /// The start guess the fit facts run from: every gyration component 25-35 % wrong in ALTERNATING
     /// directions, and the three indices off by +0.2 %, +0.1 % and +0.15 %.

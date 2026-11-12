@@ -6,6 +6,7 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Optimization.MuellerFitting
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample
 
@@ -110,7 +111,7 @@ module AbsorbingBiaxialSample =
     let otherOpticAxisCut = TiltedCut -(opticAxisWaveNormal triclinic)
 
     let configuration (cut : SampleCut) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
-        configurationOf cut plate incidenceDeg azimuthDeg observable waveLength
+        configurationOf cut plate (incidenceDeg * 1.0<deg>) (azimuthDeg * 1.0<deg>) observable waveLength
 
     /// A1 — the optic-axis anchor: approximately retardance-free, so the circular effects are seen least
     /// cluttered.

@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused,
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.MatrixComparison
 open BerremanTests.InverseFitHarness                   // the fit driver both inverse-problem suites share
@@ -166,7 +167,7 @@ type MuellerInverseTests() =
     let thinPlate = Thickness.mkm 20.0<mkm>
 
     let configuration (cut : SampleCut) (thickness : Thickness) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
-        configurationOf cut thickness incidenceDeg azimuthDeg observable waveLength
+        configurationOf cut thickness (incidenceDeg * 1.0<deg>) (azimuthDeg * 1.0<deg>) observable waveLength
 
     /// C1 — z-cut, normal incidence, 1.0 mm. The anchor: a pure optical rotator, and the configuration
     /// that fixes g11 almost independently of everything else — while being completely blind to g33.
@@ -202,7 +203,7 @@ type MuellerInverseTests() =
 
     /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters.
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        observeWith forward quartz configurations
+        observeWith forward quartz configurations |> expectOk
 
     // =================================================================================================
     // T7 / T8 / T9 — Stage B: the nonlinear fit, its identifiability diagnostics, and the ablation.
