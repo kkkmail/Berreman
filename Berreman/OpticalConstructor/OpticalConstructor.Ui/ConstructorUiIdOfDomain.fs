@@ -968,3 +968,21 @@ module ConstructorUiIdOfDomain =
 
         /// The reading as a scan column's reading choice lists it (spec 0050 S9.2).
         member this.caption : ControlCaption = ControlCaption this.text
+
+    type Kit.DataRowKey with
+
+        /// The key as the code of its group's row and offer toggle in the Data step's split panel (spec 0050 S9.3).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+    type ConstructorUiId with
+
+        /// A group's row of the Data step's split panel: `DataSplitGroup_<key>` (spec 0050 S9.3).
+        static member dataSplitGroupRow (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitGroup_{key.uiKey.value}"
+
+        /// An offered group's toggle, ticking its setup and experiment for creation: `DataSplitOffer_<key>` (spec 0050 S9.3).
+        static member dataSplitOfferToggle (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitOffer_{key.uiKey.value}"
+
+    type DataSplits.DataSplitError with
+
+        /// Why a group matches nothing, as its row of the split panel shows it (spec 0050 S9.3).
+        member this.caption : ControlCaption = ControlCaption this.describe

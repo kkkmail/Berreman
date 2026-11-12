@@ -851,6 +851,12 @@ type ConstructorUiId =
     static member dataStepPanel : ConstructorUiId = ConstructorUiId "DataStepPanel"
     /// The Data step's Split a file by key…: picks one lab file and opens the split wizard over it (spec 0050 S9.3).
     static member dataSplitFileButton : ConstructorUiId = ConstructorUiId "DataSplitFileButton"
+    /// The held split's line naming its file, its key column and its profile (spec 0050 S9.3; 001 §O "Automation").
+    static member dataSplitKeyColumn : ConstructorUiId = ConstructorUiId "DataSplitKeyColumn"
+    /// Apply split: attaches the file once, maps each matched group and creates each ticked offer (spec 0050 S9.3).
+    static member dataSplitApplyButton : ConstructorUiId = ConstructorUiId "DataSplitApplyButton"
+    /// The split panel's Cancel: forgets the held split, writing nothing (spec 0050 S9.3).
+    static member dataSplitCancelButton : ConstructorUiId = ConstructorUiId "DataSplitCancelButton"
 
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).
