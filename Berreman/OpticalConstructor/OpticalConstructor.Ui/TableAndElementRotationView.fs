@@ -1115,6 +1115,10 @@ type TableAndElementRotationMsg =
     | ExcludePoint of Experiments.ExperimentId * MappedPointNumber * ControlCaption
     /// Takes the point's exclusion back, `ExcludePoint`'s undo (spec 0050 S9.3; .spec-md §10.5).
     | IncludePoint of Experiments.ExperimentId * MappedPointNumber
+    /// The Data step's correction note as typed, writing nothing (spec 0050 S9.3).
+    | SetCorrectionNote of ControlCaption
+    /// Re-points the experiment to that setup revision for that note, in its kit file (spec 0050 S9.3; 001 §P `CorrectSetup`).
+    | CorrectSetup of Experiments.ExperimentId * SetupReference * ControlCaption
     /// Edits the name the next created setup takes (spec 0050 S8.2).
     | SetSetupName of ControlCaption
     /// The table becomes a new setup of the kit, named by the field (spec 0050 S8.2; 001 §P `CreateSetup`).
@@ -2361,10 +2365,19 @@ let private recordKitItemEdit
 /// `tryCreate` (spec 0050 S9.1).
 type private ExperimentSessionName = Experiments.SessionName
 
+/// The correction note type itself, for `tryCreate`, as `ExperimentSessionName` (spec 0050 S9.3).
+type private ExperimentCorrectionNote = Experiments.CorrectionNote
+
 type ControlCaption with
 
     /// The typed text as an experiment's notes (spec 0050 S9.1).
     member private this.toExperimentNotes : Experiments.ExperimentNotes = Experiments.ExperimentNotes this.value
+
+/// The model kept, telling `status`: a refused Data step write's answer, which writes nothing (spec 0050 S9.3).
+let private refusedWith (status : ControlCaption) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    {
+        model with kitStatus = Some status
+    }
 
 /// The model once `changed` is recorded in its kit file and takes its id's place in the collection, `onRecorded`
 /// finishing it; a failed write keeps the model and tells why (spec 0050 S9.1, S9.3).
@@ -2414,8 +2427,8 @@ let private reviewedDataOf (model : TableAndElementRotationModel) (experiment : 
             | None -> Error (MeasuredData.EmptyDataFileErr $"{experiment.name.value} has no data file")
     }
 
-/// The model once the experiment, its exclusions changed, is recorded: its badge checked again by the one validation,
-/// its review read again when it is the one reviewed, and `told` the status (spec 0050 S9.3).
+/// The model once the experiment, its exclusions or its setup changed, is recorded: its badge checked again by the one
+/// validation, its review read again when it is the one reviewed, and `told` the status (spec 0050 S9.3).
 let private withExperimentDataRecorded
     (changed : Experiments.Experiment)
     (told : ControlCaption)
@@ -2986,19 +2999,15 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
             | None -> model
             | Some held ->
-                let refused (status : ControlCaption) : TableAndElementRotationModel =
-                    {
-                        model with kitStatus = Some status
-                    }
                 let name = held.name.value
                 match ExclusionReason.tryCreate reason.value, held.dataOpt with
-                | None, _ -> refused (ControlCaption "Not excluded — an exclusion needs a reason.")
-                | Some _, None -> refused (ControlCaption $"Not excluded — {name} has no data file.")
+                | None, _ -> model |> refusedWith (ControlCaption "Not excluded — an exclusion needs a reason.")
+                | Some _, None -> model |> refusedWith (ControlCaption $"Not excluded — {name} has no data file.")
                 | Some why, Some data ->
                     match model.experimentData.readMapped data with
-                    | Error error -> refused (ControlCaption $"Not excluded — {error.caption.value}")
+                    | Error error -> model |> refusedWith (ControlCaption $"Not excluded — {error.caption.value}")
                     | Ok points when point.value > points.pointCount.value ->
-                        refused (ControlCaption $"Not excluded — {name} has {points.pointCount.value} point(s).")
+                        model |> refusedWith (ControlCaption $"Not excluded — {name} has {points.pointCount.value} point(s).")
                     | Ok _ ->
                         let exclusion : PointExclusion =
                             {
@@ -3026,6 +3035,25 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     | None -> model
                 | None -> model
             | None -> model)
+    | SetCorrectionNote note -> { model with dataDraft = { model.dataDraft with correctionNote = note } }
+    // Spec 0050 S9.3; 001 §K: only the experiment's file is rewritten, keeping its name, so the lab file is untouched.
+    | CorrectSetup (experimentId, reference, note) ->
+        guardKitWrite model (fun () ->
+            match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
+            | None -> model
+            | Some held ->
+                let name = held.name.value
+                match ExperimentCorrectionNote.tryCreate note.value with
+                | None -> model |> refusedWith (ControlCaption "Not corrected — a correction needs an audit note.")
+                | Some why ->
+                    let corrected = held.correctedTo reference why
+                    match corrected.slotsIn model.kitSetups with
+                    | Error _ -> model |> refusedWith (ControlCaption $"Not corrected — the kit holds no setup {reference.describe}.")
+                    | Ok _ when reference = held.setup ->
+                        model |> refusedWith (ControlCaption $"Not corrected — {name} already references {reference.describe}.")
+                    | Ok _ ->
+                        let told = ControlCaption $"Corrected {name}: {held.setup.describe} → {reference.describe} ({why.value})."
+                        model |> withExperimentDataRecorded corrected told)
     | SetSetupName name -> { model with setupName = name }
     | CreateSetup ->
         guardKitWrite model (fun () ->

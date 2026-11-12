@@ -426,6 +426,22 @@ module Experiments =
         /// The experiment with those notes, its scan, setup, name and data kept (spec 0050 S9.1).
         member this.withNotes (notes : ExperimentNotes) : Experiment = { this with notes = notes }
 
+        /// The experiment over `setup`, the re-pointing from its current setup and why appended to its corrections; its
+        /// name, scan, role, session, notes and data are kept, so a lab file keyed by its name still matches it
+        /// (spec 0050 S9.3).
+        member this.correctedTo (setup : SetupReference) (note : CorrectionNote) : Experiment =
+            let correction : SetupCorrection =
+                {
+                    previous = this.setup
+                    corrected = setup
+                    note = note
+                }
+            {
+                this with
+                    setup = setup
+                    corrections = this.corrections @ [ correction ]
+            }
+
     /// One experiment's versioned .experiment-json content (spec 0050 S4.3).
     type ExperimentFile =
         {

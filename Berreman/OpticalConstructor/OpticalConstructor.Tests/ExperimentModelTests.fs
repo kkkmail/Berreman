@@ -541,3 +541,124 @@ module ExperimentModelTests =
             Assert.Equal<TableAndElementRotationModel>(kit.model, kit.model |> updateTableAndElementRotation (IncludePoint (kit.e1.id, MappedPointNumber 1)))
             Assert.Equal<TableAndElementRotationModel>(kit.model, kit.model |> updateTableAndElementRotation (IncludePoint (kit.e2.id, MappedPointNumber 1)))
             Assert.Equal<Map<string, FileByteContent>>(before, everyFileBytes folder kit))
+
+    /// `Setup 1` at its first revision: the setup the fresh kit's first commit records the table as (spec 0050 S8.2).
+    let private setup1Revision1 : SetupReference = { name = SetupName "Setup 1"; revision = SetupRevision.first }
+
+    /// Runs over the Data step's kit, E1 and E2 over `Setup 1` revision 1, with the polarizer then turned to R1 30° and
+    /// the table recorded by `CreateSetup` as `Bench B`, at its first revision and referenced by no experiment; the kit's
+    /// model is the one after it (spec 0050 S8.2, S9.3).
+    let private withCorrectionKit (run : KitFolder -> DataStepKit -> Setups.Setup -> unit) : unit =
+        withDataStepKit (fun folder kit ->
+            Assert.Equal<SetupReference list>([ setup1Revision1; setup1Revision1 ], [ kit.e1.setup; kit.e2.setup ])
+            let polarizer = kit.model.elements |> List.findIndex (fun slot -> slot.placement.catalogueKind = LinearPolarizer)
+            let created =
+                {
+                    kit.model with selection = ElementSelected (SceneElementIndex polarizer)
+                }
+                |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
+                |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench B"))
+                |> updateTableAndElementRotation CreateSetup
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench B'."), created.kitStatus)
+            match created.kitSetups with
+            | [ benchB; setup1 ] ->
+                Assert.Equal<SetupReference>({ name = SetupName "Bench B"; revision = SetupRevision.first }, benchB.reference)
+                Assert.Equal<SetupReference>(setup1Revision1, setup1.reference)
+                // The turned polarizer is what tells the two setups apart.
+                Assert.NotEqual<Setups.SetupSlot list>(setup1.slots, benchB.slots)
+                Assert.Equal<Experiments.Experiment list>([ kit.e1; kit.e2 ], created.experimentCollection.experiments)
+                run folder
+                    {
+                        kit with model = created
+                    }
+                    benchB
+            | setups -> Assert.Fail $"the kit must hold Bench B and Setup 1, and it holds {setups.Length} setup(s)")
+
+    [<Fact>]
+    let ``CorrectSetup re-points the experiment to a setup of the kit with its audit note, and the lab file and the experiment's name are untouched`` () : unit =
+        withCorrectionKit (fun folder kit benchB ->
+            let e1FileBefore = (kitFileBytes folder).[experimentFileOf kit.e1]
+            let othersBefore = otherFileBytes folder kit.e1
+            let labBefore = File.ReadAllBytes kit.labFile.value
+            let attachedFile = Path.Combine(folder.value.value, (dataOf kit.e1).attachment.path.value)
+            let attachedBefore = File.ReadAllBytes attachedFile
+            Assert.Equal<Lifecycle.PinState>(Lifecycle.VersionUnpinned, benchB.pinFor kit.model.experimentCollection.experiments)
+
+            // The typed note is the Data step's draft and writes nothing; E1 is the experiment the Data step reviews.
+            let typed =
+                kit.model
+                |> updateTableAndElementRotation (ReviewExperimentData kit.e1.id)
+                |> updateTableAndElementRotation (SetCorrectionNote (ControlCaption "LP1 was at 30"))
+            Assert.Equal<DataStepDraft>(
+                {
+                    DataStepDraft.empty with correctionNote = ControlCaption "LP1 was at 30"
+                },
+                typed.dataDraft)
+            Assert.Equal<FileByteContent>(e1FileBefore, (kitFileBytes folder).[experimentFileOf kit.e1])
+
+            let corrected =
+                typed
+                |> updateTableAndElementRotation (CorrectSetup (Experiments.ExperimentId 1, benchB.reference, typed.dataDraft.correctionNote))
+            Assert.Equal<ControlCaption option>(
+                Some (ControlCaption "Corrected E1: 'Setup 1' revision 1 → 'Bench B' revision 1 (LP1 was at 30)."),
+                corrected.kitStatus)
+            let correction : Experiments.SetupCorrection =
+                {
+                    previous = setup1Revision1
+                    corrected = benchB.reference
+                    note = Experiments.CorrectionNote "LP1 was at 30"
+                }
+            // Only the setup and the corrections change: the name, scan, role and data stay, and E2 is untouched.
+            let expected : Experiments.Experiment =
+                {
+                    kit.e1 with
+                        setup = benchB.reference
+                        corrections = [ correction ]
+                }
+            Assert.Equal<Experiments.Experiment>(expected, heldExperiment corrected kit.e1.id)
+            Assert.Equal<Experiments.Experiment>(expected, storedExperiment corrected kit.e1.id)
+            Assert.Equal<Experiments.ExperimentName>(Experiments.ExperimentName "E1", (storedExperiment corrected kit.e1.id).name)
+            Assert.Equal<Experiments.Experiment>(kit.e2, heldExperiment corrected kit.e2.id)
+
+            // E1 now references Bench B's revision, which pins it; Bench B's detector validates the same three points,
+            // and the review, read again, is of the same file.
+            Assert.Equal<Lifecycle.PinState>(Lifecycle.VersionPinned, benchB.pinFor corrected.experimentCollection.experiments)
+            Assert.Equal<ExperimentDataLoad.ExperimentDataBadge>(
+                ExperimentDataLoad.ValidatedDataBadge (MeasuredData.MeasuredPointCount 3),
+                corrected.dataBadgeOf expected)
+            Assert.Equal<ReviewedData option>(typed.reviewedDataOpt, corrected.reviewedDataOpt)
+
+            // Only E1's file is rewritten, under its name: the attached file and the lab file keep their bytes.
+            Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
+            Assert.NotEqual<FileByteContent>(e1FileBefore, (kitFileBytes folder).[experimentFileOf kit.e1])
+            Assert.Equal<Map<string, FileByteContent>>(othersBefore, otherFileBytes folder kit.e1)
+            Assert.Equal<byte[]>(attachedBefore, File.ReadAllBytes attachedFile)
+            Assert.Equal<byte[]>(labBefore, File.ReadAllBytes kit.labFile.value))
+
+    [<Fact>]
+    let ``a correction without a note, to a setup the kit lacks, or to the setup it already references writes nothing`` () : unit =
+        withCorrectionKit (fun folder kit benchB ->
+            let before = everyFileBytes folder kit
+            let refusedWith (status : string) (message : TableAndElementRotationMsg) : unit =
+                let answer = kit.model |> updateTableAndElementRotation message
+                Assert.Equal<ControlCaption option>(Some (ControlCaption status), answer.kitStatus)
+                Assert.Equal<TableAndElementRotationModel>(
+                    {
+                        kit.model with kitStatus = answer.kitStatus
+                    },
+                    answer)
+                Assert.Equal<Map<string, FileByteContent>>(before, everyFileBytes folder kit)
+            let note = ControlCaption "LP1 was at 30"
+            let gone : SetupReference = { name = SetupName "Gone"; revision = SetupRevision.first }
+            // A revision Bench B never had.
+            let benchBRevision2 : SetupReference = { benchB.reference with revision = SetupRevision 2 }
+            refusedWith "Not corrected — a correction needs an audit note." (CorrectSetup (kit.e1.id, benchB.reference, ControlCaption "  "))
+            refusedWith "Not corrected — the kit holds no setup 'Gone' revision 1." (CorrectSetup (kit.e1.id, gone, note))
+            refusedWith "Not corrected — the kit holds no setup 'Bench B' revision 2." (CorrectSetup (kit.e1.id, benchBRevision2, note))
+            refusedWith "Not corrected — E1 already references 'Setup 1' revision 1." (CorrectSetup (kit.e1.id, setup1Revision1, note))
+
+            // An experiment the kit lacks changes nothing at all.
+            let absent = Experiments.ExperimentId 9
+            Assert.DoesNotContain(absent, kit.model.experimentCollection.experiments |> List.map (fun experiment -> experiment.id))
+            Assert.Equal<TableAndElementRotationModel>(kit.model, kit.model |> updateTableAndElementRotation (CorrectSetup (absent, benchB.reference, note)))
+            Assert.Equal<Map<string, FileByteContent>>(before, everyFileBytes folder kit))

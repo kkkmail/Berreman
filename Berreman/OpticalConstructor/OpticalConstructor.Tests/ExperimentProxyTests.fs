@@ -488,6 +488,81 @@ module ExperimentProxyTests =
         Assert.Equal<SetupCorrection list>([ correction ], kept.corrections)
 
     [<Fact>]
+    let ``a correction re-points the experiment's setup and appends the audit entry, its name and data unchanged`` () : unit =
+        let measuredOver : SetupReference = { name = SetupName "CPL-(LR#45)-CPL"; revision = SetupRevision 1 }
+        let actualOver : SetupReference = { name = SetupName "CPL-(LR#-45)-CPL"; revision = SetupRevision 1 }
+        let analyzer : ScanAxis =
+            {
+                elementId = el "cpl2"
+                label = ElementLabel "Circular polarizer #3"
+                variable = VaryR1
+                range = VariableRange.forVariable VaryR1
+            }
+        let data : MappedAttachment =
+            {
+                attachment =
+                    {
+                        path = KitRelativePath "data/cpl-lr45-cpl.csv"
+                        contentHash = ContentHash "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+                    }
+                profile = ImportProfileName.intensitySeries
+                rows = AllDataRows
+                exclusions = []
+            }
+        let measured : Experiment =
+            {
+                id = ExperimentId 1
+                name = ExperimentName "CPL-(LR#45)-CPL"
+                setup = measuredOver
+                scan = ExperimentScan.oneAxis analyzer CaptureTransmitted None
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
+                dataOpt = Some data
+                corrections = []
+            }
+
+        let note = CorrectionNote "LR was at -45"
+        let corrected = measured.correctedTo actualOver note
+        let toActual : SetupCorrection =
+            {
+                previous = measuredOver
+                corrected = actualOver
+                note = note
+            }
+        Assert.Equal<SetupReference>(actualOver, corrected.setup)
+        Assert.Equal<SetupCorrection list>([ toActual ], corrected.corrections)
+        Assert.Equal<ExperimentName>(measured.name, corrected.name)
+        Assert.Equal<ExperimentScan>(measured.scan, corrected.scan)
+        Assert.Equal<ExperimentRole>(measured.role, corrected.role)
+        Assert.Equal<MappedAttachment option>(Some data, corrected.dataOpt)
+        // Nothing but the setup and the corrections changes.
+        Assert.Equal<Experiment>(
+            {
+                measured with
+                    setup = actualOver
+                    corrections = [ toActual ]
+            },
+            corrected)
+
+        // A second correction, back, is appended after the first.
+        let backNote = CorrectionNote "LR was at 45 after all"
+        let back = corrected.correctedTo measuredOver backNote
+        let toMeasured : SetupCorrection =
+            {
+                previous = actualOver
+                corrected = measuredOver
+                note = backNote
+            }
+        Assert.Equal<SetupReference>(measuredOver, back.setup)
+        Assert.Equal<SetupCorrection list>([ toActual; toMeasured ], back.corrections)
+        Assert.Equal<Experiment>(
+            {
+                measured with corrections = [ toActual; toMeasured ]
+            },
+            back)
+
+    [<Fact>]
     let ``an added axis and an added block commit as one multi-variable scan, and editing splits it back`` () : unit =
         // A draft with nothing chosen, or an element with nothing to vary, adds no axis and closes no block.
         let lens = ExperimentCollection.empty |> chooseElement (el "lens") (ElementLabel "Lens #1") (VariableParameter.allowedFor Lens) CaptureTransmitted

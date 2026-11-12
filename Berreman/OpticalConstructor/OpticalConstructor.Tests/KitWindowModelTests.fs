@@ -202,6 +202,8 @@ module KitWindowModelTests =
         withTitledFolder (fun folder imports ->
             // Spec 0050 S8.2: a setup recorded while the kit was read-write is active when SaveSetup is refused.
             let storedBench = SetupName "Stored bench"
+            // Spec 0050 S9.3: a setup of the kit other than the stored experiment's, so only the guard refuses a correction.
+            let storedBenchRevision1 : SetupReference = { name = storedBench; revision = SetupRevision.first }
             let created = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
             withLoadedScene created (fun model ->
                 created.library.kit.proxy.writeExperiment storedExperiment |> kitValue
@@ -253,6 +255,8 @@ module KitWindowModelTests =
                         // Spec 0050 S9.3: a point's exclusion and its taking back are written to the experiment's file.
                         ready |> updateTableAndElementRotation (ExcludePoint (storedExperiment.id, MappedPointNumber 1, ControlCaption "beam blocked"))
                         ready |> updateTableAndElementRotation (IncludePoint (storedExperiment.id, MappedPointNumber 1))
+                        // Spec 0050 S9.3: a setup correction is written to the experiment's file.
+                        ready |> updateTableAndElementRotation (CorrectSetup (storedExperiment.id, storedBenchRevision1, ControlCaption "LR was at -45"))
                     ]
                 for answer in refused do
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)
