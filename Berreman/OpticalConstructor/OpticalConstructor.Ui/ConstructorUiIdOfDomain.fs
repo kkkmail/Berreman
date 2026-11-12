@@ -554,6 +554,8 @@ module ConstructorUiIdOfDomain =
             | ExperimentDataLoad.MappedDataBadge None -> ControlCaption "Mapped — not validated"
             | ExperimentDataLoad.MappedDataBadge (Some problem) -> ControlCaption $"Parse error — {problem.caption.value}"
             | ExperimentDataLoad.ValidatedDataBadge points -> ControlCaption $"Loaded — {points.value} point(s), schema-valid"
+            | ExperimentDataLoad.ExcludedPointsBadge counts ->
+                ControlCaption $"Loaded — {counts.kept.value} point(s) kept, {counts.excluded.value} excluded"
             | ExperimentDataLoad.DataChangedBadge (_, Some _) -> ControlCaption "Data changed since attach — attach it again to validate it"
             | ExperimentDataLoad.DataChangedBadge (attachment, None) -> ControlCaption $"Data file missing — {attachment.path.value}"
             | ExperimentDataLoad.OutOfRangeBadge problem -> ControlCaption $"Validation error — {problem.caption.value}"

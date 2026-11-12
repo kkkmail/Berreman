@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.ExperimentData
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.ExperimentDataLoad
 open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain     // ExperimentDataBadge.caption
 
 /// Exact measured-data attachment signatures over a canned kit-path map (spec 0038 step 035; spec 0050 S4.2, S9.2).
 module ExperimentDataProxyTests =
@@ -236,6 +237,62 @@ module ExperimentDataProxyTests =
         | other -> Assert.Fail($"expected DataUnitsMismatchErr for an ellipsometric series, got %A{other}")
 
     [<Fact>]
+    let ``loading data validates the kept points, so an excluded point outside the range does not refuse the data`` () : unit =
+        let library = BuiltinCatalogue.library ()
+
+        let turnSeries : IntensitySeries =
+            {
+                points =
+                    [
+                        { x = MeasuredAbscissa 0.0; intensity = MeasuredIntensity 1.0 }
+                        { x = MeasuredAbscissa 45.0; intensity = MeasuredIntensity 0.5 }
+                        { x = MeasuredAbscissa 90.0; intensity = MeasuredIntensity 0.0 }
+                    ]
+            }
+
+        let turnData : MappedAttachment =
+            { intensityData with attachment = { intensityAttachment with path = KitRelativePath "data/run-turn.csv" } }
+
+        let proxy = makeMock (Map.ofList [ turnData.attachment.path, SeriesPoints (IntensityData turnSeries) ]) Map.empty
+
+        // Step 288's one-axis experiment, over the analyzer's R1 0…45°.
+        let analyzerQuarterTurn : ScanAxis =
+            {
+                elementId = Library.ElementId "lp"
+                label = ElementLabel "Linear polarizer #2"
+                variable = VaryR1
+                range =
+                    {
+                        min = Propagation.SweptValue 0.0
+                        max = Propagation.SweptValue 45.0
+                        points = Propagation.CurvePointCount 2
+                    }
+            }
+
+        let load (data : MappedAttachment) : Result<MappedPoints, ExperimentDataError> =
+            let experiment = { oneAxis with scan = ExperimentScan.oneAxis analyzerQuarterTurn CaptureTransmitted None; dataOpt = Some data }
+            ExperimentDataLoad.loadAndValidate library proxy intensityDetectorSlots experiment data
+
+        // With no exclusion, the 90° point lies outside the range and refuses the data.
+        match load turnData with
+        | Error (DataRangeMismatchErr reason) -> Assert.Contains("90", reason)
+        | other -> Assert.Fail($"expected DataRangeMismatchErr naming 90, got %A{other}")
+
+        // Excluding point 3 leaves it in the file and out of the validation, which reads the two kept points.
+        let blocked = { turnData with exclusions = [ { point = MappedPointNumber 3; reason = ExclusionReason "beam blocked" } ] }
+        let kept = load blocked
+
+        match kept with
+        | Ok (SeriesPoints _ as points) -> Assert.Equal(MeasuredPointCount 2, points.pointCount)
+        | other -> Assert.Fail($"expected Ok (SeriesPoints _) of two points, got %A{other}")
+
+        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(Ok (SeriesPoints (IntensityData { points = List.take 2 turnSeries.points })), kept)
+        Assert.Equal<Result<MappedPoints, ExperimentDataError>>(Ok (SeriesPoints (IntensityData turnSeries)), proxy.readMapped blocked)
+        Assert.Equal<ExperimentDataBadge>(
+            ExcludedPointsBadge { kept = MeasuredPointCount 2; excluded = MeasuredPointCount 1 },
+            ExperimentDataBadge.ofCheck (Some blocked) (Some AttachedDataUnchanged) (Some kept))
+
+    [<Fact>]
     let ``the data badge follows the attachment, its file's hash and its validation`` () : unit =
         let validated : Result<MappedPoints, ExperimentDataError> = Ok (SeriesPoints (IntensityData intensityFixture))
         let changedHash = ContentHash "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
@@ -274,10 +331,34 @@ module ExperimentDataProxyTests =
             Assert.Equal<ExperimentDataBadge>(MappedDataBadge (Some emptyProblem), badgeOf (Some (Error emptyProblem)))
             Assert.Equal<ExperimentDataBadge>(MappedDataBadge None, badgeOf None)
 
+        // Spec 0050 S9.3: validated data with exclusions counts its kept and its excluded points; a changed or missing
+        // file stays ahead of it, and every other outcome reads as it does without exclusions.
+        let blocked : PointExclusion = { point = MappedPointNumber 3; reason = ExclusionReason "beam blocked" }
+        let excluding = Some { intensityData with exclusions = [ blocked ] }
+        let twoValidated : Result<MappedPoints, ExperimentDataError> =
+            Ok (SeriesPoints (IntensityData { points = List.take 2 intensityFixture.points }))
+        let excludedBadge = ExcludedPointsBadge { kept = MeasuredPointCount 2; excluded = MeasuredPointCount 1 }
+        for statusOpt in [ None; Some AttachedDataUnchanged ] do
+            let badgeOf (outcomeOpt : Result<MappedPoints, ExperimentDataError> option) : ExperimentDataBadge =
+                ExperimentDataBadge.ofCheck excluding statusOpt outcomeOpt
+            Assert.Equal<ExperimentDataBadge>(excludedBadge, badgeOf (Some twoValidated))
+            Assert.Equal<ExperimentDataBadge>(OutOfRangeBadge rangeProblem, badgeOf (Some (Error rangeProblem)))
+            Assert.Equal<ExperimentDataBadge>(MappedDataBadge (Some parseProblem), badgeOf (Some (Error parseProblem)))
+            Assert.Equal<ExperimentDataBadge>(MappedDataBadge None, badgeOf None)
+        Assert.Equal<ExperimentDataBadge>(
+            DataChangedBadge (intensityAttachment, Some changedHash),
+            ExperimentDataBadge.ofCheck excluding (Some (AttachedDataChanged changedHash)) (Some twoValidated))
+        Assert.Equal<ExperimentDataBadge>(
+            DataChangedBadge (intensityAttachment, None), ExperimentDataBadge.ofCheck excluding (Some AttachedDataMissing) (Some twoValidated))
+        Assert.Equal<ExperimentDataBadge>(NoDataBadge, ExperimentDataBadge.ofCheck None None (Some twoValidated))
+
         Assert.Equal("no data", NoDataBadge.text)
         Assert.Equal("mapped", (MappedDataBadge None).text)
         Assert.Equal("mapped", (MappedDataBadge (Some parseProblem)).text)
         Assert.Equal("validated (3 points)", (ValidatedDataBadge (MeasuredPointCount 3)).text)
+        Assert.Equal("excluded points (1 excluded, 2 validated)", excludedBadge.text)
+        Assert.Equal("Loaded — 2 point(s) kept, 1 excluded", excludedBadge.caption.value)
+        Assert.Equal("Loaded — 3 point(s), schema-valid", (ValidatedDataBadge (MeasuredPointCount 3)).caption.value)
         Assert.Equal("data changed", (DataChangedBadge (intensityAttachment, Some changedHash)).text)
         Assert.Equal("data changed", (DataChangedBadge (intensityAttachment, None)).text)
         Assert.Equal("out of range", (OutOfRangeBadge unitsProblem).text)

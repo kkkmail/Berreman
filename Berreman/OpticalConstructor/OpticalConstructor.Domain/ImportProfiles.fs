@@ -305,6 +305,24 @@ module ImportProfiles =
                     | [] -> Error (MalformedDataFileErr $"the import profile maps no key column to select '{key.value}' by")
                     | _ -> kept (mapped |> List.filter (fun row -> row.keyOpt = Some key)) ColumnPoints
 
+        /// The points in order without those an exclusion names, the case and a series' kind kept; an exclusion naming
+        /// no point changes nothing. The one rule from an attachment's exclusions to the points read (spec 0050 S9.3).
+        member this.keptBy (exclusions : PointExclusion list) : MappedPoints =
+            let excluded = exclusions |> List.map (fun exclusion -> exclusion.point) |> Set.ofList
+
+            let kept (points : 'Point list) : 'Point list =
+                points
+                |> List.mapi (fun index point -> MappedPointNumber (index + 1), point)
+                |> List.filter (fun (number, _) -> not (Set.contains number excluded))
+                |> List.map snd
+
+            match this with
+            | SeriesPoints (IntensityData series) -> SeriesPoints (IntensityData { series with points = kept series.points })
+            | SeriesPoints (EllipsometricData series) -> SeriesPoints (EllipsometricData { series with points = kept series.points })
+            | CapturePoints captures -> CapturePoints (kept captures)
+            | ObservationPoints observations -> ObservationPoints (kept observations)
+            | ColumnPoints rows -> ColumnPoints (kept rows)
+
     /// A Mueller element m<i><j> at 4i + j, 0 to 15 (spec 0050 S9.2).
     type MuellerElementIndex =
         | MuellerElementIndex of int

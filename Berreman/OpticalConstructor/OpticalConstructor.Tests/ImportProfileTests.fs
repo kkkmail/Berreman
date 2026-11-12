@@ -205,17 +205,30 @@ module ImportProfileTests =
         let observation : MuellerObservation = { configuration = configuration; measured = Propagation.identityMueller }
         { key = key; observation = observation }
 
-    [<Fact>]
-    let ``mapped points count what they hold`` () : unit =
-        let intensity : IntensitySeries =
-            {
-                points =
-                    [
-                        { x = MeasuredAbscissa 0.0; intensity = MeasuredIntensity 1.0 }
-                        { x = MeasuredAbscissa 90.0; intensity = MeasuredIntensity 0.0 }
-                    ]
-            }
+    /// Step 300's two-point intensity series, 0 → 1.0 and 90 → 0.0.
+    let private twoPointIntensity : IntensitySeries =
+        {
+            points =
+                [
+                    { x = MeasuredAbscissa 0.0; intensity = MeasuredIntensity 1.0 }
+                    { x = MeasuredAbscissa 90.0; intensity = MeasuredIntensity 0.0 }
+                ]
+        }
 
+    /// Step 300's three Phone ROI capture rows, at 0, 45 and 90°.
+    let private threeCaptures : MuellerRawRow list =
+        [
+            captureAt (CaptureIndex 1) (Angle.degree 0.0<deg>)
+            captureAt (CaptureIndex 2) (Angle.degree 45.0<deg>)
+            captureAt (CaptureIndex 3) (Angle.degree 90.0<deg>)
+        ]
+
+    /// Step 300's three keyed observations, QZ, LR and QZ+LR.
+    let private threeObservations : KeyedObservation list =
+        [ observationOf (DataRowKey "QZ"); observationOf (DataRowKey "LR"); observationOf (DataRowKey "QZ+LR") ]
+
+    /// Step 300's three mapped rows of key QZ at 45°: a signal with its σ, a signal without one, and a Mueller matrix.
+    let private threeMappedRows : MappedRow list =
         let rowOf (reading : MappedReading) : MappedRow =
             {
                 keyOpt = Some (DataRowKey "QZ")
@@ -226,26 +239,59 @@ module ImportProfileTests =
                 observableOpt = Some TransmittedMueller
             }
 
-        let captures =
-            [
-                captureAt (CaptureIndex 1) (Angle.degree 0.0<deg>)
-                captureAt (CaptureIndex 2) (Angle.degree 45.0<deg>)
-                captureAt (CaptureIndex 3) (Angle.degree 90.0<deg>)
-            ]
+        [
+            rowOf (SignalReading (MeasuredIntensity 1.0, Some (MeasuredSigma 0.01)))
+            rowOf (SignalReading (MeasuredIntensity 0.5, None))
+            rowOf (MuellerReading Propagation.identityMueller)
+        ]
 
-        let observations = [ observationOf (DataRowKey "QZ"); observationOf (DataRowKey "LR"); observationOf (DataRowKey "QZ+LR") ]
+    [<Fact>]
+    let ``mapped points count what they hold`` () : unit =
+        Assert.Equal(MeasuredPointCount 2, (SeriesPoints (IntensityData twoPointIntensity)).pointCount)
+        Assert.Equal(MeasuredPointCount 3, (CapturePoints threeCaptures).pointCount)
+        Assert.Equal(MeasuredPointCount 3, (ObservationPoints threeObservations).pointCount)
+        Assert.Equal(MeasuredPointCount 3, (ColumnPoints threeMappedRows).pointCount)
 
-        let rows =
-            [
-                rowOf (SignalReading (MeasuredIntensity 1.0, Some (MeasuredSigma 0.01)))
-                rowOf (SignalReading (MeasuredIntensity 0.5, None))
-                rowOf (MuellerReading Propagation.identityMueller)
-            ]
+    // ============================ spec 0050 S9.3: the points an attachment's exclusions keep ============================
 
-        Assert.Equal(MeasuredPointCount 2, (SeriesPoints (IntensityData intensity)).pointCount)
-        Assert.Equal(MeasuredPointCount 3, (CapturePoints captures).pointCount)
-        Assert.Equal(MeasuredPointCount 3, (ObservationPoints observations).pointCount)
-        Assert.Equal(MeasuredPointCount 3, (ColumnPoints rows).pointCount)
+    [<Fact>]
+    let ``kept points leave out the excluded ones and keep the rest in order`` () : unit =
+        let excludedAt (point : MappedPointNumber) : PointExclusion = { point = point; reason = ExclusionReason "beam blocked" }
+        let second = [ excludedAt (MappedPointNumber 2) ]
+        let ninth = [ excludedAt (MappedPointNumber 9) ]
+
+        let series = SeriesPoints (IntensityData twoPointIntensity)
+
+        let ellipsometric =
+            let pointAt (nanometres : float<nm>) : EllipsometricPoint =
+                { waveLength = WaveLength.nm nanometres; psi = Angle.degree 12.0<deg>; delta = Angle.degree 30.0<deg>; aoiOpt = None }
+
+            SeriesPoints (EllipsometricData { points = [ pointAt 400.0<nm>; pointAt 500.0<nm>; pointAt 600.0<nm> ] })
+
+        let captures = CapturePoints threeCaptures
+        let observations = ObservationPoints threeObservations
+        let rows = ColumnPoints threeMappedRows
+
+        // Excluding point 2 keeps points 1 and 3 of each list in order, and a series keeps its kind over what it keeps.
+        Assert.Equal<MappedPoints>(SeriesPoints (IntensityData { points = [ List.head twoPointIntensity.points ] }), series.keptBy second)
+
+        match ellipsometric, ellipsometric.keptBy second with
+        | SeriesPoints (EllipsometricData whole), SeriesPoints (EllipsometricData kept) ->
+            Assert.Equal<EllipsometricPoint list>([ whole.points[0]; whole.points[2] ], kept.points)
+        | _, other -> Assert.Fail($"expected the ellipsometric series' points 1 and 3, got %A{other}")
+
+        Assert.Equal<MappedPoints>(CapturePoints [ threeCaptures[0]; threeCaptures[2] ], captures.keptBy second)
+        Assert.Equal<MappedPoints>(ObservationPoints [ threeObservations[0]; threeObservations[2] ], observations.keptBy second)
+        Assert.Equal<MappedPoints>(ColumnPoints [ threeMappedRows[0]; threeMappedRows[2] ], rows.keptBy second)
+
+        // Every point but the first excluded keeps only the first.
+        let allButFirst = [ excludedAt (MappedPointNumber 3); excludedAt (MappedPointNumber 2) ]
+        Assert.Equal<MappedPoints>(CapturePoints [ threeCaptures[0] ], captures.keptBy allButFirst)
+
+        // No exclusion keeps each whole, and an exclusion of point 9 changes nothing.
+        for points in [ series; ellipsometric; captures; observations; rows ] do
+            Assert.Equal<MappedPoints>(points, points.keptBy [])
+            Assert.Equal<MappedPoints>(points, points.keptBy ninth)
 
     // ============================ spec 0050 S9.2: mapped points against the scan and detector ============================
 
