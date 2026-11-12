@@ -73,6 +73,7 @@ module KitWindowTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, Create setup and Save

@@ -690,6 +690,35 @@ module Kit =
         | AllDataRows
         | KeyedDataRows of key : DataRowKey
 
+    /// A point's 1-based place among the points its attachment's row selection keeps, in file order, as
+    /// `ExperimentDataProxy.readMapped` answers them (spec 0050 S9.3).
+    type MappedPointNumber =
+        | MappedPointNumber of int
+
+        member this.value : int = let (MappedPointNumber number) = this in number
+
+        /// `None` below 1 (spec 0050 S9.3).
+        static member tryCreate (number : int) : MappedPointNumber option =
+            if number >= 1 then Some (MappedPointNumber number) else None
+
+    /// Why a point is excluded, kept as given; raw data is immutable and the point stays visible, marked (spec 0050 S9.3;
+    /// 001 §K).
+    type ExclusionReason =
+        | ExclusionReason of string
+
+        member this.value : string = let (ExclusionReason text) = this in text
+
+        /// The text as given; an empty or white-space text is no reason (spec 0050 S9.3).
+        static member tryCreate (text : string) : ExclusionReason option =
+            if String.IsNullOrWhiteSpace text then None else Some (ExclusionReason text)
+
+    /// One mapped point left out of the experiment's data, and why (spec 0050 S9.3).
+    type PointExclusion =
+        {
+            point : MappedPointNumber
+            reason : ExclusionReason
+        }
+
     /// An experiment's data: the kit file, the import profile it is read through and the rows that are the experiment's
     /// (spec 0050 S9.1; 001 §K).
     type MappedAttachment =
@@ -697,7 +726,27 @@ module Kit =
             attachment : DataAttachment
             profile : ImportProfileName
             rows : DataRowSelection
+            /// In point order, at most one per point; they number this attachment's points, so attaching a file anew
+            /// starts with none (spec 0050 S9.3).
+            exclusions : PointExclusion list
         }
+
+        /// That point's exclusion replaced, or the new one inserted in point order (spec 0050 S9.3).
+        member this.withExclusion (exclusion : PointExclusion) : MappedAttachment =
+            let others = this.exclusions |> List.filter (fun held -> held.point <> exclusion.point)
+            {
+                this with exclusions = exclusion :: others |> List.sortBy (fun held -> held.point)
+            }
+
+        /// That point's exclusion removed; the attachment unchanged when it has none (spec 0050 S9.3).
+        member this.withoutExclusion (point : MappedPointNumber) : MappedAttachment =
+            {
+                this with exclusions = this.exclusions |> List.filter (fun held -> held.point <> point)
+            }
+
+        /// That point's exclusion, if it has one (spec 0050 S9.3).
+        member this.tryFindExclusion (point : MappedPointNumber) : PointExclusion option =
+            this.exclusions |> List.tryFind (fun held -> held.point = point)
 
     /// Why an item, its label, its model binding or one of its parameters was refused, named in the reason
     /// (spec 0050 S7.1).

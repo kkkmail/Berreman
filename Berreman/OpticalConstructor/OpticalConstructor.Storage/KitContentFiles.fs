@@ -264,8 +264,9 @@ module KitContentFiles =
 
         /// Copies the chosen source experiments with the setups they reference and the items those use, each mapped by its
         /// row or default or added, the data and photos they reference, the kit profiles their data is mapped by and the
-        /// source snapshots this kit lacks, renumbered and renamed on a clash. Everything is read before anything is
-        /// written, the source only read; the first failure stops the copy (spec 0050 S6, S7.2, S8.2, S9.1, S9.2).
+        /// source snapshots this kit lacks, renumbered and renamed on a clash; each experiment's exclusions and corrections
+        /// are kept as written. Everything is read before anything is written, the source only read; the first failure
+        /// stops the copy (spec 0050 S6, S7.2, S8.2, S9.1, S9.2, S9.3).
         member this.copyExperimentsFrom
             (source : KitContext)
             (ids : ExperimentId list)

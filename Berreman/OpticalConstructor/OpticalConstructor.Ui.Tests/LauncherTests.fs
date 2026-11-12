@@ -823,6 +823,7 @@ module LauncherTests =
                 sessionOpt = None
                 notes = ExperimentNotes.none
                 dataOpt = None
+                corrections = []
             }
         try kit.library.kit.proxy.writeExperiment experiment |> SceneTestFixture.kitSuccess
         finally kit.library.kit.close () |> SceneTestFixture.kitSuccess

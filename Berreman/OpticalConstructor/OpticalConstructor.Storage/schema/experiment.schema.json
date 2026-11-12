@@ -19,7 +19,7 @@
       "schemaVersion": true,
       "experiment": {
         "type": "object",
-        "required": ["id", "name", "setup", "scan", "role", "sessionOpt", "notes", "dataOpt"],
+        "required": ["id", "name", "setup", "scan", "role", "sessionOpt", "notes", "dataOpt", "corrections"],
         "additionalProperties": false,
         "properties": {
           "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
@@ -30,13 +30,7 @@
           },
           "setup": {
             "description": "The setup revision the experiment was recorded over (spec 0050 S8.2).",
-            "type": "object",
-            "required": ["name", "revision"],
-            "additionalProperties": false,
-            "properties": {
-              "name": { "type": "string", "pattern": "\\S" },
-              "revision": { "type": "integer", "minimum": 1 }
-            }
+            "$ref": "#/$defs/setupReference"
           },
           "scan": {
             "description": "What the run varies, block after block, and a tunable source's set wavelength (spec 0050 S9.1).",
@@ -67,7 +61,7 @@
               { "type": "null" },
               {
                 "type": "object",
-                "required": ["attachment", "profile", "rows"],
+                "required": ["attachment", "profile", "rows", "exclusions"],
                 "additionalProperties": false,
                 "properties": {
                   "attachment": {
@@ -83,12 +77,51 @@
                   "rows": {
                     "description": "A DataRowSelection in the serializer's case form: AllDataRows is its name, KeyedDataRows an object; the serializer binds its shape.",
                     "type": ["string", "object"]
+                  },
+                  "exclusions": {
+                    "description": "The points left out, each a 1-based point of the mapped rows with its reason (spec 0050 S9.3).",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["point", "reason"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "point": { "type": "integer", "minimum": 1 },
+                        "reason": { "type": "string", "pattern": "\\S" }
+                      }
+                    }
                   }
                 }
               }
             ]
+          },
+          "corrections": {
+            "description": "The setup's re-pointings, oldest first, each with its audit note (spec 0050 S9.3).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["previous", "corrected", "note"],
+              "additionalProperties": false,
+              "properties": {
+                "previous": { "$ref": "#/$defs/setupReference" },
+                "corrected": { "$ref": "#/$defs/setupReference" },
+                "note": { "type": "string", "pattern": "\\S" }
+              }
+            }
           }
         }
+      }
+    }
+  },
+  "$defs": {
+    "setupReference": {
+      "description": "A setup's name and revision (spec 0050 S8.2).",
+      "type": "object",
+      "required": ["name", "revision"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "\\S" },
+        "revision": { "type": "integer", "minimum": 1 }
       }
     }
   }

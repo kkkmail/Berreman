@@ -688,6 +688,7 @@ module KitStartWindowTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     /// A sent kit's kit file, and the zip it was sent into (spec 0050 S6).

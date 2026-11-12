@@ -55,7 +55,9 @@ module KitContentFileJsonTests =
                         attachment = attachment
                         profile = ImportProfileName.intensitySeries
                         rows = AllDataRows
+                        exclusions = []
                     }
+            corrections = []
         }
 
     let private e3 : Experiment =
@@ -68,6 +70,7 @@ module KitContentFileJsonTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     /// E1 as a calibration of day 1 with notes, over two blocks: the sample's incidence × azimuth read in T and R, then
@@ -124,11 +127,33 @@ module KitContentFileJsonTests =
                         })
         }
 
-    let private editedExperimentFile (edit : JsonObject -> unit) : KitFileText =
-        let text = e1.experimentFile.fileText |> kitContentJsonValue
+    /// E1 whose data excludes its point 3 and whose setup was re-pointed once, with its audit note (spec 0050 S9.3).
+    let private e1Corrected : Experiment =
+        let cosmicRay : PointExclusion =
+            {
+                point = MappedPointNumber 3
+                reason = ExclusionReason "cosmic ray"
+            }
+        let correction : SetupCorrection =
+            {
+                previous = { name = SetupName "CPL-(LR#45)-CPL"; revision = SetupRevision 1 }
+                corrected = { name = SetupName "CPL-(LR#-45)-CPL"; revision = SetupRevision 1 }
+                note = CorrectionNote "LR was at -45"
+            }
+        {
+            e1 with
+                setup = correction.corrected
+                dataOpt = e1.dataOpt |> Option.map (fun data -> data.withExclusion cosmicRay)
+                corrections = [ correction ]
+        }
+
+    let private editedFileOf (experiment : Experiment) (edit : JsonObject -> unit) : KitFileText =
+        let text = experiment.experimentFile.fileText |> kitContentJsonValue
         let node = (JsonNode.Parse text.value).AsObject()
         edit node
         node.canonicalFileText |> KitFileText
+
+    let private editedExperimentFile : (JsonObject -> unit) -> KitFileText = editedFileOf e1
 
     [<Fact>]
     let ``an experiment is stored under its name`` () : unit =
@@ -144,7 +169,7 @@ module KitContentFileJsonTests =
     let ``an experiment file round-trips through its canonical text`` () : unit =
         let expectedVersion = FileSchemaVersion 1
 
-        for experiment in [ e1; e3; e1TwoBlocks; e1KeyedRows ] do
+        for experiment in [ e1; e3; e1TwoBlocks; e1KeyedRows; e1Corrected ] do
             let file = experiment.experimentFile
             let text = file.fileText |> kitContentJsonValue
             let readBack = text.parseExperimentFile |> kitContentJsonValue
@@ -196,7 +221,7 @@ module KitContentFileJsonTests =
         for key in [ "schemaVersion"; "experiment" ] do
             editedExperimentFile (fun node -> node.Remove key |> ignore) |> assertSchemaInvalid
 
-        for key in [ "id"; "name"; "setup"; "scan"; "role"; "sessionOpt"; "notes"; "dataOpt" ] do
+        for key in [ "id"; "name"; "setup"; "scan"; "role"; "sessionOpt"; "notes"; "dataOpt"; "corrections" ] do
             editedExperimentFile (fun node -> node["experiment"].AsObject().Remove key |> ignore)
             |> assertSchemaInvalid
 
@@ -235,10 +260,22 @@ module KitContentFileJsonTests =
                 (fun node -> node.["experiment"].["dataOpt"].["attachment"].AsObject().Remove "contentHash" |> ignore)
                 (fun node -> node.["experiment"].["dataOpt"].["profile"] <- JsonValue.Create "")
                 (fun node -> (node["experiment"]["dataOpt"]).AsObject().Remove "rows" |> ignore)
+                (fun node -> (node["experiment"]["dataOpt"]).AsObject().Remove "exclusions" |> ignore)
             ]
 
         for edit in invalidEdits do
             editedExperimentFile edit |> assertSchemaInvalid
+
+        // Spec 0050 S9.3: an exclusion numbers a point from 1 and gives a reason; a correction carries its audit note.
+        let invalidCorrectedEdits : (JsonObject -> unit) list =
+            [
+                (fun node -> node.["experiment"].["dataOpt"].["exclusions"].[0].["point"] <- JsonValue.Create 0)
+                (fun node -> node.["experiment"].["dataOpt"].["exclusions"].[0].["reason"] <- JsonValue.Create "  ")
+                (fun node -> node.["experiment"].["corrections"].[0].AsObject().Remove "note" |> ignore)
+            ]
+
+        for edit in invalidCorrectedEdits do
+            editedFileOf e1Corrected edit |> assertSchemaInvalid
 
         for text in [ KitFileText "null"; KitFileText "[]"; KitFileText "1" ] do
             assertSchemaInvalid text

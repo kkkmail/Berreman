@@ -79,6 +79,7 @@ module ExperimentDataStoreTests =
             attachment = attachment
             profile = profile
             rows = AllDataRows
+            exclusions = []
         }
 
     let private kitPaths (folder : KitFolder) : string[] =
@@ -169,7 +170,7 @@ module ExperimentDataStoreTests =
                 observableOpt = None
             }
 
-        let keyed : MappedAttachment = { attachment = attachment; profile = labScanProfile.name; rows = KeyedDataRows k1 }
+        let keyed : MappedAttachment = { attachment = attachment; profile = labScanProfile.name; rows = KeyedDataRows k1; exclusions = [] }
         let expected =
             ColumnPoints
                 [

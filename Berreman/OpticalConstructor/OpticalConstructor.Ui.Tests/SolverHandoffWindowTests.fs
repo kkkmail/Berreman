@@ -109,6 +109,7 @@ module SolverHandoffWindowTests =
                             attachment = attachment
                             profile = profile
                             rows = AllDataRows
+                            exclusions = []
                         }
         }
 

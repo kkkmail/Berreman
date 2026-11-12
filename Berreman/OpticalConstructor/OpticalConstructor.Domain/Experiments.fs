@@ -196,6 +196,24 @@ module Experiments =
 
         static member none : ExperimentNotes = ExperimentNotes ""
 
+    /// The mandatory audit note on why an experiment's setup was re-pointed after the fact (spec 0050 S9.3; 001 §K).
+    type CorrectionNote =
+        | CorrectionNote of string
+
+        member this.value : string = let (CorrectionNote text) = this in text
+
+        /// The text as given; an empty or white-space text is no note (spec 0050 S9.3).
+        static member tryCreate (text : string) : CorrectionNote option =
+            if System.String.IsNullOrWhiteSpace text then None else Some (CorrectionNote text)
+
+    /// One re-pointing of an experiment's setup ("LR was at −45") and why it was made (spec 0050 S9.3; 001 §K).
+    type SetupCorrection =
+        {
+            previous : SetupReference
+            corrected : SetupReference
+            note : CorrectionNote
+        }
+
     /// The Experiments error channel: errors as values, each case carrying a `reason` (spec 0050 S9.1).
     type ExperimentError =
         | UnknownExperimentErr of reason : string
@@ -345,6 +363,8 @@ module Experiments =
             /// The measured data: a kit file read through an import profile, and the rows that are this run's (spec 0050
             /// S4.2, S9.1).
             dataOpt : MappedAttachment option
+            /// Its setup's re-pointings, oldest first; an edit never loses them (spec 0050 S9.3).
+            corrections : SetupCorrection list
         }
 
         /// The collection row's and readout's text: one block of no axis is a dark line on its setup revision; otherwise
@@ -625,9 +645,9 @@ module Experiments =
         }
 
     /// Confirms the draft's scan over the target's setup revision (spec 028 step 3; spec 0050 S8.2, S9.1): an edited
-    /// experiment takes the setup and scan and keeps the rest, its name included; otherwise a new `ScienceRun` of the
-    /// target's name, with no session, notes or data file, is appended and edited next. A draft with no edited axis
-    /// commits nothing (the bay's `canCommit`).
+    /// experiment takes the setup and scan and keeps the rest, its name and corrections included; otherwise a new
+    /// `ScienceRun` of the target's name, with no session, notes, data file or correction, is appended and edited next. A
+    /// draft with no edited axis commits nothing (the bay's `canCommit`; spec 0050 S9.3).
     let commit (target : ExperimentTarget) (c : ExperimentCollection) : ExperimentCollection =
         match c.draft.scanOpt with
         | Some scan ->
@@ -655,6 +675,7 @@ module Experiments =
                         sessionOpt = None
                         notes = ExperimentNotes.none
                         dataOpt = None
+                        corrections = []
                     }
                 { c with
                     experiments = c.experiments @ [ exp ]

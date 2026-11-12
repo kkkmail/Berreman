@@ -445,6 +445,7 @@ module ExperimentProxyTests =
                 sessionOpt = None
                 notes = ExperimentNotes.none
                 dataOpt = None
+                corrections = []
             }
         Assert.Equal<Experiment list>([ expected ], committed.experiments)
         Assert.Equal<ExperimentScan option>(Some expected.scan, committed.draft.scanOpt)
@@ -456,6 +457,35 @@ module ExperimentProxyTests =
         Assert.Contains("Linear polarizer", description)
         Assert.Contains("Rotation R1", description)
         Assert.Contains("Transmitted", description)
+
+    // ============================ spec 0050 S9.3: an experiment's setup corrections ============================
+
+    [<Fact>]
+    let ``a correction note refuses a blank text, and a committed experiment starts with no correction and keeps its corrections through an edit`` () : unit =
+        let note = CorrectionNote "LR was at -45"
+        Assert.Equal<CorrectionNote option>(Some note, CorrectionNote.tryCreate "LR was at -45")
+        Assert.Equal<CorrectionNote option>(None, CorrectionNote.tryCreate "  ")
+
+        let committed = withSource () |> commitOver benchRevision1
+        let appended = Assert.Single committed.experiments
+        Assert.Equal<SetupCorrection list>([], appended.corrections)
+
+        let plateRevision1 : SetupReference = { name = SetupName "Plate"; revision = SetupRevision 1 }
+        let correction : SetupCorrection =
+            {
+                previous = benchRevision1
+                corrected = plateRevision1
+                note = note
+            }
+        let corrected =
+            {
+                appended with corrections = [ correction ]
+            }
+        let edited = committed.withStoredExperiment corrected |> edit appended.id |> commitOver benchRevision1
+        let kept = Assert.Single edited.experiments
+        Assert.Equal<ExperimentId>(appended.id, kept.id)
+        Assert.Equal<SetupReference>(benchRevision1, kept.setup)
+        Assert.Equal<SetupCorrection list>([ correction ], kept.corrections)
 
     [<Fact>]
     let ``an added axis and an added block commit as one multi-variable scan, and editing splits it back`` () : unit =
@@ -574,6 +604,7 @@ module ExperimentProxyTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     /// E2 = the same WITHOUT a sample, on `Bench` revision 2 (captures that the polarizers are not ideal).
@@ -624,6 +655,7 @@ module ExperimentProxyTests =
                 attachment = attachment
                 profile = ImportProfileName.intensitySeries
                 rows = AllDataRows
+                exclusions = []
             }
         let c = withSource () |> commitOver benchRevision1
         let id = (List.head c.experiments).id
@@ -946,6 +978,7 @@ module ExperimentProxyTests =
                                 attachment = attachment
                                 profile = ImportProfileName.intensitySeries
                                 rows = AllDataRows
+                                exclusions = []
                             }
             }
         let editing =
@@ -969,6 +1002,7 @@ module ExperimentProxyTests =
                 sessionOpt = None
                 notes = ExperimentNotes.none
                 dataOpt = None
+                corrections = []
             }
         let targets : ExperimentTarget list =
             [
@@ -1016,6 +1050,7 @@ module ExperimentProxyTests =
                 sessionOpt = None
                 notes = ExperimentNotes.none
                 dataOpt = None
+                corrections = []
             }
         let stub : ExperimentProxy =
             {

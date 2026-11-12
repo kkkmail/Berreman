@@ -180,6 +180,7 @@ module KitStartTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     /// A kit sent as a zip, and the kit file and experiments it held when it was sent (spec 0050 S6).

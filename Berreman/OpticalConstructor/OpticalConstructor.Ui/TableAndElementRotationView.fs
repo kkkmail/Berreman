@@ -2826,12 +2826,14 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 }
             | Ok attachment ->
                 // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
-                // Spec 0050 S9.2: it is read through the profile the wizard chose, every row the run's.
+                // Spec 0050 S9.2: it is read through the profile the wizard chose, every row the run's; S9.3: a new
+                // mapping numbers its points anew, so it starts with no exclusion.
                 let data : MappedAttachment =
                     {
                         attachment = attachment
                         profile = profile
                         rows = AllDataRows
+                        exclusions = []
                     }
                 let collection = Experiments.attachDataFile experimentId data model.experimentCollection
                 match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
@@ -4604,6 +4606,7 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                             sessionOpt = None
                             notes = Experiments.ExperimentNotes ""
                             dataOpt = None
+                            corrections = []
                         }
                     let sourceText =
                         match List.contains Experiments.VaryWaveLength (scan.axes |> List.map (fun axis -> axis.variable)) with

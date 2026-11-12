@@ -84,6 +84,7 @@ module ExperimentDataProxyTests =
             attachment = intensityAttachment
             profile = ImportProfileName.intensitySeries
             rows = AllDataRows
+            exclusions = []
         }
 
     /// The canned ellipsometric file read as an ellipsometric series over every row (spec 0050 S9.1).
@@ -92,6 +93,7 @@ module ExperimentDataProxyTests =
             attachment = { intensityAttachment with path = KitRelativePath "data/run-ellipsometric.csv" }
             profile = ImportProfileName.ellipsometricSeries
             rows = AllDataRows
+            exclusions = []
         }
 
     // ============================ the ExperimentDataProxy seam ============================
@@ -185,6 +187,7 @@ module ExperimentDataProxyTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = Some intensityData
+            corrections = []
         }
 
     [<Fact>]

@@ -181,6 +181,7 @@ module OutOfBandDiagnosticTests =
                 sessionOpt = None
                 notes = ExperimentNotes.none
                 dataOpt = None
+                corrections = []
             }
         Assert.Equal(SweptWavelengths (band 200.0 800.0), requestedWavelengthsOf fixedλ sweep)
         // A dark line (a block of no axis) has no sweep, so it runs at the fixed source λ.

@@ -74,6 +74,7 @@ module KitOpeningTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     [<Fact>]

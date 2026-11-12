@@ -311,7 +311,9 @@ module ExperimentCopyTests =
                         attachment = attachment
                         profile = ImportProfileName.intensitySeries
                         rows = AllDataRows
+                        exclusions = []
                     })
+            corrections = []
         }
 
     /// The experiment's data file, its profile and rows unchanged, as a copy records it.
@@ -644,7 +646,19 @@ module ExperimentCopyTests =
         let clock = steppingClock ()
         let phoneRoi = ImportProfileName "Phone ROI CSV"
         let keyedK1 = KeyedDataRows (DataRowKey "K1")
-        // Spec 0050 S9.1: E1's data is the rows keyed K1 of its file, read through the kit's own profile.
+        let saturated : PointExclusion =
+            {
+                point = MappedPointNumber 2
+                reason = ExclusionReason "saturated"
+            }
+        let correction : SetupCorrection =
+            {
+                previous = plateSetup.reference
+                corrected = benchSetup.reference
+                note = CorrectionNote "ML was mounted, not QZ"
+            }
+        // Spec 0050 S9.1: E1's data is the rows keyed K1 of its file, read through the kit's own profile; S9.3: it excludes
+        // its point 2 and its setup was re-pointed once.
         let keyedE1 (experiment : Experiment) : Experiment =
             if experiment.id = ExperimentId 1 then
                 {
@@ -656,7 +670,9 @@ module ExperimentCopyTests =
                                     data with
                                         profile = phoneRoi
                                         rows = keyedK1
+                                        exclusions = [ saturated ]
                                 })
+                        corrections = [ correction ]
                 }
             else
                 experiment
@@ -674,6 +690,7 @@ module ExperimentCopyTests =
                 attachment = suffixed
                 profile = phoneRoi
                 rows = keyedK1
+                exclusions = [ saturated ]
             }
 
         let report = target.context.copyExperimentsFrom source.context [ ExperimentId 1 ] [] |> expectCopyOk
@@ -684,6 +701,9 @@ module ExperimentCopyTests =
                 e1 with dataOpt = Some expected
             }
         Assert.Equal<Experiment list>([ copiedE1 ], report.experiments)
+        let copied = Assert.Single report.experiments
+        Assert.Equal<PointExclusion option>(Some saturated, copied.dataOpt |> Option.bind (fun data -> data.tryFindExclusion saturated.point))
+        Assert.Equal<SetupCorrection list>([ correction ], copied.corrections)
         Assert.Equal<Result<Experiment list, KitError>>(Ok [ copiedE1 ], target.context.proxy.readExperiments ())
         assertSetupsHeld target [ copiedE1 ]
 

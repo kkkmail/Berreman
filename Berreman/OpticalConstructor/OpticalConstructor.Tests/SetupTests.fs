@@ -197,6 +197,7 @@ module SetupTests =
                 sessionOpt = None
                 notes = ExperimentNotes.none
                 dataOpt = None
+                corrections = []
             }
 
         let onFirst = over { name = SetupName "Bench"; revision = SetupRevision.first } 1

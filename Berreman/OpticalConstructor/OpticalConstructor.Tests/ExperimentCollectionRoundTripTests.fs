@@ -124,7 +124,9 @@ module ExperimentCollectionRoundTripTests =
                         attachment = e1Attachment
                         profile = ImportProfileName.intensitySeries
                         rows = AllDataRows
+                        exclusions = []
                     }
+            corrections = []
         }
 
     let private e2 : Experiment =
@@ -152,7 +154,9 @@ module ExperimentCollectionRoundTripTests =
                         attachment = e3Attachment
                         profile = ImportProfileName.intensitySeries
                         rows = AllDataRows
+                        exclusions = []
                     }
+            corrections = []
         }
 
     [<Fact>]

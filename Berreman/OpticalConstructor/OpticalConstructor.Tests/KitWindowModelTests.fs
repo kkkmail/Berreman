@@ -82,6 +82,7 @@ module KitWindowModelTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     /// A shell that records every folder it is asked to show and every window close it is asked for.
@@ -907,6 +908,7 @@ module KitWindowModelTests =
                             attachment = attachment
                             profile = ImportProfileName.intensitySeries
                             rows = AllDataRows
+                            exclusions = []
                         })
         }
 

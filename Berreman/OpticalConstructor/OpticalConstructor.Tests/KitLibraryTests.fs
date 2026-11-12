@@ -167,6 +167,7 @@ module KitLibraryTests =
             sessionOpt = None
             notes = ExperimentNotes.none
             dataOpt = None
+            corrections = []
         }
 
     let private recordingClosure () : LibraryEntryEnvelope list =

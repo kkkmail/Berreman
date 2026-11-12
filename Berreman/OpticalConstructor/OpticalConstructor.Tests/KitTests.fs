@@ -421,6 +421,51 @@ module KitTests =
         Assert.Equal<ImportProfileName>(intensity, OpticalConstructor.Domain.Library.Intensity.builtInProfile)
         Assert.Equal<ImportProfileName>(ellipsometric, OpticalConstructor.Domain.Library.Ellipsometer.builtInProfile)
 
+    [<Fact>]
+    let ``a point exclusion needs a point from 1 and a reason, and an attachment keeps one exclusion per point in point order`` () : unit =
+        let point1 = MappedPointNumber 1
+        let point2 = MappedPointNumber 2
+        let point3 = MappedPointNumber 3
+        let cosmicRay = ExclusionReason "cosmic ray"
+
+        Assert.Equal<MappedPointNumber option>(Some point1, MappedPointNumber.tryCreate 1)
+        Assert.Equal<MappedPointNumber option>(Some (MappedPointNumber 7), MappedPointNumber.tryCreate 7)
+        for below in [ 0; -1 ] do
+            Assert.Equal<MappedPointNumber option>(None, MappedPointNumber.tryCreate below)
+
+        Assert.Equal<ExclusionReason option>(Some cosmicRay, ExclusionReason.tryCreate "cosmic ray")
+        for blank in [ ""; "  " ] do
+            Assert.Equal<ExclusionReason option>(None, ExclusionReason.tryCreate blank)
+
+        // Spec 0050 S9.3: a test-local mapped attachment with no exclusion yet.
+        let unexcluded : MappedAttachment =
+            {
+                attachment =
+                    {
+                        path = KitRelativePath "data/run 1.csv"
+                        contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    }
+                profile = ImportProfileName.intensitySeries
+                rows = AllDataRows
+                exclusions = []
+            }
+        let cosmicRayAt3 : PointExclusion = { point = point3; reason = cosmicRay }
+        let shutterAt1 : PointExclusion = { point = point1; reason = ExclusionReason "shutter" }
+        let strayLightAt3 : PointExclusion = { point = point3; reason = ExclusionReason "stray light" }
+
+        let excluded = (unexcluded.withExclusion cosmicRayAt3).withExclusion shutterAt1
+        Assert.Equal<PointExclusion list>([ shutterAt1; cosmicRayAt3 ], excluded.exclusions)
+
+        let replaced = excluded.withExclusion strayLightAt3
+        Assert.Equal<PointExclusion list>([ shutterAt1; strayLightAt3 ], replaced.exclusions)
+        Assert.Equal<MappedAttachment>(unexcluded, { replaced with exclusions = [] })
+
+        Assert.Equal<PointExclusion option>(Some strayLightAt3, replaced.tryFindExclusion point3)
+        Assert.Equal<PointExclusion option>(None, replaced.tryFindExclusion point2)
+
+        Assert.Equal<PointExclusion list>([ strayLightAt3 ], (replaced.withoutExclusion point1).exclusions)
+        Assert.Equal<MappedAttachment>(replaced, replaced.withoutExclusion point2)
+
     /// A closed set's `all` is `cases` in order, every case of the union, tagged 1 to n and read back by `tryOfWire`,
     /// with 0 and n + 1 refused, and each case renders its text (spec 0050 S9.2).
     let private assertClosedSet<'Tag when 'Tag : equality>
