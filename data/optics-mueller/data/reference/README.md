@@ -1,8 +1,9 @@
 # Mueller-matrix measured data and reference pipeline
 
-This folder holds the measured Mueller-matrix polarimetry data that
-`BerremanTests/MuellerReconstructionTests.fs` consumes, together with the reference
-implementation and the reference numerical results that the F# port was written against.
+This folder, the optics-mueller kit's `data/reference/`, holds the reference implementation and the
+reference numerical results that `Berreman/BerremanTests/MuellerReconstructionTests.fs` was written
+against. The measured Mueller-matrix polarimetry data it inventories, which the tests consume, is
+`Berreman/Data/MuellerMatrix/data.zip`.
 
 Everything here is **data and documentation**. No project builds it, references it, or executes it.
 In particular, **BNM never invokes Python at build or test time** — the tests are pure F#.
@@ -23,7 +24,7 @@ to satisfy this repository's `.gitattributes` policy.
 
 Before this copy, `MuellerReconstructionTests` located the CSV data by walking up from its output
 directory to a sibling `optics-mueller` checkout, and skipped when that checkout was absent. That
-dependency is retired: the data lives in `data.zip` here, the tests read it through
+dependency is retired: the data lives in `Berreman/Data/MuellerMatrix/data.zip`, the tests read it through
 `OpticalConstructor.Storage.MuellerDataStore`, and **no code path references `optics-mueller` any
 more**. The scripts and reference results are kept so that the F# port remains auditable after the
 external checkout is gone.
@@ -36,9 +37,9 @@ external checkout is gone.
 
 | File | Description |
 |---|---|
-| `data.zip` | The measured capture data. Inventory below. |
+| `Berreman/Data/MuellerMatrix/data.zip` | The measured capture data. Inventory below. |
 
-`data.zip` holds 18 files. Seven of them are the science data the tests consume, all under
+`Berreman/Data/MuellerMatrix/data.zip` holds 18 files. Seven of them are the science data the tests consume, all under
 `data/raw/final/`:
 
 | Entry | Data rows | Content |
@@ -93,3 +94,5 @@ these files.
   script above onto the ported F# stage, and whose §6 documents the data inventory.
 - `specs/0044/.manual/004-active-anisotropic-inverse-problem.md` — spec 0044 §8, which specifies this
   folder and the archive-backed data seam that replaced the external checkout.
+- `specs/0050/.manual/001-library-files-database-multi-setup-inverse.md` — §Q AT-1 and §S9, which move this
+  folder into the optics-mueller kit.

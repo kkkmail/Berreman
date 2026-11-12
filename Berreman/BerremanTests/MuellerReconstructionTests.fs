@@ -28,8 +28,8 @@ open BerremanTests.MatrixComparison
 ///   - nothing walks up to, or otherwise probes for, an external checkout, and the two
 ///     data-backed facts no longer skip: absent data is now a defect and fails;
 ///   - the §7.2 matrices and the Stage-1 constants are asserted against the reference pipeline's own
-///     full-precision output (`reference_step*_summary.json` in that same folder) at `dataMatrixTol` /
-///     `stage1Tol`, rather than against the report's rounded printed values at ~2e-3.
+///     full-precision output (`reference_step*_summary.json` in `data/optics-mueller/data/reference/`) at
+///     `dataMatrixTol` / `stage1Tol`, rather than against the report's rounded printed values at ~2e-3.
 ///
 /// The following report facets are deliberately NOT asserted here — each is a candidate for a future slice:
 ///   - §6 calibration table (the per-constant re-derivation table),
@@ -151,7 +151,7 @@ type MuellerReconstructionTests() =
 
     // ---------------------------------------------------------------------------------------------------
     // Spec 0044 §8.5 / §9 — acceptance bands for the measured-data facts, against the reference pipeline's
-    // OWN full-precision output (Berreman/Data/MuellerMatrix/reference_step1_summary.json and
+    // OWN full-precision output (data/optics-mueller/data/reference/reference_step1_summary.json and
     // reference_step2_linear_summary.json). These replaced the former ~1° / 2e-3 bands, which compared
     // against the report's ROUNDED printed values and therefore could not detect numerical drift smaller
     // than the rounding.
@@ -501,9 +501,10 @@ type MuellerReconstructionTests() =
         // name, no entry name, no environment probing. It calls a zero-argument factory and names data sets.
         // That is the whole contract of the 0044 re-key (R5).
         //
-        // The expected row counts are the archive's documented inventory (Berreman/Data/MuellerMatrix/README.md,
-        // matching spec 0042 §6): asserting them here means a truncated or wrong-build archive fails loudly at
-        // the load, rather than silently producing a slightly-wrong reconstruction downstream.
+        // The expected row counts are the archive's documented inventory
+        // (data/optics-mueller/data/reference/README.md, matching spec 0042 §6): asserting them here means a
+        // truncated or wrong-build archive fails loudly at the load, rather than silently producing a
+        // slightly-wrong reconstruction downstream.
         let proxy = MuellerDataStore.createArchiveBacked ()
 
         // Pin the EXACT signature by binding the field to an explicitly-typed local: the compiler rejects the
@@ -605,11 +606,12 @@ type MuellerReconstructionTests() =
         // Stage-1 functions from the committed measured data are compared against the REFERENCE PIPELINE's
         // own output at full precision, not against the report's 2-decimal rounded values.
         //
-        // Provenance of the expected values: Berreman/Data/MuellerMatrix/reference_step1_summary.json, which
-        // is the Python reference implementation's own emitted summary (see that folder's README.md for the
-        // source repository, branch and commit). Transcribing the literals here rather than parsing the JSON
-        // at run time is deliberate — the test then reads NO file for its expectations, which is what keeps
-        // it free of any location knowledge (§8.5).
+        // Provenance of the expected values: data/optics-mueller/data/reference/reference_step1_summary.json,
+        // which is the Python reference implementation's own emitted summary (see
+        // data/optics-mueller/data/reference/README.md for the source repository, branch and commit).
+        // Transcribing the literals here rather than parsing the JSON at run time is deliberate — the test
+        // then reads NO file for its expectations, which is what keeps it free of any location knowledge
+        // (§8.5).
         //
         // This fact no longer skips. The data is committed to the repository, so a load failure is a defect
         // (§8.4 / R6) and `loadDataSet` fails the test with the typed error.
@@ -828,10 +830,10 @@ type MuellerReconstructionTests() =
         //          report's 6-decimal printed matrices, and the band tightened from 2e-3 to `dataMatrixTol`
         //          accordingly. At 2e-3 a refactor could introduce a real numerical error a thousand times
         //          larger than the port's actual reproducibility and nothing would notice.
-        //          Provenance: Berreman/Data/MuellerMatrix/reference_step2_linear_summary.json (see that
-        //          folder's README.md for the source repository, branch and commit). The literals are
-        //          transcribed rather than parsed at run time, so this test reads no file for its
-        //          expectations and therefore knows nothing about where anything lives.
+        //          Provenance: data/optics-mueller/data/reference/reference_step2_linear_summary.json (see
+        //          data/optics-mueller/data/reference/README.md for the source repository, branch and
+        //          commit). The literals are transcribed rather than parsed at run time, so this test reads
+        //          no file for its expectations and therefore knows nothing about where anything lives.
         //
         // ---- Composition root: the REAL proxies (the WIRE deliverable). ----
         let solver = createMathNetSvd ()
@@ -993,10 +995,10 @@ type MuellerReconstructionTests() =
         //      the reference pipeline's own value to `dataMatrixTol` (spec 0044 §8.5). ----
         //
         // The expected matrices below are `qz_matrix`, `lr_matrix` and `combined_matrix` transcribed verbatim
-        // from Berreman/Data/MuellerMatrix/reference_step2_linear_summary.json. They are the SAME numbers the
-        // report prints in §7.2, carried to full precision instead of six decimals — so this assertion is
-        // simultaneously the physics claim (the port reproduces the published result) and a characterization
-        // test (nothing in the pipeline drifts numerically without a test failing).
+        // from data/optics-mueller/data/reference/reference_step2_linear_summary.json. They are the SAME
+        // numbers the report prints in §7.2, carried to full precision instead of six decimals — so this
+        // assertion is simultaneously the physics claim (the port reproduces the published result) and a
+        // characterization test (nothing in the pipeline drifts numerically without a test failing).
         // Reports the WORST element deviation over the whole matrix rather than failing on the first element
         // past the band. With a characterization test that is the number a reader actually needs: it is the
         // figure the §9 protocol pins the band from, and on a regression it says how far the pipeline moved,
