@@ -7,7 +7,6 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
-open OpticalProperties.Active
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused, not re-declared
 open OpticalConstructor.Domain.ItemModels
@@ -100,21 +99,6 @@ type MuellerInverseTests() =
             g33 = quartzG33
         }
 
-    /// Build the engine's optical properties for a uniaxial gyrotropic (class 3/32/4/422/6/622) crystal
-    /// from the four unknowns. This is the ONE material-specific function in the whole pipeline, and the
-    /// reason MuellerInverse takes it as a parameter rather than knowing it: the Domain project does not
-    /// reference OpticalProperties, and the inverse machinery is not specific to quartz.
-    ///
-    /// It delegates entirely to the existing Active.OpticalProperties.type_3_4_6_Crystal builder, so the
-    /// diagonal forms diag(n_o^2, n_o^2, n_e^2) and diag(g11, g11, g33) are the engine's own and are not
-    /// re-derived here.
-    let buildUniaxialGyrotropic (p : UniaxialParameters) : OpticalProperties =
-        OpticalProperties.type_3_4_6_Crystal
-            (EpsValue.fromRefractionIndex p.ordinaryIndex)
-            (EpsValue.fromRefractionIndex p.extraordinaryIndex)
-            p.g11
-            p.g33
-
     /// Spec R4: three internal reflections, stated explicitly at the composition root rather than
     /// inherited from SolverParameters.defaultValue.
     ///
@@ -129,7 +113,7 @@ type MuellerInverseTests() =
     let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
 
     /// The real Berreman-backed forward model, wired once for the whole class.
-    let forward = createBerremanForward buildUniaxialGyrotropic solverParameters
+    let forward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) solverParameters
 
     // =================================================================================================
     // The measurement set (spec §3.4, C1-C4).
@@ -418,7 +402,7 @@ type MuellerInverseTests() =
         //
         // The expected tensors are read element-wise from the ENGINE's own types rather than rebuilt, so
         // this fact checks the orientation, not the tensor construction (which Active.fs already owns).
-        let props = buildUniaxialGyrotropic quartz
+        let props = quartz.opticalProperties
         let nOrdSq = quartzOrdinaryIndex.value ** 2.0
         let nExtSq = quartzExtraordinaryIndex.value ** 2.0
 

@@ -6,7 +6,6 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
-open OpticalProperties.Active
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
@@ -132,19 +131,8 @@ type LangasiteInverseTests() =
             waveLength = waveLength
         }
 
-    /// Build the engine's optical properties for a uniaxial gyrotropic (class 3/32/4/422/6/622) crystal
-    /// from the four material parameters. Langasite is point group 32, like quartz, so the same
-    /// `type_3_4_6_Crystal` builder applies: diagonal eps = diag(n_o^2, n_o^2, n_e^2), diagonal
-    /// Rho = diag(g11, g11, g33).
-    let buildLangasite (p : UniaxialParameters) : OpticalProperties =
-        OpticalProperties.type_3_4_6_Crystal
-            (EpsValue.fromRefractionIndex p.ordinaryIndex)
-            (EpsValue.fromRefractionIndex p.extraordinaryIndex)
-            p.g11
-            p.g33
-
     /// The real Berreman-backed forward model, wired once for the whole class.
-    let forward = createBerremanForward buildLangasite solverParameters
+    let forward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) solverParameters
 
     // =================================================================================================
     // The measured data, in the order of the task's table.

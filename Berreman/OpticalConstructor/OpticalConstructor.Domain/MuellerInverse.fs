@@ -7,17 +7,16 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
+open OpticalProperties.Active
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance (spec 0042) — reused, not re-declared
 open OpticalConstructor.Domain.ItemModels
 
 /// Spec 0044 — the inverse problem for a transparent, optically active, anisotropic, homogeneous
 /// material: recover the material's optical constants from measured Mueller matrices.
 ///
-/// The module is deliberately MATERIAL-AGNOSTIC (spec §5.1). `OpticalConstructor.Domain` references
-/// `Berreman` and `Analytics` but not `OpticalProperties`, so nothing here names a crystal class or a
-/// named material: the forward proxy takes a caller-supplied `'Parameters -> OpticalProperties` builder,
-/// and the caller decides what physics that builder encodes. That keeps the module reusable for the next
-/// material and avoids a project reference that would exist only to reach a handful of constants.
+/// The module is deliberately MATERIAL-AGNOSTIC (spec §5.1): the forward proxy takes a caller-supplied
+/// `'Parameters -> OpticalProperties` builder, each parameter record carries its crystal class's builder
+/// as `opticalProperties` (spec 0050 §3.16), and no named material lives here.
 ///
 /// It is agnostic about the PARAMETER SET too, not merely about the material. Everything from the scaling
 /// down — `ParameterScaling`, `toScaled`, `ofScaled`, `ForwardModelProxy`, `forwardModels`, and every
@@ -200,6 +199,15 @@ module MuellerInverse =
                     field = RhoValueField { read = (fun p -> p.g33); write = (fun v p -> { p with g33 = v }) }
                 }
             ]
+
+        /// The engine's optical properties of a uniaxial gyrotropic crystal (classes 3/32/4/422/6/622) with
+        /// these four constants, through the engine's class 3/4/6 builder (spec 0050 §3.16).
+        member this.opticalProperties : OpticalProperties =
+            OpticalProperties.type_3_4_6_Crystal
+                (EpsValue.fromRefractionIndex this.ordinaryIndex)
+                (EpsValue.fromRefractionIndex this.extraordinaryIndex)
+                this.g11
+                this.g33
 
     /// The unknowns of the inverse problem for a TRICLINIC (class 1) gyrotropic crystal — the most
     /// general transparent, non-magnetic, optically active crystal there is, and therefore the largest

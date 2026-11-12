@@ -7,7 +7,6 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
-open OpticalProperties.Active
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
@@ -431,14 +430,7 @@ type BiaxialInverseTests() =
                 g12 = RhoValue 0.0
             }
 
-        let buildUniaxial (p : UniaxialParameters) : OpticalProperties =
-            OpticalProperties.type_3_4_6_Crystal
-                (EpsValue.fromRefractionIndex p.ordinaryIndex)
-                (EpsValue.fromRefractionIndex p.extraordinaryIndex)
-                p.g11
-                p.g33
-
-        let uniaxialForward = createBerremanForward buildUniaxial solverParameters
+        let uniaxialForward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) solverParameters
 
         // A handful of configurations spanning all three cuts, normal and oblique, transmission and
         // reflection — enough that a discrepancy in any tensor slot has somewhere to show.
