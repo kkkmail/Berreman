@@ -429,6 +429,28 @@ module MuellerInverse =
                 }
             ]
 
+        /// The engine's optical properties of an absorbing triclinic gyrotropic crystal with these fifteen
+        /// constants: ε″ is general in the ε′ frame and ρ stays purely imaginary (spec 0050 §3.16;
+        /// specs/0044/.manual/018-absorbing-biaxial-inverse.md).
+        member this.opticalProperties : OpticalProperties =
+            let e (re : double) (im : double) = Complex(re, im)
+            let n1Sq = this.index1.value * this.index1.value
+            let n2Sq = this.index2.value * this.index2.value
+            let n3Sq = this.index3.value * this.index3.value
+            {
+                eps =
+                    [ [ e n1Sq this.epsIm11.value; e 0.0 this.epsIm12.value; e 0.0 this.epsIm13.value ]
+                      [ e 0.0 this.epsIm12.value; e n2Sq this.epsIm22.value; e 0.0 this.epsIm23.value ]
+                      [ e 0.0 this.epsIm13.value; e 0.0 this.epsIm23.value; e n3Sq this.epsIm33.value ] ]
+                    |> Eps.create
+                mu = Mu.vacuum
+                rho =
+                    [ [ e 0.0 this.g11.value; e 0.0 this.g12.value; e 0.0 this.g13.value ]
+                      [ e 0.0 this.g12.value; e 0.0 this.g22.value; e 0.0 this.g23.value ]
+                      [ e 0.0 this.g13.value; e 0.0 this.g23.value; e 0.0 this.g33.value ] ]
+                    |> Rho.create
+            }
+
     // -----------------------------------------------------------------------------------------------------
     // Forward-side helpers — pure geometry and tensor orientation.
     // -----------------------------------------------------------------------------------------------------

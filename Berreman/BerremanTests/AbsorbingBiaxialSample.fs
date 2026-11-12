@@ -1,6 +1,5 @@
 namespace BerremanTests
 
-open System.Numerics
 open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
@@ -61,33 +60,9 @@ module AbsorbingBiaxialSample =
             g12 = g12
         }
 
-    /// Build the engine's optical properties for an absorbing triclinic gyrotropic crystal.
-    ///
-    /// Neither tensor can go through a named convenience constructor. `Eps.fromComplexRefractionIndex`
-    /// only ever produces a DIAGONAL matrix, so a complex symmetric ε with off-diagonal imaginary parts
-    /// has to be reached through the general `Eps.create`, which takes the complex entries directly.
-    ///
-    /// ρ stays purely IMAGINARY. Its real part would be the natural home for a circular-dichroism
-    /// gyration g″, and it is not used, because that coupling is measured to have no first-order effect
-    /// in this engine — see the convention fact in `AbsorbingBiaxialInverseTests`.
-    let buildAbsorbing (p : AbsorbingTriclinicParameters) : OpticalProperties =
-        let e (re : double) (im : double) = Complex(re, im)
-        let n1Sq = p.index1.value * p.index1.value
-        let n2Sq = p.index2.value * p.index2.value
-        let n3Sq = p.index3.value * p.index3.value
-        {
-            eps =
-                [ [ e n1Sq p.epsIm11.value; e 0.0 p.epsIm12.value; e 0.0 p.epsIm13.value ]
-                  [ e 0.0 p.epsIm12.value; e n2Sq p.epsIm22.value; e 0.0 p.epsIm23.value ]
-                  [ e 0.0 p.epsIm13.value; e 0.0 p.epsIm23.value; e n3Sq p.epsIm33.value ] ]
-                |> Eps.create
-            mu = Mu.vacuum
-            rho =
-                [ [ e 0.0 p.g11.value; e 0.0 p.g12.value; e 0.0 p.g13.value ]
-                  [ e 0.0 p.g12.value; e 0.0 p.g22.value; e 0.0 p.g23.value ]
-                  [ e 0.0 p.g13.value; e 0.0 p.g23.value; e 0.0 p.g33.value ] ]
-                |> Rho.create
-        }
+    /// The engine's optical properties of an absorbing triclinic sample: the builder both absorbing suites'
+    /// forward models take.
+    let buildAbsorbing (p : AbsorbingTriclinicParameters) : OpticalProperties = p.opticalProperties
 
     /// The dimensionless fit space for fifteen parameters. 1e-3 per unit of refractive index and 1e-5 per
     /// unit of gyration, exactly as the transparent suites use; 1e-4 per unit of ε″, which puts the truth
