@@ -130,9 +130,27 @@ module BenchNoise =
             |> Ok
         | Error e -> Error (MuellerNormalizationErr e)
 
-    /// One noisy realization of a whole experiment: each configuration, in order, is disturbed, evaluated there and
-    /// misread, then filed against the NOMINAL configuration, which is all a notebook holds. The first error stops it.
-    let noisyObserveWith
+    /// What the receiver reports for an absorbing sample: `m₀₀` is the throughput misread by its own budget, and every
+    /// other element is that throughput times the normalized element misread as `misread` draws it, in the same order.
+    /// The throughput draw comes first, so a seed reproduces the experiment (specs/0044/.manual/019).
+    let misreadAbsolute (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : Result<MuellerMatrix, MuellerFitError> =
+        match m.normalized with
+        | Ok n ->
+            let trueThroughput = m.element 0 0
+            let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * (draws.nextDeviate ()).value)
+            RealMatrix4x4.create
+                [ for i in 0 .. 3 ->
+                    [ for j in 0 .. 3 ->
+                        if i = 0 && j = 0 then reportedThroughput
+                        else reportedThroughput * (n.element i j + noise.element.value * (draws.nextDeviate ()).value) ] ]
+            |> MuellerMatrix
+            |> Ok
+        | Error e -> Error (MuellerNormalizationErr e)
+
+    /// The walk both noisy observers share, one reading rule apart (spec 0050 S10.1): each configuration, in order, is
+    /// disturbed, evaluated there and read, then filed against the NOMINAL configuration. The first error stops it.
+    let private noisyObserveThrough
+        (readWith : UniformDeviateProvider -> NoiseParam -> MuellerMatrix -> Result<MuellerMatrix, MuellerFitError>)
         (forward : ForwardModelProxy<'Parameters>)
         (truth : 'Parameters)
         (noise : NoiseParam)
@@ -143,8 +161,29 @@ module BenchNoise =
         let observe (nominal : MeasurementConfiguration) : Result<MuellerObservation, MuellerFitError> =
             forward.muellerOf (disturb draws noise nominal) truth
             |> Result.mapError ObservationForwardErr
-            |> Result.bind (misread draws noise)
+            |> Result.bind (readWith draws noise)
             |> Result.map (fun measured -> { configuration = nominal; measured = measured })
         (Ok [], configurations)
         ||> List.fold (fun acc nominal -> acc |> Result.bind (fun os -> observe nominal |> Result.map (fun o -> o :: os)))
         |> Result.map List.rev
+
+    /// One noisy realization of a whole experiment, each reading misread and filed against the nominal configuration,
+    /// which is all a notebook holds.
+    let noisyObserveWith
+        (forward : ForwardModelProxy<'Parameters>)
+        (truth : 'Parameters)
+        (noise : NoiseParam)
+        (seed : NoiseSeed)
+        (configurations : MeasurementConfiguration list)
+        : Result<MuellerObservation list, MuellerFitError> =
+        noisyObserveThrough misread forward truth noise seed configurations
+
+    /// `noisyObserveWith` for an absorbing sample: each reading keeps its absolute throughput through `misreadAbsolute`.
+    let noisyObserveAbsoluteWith
+        (forward : ForwardModelProxy<'Parameters>)
+        (truth : 'Parameters)
+        (noise : NoiseParam)
+        (seed : NoiseSeed)
+        (configurations : MeasurementConfiguration list)
+        : Result<MuellerObservation list, MuellerFitError> =
+        noisyObserveThrough misreadAbsolute forward truth noise seed configurations

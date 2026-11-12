@@ -73,7 +73,7 @@ type AbsorbingBiaxialNoisyTests() =
 
     /// Run ONE noisy absorbing experiment end to end.
     let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<AbsorbingTriclinicParameters> =
-        let observations = noisyObserveAbsoluteWith forward absorbing noise seed fullConfigurations
+        let observations = noisyObserveAbsoluteWith forward absorbing noise seed fullConfigurations |> expectOk
         {
             seed = seed
             fit = fitAbsorbingObservations forward searchBox observations (absorbingScalingAround perturbedStart) |> expectOk

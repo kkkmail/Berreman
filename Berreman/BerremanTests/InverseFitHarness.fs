@@ -162,46 +162,6 @@ module InverseFitHarness =
     /// Both suites use the same eight, which is what makes their ensembles directly comparable.
     let ensembleSeeds : NoiseSeed list = [ 1; 2; 3; 4; 5; 6; 7; 8 ] |> List.map NoiseSeed
 
-    /// What the receiver reports for an ABSORBING sample, where the absolute throughput is a datum
-    /// rather than a normalization constant.
-    ///
-    /// It differs from `misread` in exactly two ways, and deliberately in no others. It perturbs `m₀₀`
-    /// by its own, looser budget instead of setting it to 1; and it returns an UN-normalized matrix, so
-    /// the throughput term of the residual has something to compare against. The fifteen element errors
-    /// are drawn in the identical order `misread` draws them, so the two paths differ only where the
-    /// physics differs.
-    ///
-    /// The throughput draw is taken FIRST, before the fifteen element draws. That ordering is arbitrary
-    /// but fixed: it is what makes an absorbing noisy experiment reproducible from its seed.
-    let misreadAbsolute (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
-        match m.normalized with
-        | Ok n ->
-            let trueThroughput = m.element 0 0
-            let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * (draws.nextDeviate ()).value)
-            RealMatrix4x4.create
-                [ for i in 0 .. 3 ->
-                    [ for j in 0 .. 3 ->
-                        if i = 0 && j = 0 then reportedThroughput
-                        else reportedThroughput * (n.element i j + noise.element.value * (draws.nextDeviate ()).value) ] ]
-            |> MuellerMatrix
-        | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
-
-    /// ONE noisy realization of a whole ABSORBING experiment. Identical in structure to
-    /// `noisyObserveWith`, but the detector keeps the absolute throughput rather than dividing it out.
-    let noisyObserveAbsoluteWith
-        (forward : ForwardModelProxy<'Parameters>)
-        (truth : 'Parameters)
-        (noise : NoiseParam)
-        (seed : NoiseSeed)
-        (configurations : MeasurementConfiguration list)
-        : MuellerObservation list =
-        let draws = UniformDeviateProvider.fromSeed seed
-        configurations
-        |> List.map (fun nominal ->
-            match forward.muellerOf (disturb draws noise nominal) truth with
-            | Ok m -> { configuration = nominal; measured = misreadAbsolute draws noise m }
-            | Error e -> failwith $"the forward model failed to generate noisy data: %A{e}")
-
     /// Reduce an ensemble of recovered parameter sets to one statistics row per quantity.
     ///
     /// The scatter is the SAMPLE standard deviation (Bessel-corrected, `n − 1`), because the ensemble is
