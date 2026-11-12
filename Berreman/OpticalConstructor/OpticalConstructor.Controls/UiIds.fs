@@ -857,6 +857,16 @@ type ConstructorUiId =
     static member dataSplitApplyButton : ConstructorUiId = ConstructorUiId "DataSplitApplyButton"
     /// The split panel's Cancel: forgets the held split, writing nothing (spec 0050 S9.3).
     static member dataSplitCancelButton : ConstructorUiId = ConstructorUiId "DataSplitCancelButton"
+    /// The reviewed experiment's points: the reason field, the points chart and a row per point (spec 0050 S9.3; 001 §O).
+    static member dataReviewPanel : ConstructorUiId = ConstructorUiId "DataReviewPanel"
+    /// The review's exclusion reason, the one Exclude sends with its point (spec 0050 S9.3; 001 §O).
+    static member dataExclusionReasonField : ConstructorUiId = ConstructorUiId "DataExclusionReasonField"
+    /// The review's chart: a dot per kept point and a ring per excluded one (spec 0050 S9.3; 001 §K).
+    static member dataPointsChart : ConstructorUiId = ConstructorUiId "DataPointsChart"
+    /// A kept point's dot on the review's chart: `DataPointDot_<n>` (spec 0050 S9.3).
+    static member dataPointDot (point : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"DataPointDot_{point.value}"
+    /// An excluded point's ring on the review's chart: `DataPointExcluded_<n>` (spec 0050 S9.3; 001 §K).
+    static member dataExcludedPointMark (point : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"DataPointExcluded_{point.value}"
 
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).

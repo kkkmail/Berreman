@@ -974,6 +974,71 @@ module ConstructorUiIdOfDomain =
         /// The key as the code of its group's row and offer toggle in the Data step's split panel (spec 0050 S9.3).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
 
+    type Kit.MappedPointNumber with
+
+        /// The point's number as the position of its row, dot and ring in the Data step's review (spec 0050 S9.3).
+        member this.uiPosition : ConstructorUiPosition = ConstructorUiPosition this.value
+
+    type ImportProfiles.MappedReading with
+
+        /// The reading's first value, the signal or the matrix's m00, as a mapped row's caption and chart point read it.
+        member private this.firstValue : float =
+            match this with
+            | ImportProfiles.SignalReading (signal, _) -> signal.value
+            | ImportProfiles.MuellerReading measured -> measured.element 0 0
+
+    type ImportProfiles.MappedPoints with
+
+        /// One caption per point in order, its numbers by `%g`, as its row of the Data step's review reads it (spec 0050 S9.3).
+        member this.pointCaptions : ControlCaption list =
+            match this with
+            | ImportProfiles.SeriesPoints (MeasuredData.IntensityData series) ->
+                series.points |> List.map (fun point -> ControlCaption $"x = %g{point.x.value}, I = %g{point.intensity.value}")
+            | ImportProfiles.SeriesPoints (MeasuredData.EllipsometricData series) ->
+                series.points
+                |> List.map (fun point ->
+                    let nanometres = (wavelengthToUnit Nanometer point.waveLength).value
+                    ControlCaption $"λ = %g{nanometres} nm, Ψ = %g{point.psi.degrees}°, Δ = %g{point.delta.degrees}°")
+            | ImportProfiles.CapturePoints captures ->
+                captures
+                |> List.map (fun capture ->
+                    ControlCaption
+                        $"{capture.experiment.value} #{capture.captureIndex.value}: %g{capture.description.degrees}° → %g{capture.avgTotal.value}")
+            | ImportProfiles.ObservationPoints observations ->
+                observations
+                |> List.map (fun keyed ->
+                    let configuration = keyed.observation.configuration
+                    let observable =
+                        match configuration.observable with
+                        | MuellerInverse.TransmittedMueller -> "T"
+                        | MuellerInverse.ReflectedMueller -> "R"
+                    let angles = $"θ = %g{configuration.incidenceAngle.angle.degrees}°, φ = %g{configuration.azimuth.angle.degrees}°"
+                    ControlCaption $"{keyed.key.value} {observable}: {angles}, m00 = %g{keyed.observation.measured.element 0 0}")
+            | ImportProfiles.ColumnPoints rows ->
+                rows
+                |> List.map (fun row ->
+                    let scan = row.scan |> List.map (fun cell -> $"%g{cell.displayValue.value}") |> String.concat ", "
+                    ControlCaption $"{scan}: %g{row.reading.firstValue}")
+
+        /// One chart point per point: x its 1-based number, y its reading's first value — the intensity, Ψ in degrees,
+        /// `avg_total`, or the m00 or signal (spec 0050 S9.3).
+        member this.chartPoints : ExperimentControls.ChartPoint list =
+            let readings : float list =
+                match this with
+                | ImportProfiles.SeriesPoints (MeasuredData.IntensityData series) -> series.points |> List.map (fun point -> point.intensity.value)
+                | ImportProfiles.SeriesPoints (MeasuredData.EllipsometricData series) -> series.points |> List.map (fun point -> point.psi.degrees)
+                | ImportProfiles.CapturePoints captures -> captures |> List.map (fun capture -> capture.avgTotal.value)
+                | ImportProfiles.ObservationPoints observations -> observations |> List.map (fun keyed -> keyed.observation.measured.element 0 0)
+                | ImportProfiles.ColumnPoints rows -> rows |> List.map (fun row -> row.reading.firstValue)
+            readings
+            |> List.mapi (fun index reading ->
+                let point : ExperimentControls.ChartPoint =
+                    {
+                        x = float (index + 1)
+                        y = reading
+                    }
+                point)
+
     type ConstructorUiId with
 
         /// A group's row of the Data step's split panel: `DataSplitGroup_<key>` (spec 0050 S9.3).
@@ -981,6 +1046,20 @@ module ConstructorUiIdOfDomain =
 
         /// An offered group's toggle, ticking its setup and experiment for creation: `DataSplitOffer_<key>` (spec 0050 S9.3).
         static member dataSplitOfferToggle (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitOffer_{key.uiKey.value}"
+
+        /// A data-file row's Review, showing the experiment's points in the Data step: `DataReview_<id>` (spec 0050 S9.3).
+        static member dataReviewButton (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataReview_{experimentId.value}"
+
+        /// A point's row of the Data step's review: `DataPoint_<n>` (spec 0050 S9.3).
+        static member dataPointRow (point : Kit.MappedPointNumber) : ConstructorUiId = ConstructorUiId $"DataPoint_{point.uiPosition.value}"
+
+        /// A kept point's Exclude, sending it with the typed reason: `DataExcludePoint_<n>` (spec 0050 S9.3).
+        static member dataExcludePointButton (point : Kit.MappedPointNumber) : ConstructorUiId =
+            ConstructorUiId $"DataExcludePoint_{point.uiPosition.value}"
+
+        /// An excluded point's Include, taking its exclusion back: `DataIncludePoint_<n>` (spec 0050 S9.3).
+        static member dataIncludePointButton (point : Kit.MappedPointNumber) : ConstructorUiId =
+            ConstructorUiId $"DataIncludePoint_{point.uiPosition.value}"
 
     type DataSplits.DataSplitError with
 

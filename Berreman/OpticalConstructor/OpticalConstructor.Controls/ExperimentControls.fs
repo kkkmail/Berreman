@@ -543,6 +543,68 @@ module ExperimentControls =
             Canvas.children children
         ] :> IView
 
+    /// How a reviewed point is drawn: kept, or excluded and still shown, marked (spec 0050 S9.3; 001 §K).
+    type PointMark =
+        | KeptPointMark
+        | ExcludedPointMark
+
+    /// One reviewed point on the points chart: its position, where it plots and its mark (spec 0050 S9.3).
+    type PlottedPoint =
+        {
+            position : ConstructorUiPosition
+            point : ChartPoint
+            mark : PointMark
+        }
+
+    let private excludedRingColor : Color = Color.FromRgb(210uy, 30uy, 30uy)
+
+    /// The points chart, of the inline chart's size and drawn as it is, but each point unjoined: a kept one a dot in the
+    /// first series colour, an excluded one a red ring, so it stays visible (spec 0050 S9.3; 001 §K).
+    let pointsChartView (id : ConstructorUiId) (points : PlottedPoint list) (xLabel : ControlCaption) (yLabel : ControlCaption) : IView =
+        let window =
+            PlotWindow.over
+                [
+                    {
+                        name = yLabel
+                        points = points |> List.map (fun plotted -> plotted.point)
+                    }
+                ]
+        let marker (plotted : PlottedPoint) : IView =
+            let centre = window.toScreen plotted.point
+            match plotted.mark with
+            | KeptPointMark ->
+                let dotId = ConstructorUiId.dataPointDot plotted.position
+                Ellipse.create [
+                    dotId.automationAttribute<Ellipse> ()
+                    Ellipse.width 5.0
+                    Ellipse.height 5.0
+                    Ellipse.left (centre.X - 2.5)
+                    Ellipse.top (centre.Y - 2.5)
+                    Ellipse.fill (brush seriesColors.[0])
+                ]
+                |> Avalonia.FuncUI.DSL.View.withKey dotId.value
+                :> IView
+            | ExcludedPointMark ->
+                let ringId = ConstructorUiId.dataExcludedPointMark plotted.position
+                Ellipse.create [
+                    ringId.automationAttribute<Ellipse> ()
+                    Ellipse.width 9.0
+                    Ellipse.height 9.0
+                    Ellipse.left (centre.X - 4.5)
+                    Ellipse.top (centre.Y - 4.5)
+                    Ellipse.stroke (brush excludedRingColor)
+                    Ellipse.strokeThickness 1.5
+                ]
+                |> Avalonia.FuncUI.DSL.View.withKey ringId.value
+                :> IView
+        Canvas.create [
+            id.automationAttribute<Canvas> ()
+            Canvas.width chartFrame.Width
+            Canvas.height chartFrame.Height
+            Canvas.background (brush (Color.FromRgb(248uy, 248uy, 248uy)))
+            Canvas.children (gridLines () @ axisLines () @ (points |> List.map marker) @ axisLabels xLabel yLabel)
+        ] :> IView
+
     /// The result block under the editor: the ellipsometer single-point Ψ/Δ text when present, plus the
     /// inline chart (double-click opens the pop-out window) and the prose description.
     let private resultBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
