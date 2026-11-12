@@ -466,19 +466,128 @@ module ScrollExtentTests =
     let ``the kit window's Items step leaves everything reachable`` () : unit =
         assertReachable "KitWindowItems" itemsStepKitWindow
 
-    /// Spec 0050 S9.3: the Inverse kit window on its Data step, over the collected experiments of `filledExperiments`.
+    /// Spec 0050 S9.3: the Inverse kit window on its Data step over the matrix of three experiments, copies of the collected
+    /// one of `filledExperiments` over its setup: the first reviewed, three points with one excluded and one setup
+    /// correction, under a pending split of three groups.
     [<Fact>]
     let ``the kit window's Data step leaves everything reachable`` () : unit =
         let materials, samples, categories, library = stores ()
-        assertReachable "KitWindowData" (fun () ->
-            let collection = (filledExperiments ()).experimentCollection
+        let dataStepWindow () : Window =
+            let filled = filledExperiments ()
+            let collection = filled.experimentCollection
+            let collected = List.head collection.experiments
+            let attachment : DataAttachment =
+                {
+                    path = KitRelativePath "data/a lab file of the bench's long overnight run.csv"
+                    contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                }
+            let exclusion : PointExclusion =
+                {
+                    point = MappedPointNumber 2
+                    reason = ExclusionReason "the beam was blocked by the iris while the polarizer turned"
+                }
+            let correction : Experiments.SetupCorrection =
+                {
+                    previous =
+                        {
+                            name = SetupName "A bench recorded before its polarizer was turned"
+                            revision = SetupRevision.first
+                        }
+                    corrected = collected.setup
+                    note = Experiments.CorrectionNote "the polarizer was at 30°, not at 0°, for the whole run"
+                }
+            let reviewed =
+                {
+                    collected with
+                        dataOpt =
+                            Some
+                                {
+                                    attachment = attachment
+                                    profile = ImportProfileName.intensitySeries
+                                    rows = AllDataRows
+                                    exclusions = [ exclusion ]
+                                }
+                        corrections = [ correction ]
+                }
+            let copyOf (id : Experiments.ExperimentId) : Experiments.Experiment = { collected with id = id; name = id.defaultName }
+            let experiments = [ reviewed; copyOf (Experiments.ExperimentId 2); copyOf (Experiments.ExperimentId 3) ]
+            let reading (x : float) (intensity : float) : MeasuredData.IntensityPoint =
+                {
+                    x = MeasuredData.MeasuredAbscissa x
+                    intensity = MeasuredData.MeasuredIntensity intensity
+                }
+            let points = SeriesPoints (MeasuredData.IntensityData { points = [ reading 0.0 1.0; reading 45.0 0.5; reading 90.0 0.0 ] })
+            let groupOf (key : DataRowKey) (matching : DataSplits.SplitGroupMatch) : DataSplits.SplitGroup =
+                {
+                    key = key
+                    points = MeasuredData.MeasuredPointCount 12
+                    matching = matching
+                }
+            let offeredSetup : Setups.Setup =
+                {
+                    name = SetupName "A bench the kit lacks, offered with a long name"
+                    revision = SetupRevision.first
+                    slots = []
+                    history = []
+                }
+            let offer : DataSplits.SplitSetupOffer =
+                {
+                    setup = offeredSetup
+                    experiment = Experiments.ExperimentName "E4"
+                }
+            let split : DataSplitState =
+                {
+                    file = FileName "C:/Lab/ScrollExtentTests/a lab file holding many runs, split by its experiment column.csv"
+                    profile = ImportProfileName.phoneRoiCsv
+                    key = DataSplits.SplitKeyColumn "experiment"
+                    split =
+                        {
+                            groups =
+                                [
+                                    groupOf (DataRowKey "E1") (DataSplits.ExperimentForGroup collected.name)
+                                    groupOf (DataRowKey "K2") (DataSplits.SetupOfferForGroup offer)
+                                    groupOf (DataRowKey "K3") (DataSplits.GroupWithoutMatch (DataSplits.SplitKeyTwiceErr "two groups read as one experiment"))
+                                ]
+                        }
+                    creating = []
+                }
             let model =
                 { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with
-                    experimentCollection = collection }
+                    experimentCollection = { collection with experiments = experiments }
+                    kitSetups = filled.kitSetups
+                    kitItems = filled.kitItems
+                    reviewedDataOpt = Some { experimentId = reviewed.id; points = Ok points }
+                    dataSplitOpt = Some split }
                 |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
             Assert.Equal<ConstructorFlowStep>(DataFlowStep, model.flowStep)
             Assert.NotEmpty(model.experimentCollection.experiments)
-            viewWindow KitWindowView.kitWindowView model)
+            let matrix = ExperimentMatrices.ExperimentMatrix.ofExperiments model.experimentCollection.experiments model.kitSetups model.kitItems
+            Assert.Empty(matrix.unplaced)
+            Assert.Equal(3, matrix.cells |> List.sumBy (fun cell -> cell.experiments.Length))
+            viewWindow KitWindowView.kitWindowView model
+        assertReachable "KitWindowData" dataStepWindow
+        // The window shows what the law is held over: the matrix's three entries, the split and the corrected review.
+        HeadlessSession.run (fun () ->
+            let window = dataStepWindow ()
+            window.Width <- 800.0
+            window.Height <- 600.0
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            try
+                let shown =
+                    window.GetVisualDescendants()
+                    |> Seq.choose (function :? Control as control -> Option.ofObj (AutomationProperties.GetAutomationId control) | _ -> None)
+                    |> Set.ofSeq
+                let expected =
+                    [ ConstructorUiId.experimentMatrix; ConstructorUiId.dataSplitKeyColumn; ConstructorUiId.dataReviewPanel; ConstructorUiId.dataCorrectionTrail ]
+                    @ ([ 1 .. 3 ] |> List.map (Experiments.ExperimentId >> ConstructorUiId.experimentMatrixEntry))
+                    @ ([ 1 .. 3 ] |> List.map (MappedPointNumber >> ConstructorUiId.dataPointRow))
+                    @ [ ConstructorUiId.dataIncludePointButton (MappedPointNumber 2) ]
+                    @ ([ "E1"; "K2"; "K3" ] |> List.map (DataRowKey >> ConstructorUiId.dataSplitGroupRow))
+                for id in expected do
+                    Assert.True(Set.contains id.value shown, $"{id.value} must show in the Data step")
+            finally
+                window.Close())
 
     [<Fact>]
     let ``the Data locations window leaves everything reachable`` () : unit =

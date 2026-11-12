@@ -1,5 +1,6 @@
-/// The Inverse constructor's Data step: each experiment's data file, the split of one lab file into many, then the review
-/// of one experiment's points (001 §O "the Experiments bay's Data files section moves into Data"; spec 0050 S9.3).
+/// The Inverse constructor's Data step: the experiment matrix, each experiment's data file, the split of one lab file into
+/// many, then the review of one experiment's points (001 §O "the Experiments bay's Data files section moves into Data",
+/// "Experiment matrix view"; spec 0050 S9.3).
 module OpticalConstructor.Ui.DataStepView
 
 open Avalonia
@@ -443,9 +444,103 @@ let private dataReviewPanel
     |> Avalonia.FuncUI.DSL.View.withKey ("DataReviewPanel_" + experiment.id.uiKey.value)
     :> IView
 
-/// The Data step's surface: the data files, one row per experiment, then Split a file by key…, which opens the split
-/// wizard over a picked lab file, under it the held split's panel, then the reviewed experiment's points and setup
-/// correction; the attach and split verbs are withheld while the kit takes no writes (spec 0050 S9.3).
+/// An experiment's entry in its matrix cell, `<name> · <badge>`, reviewing it when pressed; the reviewed experiment's is on
+/// the positive fill (spec 0050 S9.1, S9.3).
+let private matrixEntry (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
+    let id = ConstructorUiId.experimentMatrixEntry experiment.id
+    let label = ControlCaption $"{experiment.name.value} · {(model.dataBadgeOf experiment).text}"
+    let review () : unit = dispatch (ReviewExperimentData experiment.id)
+    match model.reviewedDataOpt with
+    | Some reviewed when reviewed.experimentId = experiment.id -> MaterialsWindowView.actionButton id label MaterialsWindowView.positiveBackground review
+    | Some _
+    | None -> MaterialsWindowView.verbButton id label review
+
+/// The experiment matrix under its heading: the analyzer columns' captions, then per row its caption and, per column, the
+/// entries of the experiments measured there; then the experiments whose setup the kit lacks (spec 0050 S9.3; 001 §O).
+let private experimentMatrixBlock (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    let heading =
+        TextBlock.create [
+            TextBlock.text "Experiment matrix:"
+            TextBlock.fontWeight FontWeight.SemiBold
+            TextBlock.margin (Thickness(0.0, 0.0, 0.0, 2.0))
+        ]
+        :> IView
+    match model.experimentCollection.experiments with
+    | [] ->
+        [
+            heading
+            TextBlock.create [
+                TextBlock.text "(no experiments yet)"
+                TextBlock.foreground (MaterialsWindowView.brush (Color.FromRgb(120uy, 120uy, 120uy)))
+                TextBlock.margin (Thickness(0.0, 0.0, 0.0, 8.0))
+            ]
+            :> IView
+        ]
+    | experiments ->
+        let matrix = ExperimentMatrices.ExperimentMatrix.ofExperiments experiments model.kitSetups model.kitItems
+        let experimentsOf (ids : Experiments.ExperimentId list) : Experiments.Experiment list =
+            ids |> List.choose (fun id -> experiments |> List.tryFind (fun experiment -> experiment.id = id))
+        let headCell (row : int) (column : int) (weight : FontWeight) (caption : ControlCaption) : IView =
+            TextBlock.create [
+                TextBlock.row row
+                TextBlock.column column
+                TextBlock.fontWeight weight
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
+                TextBlock.text caption.value
+            ]
+            :> IView
+        let columnHeads = matrix.columns |> List.mapi (fun index column -> headCell 0 (index + 1) FontWeight.SemiBold column.caption)
+        let matrixRow (index : int) (row : ExperimentMatrices.MatrixRowKey) : IView list =
+            let gridRow = index + 1
+            let cells =
+                matrix.columns
+                |> List.mapi (fun columnIndex column ->
+                    match matrix.tryFindCell row column with
+                    | Some cell ->
+                        [
+                            StackPanel.create [
+                                StackPanel.row gridRow
+                                StackPanel.column (columnIndex + 1)
+                                StackPanel.orientation Orientation.Vertical
+                                StackPanel.verticalAlignment VerticalAlignment.Center
+                                StackPanel.children (experimentsOf cell.experiments |> List.map (matrixEntry model dispatch))
+                            ]
+                            :> IView
+                        ]
+                    | None -> [])
+                |> List.concat
+            headCell gridRow 0 FontWeight.Normal row.caption :: cells
+        let grid =
+            Grid.create [
+                ConstructorUiId.experimentMatrix.automationAttribute<Grid> ()
+                Grid.margin (Thickness(0.0, 0.0, 0.0, 8.0))
+                Grid.horizontalAlignment HorizontalAlignment.Left
+                Grid.columnDefinitions (List.replicate (matrix.columns.Length + 1) "Auto" |> String.concat ",")
+                Grid.rowDefinitions (List.replicate (matrix.rows.Length + 1) "Auto" |> String.concat ",")
+                Grid.children (columnHeads @ (matrix.rows |> List.mapi matrixRow |> List.concat))
+            ]
+            :> IView
+        let unplaced : IView list =
+            match experimentsOf matrix.unplaced with
+            | [] -> []
+            | missing ->
+                let names = missing |> List.map (fun experiment -> experiment.name.value) |> String.concat ", "
+                [
+                    TextBlock.create [
+                        TextBlock.text $"Not in the matrix (setup missing): {names}"
+                        TextBlock.textWrapping TextWrapping.Wrap
+                        TextBlock.maxWidth 360.0
+                        TextBlock.margin (Thickness(0.0, 0.0, 0.0, 8.0))
+                        TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
+                    ]
+                    :> IView
+                ]
+        heading :: grid :: unplaced
+
+/// The Data step's surface: the experiment matrix, then the data files, one row per experiment, then Split a file by key…,
+/// which opens the split wizard over a picked lab file, under it the held split's panel, then the reviewed experiment's
+/// points and setup correction; the attach and split verbs are withheld while the kit takes no writes (spec 0050 S9.3).
 let dataStepView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let dataFiles : IView =
         match model.experimentCollection.experiments with
@@ -491,7 +586,8 @@ let dataStepView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                 StackPanel.orientation Orientation.Vertical
                 StackPanel.margin (Thickness 8.0)
                 StackPanel.children (
-                    [
+                    experimentMatrixBlock model dispatch
+                    @ [
                         TextBlock.create [
                             TextBlock.text "Data files:"
                             TextBlock.fontWeight FontWeight.SemiBold

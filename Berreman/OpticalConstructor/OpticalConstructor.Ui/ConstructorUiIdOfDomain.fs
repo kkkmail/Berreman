@@ -1064,6 +1064,34 @@ module ConstructorUiIdOfDomain =
         static member dataIncludePointButton (point : Kit.MappedPointNumber) : ConstructorUiId =
             ConstructorUiId $"DataIncludePoint_{point.uiPosition.value}"
 
+        /// An experiment's entry in the Data step's matrix, reviewing it when pressed: `ExperimentMatrixEntry_<id>` (spec
+        /// 0050 S9.3).
+        static member experimentMatrixEntry (experimentId : ExperimentId) : ConstructorUiId =
+            ConstructorUiId $"ExperimentMatrixEntry_{experimentId.value}"
+
+    type ExperimentMatrices.MatrixRowKey with
+
+        /// The row as the matrix heads it: its sources joined by ` + `, ` · `, then its objects at their angles joined by
+        /// ` → `, `—` for none (spec 0050 S9.3).
+        member this.caption : ControlCaption =
+            let sources =
+                match this.sources with
+                | [] -> "—"
+                | labels -> labels |> List.map (fun label -> label.value) |> String.concat " + "
+            let objects =
+                match this.objects with
+                | [] -> "—"
+                | held -> held |> List.map (fun placed -> $"{placed.item.value}@{placed.angle.degreeCaption.value}") |> String.concat " → "
+            ControlCaption $"{sources} · {objects}"
+
+    type ExperimentMatrices.MatrixColumnKey with
+
+        /// The column as the matrix heads it: its analyzers joined by ` + `, `—` for none (spec 0050 S9.3).
+        member this.caption : ControlCaption =
+            match this.analyzers with
+            | [] -> ControlCaption "—"
+            | labels -> ControlCaption (labels |> List.map (fun label -> label.value) |> String.concat " + ")
+
     type DataSplits.DataSplitError with
 
         /// Why a group matches nothing, as its row of the split panel shows it (spec 0050 S9.3).

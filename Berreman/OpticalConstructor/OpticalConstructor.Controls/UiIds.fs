@@ -847,7 +847,7 @@ type ConstructorUiId =
     // --- The Inverse constructor's Data step (DataStepView), spec 0050 S9.3. ---
     /// The strip's Data step: shows the experiments' data files, in the Inverse constructor alone (spec 0050 S9.3).
     static member flowDataStep : ConstructorUiId = ConstructorUiId "FlowDataStep"
-    /// The Data step's panel: the data files, then the split verb (spec 0050 S9.3; 001 §O).
+    /// The Data step's panel: the experiment matrix, the data files, then the split verb (spec 0050 S9.3; 001 §O).
     static member dataStepPanel : ConstructorUiId = ConstructorUiId "DataStepPanel"
     /// The Data step's Split a file by key…: picks one lab file and opens the split wizard over it (spec 0050 S9.3).
     static member dataSplitFileButton : ConstructorUiId = ConstructorUiId "DataSplitFileButton"
@@ -871,6 +871,8 @@ type ConstructorUiId =
     static member dataCorrectionNoteField : ConstructorUiId = ConstructorUiId "DataCorrectionNoteField"
     /// The reviewed experiment's audit trail: one line per setup correction, oldest first (spec 0050 S9.3; 001 §K).
     static member dataCorrectionTrail : ConstructorUiId = ConstructorUiId "DataCorrectionTrail"
+    /// The Data step's experiment matrix: rows source × objects × φ, columns analyzer, a badge per experiment (spec 0050 S9.3).
+    static member experimentMatrix : ConstructorUiId = ConstructorUiId "ExperimentMatrix"
 
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).

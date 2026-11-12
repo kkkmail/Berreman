@@ -20,6 +20,7 @@ open Berreman.Media
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.DataSplits
+open OpticalConstructor.Domain.ExperimentMatrices
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MeasuredData
@@ -34,10 +35,11 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open global.Elmish
 
-/// The Inverse constructor's Data step over a folder kit holding `E1`: a held split names its key column and lists each
-/// group matched, offered with its toggle or unmatched with its reason, above Apply split and Cancel in one row; a
-/// reviewed experiment lists and plots its points, an excluded one marked, and re-points its setup with an audit note
-/// (spec 0050 S9.3; 001 §K, §O). Its windows are found and pressed through `SlotBarTests`' helpers.
+/// The Inverse constructor's Data step over a folder kit holding `E1`: the matrix places each experiment by its setup
+/// with its data badge and reviews it when pressed; a held split names its key column and lists each group matched,
+/// offered with its toggle or unmatched with its reason, above Apply split and Cancel in one row; a reviewed experiment
+/// lists and plots its points, an excluded one marked, and re-points its setup with an audit note (spec 0050 S9.3; 001
+/// §K, §O). Its windows are found and pressed through `SlotBarTests`' helpers.
 module DataStepTests =
 
     let private owner : FolderName = FolderName "DataStepTests"
@@ -81,12 +83,76 @@ module DataStepTests =
 
     let private k3 : DataRowKey = DataRowKey "K3"
 
-    /// The setup `K2` is offered, which the kit lacks.
+    let private circularPolarizerChoice : ItemModelChoice =
+        LibraryModelChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.circularPolarizerModelId)
+
+    let private blackBoxChoice : ItemModelChoice = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.blackBoxMuellerModelId)
+
+    /// The bench's polarizer before its object.
+    let private cpl1 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "32700000-0000-4000-8000-000000000001")
+                label = ItemLabel "CPL1"
+                model = circularPolarizerChoice
+                dial = FixedMounting
+            }
+        draft.toItem
+
+    /// The polarizer under study, a Mueller black box in the bench's object slot, so its turn enters the matrix row.
+    let private lp1 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "32700000-0000-4000-8000-000000000002")
+                label = ItemLabel "LP1"
+                model = blackBoxChoice
+                dial = FixedMounting
+            }
+        draft.toItem
+
+    /// The bench's analyzer, behind its object.
+    let private cpl2 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "32700000-0000-4000-8000-000000000003")
+                label = ItemLabel "CPL2"
+                model = circularPolarizerChoice
+                dial = FixedMounting
+            }
+        draft.toItem
+
+    let private benchItems : Item list = [ cpl1; lp1; cpl2 ]
+
+    /// The bench's slots in table order, each fixed-mounted item held as `withItem` holds an unbound one: an empty
+    /// source, CPL1, LP1 turned to `lp1Turn`, CPL2 and an empty detector. Its matrix row is `CPL1 · LP1@<lp1Turn>` and
+    /// its column `CPL2` (spec 0050 S9.3).
+    let private benchSlots (lp1Turn : Angle) : SetupSlot list =
+        let slotOf (id : Library.ElementId) (kind : Placement.CatalogueKind) (point : Placement.TablePoint) (content : SlotContent) : SetupSlot =
+            {
+                id = id
+                placement = Placement.ElementPlacement.create kind point
+                zoom = BeamLayout.ElementZoom 5.0
+                beam = BeamLayout.OnMainBeam
+                content = content
+            }
+        let held (item : Item) : SlotContent = ItemInSlot (item.id, PlacementTurn)
+        let onBeamAt (x : float<meter>) : Placement.TablePoint = { x = x; y = 0.0<meter> }
+        let studied = slotOf (Library.ElementId "object") Placement.Sample (onBeamAt -0.1<meter>) (held lp1)
+        [
+            slotOf (Library.ElementId "src") Placement.LightSource RayModel.defaultSourcePoint EmptySlotContent
+            slotOf (Library.ElementId "prep") Placement.LinearPolarizer (onBeamAt -0.3<meter>) (held cpl1)
+            { studied with placement = Placement.withR1 lp1Turn studied.placement }
+            slotOf (Library.ElementId "analyzer") Placement.LinearPolarizer (onBeamAt 0.3<meter>) (held cpl2)
+            slotOf (Library.ElementId "det") Placement.Detector RayModel.defaultDetectorPoint EmptySlotContent
+        ]
+
+    /// The setup `K2` is offered, which the kit lacks; in the matrix facts, E2's setup: the bench with its polarizer
+    /// under study turned to 30°.
     let private benchB : Setup =
         {
             name = SetupName "Bench B"
             revision = SetupRevision.first
-            slots = []
+            slots = benchSlots (Angle.degree 30.0<deg>)
             history = []
         }
 
@@ -255,11 +321,12 @@ module DataStepTests =
                         }
         }
 
-    /// The mock data proxy: E1's attachment reads as `e1Series`, and every other read is refused.
+    /// The mock data proxy: every file attaches as E1's attachment, which reads as `e1Series`, and every other read is
+    /// refused.
     let private reviewData : ExperimentData.ExperimentDataProxy =
         {
             readPickedFile = fun file -> Error (KitIoErr $"the mock reads no picked file '{file.value}'")
-            attachDataFile = fun file -> Error (KitIoErr $"the mock attaches no file '{file.value}'")
+            attachDataFile = fun _ -> Ok e1Attachment
             attachmentStatus = fun _ -> Ok AttachedDataUnchanged
             readMapped =
                 fun data ->
@@ -280,12 +347,13 @@ module DataStepTests =
                         experimentDataStatus = Map.ofList [ e1.id, badge ]
                 })
 
-    /// E1's setup in the correction facts, the one its correction re-pointed it to.
+    /// E1's setup in the correction facts, the one its correction re-pointed it to, and in the matrix facts: the bench with
+    /// its polarizer under study at 0°.
     let private setup1 : Setup =
         {
             name = SetupName "Setup 1"
             revision = SetupRevision.first
-            slots = []
+            slots = benchSlots (Angle.degree 0.0<deg>)
             history = []
         }
 
@@ -319,6 +387,41 @@ module DataStepTests =
                         experimentCollection = { model.experimentCollection with experiments = [ corrected ] }
                 }
             run (held |> updateTableAndElementRotation (ReviewExperimentData (ExperimentId 1))))
+
+    /// Runs over the class's kit, which now also holds `setup1`, `benchB` and the bench's items, its model reading through
+    /// `reviewData`: E1 over `setup1`, E2 over `benchB` and E3 over `Gone` revision 1, which the kit lacks, none with data.
+    let private withMatrixKit (run : DataStepKit -> unit) : unit =
+        withDataStepKit (fun kit ->
+            let proxy = kit.loaded.kit.proxy
+            for item in benchItems do
+                proxy.writeItem item |> SceneTestFixture.kitSuccess
+            for setup in [ setup1; benchB ] do
+                proxy.writeSetup setup |> SceneTestFixture.kitSuccess
+            let gone : SetupReference =
+                {
+                    name = SetupName "Gone"
+                    revision = SetupRevision.first
+                }
+            let over (id : ExperimentId) (setup : SetupReference) : Experiment =
+                {
+                    e1 with
+                        id = id
+                        name = id.defaultName
+                        setup = setup
+                }
+            let experiments = [ over (ExperimentId 1) setup1.reference; over (ExperimentId 2) benchB.reference; over (ExperimentId 3) gone ]
+            run
+                {
+                    kit with
+                        loaded =
+                            {
+                                kit.loaded with
+                                    experimentData = reviewData
+                                    kitItems = benchItems
+                                    kitSetups = [ darkSetup; setup1; benchB ]
+                                    experimentCollection = { kit.loaded.experimentCollection with experiments = experiments }
+                            }
+                })
 
     /// The AutomationIds under the control carrying `id` that start with `prefix`, in visual order.
     let private idsUnder (window : Window) (id : ConstructorUiId) (prefix : string) : string list =
@@ -361,6 +464,8 @@ module DataStepTests =
         Assert.Equal("DataCorrectionNoteField", ConstructorUiId.dataCorrectionNoteField.value)
         Assert.Equal("DataCorrectionTrail", ConstructorUiId.dataCorrectionTrail.value)
         Assert.Equal("DataCorrectSetup_Bench B", (ConstructorUiId.dataCorrectSetupChoice benchB.name).value)
+        Assert.Equal("ExperimentMatrix", ConstructorUiId.experimentMatrix.value)
+        Assert.Equal("ExperimentMatrixEntry_1", (ConstructorUiId.experimentMatrixEntry (ExperimentId 1)).value)
 
     [<Fact>]
     let ``the split panel names its key column and lists each group matched, offered or unmatched, with Apply and Cancel in one row`` () : unit =
@@ -862,3 +967,91 @@ module DataStepTests =
                     field.Text <- lrNote.value
                     SlotBarTests.pressBox window choice
                     Assert.Empty(correctionsOf messages))))
+
+    [<Fact>]
+    let ``the matrix shows each experiment in its row and column with its data badge, and lists the unplaced ones`` () : unit =
+        // Spec 0050 S9.3: sources and analyzers joined by ` + `, objects at their angles by ` → `, and `—` for none.
+        let quartz : MatrixObject = { item = ItemLabel "QZ"; angle = Angle.degree -45.0<deg> }
+        let tilted : MatrixObject = { item = lp1.label; angle = Angle.degree 22.5<deg> }
+        let both : MatrixRowKey = { sources = [ cpl1.label; cpl2.label ]; objects = [ tilted; quartz ] }
+        let bare : MatrixRowKey = { sources = []; objects = [] }
+        Assert.Equal("CPL1 + CPL2 · LP1@22.5° → QZ@-45°", both.caption.value)
+        Assert.Equal("— · —", bare.caption.value)
+        Assert.Equal("CPL2 + CPL1", ({ analyzers = [ cpl2.label; cpl1.label ] } : MatrixColumnKey).caption.value)
+        Assert.Equal("—", ({ analyzers = [] } : MatrixColumnKey).caption.value)
+
+        let entryOf (id : ExperimentId) : ConstructorUiId = ConstructorUiId.experimentMatrixEntry id
+        let assertInCell (row : int) (column : int) (control : Control) : unit =
+            Assert.Equal(row, Grid.GetRow control)
+            Assert.Equal(column, Grid.GetColumn control)
+        let setup1Row = "CPL1 · LP1@0°"
+        let benchBRow = "CPL1 · LP1@30°"
+        HeadlessSession.run (fun () ->
+            withMatrixKit (fun kit ->
+                withDataStepWindow kit.loaded (fun window _ ->
+                    // The step opens on the matrix, above the data files.
+                    let panelTexts = textsUnder window ConstructorUiId.dataStepPanel
+                    Assert.Equal("Experiment matrix:", List.head panelTexts)
+                    let grid = Assert.IsType<Grid>(SlotBarTests.controlById window ConstructorUiId.experimentMatrix)
+                    let gridBottom = (SlotBarTests.topLeftOf window grid).Y + grid.Bounds.Height
+                    let filesTop = (SlotBarTests.topLeftOf window (SlotBarTests.controlById window (ConstructorUiId.dataFileStatus (ExperimentId 1)))).Y
+                    Assert.True(gridBottom <= filesTop, $"the matrix's bottom {gridBottom} must be above the data files' {filesTop}")
+
+                    // The analyzer column's caption, then each row's caption and its experiment, its badge after its name.
+                    Assert.Equal<string list>(
+                        [ "CPL2"; setup1Row; "E1 · no data"; benchBRow; "E2 · no data" ],
+                        textsUnder window ConstructorUiId.experimentMatrix)
+                    let captionOf (text : string) : Control =
+                        grid.Children |> Seq.find (function :? TextBlock as caption -> caption.Text = text | _ -> false)
+                    assertInCell 0 1 (captionOf "CPL2")
+                    assertInCell 1 0 (captionOf setup1Row)
+                    assertInCell 2 0 (captionOf benchBRow)
+                    let cellOf (id : ExperimentId) : Control = Assert.IsType<StackPanel>((SlotBarTests.controlById window (entryOf id)).Parent)
+                    assertInCell 1 1 (cellOf (ExperimentId 1))
+                    assertInCell 2 1 (cellOf (ExperimentId 2))
+                    // Nothing is reviewed, so no entry is on the positive fill.
+                    for id in [ ExperimentId 1; ExperimentId 2 ] do
+                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window (entryOf id))
+
+                    // E3's setup is not in the kit: it has no entry and is named apart.
+                    SlotBarTests.assertAbsent window (entryOf (ExperimentId 3))
+                    Assert.Contains("Not in the matrix (setup missing): E3", panelTexts))
+
+                // Attached through the mock, E1's data is validated: its entry reads the new badge, and E2's is unchanged.
+                let attached =
+                    kit.loaded |> updateTableAndElementRotation (AttachDataFile (ExperimentId 1, kit.phoneFile, ImportProfileName.intensitySeries))
+                match attached.kitStatus with
+                | Some told -> Assert.Fail $"E1's data must be attached: {told.value}"
+                | None -> ()
+                withDataStepWindow attached (fun window _ ->
+                    Assert.Equal("E1 · validated (3 points)", SlotBarTests.boxLabelOf window (entryOf (ExperimentId 1)))
+                    Assert.Equal("E2 · no data", SlotBarTests.boxLabelOf window (entryOf (ExperimentId 2))))
+
+                // With no experiment, the matrix gives way to its placeholder.
+                let empty =
+                    {
+                        kit.loaded with experimentCollection = { kit.loaded.experimentCollection with experiments = [] }
+                    }
+                withDataStepWindow empty (fun window _ ->
+                    SlotBarTests.assertAbsent window ConstructorUiId.experimentMatrix
+                    let texts = textsUnder window ConstructorUiId.dataStepPanel
+                    Assert.Equal<string list>([ "Experiment matrix:"; "(no experiments yet)" ], List.truncate 2 texts)
+                    Assert.DoesNotContain(texts, fun text -> text.StartsWith "Not in the matrix"))))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing a matrix entry reviews that experiment`` () : unit =
+        HeadlessSession.run (fun () ->
+            withMatrixKit (fun kit ->
+                withDataStepWindow kit.loaded (fun window answered ->
+                    SlotBarTests.assertAbsent window ConstructorUiId.dataReviewPanel
+
+                    SlotBarTests.pressBox window (ConstructorUiId.experimentMatrixEntry (ExperimentId 2))
+
+                    match (SlotBarTests.latestOf kit.loaded answered).reviewedDataOpt with
+                    | Some reviewed -> Assert.Equal<ExperimentId>(ExperimentId 2, reviewed.experimentId)
+                    | None -> Assert.Fail "Pressing E2's entry must review E2"
+                    Assert.True((SlotBarTests.controlById window ConstructorUiId.dataReviewPanel).IsEffectivelyVisible, "the review panel must show")
+                    Assert.Equal("Points of E2 — no data", List.head (textsUnder window ConstructorUiId.dataReviewPanel))
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window (ConstructorUiId.experimentMatrixEntry (ExperimentId 2)))
+                    Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window (ConstructorUiId.experimentMatrixEntry (ExperimentId 1))))))
