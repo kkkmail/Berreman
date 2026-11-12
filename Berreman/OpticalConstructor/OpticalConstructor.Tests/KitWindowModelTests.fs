@@ -250,6 +250,9 @@ module KitWindowModelTests =
                         ready |> updateTableAndElementRotation (SetExperimentRole (storedExperiment.id, CalibrationRun))
                         ready |> updateTableAndElementRotation (SetExperimentSession (storedExperiment.id, ControlCaption "Day 1"))
                         ready |> updateTableAndElementRotation (SetExperimentNotes (storedExperiment.id, ControlCaption "LR re-seated before this run"))
+                        // Spec 0050 S9.3: a point's exclusion and its taking back are written to the experiment's file.
+                        ready |> updateTableAndElementRotation (ExcludePoint (storedExperiment.id, MappedPointNumber 1, ControlCaption "beam blocked"))
+                        ready |> updateTableAndElementRotation (IncludePoint (storedExperiment.id, MappedPointNumber 1))
                     ]
                 for answer in refused do
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)

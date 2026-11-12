@@ -495,6 +495,28 @@ type ParameterEditDraft =
                                     priorOpt = sigmaOpt |> Option.map prior
                                 }))))
 
+/// The experiment the Data step reviews and every point of its data as read, the excluded ones included, so that they
+/// stay visible (spec 0050 S9.3; 001 §K).
+type ReviewedData =
+    {
+        experimentId : Experiments.ExperimentId
+        points : Result<ImportProfiles.MappedPoints, MeasuredData.ExperimentDataError>
+    }
+
+/// The texts of the Data step's two fields, as typed (spec 0050 S9.3).
+type DataStepDraft =
+    {
+        exclusionReason : ControlCaption
+        correctionNote : ControlCaption
+    }
+
+    /// Both fields blank (spec 0050 S9.3).
+    static member empty : DataStepDraft =
+        {
+            exclusionReason = ControlCaption ""
+            correctionNote = ControlCaption ""
+        }
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -628,6 +650,10 @@ type TableAndElementRotationModel =
         /// The data badge of each experiment with a mapped attachment, keyed by its id, set when a file is attached and
         /// when the kit opens (spec 0038 Part L; spec 0050 S9.1).
         experimentDataStatus : Map<Experiments.ExperimentId, ExperimentDataBadge>
+        /// The experiment the Data step reviews and its points as read, `None` while it reviews none (spec 0050 S9.3).
+        reviewedDataOpt : ReviewedData option
+        /// The Data step's fields as typed (spec 0050 S9.3).
+        dataDraft : DataStepDraft
         /// Spec 0046: the open right-click element menu (ray toggles, which beam the element sits on,
         /// remove), if any. Closed by any left click, a selection change, or its own Close verb.
         elementMenu : ElementMenu option
@@ -792,6 +818,8 @@ let initWith
         parameterEditOpt = None
         experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
         experimentDataStatus = Map.empty
+        reviewedDataOpt = None
+        dataDraft = DataStepDraft.empty
         elementMenu = None
         rotationPivot = BeamLayout.PivotAtCentre
         experimentExport = (ExperimentExport.createInMemoryExperimentExport ()).proxy
@@ -1079,6 +1107,14 @@ type TableAndElementRotationMsg =
     | SetExperimentSession of Experiments.ExperimentId * ControlCaption
     /// Records the typed notes for the experiment in its kit file (spec 0050 S9.1; 001 §E).
     | SetExperimentNotes of Experiments.ExperimentId * ControlCaption
+    /// Reviews the experiment's data in the Data step: every point as read, writing nothing (spec 0050 S9.3).
+    | ReviewExperimentData of Experiments.ExperimentId
+    /// The Data step's exclusion reason as typed, writing nothing (spec 0050 S9.3).
+    | SetExclusionReason of ControlCaption
+    /// Excludes that point of the experiment's data for that reason, in its kit file (spec 0050 S9.3; 001 §P `ExcludePoint`).
+    | ExcludePoint of Experiments.ExperimentId * MappedPointNumber * ControlCaption
+    /// Takes the point's exclusion back, `ExcludePoint`'s undo (spec 0050 S9.3; .spec-md §10.5).
+    | IncludePoint of Experiments.ExperimentId * MappedPointNumber
     /// Edits the name the next created setup takes (spec 0050 S8.2).
     | SetSetupName of ControlCaption
     /// The table becomes a new setup of the kit, named by the field (spec 0050 S8.2; 001 §P `CreateSetup`).
@@ -2330,6 +2366,31 @@ type ControlCaption with
     /// The typed text as an experiment's notes (spec 0050 S9.1).
     member private this.toExperimentNotes : Experiments.ExperimentNotes = Experiments.ExperimentNotes this.value
 
+/// The model once `changed` is recorded in its kit file and takes its id's place in the collection, `onRecorded`
+/// finishing it; a failed write keeps the model and tells why (spec 0050 S9.1, S9.3).
+let private withExperimentRecorded
+    (changed : Experiments.Experiment)
+    (onRecorded : TableAndElementRotationModel -> TableAndElementRotationModel)
+    (model : TableAndElementRotationModel)
+    : TableAndElementRotationModel =
+    let library : KitLibraryContext =
+        {
+            kit = model.kit
+            imports = model.catalogueImports
+        }
+    match library.recordExperiment changed with
+    | Ok () ->
+        onRecorded
+            {
+                model with
+                    experimentCollection = model.experimentCollection.withStoredExperiment changed
+                    kitStatus = None
+            }
+    | Error error ->
+        {
+            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+        }
+
 /// Records the collection's experiment of that id changed, after step 185's read-only guard: an id the collection lacks
 /// changes nothing, and a failed write keeps the model and tells why (spec 0050 S9.1).
 let private recordExperimentEdit
@@ -2340,24 +2401,39 @@ let private recordExperimentEdit
     guardKitWrite model (fun () ->
         match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) with
         | None -> model
-        | Some held ->
-            let changed = change held
-            let library : KitLibraryContext =
-                {
-                    kit = model.kit
-                    imports = model.catalogueImports
-                }
-            match library.recordExperiment changed with
-            | Ok () ->
-                {
-                    model with
-                        experimentCollection = model.experimentCollection.withStoredExperiment changed
-                        kitStatus = None
-                }
-            | Error error ->
-                {
-                    model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                })
+        | Some held -> model |> withExperimentRecorded (change held) (fun recorded -> recorded))
+
+/// The Data step's review of the experiment: every point of its data as `readMapped` answers it, the excluded ones
+/// included, else why it has none (spec 0050 S9.3; 001 §K).
+let private reviewedDataOf (model : TableAndElementRotationModel) (experiment : Experiments.Experiment) : ReviewedData =
+    {
+        experimentId = experiment.id
+        points =
+            match experiment.dataOpt with
+            | Some data -> model.experimentData.readMapped data
+            | None -> Error (MeasuredData.EmptyDataFileErr $"{experiment.name.value} has no data file")
+    }
+
+/// The model once the experiment, its exclusions changed, is recorded: its badge checked again by the one validation,
+/// its review read again when it is the one reviewed, and `told` the status (spec 0050 S9.3).
+let private withExperimentDataRecorded
+    (changed : Experiments.Experiment)
+    (told : ControlCaption)
+    (model : TableAndElementRotationModel)
+    : TableAndElementRotationModel =
+    model
+    |> withExperimentRecorded changed (fun recorded ->
+        let reviewedDataOpt =
+            match recorded.reviewedDataOpt with
+            | Some reviewed when reviewed.experimentId = changed.id -> Some (reviewedDataOf recorded changed)
+            | Some _
+            | None -> recorded.reviewedDataOpt
+        {
+            recorded with
+                experimentDataStatus = recorded.experimentDataStatus |> Map.add changed.id (checkExperimentData recorded changed)
+                reviewedDataOpt = reviewedDataOpt
+                kitStatus = Some told
+        })
 
 /// The table's slot of that id holding the kit's item of that id, or emptied; refused when the table lacks the slot,
 /// the kit the item, the stores its model, or the slot does not fit it. `AssignSlot` and `SwapSlot` refuse alike (spec
@@ -2898,6 +2974,58 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         model |> recordExperimentEdit experimentId (fun held -> held.withSessionOpt (ExperimentSessionName.tryCreate text.value))
     | SetExperimentNotes (experimentId, text) ->
         model |> recordExperimentEdit experimentId (fun held -> held.withNotes text.toExperimentNotes)
+    // Spec 0050 S9.3: the review reads and writes nothing else, so a read-only kit reviews too.
+    | ReviewExperimentData experimentId ->
+        match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
+        | Some held -> { model with reviewedDataOpt = Some (reviewedDataOf model held) }
+        | None -> model
+    | SetExclusionReason reason -> { model with dataDraft = { model.dataDraft with exclusionReason = reason } }
+    // Spec 0050 S9.3; 001 §K: raw data is immutable, so an exclusion is written to the experiment file, never the lab file.
+    | ExcludePoint (experimentId, point, reason) ->
+        guardKitWrite model (fun () ->
+            match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
+            | None -> model
+            | Some held ->
+                let refused (status : ControlCaption) : TableAndElementRotationModel =
+                    {
+                        model with kitStatus = Some status
+                    }
+                let name = held.name.value
+                match ExclusionReason.tryCreate reason.value, held.dataOpt with
+                | None, _ -> refused (ControlCaption "Not excluded — an exclusion needs a reason.")
+                | Some _, None -> refused (ControlCaption $"Not excluded — {name} has no data file.")
+                | Some why, Some data ->
+                    match model.experimentData.readMapped data with
+                    | Error error -> refused (ControlCaption $"Not excluded — {error.caption.value}")
+                    | Ok points when point.value > points.pointCount.value ->
+                        refused (ControlCaption $"Not excluded — {name} has {points.pointCount.value} point(s).")
+                    | Ok _ ->
+                        let exclusion : PointExclusion =
+                            {
+                                point = point
+                                reason = why
+                            }
+                        let excluded =
+                            {
+                                held with dataOpt = Some (data.withExclusion exclusion)
+                            }
+                        model |> withExperimentDataRecorded excluded (ControlCaption $"Excluded point {point.value} of {name}: {why.value}."))
+    | IncludePoint (experimentId, point) ->
+        guardKitWrite model (fun () ->
+            match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
+            | Some held ->
+                match held.dataOpt with
+                | Some data ->
+                    match data.tryFindExclusion point with
+                    | Some _ ->
+                        let included =
+                            {
+                                held with dataOpt = Some (data.withoutExclusion point)
+                            }
+                        model |> withExperimentDataRecorded included (ControlCaption $"Included point {point.value} of {held.name.value} again.")
+                    | None -> model
+                | None -> model
+            | None -> model)
     | SetSetupName name -> { model with setupName = name }
     | CreateSetup ->
         guardKitWrite model (fun () ->

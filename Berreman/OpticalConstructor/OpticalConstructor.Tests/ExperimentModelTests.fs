@@ -145,6 +145,84 @@ module ExperimentModelTests =
     let private otherFileBytes (folder : KitFolder) (experiment : Experiments.Experiment) : Map<string, FileByteContent> =
         kitFileBytes folder |> Map.remove (experimentFileOf experiment)
 
+    /// The Data step's kit: the scan table with `E1` and `E2` committed, E1 holding the attached test-local intensity file,
+    /// E2 no data, and that lab file outside the kit (spec 0050 S9.3).
+    type private DataStepKit =
+        {
+            model : TableAndElementRotationModel
+            e1 : Experiments.Experiment
+            e2 : Experiments.Experiment
+            labFile : FileName
+        }
+
+    /// Runs over the scan kit with `E1`, the polarizer's R1 over 0…90° in 3 points, committed and given an intensity file
+    /// of three points written outside the kit, then `E2`, the same scan, committed with no data; the lab file's folder is
+    /// deleted at the end (spec 0050 S9.3).
+    let private withDataStepKit (run : KitFolder -> DataStepKit -> unit) : unit =
+        withScanKit (fun folder scan ->
+            let lab = Path.Combine(AppContext.BaseDirectory, "ExperimentModelTests", $"lab-{Guid.NewGuid():N}")
+            try
+                Directory.CreateDirectory lab |> ignore
+                let labFile = FileName (Path.Combine(lab, "intensity.csv"))
+                File.WriteAllText(labFile.value, "angle_deg,intensity\n0,1.0\n45,0.5\n90,0.0\n")
+                let azimuthRange : Experiments.VariableRange =
+                    {
+                        min = SweptValue 0.0
+                        max = SweptValue 90.0
+                        points = CurvePointCount 3
+                    }
+                let committed =
+                    scan.table
+                    |> varying scan.polarizer ExperimentControls.VaryR1 azimuthRange
+                    |> updateTableAndElementRotation ExpCommit
+                    |> updateTableAndElementRotation ExpNew
+                    |> varying scan.polarizer ExperimentControls.VaryR1 azimuthRange
+                    |> updateTableAndElementRotation ExpCommit
+                Assert.Equal<ControlCaption option>(None, committed.kitStatus)
+                let attached =
+                    committed
+                    |> updateTableAndElementRotation (AttachDataFile (Experiments.ExperimentId 1, labFile, ImportProfileName.intensitySeries))
+                Assert.Equal<ControlCaption option>(None, attached.kitStatus)
+                match attached.experimentCollection.experiments with
+                | [ e1; e2 ] ->
+                    Assert.Equal<Experiments.ExperimentName list>(
+                        [ Experiments.ExperimentName "E1"; Experiments.ExperimentName "E2" ],
+                        [ e1.name; e2.name ])
+                    Assert.Equal<Experiments.ExperimentId list>([ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ], [ e1.id; e2.id ])
+                    match e1.dataOpt, e2.dataOpt with
+                    | Some data, None -> Assert.Empty(data.exclusions)
+                    | _ -> Assert.Fail "E1 must hold the attached file and E2 no data"
+                    // Three points that validate, so the badge counts what an exclusion keeps.
+                    Assert.Equal<ExperimentDataLoad.ExperimentDataBadge>(
+                        ExperimentDataLoad.ValidatedDataBadge (MeasuredData.MeasuredPointCount 3),
+                        attached.dataBadgeOf e1)
+                    run folder
+                        {
+                            model = attached
+                            e1 = e1
+                            e2 = e2
+                            labFile = labFile
+                        }
+                | experiments -> Assert.Fail $"the kit must hold E1 and E2, and it holds {experiments.Length} experiment(s)"
+            finally
+                if Directory.Exists lab then Directory.Delete(lab, true))
+
+    /// Every kit file with its bytes, and the lab file outside the kit under its full name.
+    let private everyFileBytes (folder : KitFolder) (kit : DataStepKit) : Map<string, FileByteContent> =
+        kitFileBytes folder |> Map.add kit.labFile.value (FileByteContent (File.ReadAllBytes kit.labFile.value))
+
+    /// The model's experiment of that id, failing when its collection lacks it.
+    let private heldExperiment (model : TableAndElementRotationModel) (id : Experiments.ExperimentId) : Experiments.Experiment =
+        model.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = id)
+
+    /// The kit's stored experiment of that id, read back through `readExperiments`.
+    let private storedExperiment (model : TableAndElementRotationModel) (id : Experiments.ExperimentId) : Experiments.Experiment =
+        model.kit.proxy.readExperiments () |> kitValue |> List.find (fun experiment -> experiment.id = id)
+
+    /// The experiment's mapped attachment, failing when it has no data.
+    let private dataOf (experiment : Experiments.Experiment) : MappedAttachment =
+        experiment.dataOpt |> Option.defaultWith (fun () -> failwith $"{experiment.name.value} must hold data")
+
     [<Fact>]
     let ``Add variable and Add block build the draft's scan, and a commit records it as one experiment`` () : unit =
         withScanKit (fun folder scan ->
@@ -324,3 +402,142 @@ module ExperimentModelTests =
             let unchanged = cleared |> updateTableAndElementRotation (SetExperimentRole (absent, Experiments.DarkRun))
             Assert.Equal<TableAndElementRotationModel>(cleared, unchanged)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
+
+    [<Fact>]
+    let ``reviewing an experiment's data reads every point, the excluded ones included, and writes nothing`` () : unit =
+        withDataStepKit (fun folder kit ->
+            let before = everyFileBytes folder kit
+            let reviewed = kit.model |> updateTableAndElementRotation (ReviewExperimentData kit.e1.id)
+            let threePointsOf (model : TableAndElementRotationModel) : unit =
+                match model.reviewedDataOpt with
+                | Some { experimentId = reviewedId; points = Ok (ImportProfiles.SeriesPoints series) } ->
+                    Assert.Equal<Experiments.ExperimentId>(kit.e1.id, reviewedId)
+                    Assert.Equal<MeasuredData.MeasuredPointCount>(MeasuredData.MeasuredPointCount 3, series.pointCount)
+                | Some _
+                | None -> Assert.Fail "the Data step must review E1's three series points"
+            threePointsOf reviewed
+            // Only the review changes, and no file's bytes change.
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    kit.model with reviewedDataOpt = reviewed.reviewedDataOpt
+                },
+                reviewed)
+            Assert.Equal<Map<string, FileByteContent>>(before, everyFileBytes folder kit)
+
+            // An excluded point stays in the review, read again from the unchanged file.
+            let excluded =
+                reviewed
+                |> updateTableAndElementRotation (ExcludePoint (kit.e1.id, MappedPointNumber 2, ControlCaption "beam blocked"))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Excluded point 2 of E1: beam blocked."), excluded.kitStatus)
+            threePointsOf excluded
+            Assert.Equal<ReviewedData option>(reviewed.reviewedDataOpt, excluded.reviewedDataOpt)
+
+            // E2 has no data: its review says so. The kit lacks experiment 9, whose review changes nothing.
+            let reviewedE2 = excluded |> updateTableAndElementRotation (ReviewExperimentData kit.e2.id)
+            let noData : ReviewedData =
+                {
+                    experimentId = kit.e2.id
+                    points = Error (MeasuredData.EmptyDataFileErr "E2 has no data file")
+                }
+            Assert.Equal<ReviewedData option>(Some noData, reviewedE2.reviewedDataOpt)
+            let absent = Experiments.ExperimentId 9
+            Assert.DoesNotContain(absent, excluded.experimentCollection.experiments |> List.map (fun experiment -> experiment.id))
+            Assert.Equal<TableAndElementRotationModel>(excluded, excluded |> updateTableAndElementRotation (ReviewExperimentData absent)))
+
+    [<Fact>]
+    let ``ExcludePoint records a point's exclusion and its reason in the experiment file, and IncludePoint takes it back`` () : unit =
+        withDataStepKit (fun folder kit ->
+            let e1FileBefore = (kitFileBytes folder).[experimentFileOf kit.e1]
+            let othersBefore = otherFileBytes folder kit.e1
+            let labBefore = File.ReadAllBytes kit.labFile.value
+            let attachedData = dataOf kit.e1
+
+            // The typed reason is the Data step's draft and writes nothing.
+            let typed = kit.model |> updateTableAndElementRotation (SetExclusionReason (ControlCaption "beam blocked"))
+            Assert.Equal<DataStepDraft>(
+                {
+                    DataStepDraft.empty with exclusionReason = ControlCaption "beam blocked"
+                },
+                typed.dataDraft)
+            Assert.Equal<FileByteContent>(e1FileBefore, (kitFileBytes folder).[experimentFileOf kit.e1])
+
+            let excluded =
+                typed
+                |> updateTableAndElementRotation (ExcludePoint (kit.e1.id, MappedPointNumber 2, typed.dataDraft.exclusionReason))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Excluded point 2 of E1: beam blocked."), excluded.kitStatus)
+            let exclusion : PointExclusion =
+                {
+                    point = MappedPointNumber 2
+                    reason = ExclusionReason "beam blocked"
+                }
+            // Only the exclusions change: the attachment, the profile and the row selection stay.
+            let expected : Experiments.Experiment =
+                {
+                    kit.e1 with
+                        dataOpt =
+                            Some
+                                {
+                                    attachedData with exclusions = [ exclusion ]
+                                }
+                }
+            let heldExcluded = heldExperiment excluded kit.e1.id
+            Assert.Equal<Experiments.Experiment>(expected, heldExcluded)
+            Assert.Equal<Experiments.Experiment>(expected, storedExperiment excluded kit.e1.id)
+            Assert.Equal<Experiments.Experiment>(kit.e2, heldExperiment excluded kit.e2.id)
+            let counts : ExperimentDataLoad.KeptPointsInfo =
+                {
+                    kept = MeasuredData.MeasuredPointCount 2
+                    excluded = MeasuredData.MeasuredPointCount 1
+                }
+            Assert.Equal<ExperimentDataLoad.ExperimentDataBadge>(ExperimentDataLoad.ExcludedPointsBadge counts, excluded.dataBadgeOf heldExcluded)
+
+            // Only the experiment's file is written: the attached file and the lab file keep their bytes.
+            Assert.NotEqual<FileByteContent>(e1FileBefore, (kitFileBytes folder).[experimentFileOf kit.e1])
+            Assert.Equal<Map<string, FileByteContent>>(othersBefore, otherFileBytes folder kit.e1)
+            Assert.Equal<byte[]>(labBefore, File.ReadAllBytes kit.labFile.value)
+
+            let included = excluded |> updateTableAndElementRotation (IncludePoint (kit.e1.id, MappedPointNumber 2))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Included point 2 of E1 again."), included.kitStatus)
+            let heldIncluded = heldExperiment included kit.e1.id
+            Assert.Equal<Experiments.Experiment>(kit.e1, heldIncluded)
+            Assert.Equal<Experiments.Experiment>(kit.e1, storedExperiment included kit.e1.id)
+            Assert.Empty((dataOf (storedExperiment included kit.e1.id)).exclusions)
+            Assert.Equal<ExperimentDataLoad.ExperimentDataBadge>(
+                ExperimentDataLoad.ValidatedDataBadge (MeasuredData.MeasuredPointCount 3),
+                included.dataBadgeOf heldIncluded)
+            Assert.Equal<Map<string, FileByteContent>>(othersBefore, otherFileBytes folder kit.e1)
+            Assert.Equal<byte[]>(labBefore, File.ReadAllBytes kit.labFile.value)
+
+            // The point holds no exclusion now: a second IncludePoint changes nothing and writes nothing.
+            let before = everyFileBytes folder kit
+            Assert.Equal<TableAndElementRotationModel>(
+                included,
+                included |> updateTableAndElementRotation (IncludePoint (kit.e1.id, MappedPointNumber 2)))
+            Assert.Equal<Map<string, FileByteContent>>(before, everyFileBytes folder kit))
+
+    [<Fact>]
+    let ``an exclusion without a reason, of a point the data lacks, or of an experiment without data writes nothing`` () : unit =
+        withDataStepKit (fun folder kit ->
+            let before = everyFileBytes folder kit
+            let refusedWith (status : string) (message : TableAndElementRotationMsg) : unit =
+                let answer = kit.model |> updateTableAndElementRotation message
+                Assert.Equal<ControlCaption option>(Some (ControlCaption status), answer.kitStatus)
+                Assert.Equal<TableAndElementRotationModel>(
+                    {
+                        kit.model with kitStatus = answer.kitStatus
+                    },
+                    answer)
+                Assert.Equal<Map<string, FileByteContent>>(before, everyFileBytes folder kit)
+            refusedWith "Not excluded — an exclusion needs a reason." (ExcludePoint (kit.e1.id, MappedPointNumber 2, ControlCaption "  "))
+            refusedWith "Not excluded — E1 has 3 point(s)." (ExcludePoint (kit.e1.id, MappedPointNumber 4, ControlCaption "beam blocked"))
+            refusedWith "Not excluded — E2 has no data file." (ExcludePoint (kit.e2.id, MappedPointNumber 1, ControlCaption "beam blocked"))
+
+            // An experiment the kit lacks, and taking back what was never excluded, change nothing at all.
+            let absent = Experiments.ExperimentId 9
+            Assert.Equal<TableAndElementRotationModel>(
+                kit.model,
+                kit.model |> updateTableAndElementRotation (ExcludePoint (absent, MappedPointNumber 1, ControlCaption "beam blocked")))
+            Assert.Equal<TableAndElementRotationModel>(kit.model, kit.model |> updateTableAndElementRotation (IncludePoint (absent, MappedPointNumber 1)))
+            Assert.Equal<TableAndElementRotationModel>(kit.model, kit.model |> updateTableAndElementRotation (IncludePoint (kit.e1.id, MappedPointNumber 1)))
+            Assert.Equal<TableAndElementRotationModel>(kit.model, kit.model |> updateTableAndElementRotation (IncludePoint (kit.e2.id, MappedPointNumber 1)))
+            Assert.Equal<Map<string, FileByteContent>>(before, everyFileBytes folder kit))
