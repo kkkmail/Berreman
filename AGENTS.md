@@ -565,6 +565,12 @@ This is a spec-driven, gated repository.
   the first outermost, read on its capture; its name comes from the kit's template (else `E<n>`) and is its file's
   stem; its role, session and notes and its mapped attachment (import profile and row selection) live in its file; its
   data badge is `ExperimentDataBadge.ofCheck`.
+- **Lab files are read through import profiles** (`ImportProfiles.fs`, `LabFileImport.fs`, spec 0050 S9.2): an experiment's
+  data is a kit file, a profile name and a row selection; a profile is a built-in (`Intensity series`,
+  `Ellipsometric series`, `Phone ROI CSV`, `Mueller-matrix observations`, each calling its parser) or a named column mapping
+  in `.kit-json`, never replaced once saved; `ChosenImportProfile.mapText` is the one read and `MappedPoints.validatedFor`
+  the one validation; the app writes only observation files (`KeyedObservation.observationFileText`); Attach data file…
+  opens the wizard, whose Attach sends `SaveImportProfile` then `AttachDataFile`.
 - **The slot bar is the quick swap** (`SlotBarView.fs`, spec 0050 S8.4): one chip per slot in light order, directly
   above the table, each listing the kit items that fit its slot (`SetupSlot.fittingItems`); choosing one is `SwapSlot`
   (the held setup of that content, else a new one), Tab moves between chips and a typed letter picks (`pickedByLetter`).

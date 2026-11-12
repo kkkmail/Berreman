@@ -24,6 +24,7 @@ open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.ImportWizardOpening
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -1496,3 +1497,97 @@ module KitWindowTests =
                 Assert.Equal<Experiments.SessionName option>(Some (Experiments.SessionName "Day 1"), stored.sessionOpt)
                 Assert.Equal<Experiments.ExperimentNotes>(Experiments.ExperimentNotes "LR re-seated", stored.notes)
             finally reopened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    /// A phone's ROI capture as the lab writes it: the UTF-8 byte-order mark, then a header row and two captures of one
+    /// experiment, described at 0° and 45° (spec 0050 S9.2).
+    let private phoneRoiBytes : byte[] =
+        let text =
+            "experiment,capture_index,captured_at,description,avg_total\n"
+            + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,869.5\n"
+            + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,912.25\n"
+        Array.append [| 0xEFuy; 0xBBuy; 0xBFuy |] (System.Text.Encoding.UTF8.GetBytes text)
+
+    /// Writes the phone's ROI file into a fresh folder under the class's test directory, beside its kits and never in
+    /// one, as a lab file is picked from outside the kit (spec 0050 S9.2).
+    let private labFileOutsideKits () : FileName =
+        let classFolder = Path.GetDirectoryName (TestAppScope.testLocations owner).kitsFolder.value
+        let labFolder = Path.Combine(classFolder, "Lab", System.Guid.NewGuid().ToString("N"))
+        Directory.CreateDirectory labFolder |> ignore
+        let file = FileName (Path.Combine(labFolder, "phone-roi.csv"))
+        File.WriteAllBytes(file.value, phoneRoiBytes)
+        file
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Attach data file maps a picked lab file through the wizard into the kit and validates it`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let folder = TestAppScope.freshKitFolder owner
+            let e1Id = Experiments.ExperimentId 1
+            let opened = openedAt folder ReadWriteKitAccess ctx
+            let host = Window(Width = 640.0, Height = 480.0)
+            try
+                // Spec 0050 S9.2: `E1` recorded in the kit by the window, as step 310's facts record it.
+                let loaded = kitWindowModel ctx opened InverseConstructor KitWindowShell.inert
+                let placed = loaded |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
+                let recorded =
+                    placed
+                    |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
+                    |> updateTableAndElementRotation ExpCommit
+                let recordedE1 = Assert.Single(recorded.experimentCollection.experiments)
+                Assert.Equal<Experiments.ExperimentId>(e1Id, recordedE1.id)
+                Assert.Equal<(Experiments.VariableParameter * Experiments.VariableRange) list>(
+                    [ Experiments.VaryR1, Experiments.VariableRange.forVariable Experiments.VaryR1 ],
+                    recordedE1.scan.axes |> List.map (fun axis -> axis.variable, axis.range))
+                Assert.Equal<MappedAttachment option>(None, recordedE1.dataOpt)
+
+                // The window's model and dispatch, its shell composed as `ConstructorScene.mount` composes it.
+                host.Show()
+                Dispatcher.UIThread.RunJobs()
+                let current = ref recorded
+                let dispatch (msg : TableAndElementRotationMsg) : unit = current.Value <- updateTableAndElementRotation msg current.Value
+                current.Value <-
+                    {
+                        recorded with kitShell = KitWindowShell.inert.withImportWizard host dispatch
+                    }
+                let labFile = labFileOutsideKits ()
+                let leaf = Path.GetFileName labFile.value
+                Assert.Empty host.OwnedWindows
+
+                dispatch (OpenImportWizard (e1Id, labFile))
+                Dispatcher.UIThread.RunJobs()
+
+                let wizard = Assert.IsType<ImportWizardWindow>(Assert.Single host.OwnedWindows)
+                Assert.True(wizard.IsVisible, "the import wizard must show over the window")
+                Assert.Equal(ConstructorUiId.importWizardWindow.value, AutomationProperties.GetAutomationId wizard)
+                let phoneRoiChoice = ConstructorUiId.importWizardProfileChoice ImportProfileName.phoneRoiCsv.uiKey
+                pressAtCentre wizard (controlById wizard phoneRoiChoice) phoneRoiChoice.value
+                Assert.True(wizard.IsVisible, "choosing a profile must keep the wizard open")
+                pressAtCentre wizard (controlById wizard ConstructorUiId.importWizardAttachButton) ConstructorUiId.importWizardAttachButton.value
+
+                Assert.False(wizard.IsVisible, "Attach must close the wizard")
+                Assert.Empty host.OwnedWindows
+                let model = current.Value
+                let e1 = Assert.Single model.experimentCollection.experiments
+                let expected : MappedAttachment =
+                    match e1.dataOpt with
+                    | Some data -> data
+                    | None -> failwith "E1 must hold the attached lab file"
+                Assert.Equal<KitRelativePath>(KitRelativePath $"data/{leaf}", expected.attachment.path)
+                Assert.Equal<ImportProfileName>(ImportProfileName.phoneRoiCsv, expected.profile)
+                Assert.Equal<DataRowSelection>(AllDataRows, expected.rows)
+                let copied = Path.Combine(folder.value.value, "data", leaf)
+                Assert.True(File.Exists copied, $"the kit must hold the picked file at data/{leaf}")
+                Assert.Equal<byte[]>(phoneRoiBytes, File.ReadAllBytes copied)
+                let storedE1 = Assert.Single((KitProxy.create folder).readExperiments () |> SceneTestFixture.kitSuccess)
+                Assert.Equal<Experiments.ExperimentId>(e1Id, storedE1.id)
+                Assert.Equal<MappedAttachment option>(Some expected, storedE1.dataOpt)
+                Assert.Equal("validated (2 points)", (model.dataBadgeOf e1).text)
+                Assert.Equal<ControlCaption option>(None, model.kitStatus)
+            finally
+                for window in List.ofSeq host.OwnedWindows do
+                    window.Close()
+                host.Close()
+                Dispatcher.UIThread.RunJobs()
+                opened.library.kit.close () |> SceneTestFixture.kitSuccess)

@@ -37,6 +37,7 @@ open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
 open OpticalConstructor.Ui.ImportDialogView
+open OpticalConstructor.Ui.ImportWizardOpening
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 
@@ -69,6 +70,7 @@ module private ConstructorScene =
     /// Runs the kit window over `seed`: the kit bar above the workbench, and an outside-change check of the kit on every
     /// activation (spec 0050 S5.3). Its Kit menu's shell is the system explorer, this window's close, the real archive on
     /// UI-thread jobs, and this window's zip and kit dialogs starting in `context`'s exports and kits folders (spec 0050 S6).
+    /// Its Attach data file… opens the column-mapping wizard over this window (spec 0050 S9.2).
     let mount (window : HostWindow) (context : AppContext) (opened : OpenedKit) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
         window.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
         window.Height <- TableAndElementRotationView.tableAndElementRotationCanvasHeight + 210.0
@@ -81,7 +83,7 @@ module private ConstructorScene =
             | Error error -> Logger.logError $"ConstructorScene: could not close the kit: {error.describe}")
         // The init Cmd stores the Elmish dispatch (Program.run is synchronous), so a host event can send a message.
         let hostDispatch : (TableAndElementRotationView.TableAndElementRotationMsg -> unit) ref = ref ignore
-        let shell : TableAndElementRotationView.KitWindowShell =
+        let kitBarShell : TableAndElementRotationView.KitWindowShell =
             {
                 TableAndElementRotationView.KitWindowShell.inert with
                     explorer = ExplorerProxy.system
@@ -94,6 +96,8 @@ module private ConstructorScene =
                             (fun ended -> hostDispatch.Value (TableAndElementRotationView.SendKitEnded ended))
                     kitPicker = KitFolderPicker.ofWindow window context.locations.kitsFolder
             }
+        let shell : TableAndElementRotationView.KitWindowShell =
+            kitBarShell.withImportWizard window (fun msg -> hostDispatch.Value msg)
         let init () : TableAndElementRotationView.TableAndElementRotationModel * Cmd<TableAndElementRotationView.TableAndElementRotationMsg> =
             let seeded = seed ()
             {
