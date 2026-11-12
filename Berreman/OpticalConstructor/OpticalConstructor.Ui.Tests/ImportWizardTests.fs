@@ -80,7 +80,11 @@ module ImportWizardTests =
     let private intensitySeries : ImportProfileName = ImportProfileName "Intensity series"
     let private phoneRoiCsv : ImportProfileName = ImportProfileName "Phone ROI CSV"
 
-    let private observeWizard (read : FileName -> Result<LabFileSource, KitError>) : WizardObservation =
+    /// The class's target: the picked file attached to `E1` (spec 0050 S9.3).
+    let private attachToE1 : ImportWizardTarget = AttachWizardTarget (ExperimentId 1)
+
+    /// The class's request over that target, recording every read and every call the wizard makes.
+    let private observeTargeted (target : ImportWizardTarget) (read : FileName -> Result<LabFileSource, KitError>) : WizardObservation =
         let reads = ResizeArray<FileName>()
         let calls = ResizeArray<WizardCall>()
 
@@ -90,7 +94,7 @@ module ImportWizardTests =
 
         let request : ImportWizardRequest =
             {
-                experimentId = ExperimentId 1
+                target = target
                 file = labFile
                 readPickedFile = readPickedFile
                 kitProfiles = [ labScanProfile ]
@@ -105,6 +109,8 @@ module ImportWizardTests =
             }
 
         { context = context; reads = reads; calls = calls }
+
+    let private observeWizard (read : FileName -> Result<LabFileSource, KitError>) : WizardObservation = observeTargeted attachToE1 read
 
     let private observePhoneRoi () : WizardObservation = observeWizard (fun _ -> Ok phoneRoiSource)
 
@@ -312,7 +318,7 @@ module ImportWizardTests =
 
         let expected : ImportWizardApplied =
             {
-                experimentId = ExperimentId 1
+                target = AttachWizardTarget (ExperimentId 1)
                 file = labFile
                 profile = phoneRoiCsv
                 savedOpt = None
@@ -355,7 +361,7 @@ module ImportWizardTests =
 
         let expected : ImportWizardApplied =
             {
-                experimentId = ExperimentId 1
+                target = AttachWizardTarget (ExperimentId 1)
                 file = labFile
                 profile = profileName
                 savedOpt = Some saved
@@ -649,6 +655,35 @@ module ImportWizardTests =
             Assert.Empty sent)
 
         Assert.Empty locked.calls
+
+    /// Spec 0050 S9.3: the same wizard over a split target says so in its heading and its button, and hands on the target.
+    [<Fact>]
+    let ``a split wizard says it splits and hands the kit window the file and the profile to split by`` () : unit =
+        let observed = observeTargeted SplitWizardTarget (fun _ -> Ok phoneRoiSource)
+
+        withMountedWizard observed.context.initImportWizard (fun window sent ->
+            let heading = controlOf window ConstructorUiId.importWizardHeading :?> TextBlock
+            Assert.Equal("Split phone-roi.csv by its key column\nNothing is split until you press Split.", heading.Text)
+            Assert.Equal<string list>([ "Split" ], textsUnder (controlOf window ConstructorUiId.importWizardAttachButton))
+            Assert.Empty observed.calls
+
+            pressControl window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
+            pressControl window ConstructorUiId.importWizardAttachButton
+            Assert.Equal<ImportWizardMsg list>([ PickImportProfile phoneRoiCsv; ApplyImportWizard ], List.ofSeq sent))
+
+        let expected : ImportWizardApplied =
+            {
+                target = SplitWizardTarget
+                file = labFile
+                profile = phoneRoiCsv
+                savedOpt = None
+            }
+
+        Assert.Equal<WizardCall list>([ AppliedCall expected; CloseCall ], List.ofSeq observed.calls)
+
+        // The class's attach wizard over the same file keeps its own button.
+        withMountedWizard (observePhoneRoi ()).context.initImportWizard (fun window _ ->
+            Assert.Equal<string list>([ "Attach" ], textsUnder (controlOf window ConstructorUiId.importWizardAttachButton)))
 
     /// Spec 0050 S9.2: the kit window's shell opens the wizard's own window over a request, and its Attach comes back
     /// as the kit window's messages.

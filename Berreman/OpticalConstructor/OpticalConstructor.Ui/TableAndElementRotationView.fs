@@ -1117,6 +1117,8 @@ type TableAndElementRotationMsg =
     | OpenImportWizard of Experiments.ExperimentId * FileName
     /// The wizard's new column mapping, saved into the kit file (spec 0050 S9.2; 001 §K).
     | SaveImportProfile of ImportProfile
+    /// The Data step's Split a file by key… after its file dialog: opens the wizard to split the picked file (spec 0050 S9.3).
+    | OpenSplitWizard of FileName
     /// Splits the picked file by that profile's key column and holds its groups as matched, writing nothing (spec 0050 S9.3; 001 §P).
     | SplitByColumn of FileName * ImportProfileName
     /// Ticks creating an offered group's setup and experiment, or unticks it, writing nothing (spec 0050 S9.3).
@@ -1236,13 +1238,17 @@ type TableAndElementRotationMsg =
 
 type ImportWizardApplied with
 
-    /// The wizard's Attach as the window's messages: a new profile is saved before the file is mapped by it (spec 0050
-    /// S9.2).
+    /// The wizard's Attach or Split as the window's messages: a new profile is saved before the file is mapped or split by
+    /// it (spec 0050 S9.2, S9.3).
     member this.messages : TableAndElementRotationMsg list =
-        let attach = AttachDataFile (this.experimentId, this.file, this.profile)
+        let apply =
+            match this.target with
+            | AttachWizardTarget experimentId -> AttachDataFile (experimentId, this.file, this.profile)
+            | SplitWizardTarget -> SplitByColumn (this.file, this.profile)
+
         match this.savedOpt with
-        | Some saved -> [ SaveImportProfile saved; attach ]
-        | None -> [ attach ]
+        | Some saved -> [ SaveImportProfile saved; apply ]
+        | None -> [ apply ]
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -3068,7 +3074,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 let slots = held.slotsIn model.kitSetups |> Result.defaultValue []
                 let request : ImportWizardRequest =
                     {
-                        experimentId = experimentId
+                        target = AttachWizardTarget experimentId
                         file = file
                         readPickedFile = model.experimentData.readPickedFile
                         kitProfiles = model.kit.kitFile.importProfiles
@@ -3077,6 +3083,19 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 model.kitShell.openImportWizard request
                 model
             | None -> model)
+    // Spec 0050 S9.3: the same wizard over a split target, opened on Phone ROI CSV, the built-in with a key column (step 298).
+    | OpenSplitWizard file ->
+        guardKitWrite model (fun () ->
+            let request : ImportWizardRequest =
+                {
+                    target = SplitWizardTarget
+                    file = file
+                    readPickedFile = model.experimentData.readPickedFile
+                    kitProfiles = model.kit.kitFile.importProfiles
+                    defaultProfile = ImportProfileName.phoneRoiCsv
+                }
+            model.kitShell.openImportWizard request
+            model)
     // Spec 0050 S9.2: the window's own write is no change offered for reload (step 130), as `SaveNamingTemplate`'s.
     | SaveImportProfile profile ->
         guardKitWrite model (fun () ->

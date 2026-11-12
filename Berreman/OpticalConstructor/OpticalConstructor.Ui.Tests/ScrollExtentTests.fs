@@ -237,7 +237,7 @@ module ScrollExtentTests =
             let source : LabFileSource = { file = picked; content = content }
             Ok source
         {
-            experimentId = Experiments.ExperimentId 1
+            target = AttachWizardTarget (Experiments.ExperimentId 1)
             file = FileName "C:/Lab/ScrollExtentTests/twelve-columns.csv"
             readPickedFile = readPickedFile
             kitProfiles = []

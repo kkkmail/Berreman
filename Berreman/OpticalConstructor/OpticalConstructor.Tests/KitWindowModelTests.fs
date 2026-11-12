@@ -242,6 +242,8 @@ module KitWindowModelTests =
                         ready |> updateTableAndElementRotation (AttachDataFile (storedExperiment.id, dataFile, ImportProfileName.intensitySeries))
                         // Spec 0050 S9.3: a split is refused as the wizard is, and holds no split.
                         ready |> updateTableAndElementRotation (SplitByColumn (dataFile, ImportProfileName.phoneRoiCsv))
+                        // Spec 0050 S9.3: the split wizard opens over nothing, as the attach wizard does.
+                        ready |> updateTableAndElementRotation (OpenSplitWizard dataFile)
                         // Spec 0050 S9.3: applying a split is refused as the split is, ahead of its no-split answer.
                         ready |> updateTableAndElementRotation MatchByTemplate
                         ready |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench")) |> updateTableAndElementRotation CreateSetup
@@ -641,7 +643,7 @@ module KitWindowModelTests =
             let opened = saved |> updateTableAndElementRotation (OpenImportWizard (Experiments.ExperimentId 1, picked))
             Assert.Equal<TableAndElementRotationModel>(saved, opened)
             let request = Assert.Single(requests)
-            Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 1, request.experimentId)
+            Assert.Equal<ImportWizardTarget>(AttachWizardTarget (Experiments.ExperimentId 1), request.target)
             Assert.Equal<FileName>(picked, request.file)
             Assert.Equal<ImportProfile list>([ KitTests.labScanProfile ], request.kitProfiles)
             Assert.Equal<ImportProfileName>(ImportProfileName "Intensity series", request.defaultProfile)
@@ -662,7 +664,7 @@ module KitWindowModelTests =
             File.WriteAllBytes(phoneRoi.value, phoneRoiBytes.value)
             let applied : ImportWizardApplied =
                 {
-                    experimentId = Experiments.ExperimentId 1
+                    target = AttachWizardTarget (Experiments.ExperimentId 1)
                     file = phoneRoi
                     profile = phoneRoiByColumns.name
                     savedOpt = Some phoneRoiByColumns
@@ -688,6 +690,39 @@ module KitWindowModelTests =
             Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredPointCount 2), attached.dataBadgeOf e1)
             Assert.Equal<ControlCaption option>(None, attached.kitStatus)
             Assert.Empty(requests))
+
+    [<Fact>]
+    let ``opening the split wizard hands it the picked file with Phone ROI CSV chosen, and its Apply splits by the chosen profile`` () : unit =
+        withWizardKit (fun factFolder _ requests model ->
+            let labScan = KitTests.labScanProfile
+            let saved = model |> updateTableAndElementRotation (SaveImportProfile labScan)
+            let picked = (FileName "lab-scan.csv").combine factFolder
+            File.WriteAllText(picked.value, "angle,signal,sigma,key\n0,1.5,0.1,E1\n45,1.25,0.1,E1\n")
+            let opened = saved |> updateTableAndElementRotation (OpenSplitWizard picked)
+            Assert.Equal<TableAndElementRotationModel>(saved, opened)
+            let request = Assert.Single(requests)
+            Assert.Equal<ImportWizardTarget>(SplitWizardTarget, request.target)
+            Assert.Equal<FileName>(picked, request.file)
+            Assert.Equal<ImportProfile list>([ labScan ], request.kitProfiles)
+            Assert.Equal<ImportProfileName>(ImportProfileName "Phone ROI CSV", request.defaultProfile)
+            let applied : ImportWizardApplied =
+                {
+                    target = SplitWizardTarget
+                    file = picked
+                    profile = labScan.name
+                    savedOpt = Some labScan
+                }
+            Assert.Equal<TableAndElementRotationMsg list>([ SaveImportProfile labScan; SplitByColumn (picked, labScan.name) ], applied.messages)
+            // Spec 0050 S9.3: the new profile is in the kit before the file is split by it, and the split is only held.
+            let split = model |> passedThrough applied.messages
+            Assert.Equal<ImportProfile list>([ labScan ], split.kit.kitFile.importProfiles)
+            match split.dataSplitOpt with
+            | Some held ->
+                Assert.Equal<FileName>(picked, held.file)
+                Assert.Equal<ImportProfileName>(labScan.name, held.profile)
+            | None -> Assert.Fail "the split must be held"
+            Assert.Equal<Experiments.ExperimentCollection>(model.experimentCollection, split.experimentCollection)
+            Assert.Single(requests) |> ignore)
 
     let private windowCpl1 : Item =
         let draft : ItemDraft =

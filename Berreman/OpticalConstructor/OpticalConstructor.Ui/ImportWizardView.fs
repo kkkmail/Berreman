@@ -1,5 +1,5 @@
-/// The column-mapping import wizard's MVU and projection (001 §K; spec 0050 S9.2).
-/// Nothing is attached or saved until Attach hands the kit window its choice.
+/// The column-mapping import wizard's MVU and projection (001 §K; spec 0050 S9.2), for a file to attach or split (S9.3).
+/// Nothing is attached, split or saved until Attach or Split hands the kit window its choice.
 module OpticalConstructor.Ui.ImportWizardView
 
 open Avalonia
@@ -18,12 +18,19 @@ open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Storage.LabFileImport
 open OpticalConstructor.Ui.MaterialsWindowView
 
-/// What the kit window hands the wizard: the experiment, the picked file, its read and the profiles to offer.
+/// What the wizard's file is for: one wizard attaches a file or splits it (spec 0050 S9.3; 001 §O).
+type ImportWizardTarget =
+    /// Attach the file to that experiment (spec 0050 S9.2).
+    | AttachWizardTarget of Experiments.ExperimentId
+    /// Split the file across the kit's experiments by its key column (spec 0050 S9.3).
+    | SplitWizardTarget
+
+/// What the kit window hands the wizard: the target, the picked file, its read and the profiles to offer.
 [<ReferenceEquality>]
 type ImportWizardRequest =
     {
-        /// The experiment the file is attached to.
-        experimentId : Experiments.ExperimentId
+        /// What the file is for: attached to one experiment or split across the kit's (spec 0050 S9.3).
+        target : ImportWizardTarget
         /// The picked lab file's absolute name.
         file : FileName
         /// Reads the picked file's bytes, the wizard's one read.
@@ -34,11 +41,11 @@ type ImportWizardRequest =
         defaultProfile : ImportProfileName
     }
 
-/// What Attach chose: the profile to attach the file by, and the new profile to save first.
+/// What Attach or Split chose: the request's target, the profile to map the file by, and the new profile to save first.
 type ImportWizardApplied =
     {
-        /// The experiment the file is attached to.
-        experimentId : Experiments.ExperimentId
+        /// The request's target, handed on unchanged (spec 0050 S9.3).
+        target : ImportWizardTarget
         /// The picked lab file's absolute name.
         file : FileName
         /// The profile the file is mapped by.
@@ -171,7 +178,7 @@ let updateImportWizard (msg : ImportWizardMsg) (m : ImportWizardModel) : ImportW
     let applied (profile : ImportProfileName) (savedOpt : ImportProfile option) : ImportWizardModel =
         let chosen : ImportWizardApplied =
             {
-                experimentId = request.experimentId
+                target = request.target
                 file = request.file
                 profile = profile
                 savedOpt = savedOpt
@@ -410,9 +417,15 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
             ]
         | None -> []
 
+    // Spec 0050 S9.3: one button applies either target, captioned by what it does.
     let attach : IView list =
+        let caption =
+            match m.context.request.target with
+            | AttachWizardTarget _ -> ControlCaption "Attach"
+            | SplitWizardTarget -> ControlCaption "Split"
+
         match m.source with
-        | Ok _ -> [ actionButton ConstructorUiId.importWizardAttachButton (ControlCaption "Attach") positiveBackground (fun () -> dispatch ApplyImportWizard) ]
+        | Ok _ -> [ actionButton ConstructorUiId.importWizardAttachButton caption positiveBackground (fun () -> dispatch ApplyImportWizard) ]
         | Error _ -> []
 
     let layoutBlock : IView =
@@ -476,12 +489,20 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
             ]
         | PickedImportProfile _ -> []
 
+    // Spec 0050 S9.3: the heading says whether the file is attached or split.
     let heading : IView =
+        let leaf = m.context.request.file.leafName.value
+
+        let text =
+            match m.context.request.target with
+            | AttachWizardTarget _ -> $"Import {leaf}\nNothing is attached until you press Attach."
+            | SplitWizardTarget -> $"Split {leaf} by its key column\nNothing is split until you press Split."
+
         TextBlock.create [
             ConstructorUiId.importWizardHeading.automationAttribute<TextBlock> ()
             TextBlock.textWrapping TextWrapping.Wrap
             TextBlock.margin (Thickness(0.0, 0.0, 0.0, 12.0))
-            TextBlock.text $"Import {m.context.request.file.leafName.value}\nNothing is attached until you press Attach."
+            TextBlock.text text
         ]
         |> View.withKey ConstructorUiId.importWizardHeading.value
         :> IView
