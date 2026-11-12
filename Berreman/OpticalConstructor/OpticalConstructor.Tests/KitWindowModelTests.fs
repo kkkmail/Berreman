@@ -240,6 +240,8 @@ module KitWindowModelTests =
                         ready |> updateTableAndElementRotation (OpenImportWizard (storedExperiment.id, dataFile))
                         ready |> updateTableAndElementRotation (SaveImportProfile KitTests.labScanProfile)
                         ready |> updateTableAndElementRotation (AttachDataFile (storedExperiment.id, dataFile, ImportProfileName.intensitySeries))
+                        // Spec 0050 S9.3: a split is refused as the wizard is, and holds no split.
+                        ready |> updateTableAndElementRotation (SplitByColumn (dataFile, ImportProfileName.phoneRoiCsv))
                         ready |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench")) |> updateTableAndElementRotation CreateSetup
                         ready |> updateTableAndElementRotation SaveSetup
                         // Spec 0050 S8.3: a typed template is refused as SaveSetup is.
@@ -262,6 +264,7 @@ module KitWindowModelTests =
                     Assert.Equal<Experiments.ExperimentCollection>(ready.experimentCollection, answer.experimentCollection)
                     Assert.Equal<Setups.Setup list>(ready.kitSetups, answer.kitSetups)
                     Assert.Equal<KitContext>(ready.kit, answer.kit)
+                    Assert.Equal<DataSplitState option>(ready.dataSplitOpt, answer.dataSplitOpt)
                     Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), answer.kitStatus)
                 Assert.Empty(requests)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))

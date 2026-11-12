@@ -32,6 +32,8 @@ open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.ExperimentDataLoad
+open OpticalConstructor.Domain.DataSplits
+open OpticalConstructor.Storage.LabFileImport
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
@@ -517,6 +519,17 @@ type DataStepDraft =
             correctionNote = ControlCaption ""
         }
 
+/// A picked file split by its profile's key column: its groups as matched, and the offered groups ticked for creation;
+/// nothing is attached or created until it is applied (spec 0050 S9.3; 001 §K).
+type DataSplitState =
+    {
+        file : FileName
+        profile : ImportProfileName
+        key : SplitKeyColumn
+        split : DataSplit
+        creating : DataRowKey list
+    }
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -654,6 +667,8 @@ type TableAndElementRotationModel =
         reviewedDataOpt : ReviewedData option
         /// The Data step's fields as typed (spec 0050 S9.3).
         dataDraft : DataStepDraft
+        /// The picked file split by its key column, `None` while no split is held (spec 0050 S9.3).
+        dataSplitOpt : DataSplitState option
         /// Spec 0046: the open right-click element menu (ray toggles, which beam the element sits on,
         /// remove), if any. Closed by any left click, a selection change, or its own Close verb.
         elementMenu : ElementMenu option
@@ -820,6 +835,7 @@ let initWith
         experimentDataStatus = Map.empty
         reviewedDataOpt = None
         dataDraft = DataStepDraft.empty
+        dataSplitOpt = None
         elementMenu = None
         rotationPivot = BeamLayout.PivotAtCentre
         experimentExport = (ExperimentExport.createInMemoryExperimentExport ()).proxy
@@ -1101,6 +1117,12 @@ type TableAndElementRotationMsg =
     | OpenImportWizard of Experiments.ExperimentId * FileName
     /// The wizard's new column mapping, saved into the kit file (spec 0050 S9.2; 001 §K).
     | SaveImportProfile of ImportProfile
+    /// Splits the picked file by that profile's key column and holds its groups as matched, writing nothing (spec 0050 S9.3; 001 §P).
+    | SplitByColumn of FileName * ImportProfileName
+    /// Ticks creating an offered group's setup and experiment, or unticks it, writing nothing (spec 0050 S9.3).
+    | ToggleSplitOffer of DataRowKey
+    /// Forgets the held split, writing nothing (spec 0050 S9.3).
+    | CancelDataSplit
     /// Records that role for the experiment in its kit file (spec 0050 S9.1; 001 §P `SetExperimentRole`).
     | SetExperimentRole of Experiments.ExperimentId * Experiments.ExperimentRole
     /// Records the typed session for the experiment in its kit file, a blank text clearing it (spec 0050 S9.1).
@@ -2982,6 +3004,65 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
                     })
+    // Spec 0050 S9.3 (.spec-md §10.3 identify → confirm): the split is only held; nothing is attached or created until
+    // it is applied, and a refusal keeps the held split.
+    | SplitByColumn (file, name) ->
+        guardKitWrite model (fun () ->
+            let splitOutcome : Result<DataSplitState, ControlCaption> =
+                match ImportProfiles.ChosenImportProfile.tryOfName model.kit.kitFile.importProfiles name with
+                | None -> Error (ControlCaption $"the import profile '{name.value}' is not available.")
+                | Some profile ->
+                    match profile.splitKeyOpt with
+                    | None -> Error (ControlCaption $"the import profile '{name.value}' maps no key column.")
+                    | Some key ->
+                        let param : DataSplitParam =
+                            {
+                                template = model.kit.kitFile.namingTemplate
+                                experiments = model.experimentCollection.experiments
+                                setups = model.kitSetups
+                                table = model.recordedSlots
+                                items = model.kitItems
+                                choiceOf = model.tryItemModelChoice
+                            }
+                        model.experimentData.readPickedFile file
+                        |> Result.mapError (fun error -> ControlCaption error.describe)
+                        |> Result.bind (fun source -> profile.mapText source.content.kitFileText |> Result.mapError _.caption)
+                        |> Result.bind (fun points -> points.splitGroups |> Result.mapError _.caption)
+                        |> Result.map (fun groups ->
+                            let held : DataSplitState =
+                                {
+                                    file = file
+                                    profile = name
+                                    key = key
+                                    split = DataSplit.ofGroups param groups
+                                    creating = []
+                                }
+                            held)
+            match splitOutcome with
+            | Error reason ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Not split — {reason.value}")
+                }
+            | Ok held ->
+                let counts = $"{held.split.matched.Length} matched, {held.split.offered.Length} offered, {held.split.unmatched.Length} unmatched"
+                {
+                    model with
+                        dataSplitOpt = Some held
+                        kitStatus = Some (ControlCaption $"Split {file.leafName.value} by '{held.key.value}': {counts}.")
+                })
+    // Spec 0050 S9.3: only an offered group is ticked for creation.
+    | ToggleSplitOffer key ->
+        match model.dataSplitOpt with
+        | Some held when held.split.offered |> List.exists (fun group -> group.key = key) ->
+            let creating =
+                if List.contains key held.creating then held.creating |> List.filter (fun ticked -> ticked <> key)
+                else held.creating @ [ key ]
+            {
+                model with dataSplitOpt = Some { held with creating = creating }
+            }
+        | Some _
+        | None -> model
+    | CancelDataSplit -> { model with dataSplitOpt = None }
     | SetExperimentRole (experimentId, role) -> model |> recordExperimentEdit experimentId (fun held -> held.withRole role)
     | SetExperimentSession (experimentId, text) ->
         model |> recordExperimentEdit experimentId (fun held -> held.withSessionOpt (ExperimentSessionName.tryCreate text.value))
