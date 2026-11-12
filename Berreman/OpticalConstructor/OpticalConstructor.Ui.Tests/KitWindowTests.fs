@@ -76,16 +76,19 @@ module KitWindowTests =
             corrections = []
         }
 
-    /// The controls that send the kit's write messages: Add, `E1`'s Remove and Attach data file, Create setup and Save
-    /// setup.
+    /// The workbench's controls that send the kit's write messages: Add, `E1`'s Remove, Create setup and Save setup.
     let private writeControlIds : ConstructorUiId list =
         [
             ConstructorUiId.experimentAddButton
             ConstructorUiId.experimentRemoveButton storedExperiment.id.uiKey
-            ConstructorUiId.attachDataFile storedExperiment.id
             ConstructorUiId.createSetupButton
             ConstructorUiId.saveSetupButton
         ]
+
+    /// The Data step's controls that send the kit's write messages: `E1`'s Attach data file and Split a file by key (spec
+    /// 0050 S9.3).
+    let private dataWriteControlIds : ConstructorUiId list =
+        [ ConstructorUiId.attachDataFile storedExperiment.id; ConstructorUiId.dataSplitFileButton ]
 
     /// The setup the write-control windows draw, recorded while the kit is read-write, so Save setup is withheld for the
     /// kit's access alone (spec 0050 S8.2).
@@ -213,9 +216,9 @@ module KitWindowTests =
             loaded with kitShell = shell
         }
 
-    /// Mounts `mainView` over the inverse model loaded from the kit opened with `access`, `storedBench` drawn, with a
-    /// draft ready to commit and the Experiments bay selected, and checks every write control against `expected` (spec
-    /// 0050 S5.3, S8.2, S8.4).
+    /// Mounts `mainView`, then `dataStepView`, over the inverse model loaded from the kit opened with `access`,
+    /// `storedBench` drawn, with a draft ready to commit and the Experiments bay selected, and checks every write control
+    /// against `expected` (spec 0050 S5.3, S8.2, S8.4, S9.3).
     let private assertWriteControls (folder : KitFolder) (ctx : AppContext) (access : KitAccess) (expected : ControlAvailability) : unit =
         let opened = openedAt folder access ctx
         try
@@ -245,8 +248,22 @@ module KitWindowTests =
                 | ControlWithheld, None -> ()
                 | ControlOffered, None -> Assert.Fail "Record experiment must be on the slot bar of a read-write kit"
                 | ControlWithheld, Some _ -> Assert.Fail "Record experiment must not be on the slot bar of a read-only kit"
+                // Spec 0050 S9.3: the data files moved to the Data step, so the Experiments bay attaches none.
+                Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.attachDataFile storedExperiment.id))
             finally
                 window.Close()
+                Dispatcher.UIThread.RunJobs()
+            let dataWindow = hostedWindow DataStepView.dataStepView model
+            try
+                dataWindow.Show()
+                Dispatcher.UIThread.RunJobs()
+                for id in dataWriteControlIds do
+                    let control = controlById dataWindow id
+                    match expected with
+                    | ControlOffered -> Assert.True(control.IsEnabled, $"{id.value} must be enabled over a read-write kit")
+                    | ControlWithheld -> Assert.False(control.IsEnabled, $"{id.value} must be disabled over a read-only kit")
+            finally
+                dataWindow.Close()
                 Dispatcher.UIThread.RunJobs()
             // Spec 0050 S8.3: the kit bar's Save template is present only while the kit takes writes.
             withKitWindow model (fun kitWindow ->
@@ -1111,9 +1128,12 @@ module KitWindowTests =
             | experiments, _ -> Assert.Fail $"E1 must be copied alone and resolve exactly the chosen piece, not {List.length experiments} experiment(s)"
             Assert.Equal<Set<ItemId>>(set [ ownLaser600.id; benchLaser600.id ], mapped.items |> List.map (fun item -> item.id) |> set))
 
-    /// The flow strip's step boxes, top to bottom (spec 0050 S7.2).
+    /// The Main constructor's flow strip boxes, top to bottom (spec 0050 S7.2).
     let private flowStepIds : ConstructorUiId list =
         [ ConstructorUiId.flowItemsStep; ConstructorUiId.flowSetupsStep; ConstructorUiId.flowExperimentsStep ]
+
+    /// The Inverse constructor's flow strip boxes, top to bottom: the Main ones, then Data (spec 0050 S9.3).
+    let private inverseFlowStepIds : ConstructorUiId list = flowStepIds @ [ ConstructorUiId.flowDataStep ]
 
     /// The Experiments bay's pane, which carries its id as its `Name` (`Ribbon.ribbonView`).
     let private experimentsPane : ConstructorUiId = ConstructorUiId.ribbonPane BayNames.experiments.uiKey
@@ -1139,10 +1159,16 @@ module KitWindowTests =
         Assert.Equal("FlowItemsStep", ConstructorUiId.flowItemsStep.value)
         Assert.Equal("FlowSetupsStep", ConstructorUiId.flowSetupsStep.value)
         Assert.Equal("FlowExperimentsStep", ConstructorUiId.flowExperimentsStep.value)
-        Assert.Equal<ConstructorUiId list>(flowStepIds, ConstructorFlowStep.all |> List.map _.flowUiId)
+        Assert.Equal("FlowDataStep", ConstructorUiId.flowDataStep.value)
+        Assert.Equal("DataStepPanel", ConstructorUiId.dataStepPanel.value)
+        Assert.Equal("DataSplitFileButton", ConstructorUiId.dataSplitFileButton.value)
+        Assert.Equal<ConstructorUiId list>(inverseFlowStepIds, ConstructorFlowStep.all |> List.map _.flowUiId)
+        Assert.Equal<ConstructorUiId list>(flowStepIds, ConstructorFlowStep.stepsOf ForwardConstructor |> List.map _.flowUiId)
+        Assert.Equal<ConstructorUiId list>(inverseFlowStepIds, ConstructorFlowStep.stepsOf InverseConstructor |> List.map _.flowUiId)
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowItemsStep, ItemsFlowStep.flowUiId)
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowSetupsStep, SetupsFlowStep.flowUiId)
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowExperimentsStep, ExperimentsFlowStep.flowUiId)
+        Assert.Equal<ConstructorUiId>(ConstructorUiId.flowDataStep, DataFlowStep.flowUiId)
 
     [<Fact>]
     let ``the flow strip shows Items, Setups and Experiments left of the surface its step shows`` () : unit =
@@ -1152,14 +1178,26 @@ module KitWindowTests =
             try
                 let loaded = kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
                 Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, loaded.flowStep)
-                // Shows the window on `step`, checks the strip against the surface `surfaceOf` finds, then runs `check`.
-                let onStep (step : ConstructorFlowStep) (surfaceOf : Window -> Control) (check : Window -> unit) : unit =
-                    withKitWindow (loaded |> updateTableAndElementRotation (ShowFlowStep step)) (fun window ->
+                let inverse = kitWindowModel ctx opened InverseConstructor KitWindowShell.inert
+                // Shows the window over `model` on `step`, checks its constructor's strip against the surface `surfaceOf`
+                // finds, then runs `check`.
+                let onStepOf
+                    (model : TableAndElementRotationModel)
+                    (step : ConstructorFlowStep)
+                    (surfaceOf : Window -> Control)
+                    (check : Window -> unit)
+                    : unit =
+                    let steps = ConstructorFlowStep.stepsOf model.constructorMode
+                    let stripIds, labels =
+                        match model.constructorMode with
+                        | ForwardConstructor -> flowStepIds, [ "Items"; "Setups"; "Experiments" ]
+                        | InverseConstructor -> inverseFlowStepIds, [ "Items"; "Setups"; "Experiments"; "Data" ]
+                    withKitWindow (model |> updateTableAndElementRotation (ShowFlowStep step)) (fun window ->
                         let strip = Assert.IsType<Border>(Assert.Single(controlsById window ConstructorUiId.flowStrip))
-                        let boxes = flowStepIds |> List.map (controlById window)
+                        let boxes = stripIds |> List.map (controlById window)
                         for box in boxes do
                             Assert.Contains<Visual>(strip, box.GetVisualAncestors())
-                        Assert.Equal<string list>([ "Items"; "Setups"; "Experiments" ], flowStepIds |> List.map (boxLabelOf window))
+                        Assert.Equal<string list>(labels, stripIds |> List.map (boxLabelOf window))
                         let rects = boxes |> List.map (windowRectOf window)
                         for upper, lower in List.pairwise rects do
                             Assert.True(upper.Bottom <= lower.Top, $"the strip's boxes must stand top to bottom: {upper} above {lower}")
@@ -1168,19 +1206,36 @@ module KitWindowTests =
                         let surfaceRect = windowRectOf window surface
                         for rect in rects do
                             Assert.True(rect.Right <= surfaceRect.Left, $"the strip's box {rect} must sit left of the surface {surfaceRect}")
-                        for shown in ConstructorFlowStep.all do
+                        for shown in steps do
                             if shown = step then
                                 Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window shown.flowUiId)
                             else
                                 Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window shown.flowUiId)
                         check window)
+                let onStep : ConstructorFlowStep -> (Window -> Control) -> (Window -> unit) -> unit = onStepOf loaded
+                // Spec 0050 S9.3: measured data are the Inverse constructor's alone, so the Main strip has no Data box.
+                let noDataBox (window : Window) : unit =
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowDataStep)
                 onStep SetupsFlowStep (fun window -> namedControl window ConstructorUiId.tableElementCanvas) (fun window ->
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
-                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane))
+                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
+                    noDataBox window)
                 onStep ItemsFlowStep (fun window -> controlById window ConstructorUiId.itemsPanel) (fun window ->
                     Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane))
+                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
+                    noDataBox window)
                 onStep ExperimentsFlowStep (fun window -> namedControl window experimentsPane) (fun window ->
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
+                    noDataBox window)
+                // The Inverse strip adds Data below Experiments, and its step shows the Data step alone.
+                onStepOf inverse ExperimentsFlowStep (fun window -> namedControl window experimentsPane) (fun window ->
+                    let experimentsBox = windowRectOf window (controlById window ConstructorUiId.flowExperimentsStep)
+                    let dataBox = windowRectOf window (controlById window ConstructorUiId.flowDataStep)
+                    Assert.True(experimentsBox.Bottom <= dataBox.Top, $"Data {dataBox} must stand below Experiments {experimentsBox}")
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel))
+                onStepOf inverse DataFlowStep (fun window -> controlById window ConstructorUiId.dataStepPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
@@ -1216,6 +1271,38 @@ module KitWindowTests =
                     Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
                     Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowSetupsStep))
+            finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    /// Spec 0050 S9.3: the Inverse constructor's Data step holds each experiment's data file and the split verb.
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing the Data step shows the data files and the Split a file by key button`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let folder = TestAppScope.freshKitFolder owner
+            let created = openedAt folder ReadWriteKitAccess ctx
+            try created.library.kit.proxy.writeExperiment storedExperiment |> SceneTestFixture.kitSuccess
+            finally created.library.kit.close () |> SceneTestFixture.kitSuccess
+            let opened = openedAt folder ReadWriteKitAccess ctx
+            try
+                let model = kitWindowModel ctx opened InverseConstructor KitWindowShell.inert
+                Assert.Equal<Experiments.Experiment list>([ storedExperiment ], model.experimentCollection.experiments)
+                withKitWindow model (fun window ->
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel)
+
+                    pressBox window ConstructorUiId.flowDataStep
+                    Assert.True((controlById window ConstructorUiId.dataStepPanel).IsEffectivelyVisible, "Data must show the Data step")
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowDataStep)
+                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
+                    let attachId = ConstructorUiId.attachDataFile storedExperiment.id
+                    let attach = controlById window attachId
+                    Assert.True(attach.IsEffectivelyVisible, $"{attachId.value} must show in the Data step")
+                    Assert.True(attach.IsEnabled, $"{attachId.value} must be enabled over a read-write kit")
+                    Assert.Equal("Attach data file…", boxLabelOf window attachId)
+                    let split = controlById window ConstructorUiId.dataSplitFileButton
+                    Assert.True(split.IsEffectivelyVisible, "Split a file by key… must show in the Data step")
+                    Assert.True(split.IsEnabled, "Split a file by key… must be enabled over a read-write kit")
+                    Assert.Equal("Split a file by key…", boxLabelOf window ConstructorUiId.dataSplitFileButton))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     /// The add form's offer of the shipped circular polarizer model, a standalone item model (spec 0050 S7.2).

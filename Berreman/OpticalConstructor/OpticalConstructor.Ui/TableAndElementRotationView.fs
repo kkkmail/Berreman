@@ -337,10 +337,18 @@ type ConstructorFlowStep =
     | SetupsFlowStep
     /// The existing Experiments bay (spec 0050 S7.2).
     | ExperimentsFlowStep
+    /// The experiments' data files: the Inverse constructor's alone, as spec 0046 kept them (spec 0050 S9.3).
+    | DataFlowStep
 
-    /// The steps in 001 §O's order; S9.3, S11 and S14 insert Data, Unknowns, Plan, Fit, Results and Publish when each
-    /// works (spec 0050 S7.2, .spec-md §3.22).
-    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ]
+    /// The steps in 001 §O's order; S11 and S14 insert Unknowns, Plan, Fit, Results and Publish when each works (spec
+    /// 0050 S7.2, S9.3, .spec-md §3.22).
+    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep ]
+
+    /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3).
+    static member stepsOf (mode : ConstructorMode) : ConstructorFlowStep list =
+        match mode with
+        | InverseConstructor -> ConstructorFlowStep.all
+        | ForwardConstructor -> ConstructorFlowStep.all |> List.filter (fun step -> step <> DataFlowStep)
 
     /// The strip's caption of the step (spec 0050 S7.2).
     member this.caption : ControlCaption =
@@ -348,6 +356,7 @@ type ConstructorFlowStep =
         | ItemsFlowStep -> ControlCaption "Items"
         | SetupsFlowStep -> ControlCaption "Setups"
         | ExperimentsFlowStep -> ControlCaption "Experiments"
+        | DataFlowStep -> ControlCaption "Data"
 
     /// The id of the step's box in the flow strip (spec 0050 S7.2).
     member this.flowUiId : ConstructorUiId =
@@ -355,6 +364,7 @@ type ConstructorFlowStep =
         | ItemsFlowStep -> ConstructorUiId.flowItemsStep
         | SetupsFlowStep -> ConstructorUiId.flowSetupsStep
         | ExperimentsFlowStep -> ConstructorUiId.flowExperimentsStep
+        | DataFlowStep -> ConstructorUiId.flowDataStep
 
 /// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
 /// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
@@ -2729,6 +2739,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         let bay = if model.ribbon = BayNames.experiments then BayNames.add else model.ribbon
         { model with flowStep = SetupsFlowStep; ribbon = bay }
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
+    // Spec 0050 S9.3: the Data step is the Inverse constructor's alone; the open bay waits for the workbench's return.
+    | ShowFlowStep DataFlowStep ->
+        match model.constructorMode with
+        | InverseConstructor -> { model with flowStep = DataFlowStep }
+        | ForwardConstructor -> model
     | SelectKitItem id ->
         match model.kitItems |> List.exists (fun item -> item.id = id) with
         | true -> { model with selectedItemOpt = Some id; parameterEditOpt = None }
@@ -3529,7 +3544,15 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | AddSetupGridAngle (slotId, degrees) -> model |> withGridDraftEdited (fun draft -> draft.withGridAngle slotId degrees.wrappedAngle)
     | RemoveSetupGridAngle (slotId, angle) -> model |> withGridDraftEdited (fun draft -> draft.withoutGridAngle slotId angle)
     | ToggleSetupGridCombination combination -> model |> withGridDraftEdited (fun draft -> draft.withCombinationToggled combination)
-    // Spec 0050 S5.3: the chart and Data-files gating already follow `constructorMode`.
+    // Spec 0050 S5.3: the chart gating already follows `constructorMode`. S9.3: the Main constructor has no Data step,
+    // so leaving the Inverse constructor from it lands on Experiments.
+    | SwitchConstructorMode ForwardConstructor when model.flowStep = DataFlowStep ->
+        {
+            model with
+                constructorMode = ForwardConstructor
+                flowStep = ExperimentsFlowStep
+                ribbon = BayNames.experiments
+        }
     | SwitchConstructorMode mode ->
         {
             model with constructorMode = mode
@@ -5462,10 +5485,10 @@ type TableAndElementRotationModel with
               ]
               |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.workbenchSelectStatus.value) :> IView ]
 
-/// A small clickable verb box for the host-added strip buttons (the MaterialsControls button look). The
-/// strip buttons live in a variable-membership row, so they carry AutomationIds. Withheld, it is disabled
-/// and dimmed, never hidden (spec 0050 S5.3).
-let private availableWorkbenchButton (availability : ControlAvailability) (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
+/// A small clickable verb box for the host-added strip buttons and the Data step's split verb (the MaterialsControls
+/// button look). The strip buttons live in a variable-membership row, so they carry AutomationIds. Withheld, it is
+/// disabled and dimmed, never hidden (spec 0050 S5.3, S9.3).
+let internal availableWorkbenchButton (availability : ControlAvailability) (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
     Border.create [
         id.automationAttribute<Border> ()
         AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
@@ -5575,7 +5598,7 @@ let private selectorBayContent (model : TableAndElementRotationModel) (dispatch 
         LibraryControls.libraryControlsView LibraryControls.empty (libraryHandlers model dispatch)
 
 // ---------------------------------------------------------------------------
-// Experiments are kept in the kit; inverse experiments attach measured data (spec 0050 S4.3).
+// Experiments are kept in the kit (spec 0050 S4.3); their data files are the Data step's, `DataStepView` (S9.3).
 // The kit status is shown by the kit bar alone, whichever bay is open (spec 0050 S5.3, `KitWindowView`).
 
 /// Spec 0038 Part L (038): build the measured-data picker's options carrying the persisted start
@@ -5595,8 +5618,8 @@ let buildDataFilePickerOptions
     | None -> ()
     options
 
-/// Picks a lab file under `title` and remembers its folder, as Attach data file… and the Items panel's photo do;
-/// cancellation leaves settings unchanged (spec 0038 Part L steps 037/038; spec 0050 S4.2, S7.2).
+/// Picks a lab file under `title` and remembers its folder, as the Data step's verbs and the Items panel's photo do;
+/// cancellation leaves settings unchanged (spec 0038 Part L steps 037/038; spec 0050 S4.2, S7.2, S9.3).
 let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName -> unit) : unit =
     try
         let settingsPath = UserEnvironment.settingsPath ()
@@ -5634,75 +5657,8 @@ let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName 
         Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate picked)
     with _ -> ()
 
-/// The "Attach data file…" verb for one collected experiment — resolve the owner window from the
-/// click's visual tree (the `selectorChooseButton` precedent) and open the picker, dispatching
-/// `OpenImportWizard` on a confirmed selection (spec 0050 S9.2). Keyed + AutomationId'd by the experiment id.
-/// Withheld, it is disabled and dimmed and opens no picker (spec 0050 S5.3).
-let private attachDataFileButton (availability : ControlAvailability) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
-    let id = ConstructorUiId.attachDataFile experiment.id
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.isEnabled availability.isEnabled
-        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-        Border.background (brush (Color.FromRgb(232uy, 232uy, 232uy)))
-        Border.borderBrush (brush (Color.FromRgb(120uy, 120uy, 120uy)))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(10.0, 4.0))
-        Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text "Attach data file…" ])
-        Border.onPointerPressed ((fun e ->
-            e.Handled <- true
-            match availability with
-            | ControlWithheld -> ()
-            | ControlOffered ->
-                match e.Source with
-                | :? Visual as source ->
-                    match TopLevel.GetTopLevel source with
-                    | :? Window as owner ->
-                        pickDataFile owner (ControlCaption "Attach measured-data file") (fun path -> dispatch (OpenImportWizard (experiment.id, path)))
-                    | _ -> ()
-                | _ -> ()), SubPatchOptions.OnChangeOf (box (experiment.id.uiKey.value, availability)))
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey id.value
-    :> IView
-
-/// One experiment's data-file row: its description, the Attach verb + the currently-attached file
-/// name, and its data badge (spec 0050 S9.1).
-let private dataFileRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
-    let attachedText =
-        match experiment.dataOpt with
-        | Some data -> $"file: {data.attachment.path.value} ({data.profile.value})"
-        | None -> "no file attached"
-    let statusText = (model.dataBadgeOf experiment).caption.value
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
-        StackPanel.children [
-            TextBlock.create [ TextBlock.text experiment.description; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.maxWidth 360.0 ]
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.spacing 6.0
-                StackPanel.children [
-                    attachDataFileButton model.kitWrites dispatch experiment
-                    TextBlock.create [ TextBlock.text attachedText; TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy))); TextBlock.verticalAlignment VerticalAlignment.Center ]
-                ]
-            ]
-            TextBlock.create [
-                (ConstructorUiId.dataFileStatus experiment.id).automationAttribute<TextBlock> ()
-                TextBlock.text statusText
-                TextBlock.textWrapping TextWrapping.Wrap
-                TextBlock.maxWidth 360.0
-                TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
-            ]
-        ]
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + experiment.id.uiKey.value)
-    :> IView
-
-/// Names the active setup, creates, saves and loads the kit's setups, and offers inverse data-file attachments (spec
-/// 0050 S4.3, S8.2). The kit status is the kit bar's, so one control carries `kitStatus` (spec 0050 S5.3).
+/// Names the active setup, creates, saves and loads the kit's setups; the data files are the Data step's (spec 0050
+/// S4.3, S8.2, S9.3). The kit status is the kit bar's, so one control carries `kitStatus` (spec 0050 S5.3).
 let private collectionBuilderView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let sectionHeading (text : string) : IView =
         TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
@@ -5777,25 +5733,10 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
                       setups |> List.map (fun setup ->
                           workbenchButton (ConstructorUiId.savedSetup setup.name) setup.name.caption (fun _ -> dispatch (ActivateSetup setup.name))))
                ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.savedSetups.value) :> IView ]
-    // Spec 0046: measured-data files belong to the INVERSE problem alone — the forward (Main) constructor
-    // shows no "Data files" section at all.
-    let dataFileSection : IView list =
-        match model.constructorMode with
-        | ForwardConstructor -> []
-        | InverseConstructor ->
-            sectionHeading "Data files:"
-            :: (match model.experimentCollection.experiments with
-                | [] -> [ TextBlock.create [ TextBlock.text "(add experiments above, then attach one data file to each)"; TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy))) ] :> IView ]
-                | experiments ->
-                    [ StackPanel.create [
-                          StackPanel.name ConstructorUiId.experimentDataFiles.value
-                          StackPanel.orientation Orientation.Vertical
-                          StackPanel.children (experiments |> List.map (dataFileRow model dispatch))
-                      ] :> IView ])
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
-        StackPanel.children ([ sectionHeading "Setup:"; activeSetupLine; setupRow ] @ savedSetupSection @ dataFileSection)
+        StackPanel.children ([ sectionHeading "Setup:"; activeSetupLine; setupRow ] @ savedSetupSection)
     ] :> IView
 
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment

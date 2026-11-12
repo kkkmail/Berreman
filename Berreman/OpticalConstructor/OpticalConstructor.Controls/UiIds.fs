@@ -183,7 +183,7 @@ type ConstructorUiId =
     static member activeSetupText : ConstructorUiId = ConstructorUiId "ActiveSetupText"
     /// The setup row's Save setup action: writes the table over the active setup (spec 0050 S8.2).
     static member saveSetupButton : ConstructorUiId = ConstructorUiId "SaveSetupButton"
-    /// The inverse experiment data files (spec 0050 S4.3).
+    /// The inverse experiment data files, in the Data step (spec 0050 S4.3, S9.3).
     static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
 
     // --- The materials workbench list surface (`MaterialsControls`). ---
@@ -843,6 +843,14 @@ type ConstructorUiId =
     static member flowSetupsStep : ConstructorUiId = ConstructorUiId "FlowSetupsStep"
     /// The strip's Experiments step: shows the Experiments bay (spec 0050 S7.2).
     static member flowExperimentsStep : ConstructorUiId = ConstructorUiId "FlowExperimentsStep"
+
+    // --- The Inverse constructor's Data step (DataStepView), spec 0050 S9.3. ---
+    /// The strip's Data step: shows the experiments' data files, in the Inverse constructor alone (spec 0050 S9.3).
+    static member flowDataStep : ConstructorUiId = ConstructorUiId "FlowDataStep"
+    /// The Data step's panel: the data files, then the split verb (spec 0050 S9.3; 001 §O).
+    static member dataStepPanel : ConstructorUiId = ConstructorUiId "DataStepPanel"
+    /// The Data step's Split a file by key…: picks one lab file and opens the split wizard over it (spec 0050 S9.3).
+    static member dataSplitFileButton : ConstructorUiId = ConstructorUiId "DataSplitFileButton"
 
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).

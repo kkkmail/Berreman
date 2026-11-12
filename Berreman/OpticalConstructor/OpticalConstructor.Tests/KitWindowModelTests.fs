@@ -1554,9 +1554,9 @@ module KitWindowModelTests =
 
     [<Fact>]
     let ``the flow strip's steps follow 001's order and a window opens on Setups`` () : unit =
-        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ], ConstructorFlowStep.all)
+        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep ], ConstructorFlowStep.all)
         Assert.Equal<ControlCaption list>(
-            [ ControlCaption "Items"; ControlCaption "Setups"; ControlCaption "Experiments" ],
+            [ ControlCaption "Items"; ControlCaption "Setups"; ControlCaption "Experiments"; ControlCaption "Data" ],
             ConstructorFlowStep.all |> List.map _.caption)
         let scene = initMain () |> kitValue
         try
@@ -1565,6 +1565,56 @@ module KitWindowModelTests =
             let inverse = initInverseWithKit scene.library scene.experiments scene.materials scene.samples scene.categories scene.kit
             Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, inverse.flowStep)
             Assert.Equal<Ribbon.BayName>(BayNames.add, inverse.ribbon)
+        finally scene.kit.close () |> kitValue
+
+    /// Spec 0050 S9.3: measured data are the Inverse constructor's alone (spec 0046), so the Main strip has no Data step.
+    [<Fact>]
+    let ``the Data step is the Inverse constructor's alone, and leaving the Inverse constructor leaves it`` () : unit =
+        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ], ConstructorFlowStep.stepsOf ForwardConstructor)
+        Assert.Equal<ConstructorFlowStep list>(
+            [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep ],
+            ConstructorFlowStep.stepsOf InverseConstructor)
+        let stores = BuiltinCatalogue.freshStores ()
+        let library = Library.liveLibrary stores.libraryEntries stores.samples (Library.SourceProxy.createInMemory ())
+        let inverse = initInverse library (Experiments.createInMemoryExperiments ()) stores.materials stores.samples stores.categories |> kitValue
+        try
+            let details = inverse |> updateTableAndElementRotation (SelectBay BayNames.details)
+            let data = details |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    details with flowStep = DataFlowStep
+                },
+                data)
+            Assert.Equal<Ribbon.BayName>(BayNames.details, data.ribbon)
+            let forward = data |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    data with
+                        constructorMode = ForwardConstructor
+                        flowStep = ExperimentsFlowStep
+                        ribbon = BayNames.experiments
+                },
+                forward)
+            Assert.Equal<TableAndElementRotationModel>(forward, forward |> updateTableAndElementRotation (ShowFlowStep DataFlowStep))
+            // Every other switch keeps the step and the bay.
+            let back = forward |> updateTableAndElementRotation (SwitchConstructorMode InverseConstructor)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    forward with constructorMode = InverseConstructor
+                },
+                back)
+            let fromDetails = details |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    details with constructorMode = ForwardConstructor
+                },
+                fromDetails)
+        finally inverse.kit.close () |> kitValue
+        let scene = initMain () |> kitValue
+        try
+            Assert.Equal<TableAndElementRotationModel>(scene, scene |> updateTableAndElementRotation (ShowFlowStep DataFlowStep))
+            let experiments = scene |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+            Assert.Equal<TableAndElementRotationModel>(experiments, experiments |> updateTableAndElementRotation (ShowFlowStep DataFlowStep))
         finally scene.kit.close () |> kitValue
 
     [<Fact>]

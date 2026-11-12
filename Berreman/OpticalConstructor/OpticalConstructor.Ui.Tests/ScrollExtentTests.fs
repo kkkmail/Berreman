@@ -158,7 +158,7 @@ module ScrollExtentTests =
             constructorWindow ([ 0.0; 45.0; 90.0 ] |> List.fold withAngle (filled |> updateTableAndElementRotation OpenSetupGrid)))
 
     [<Fact>]
-    let ``Inverse: the Experiments bay with its data-file section leaves everything reachable`` () =
+    let ``Inverse: the Experiments bay leaves everything reachable`` () =
         let materials, samples, categories, library = stores ()
         assertReachable "Inverse/Experiments" (fun () ->
             let collection = (filledExperiments ()).experimentCollection
@@ -466,6 +466,20 @@ module ScrollExtentTests =
     let ``the kit window's Items step leaves everything reachable`` () : unit =
         assertReachable "KitWindowItems" itemsStepKitWindow
 
+    /// Spec 0050 S9.3: the Inverse kit window on its Data step, over the collected experiments of `filledExperiments`.
+    [<Fact>]
+    let ``the kit window's Data step leaves everything reachable`` () : unit =
+        let materials, samples, categories, library = stores ()
+        assertReachable "KitWindowData" (fun () ->
+            let collection = (filledExperiments ()).experimentCollection
+            let model =
+                { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with
+                    experimentCollection = collection }
+                |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
+            Assert.Equal<ConstructorFlowStep>(DataFlowStep, model.flowStep)
+            Assert.NotEmpty(model.experimentCollection.experiments)
+            viewWindow KitWindowView.kitWindowView model)
+
     [<Fact>]
     let ``the Data locations window leaves everything reachable`` () : unit =
         assertReachable "DataLocations" (fun () ->
@@ -564,25 +578,32 @@ module ScrollExtentTests =
 
     // ------------------------------ Main / Inverse ribbon and Experiments bay (operator items) ------------------------------
 
+    /// Spec 0050 S9.3: the Experiments bay's data-file section moved into the Inverse constructor's Data step.
     [<Fact>]
-    let ``the Main window opens on Add; the Attach data file section belongs to the Inverse window alone`` () =
+    let ``the Main window opens on Add; the Attach data file section belongs to the Inverse window's Data step alone`` () =
         let materials, samples, categories, library = stores ()
         Assert.Equal(BayNames.add, (SceneTestFixture.mainScene ()).ribbon)
         Assert.Equal(BayNames.add, (SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories).ribbon)
+        Assert.DoesNotContain(DataFlowStep, ConstructorFlowStep.stepsOf ForwardConstructor)
         HeadlessSession.run (fun () ->
-            let texts (model0 : TableAndElementRotationModel) : string list =
-                let window = constructorWindow model0
+            let textsOf (view : TableAndElementRotationModel -> (TableAndElementRotationMsg -> unit) -> Avalonia.FuncUI.Types.IView) (model0 : TableAndElementRotationModel) : string list =
+                let window = viewWindow view model0
                 window.Width <- 1000.0
                 window.Height <- 1100.0
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 try window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
                 finally window.Close()
+            let texts (model0 : TableAndElementRotationModel) : string list = textsOf mainView model0
             let forward = texts (filledExperiments ())
             Assert.DoesNotContain("Attach data file…", forward)
             Assert.DoesNotContain("Data files:", forward)
-            let inverse =
+            let inverseModel =
                 let m = { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with ribbon = BayNames.experiments }
-                texts { m with experimentCollection = (filledExperiments ()).experimentCollection }
-            Assert.Contains("Data files:", inverse)
-            Assert.Contains("Attach data file…", inverse))
+                { m with experimentCollection = (filledExperiments ()).experimentCollection }
+            let inverse = texts inverseModel
+            Assert.DoesNotContain("Data files:", inverse)
+            Assert.DoesNotContain("Attach data file…", inverse)
+            let dataStep = textsOf DataStepView.dataStepView inverseModel
+            Assert.Contains("Data files:", dataStep)
+            Assert.Contains("Attach data file…", dataStep))

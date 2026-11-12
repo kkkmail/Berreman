@@ -207,8 +207,8 @@ module ConstructorUiIdOfDomain =
 
         static member solverHandoffStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"SolverHandoffStatus_{experimentId.value}"
 
-        /// A collected experiment's "Attach data file…" verb and its inline parse / validation status (the
-        /// Main workbench's collection builder).
+        /// A collected experiment's "Attach data file…" verb and its inline parse / validation status (the Inverse
+        /// constructor's Data step, spec 0050 S9.3).
         static member attachDataFile (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"AttachDataFile_{experimentId.value}"
 
         static member dataFileStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataFileStatus_{experimentId.value}"

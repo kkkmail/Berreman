@@ -122,6 +122,7 @@
         <Compile Include="KitStartView.fs" />
         <Compile Include="ItemsPanelView.fs" />
         <Compile Include="FlowStripView.fs" />
+        <Compile Include="DataStepView.fs" />
         <Compile Include="KitWindowView.fs" />
         <Compile Include="ImportWizardWindow.fs" />
         <Compile Include="DataLocationsView.fs" />
