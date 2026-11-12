@@ -11,20 +11,6 @@ open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.MatrixComparison
 
-/// A dimensionless error against a KNOWN true value: `|actual − expected| / |expected|`. Elevated
-/// because every acceptance band in the inverse-problem suites is quoted in these units, and an absolute
-/// difference read as a relative one — or the reverse — would be a silently passing test rather than a
-/// compile error.
-type RelativeError =
-    | RelativeError of double
-
-    /// The error as a fraction (the arithmetic seam).
-    member this.value = let (RelativeError e) = this in e
-
-    /// The error of a recovered value against the truth it is supposed to reproduce.
-    static member between (actual : double) (expected : double) : RelativeError =
-        abs (actual - expected) / abs expected |> RelativeError
-
 // =====================================================================================================
 // The MEASUREMENT-ERROR model (manual task 010, generalized for task 014).
 //
@@ -309,14 +295,6 @@ module InverseFitHarness =
             | None -> failwith $"no fitted parameter named {name}"
         w
 
-    /// The relative error of every fitted parameter against the truth, paired with its name.
-    let recoveryErrors
-        (scaling : ParameterScaling<'Parameters>)
-        (truth : 'Parameters)
-        (recovered : 'Parameters)
-        : (ParameterName * RelativeError) list =
-        scaling.axes |> List.map (fun a -> a.name, RelativeError.between (a.read recovered) (a.read truth))
-
     /// One line per parameter: name and relative error, joined for an assertion message.
     let describeErrors (errors : (ParameterName * RelativeError) list) : string =
         System.String.Join("; ", [ for (n, e) in errors -> $"{n.value} rel err {e.value}" ])
@@ -456,10 +434,13 @@ module InverseFitHarness =
         {
             quantity = quantity
             mean = mean
-            bias = RelativeError.between mean trueValue
-            scatter = sqrt variance / abs trueValue |> RelativeError
+            bias = RelativeError.between (QuantityValue mean) (QuantityValue trueValue)
+            scatter = sqrt variance / abs trueValue |> RelativeErr
             absoluteScatter = sqrt variance
-            worst = values |> List.map (fun v -> RelativeError.between v trueValue) |> List.max
+            worst =
+                values
+                |> List.map (fun v -> RelativeError.between (QuantityValue v) (QuantityValue trueValue))
+                |> List.max
         }
 
     /// The standard error of the MEAN of an `n`-experiment ensemble, `scatter / sqrt n` — the yardstick a
@@ -467,7 +448,7 @@ module InverseFitHarness =
     /// than this is not evidence of a systematic error at all; it is the random error, not yet averaged
     /// away by a finite number of experiments.
     let standardErrorOfMean (count : int) (row : RecoveryStatistics<'Parameters>) : RelativeError =
-        row.scatter.value / sqrt (float count) |> RelativeError
+        row.scatter.value / sqrt (float count) |> RelativeErr
 
     /// Find a quantity's row in an ensemble table BY NAME. `RecoveredQuantity` holds a function and so
     /// has no structural equality; the name is the identity, and it comes from the material's own axis
@@ -492,7 +473,7 @@ module InverseFitHarness =
         fit.scaling.axes
         |> List.mapi (fun i a ->
             a.name,
-            quality.standardErrors.value.[i] * abs (a.read fit.scaling.scale) / abs (a.read truth) |> RelativeError)
+            quality.standardErrors.value.[i] * abs (a.read fit.scaling.scale) / abs (a.read truth) |> RelativeErr)
 
     /// The variance a fit's covariance predicts for a LINEAR COMBINATION of the fitted parameters,
     /// `wᵀ C w` — the only route this report offers to an error bar on a DERIVED quantity such as a

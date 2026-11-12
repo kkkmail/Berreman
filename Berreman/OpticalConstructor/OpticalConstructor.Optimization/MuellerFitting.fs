@@ -182,3 +182,30 @@ module MuellerFitting =
         (scaling : ParameterScaling<'Parameters>)
         : Result<MuellerFitData<'Parameters>, MuellerFitError> =
         fitWithResidual box (throughputResidualFor forward observations scaling) scaling
+
+    /// A recovered quantity's value in its own physical units (an index, a gyration or ε″ component, a birefringence).
+    type QuantityValue =
+        | QuantityValue of double
+
+        member this.value = let (QuantityValue v) = this in v
+
+    /// A dimensionless error against a known true value, `|actual − expected| / |expected|`. Elevated so that an
+    /// absolute difference read as a relative one, or the reverse, is a compile error rather than a passing band.
+    type RelativeError =
+        | RelativeErr of double
+
+        /// The error as a fraction.
+        member this.value = let (RelativeErr e) = this in e
+
+        /// The error of a recovered value against the truth it should reproduce.
+        static member between (actual : QuantityValue) (expected : QuantityValue) : RelativeError =
+            abs (actual.value - expected.value) / abs expected.value |> RelativeErr
+
+    /// The relative error of every fitted parameter against the truth, paired with its name, in axis order.
+    let recoveryErrors
+        (scaling : ParameterScaling<'Parameters>)
+        (truth : 'Parameters)
+        (recovered : 'Parameters)
+        : (ItemModels.ParameterName * RelativeError) list =
+        scaling.axes
+        |> List.map (fun a -> a.name, RelativeError.between (QuantityValue (a.read recovered)) (QuantityValue (a.read truth)))

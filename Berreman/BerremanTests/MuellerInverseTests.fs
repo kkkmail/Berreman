@@ -286,7 +286,8 @@ type MuellerInverseTests() =
 
     let parameterNames = UniaxialParameters.axes |> List.map (fun a -> a.name.value) |> Array.ofList
 
-    let relativeError (actual : float) (expected : float) : RelativeError = RelativeError.between actual expected
+    let relativeError (actual : float) (expected : float) : RelativeError =
+        RelativeError.between (QuantityValue actual) (QuantityValue expected)
 
     // =================================================================================================
     // Manual task 010 — the noisy experiments. The measurement-error model itself — what is perturbed,
