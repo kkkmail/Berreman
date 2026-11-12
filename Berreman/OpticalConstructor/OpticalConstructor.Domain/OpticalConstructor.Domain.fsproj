@@ -182,6 +182,7 @@
         <Compile Include="ExperimentDataProxy.fs" />
         <Compile Include="ExperimentDataLoad.fs" />
         <Compile Include="DataSplits.fs" />
+        <Compile Include="ExperimentMatrices.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -217,6 +217,7 @@
         <Compile Include="LabFileImportTests.fs" />
         <Compile Include="DataSplitTests.fs" />
         <Compile Include="DataSplitModelTests.fs" />
+        <Compile Include="ExperimentMatrixTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
