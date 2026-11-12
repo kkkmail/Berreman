@@ -15,7 +15,7 @@ open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.MatrixComparison
-open BerremanTests.InverseFitHarness                   // the fit driver both inverse-problem suites share
+open BerremanTests.InverseFitHarness
 
 
 /// Spec 0044 — the inverse problem for a transparent, optically active, anisotropic, homogeneous
@@ -45,8 +45,8 @@ open BerremanTests.InverseFitHarness                   // the fit driver both in
 ///
 /// BIAXIAL materials are no longer on that list: manual task 012 added `BiaxialInverseTests`, which runs
 /// the same recovery on a TRICLINIC crystal with nine unknowns. The fit driver both suites use lives in
-/// `InverseFitHarness`, and the parameter-set genericity that makes one driver serve both lives in
-/// `MuellerInverse.ParameterAxis`.
+/// `OpticalConstructor.Optimization.MuellerFitting`, and the parameter-set genericity that makes one
+/// driver serve both lives in `MuellerInverse.ParameterAxis`.
 type MuellerInverseTests() =
 
     /// Radians per degree, reached by its full module path (mirrors `MuellerReconstructionTests`). Bound
@@ -263,7 +263,7 @@ type MuellerInverseTests() =
     let nearBox = SearchBox 50.0
 
     /// Recover the material parameters from a GIVEN set of observations, from a given start guess, over a
-    /// given box — the shared harness runner, with this material's scaling baked in. Every fit in this
+    /// given box — `MuellerFitting.fitObservations`, with this material's scaling baked in. Every fit in this
     /// file, noiseless or noisy, goes through it, so the noisy facts differ from the noiseless one in
     /// their DATA and nothing else.
     ///
@@ -275,7 +275,7 @@ type MuellerInverseTests() =
         (observations : MuellerObservation list)
         (start : UniaxialParameters)
         : ParameterScaling<UniaxialParameters> * (ScaledVector -> ResidualVector) * NonlinearSolution =
-        let fit = InverseFitHarness.fitObservations forward box observations (scalingAround start)
+        let fit = MuellerFitting.fitObservations forward box observations (scalingAround start) |> expectOk
         fit.scaling, fit.residual, fit.solution
 
     /// Run the fit on NOISELESS data generated for a configuration set, from a given start guess.

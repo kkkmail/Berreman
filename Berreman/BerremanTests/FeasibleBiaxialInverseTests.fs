@@ -410,7 +410,7 @@ type FeasibleBiaxialInverseTests() =
         // practice in this exact field.
         let observations = observe fullConfigurations
         let scaling = scalingAround perturbedStart
-        let fit = fitObservations forward box observations scaling
+        let fit = fitObservations forward box observations scaling |> expectOk
 
         Assert.True(fit.solution.iterations.value > 0, "the fit should have taken at least one step")
 

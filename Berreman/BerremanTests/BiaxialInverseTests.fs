@@ -286,7 +286,7 @@ type BiaxialInverseTests() =
         let observations = noisyObserveWith forward triclinic noise seed fullConfigurations
         {
             seed = seed
-            fit = fitObservations forward wideBox observations (scalingAround blindStart)
+            fit = fitObservations forward wideBox observations (scalingAround blindStart) |> expectOk
         }
 
     // =================================================================================================
@@ -581,7 +581,7 @@ type BiaxialInverseTests() =
         // rather than copied it.
         let observations = observe fullConfigurations
         let scaling = scalingAround perturbedStart
-        let fit = fitObservations forward box observations scaling
+        let fit = fitObservations forward box observations scaling |> expectOk
 
         // The fit must actually have moved: a "recovery" that never left the start point would pass a
         // sloppy tolerance while proving nothing.
@@ -785,7 +785,7 @@ type BiaxialInverseTests() =
         // machine precision. Whatever the ensemble's scatter is, it is therefore measurement error.
         let observations = observe fullConfigurations
         let scaling = scalingAround blindStart
-        let fit = fitObservations forward wideBox observations scaling
+        let fit = fitObservations forward wideBox observations scaling |> expectOk
 
         let errors = recoveryErrors scaling triclinic fit.recovered
         let report = describeErrors errors + $"; chi2 {fit.chiSquared}; {fit.solution.iterations.value} iterations"

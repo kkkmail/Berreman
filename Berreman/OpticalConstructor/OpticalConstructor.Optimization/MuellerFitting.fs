@@ -14,6 +14,7 @@ module MuellerFitting =
     /// A typed failure of generating observations or fitting them, never a throw.
     type MuellerFitError =
         | ObservationForwardErr of ForwardModelError
+        | NonlinearFitErr of NonlinearSolverError
 
     /// One measurement configuration, its incidence and sample azimuth given in degrees.
     /// `IncidenceAngle.create` folds the incidence into [0, 90) deg, so a negative one is not a tilt the other way.
@@ -110,3 +111,74 @@ module MuellerFitting =
             centre = centre
             scale = scale
         }
+
+    /// The box the optimizer may search, as a half-width in SCALED units. A box that excludes the truth yields a
+    /// converged-looking fit pinned against a bound, so a far start guess needs a wider one.
+    type SearchBox =
+        | SearchBox of double
+
+        member this.halfWidth = let (SearchBox h) = this in h
+
+    /// What a fit produced: the recovered constants, the solver's account of the run, the scaling the vector lives
+    /// in, and the residual closure a Jacobian is taken of.
+    [<ReferenceEquality>]
+    type MuellerFitData<'Parameters> =
+        {
+            recovered : 'Parameters
+            solution : NonlinearSolution
+            scaling : ParameterScaling<'Parameters>
+            residual : ScaledVector -> ResidualVector
+        }
+
+        /// Σ residualᵢ² at the solution.
+        member this.chiSquared : double = this.solution.finalResiduals.value |> Array.sumBy (fun r -> r * r)
+
+        /// The root-mean-square residual entry at the solution — the noise level, when there is noise.
+        member this.rmsResidual : double =
+            sqrt (this.chiSquared / float (max 1 this.solution.finalResiduals.value.Length))
+
+    /// Minimize a residual closure by ALGLIB Levenberg–Marquardt from the zero scaled vector, within the box.
+    let fitWithResidual
+        (box : SearchBox)
+        (residual : ScaledVector -> ResidualVector)
+        (scaling : ParameterScaling<'Parameters>)
+        : Result<MuellerFitData<'Parameters>, MuellerFitError> =
+        let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
+        let request =
+            {
+                residual = residual
+                initial = Array.zeroCreate scaling.dimension |> ScaledVector
+                lowerBounds = Array.create scaling.dimension -box.halfWidth |> ScaledVector
+                upperBounds = Array.create scaling.dimension box.halfWidth |> ScaledVector
+                maxIterations = IterationCount 400
+                epsX = StepTolerance 1.0e-12
+            }
+        match solver.solveNonlinearLeastSquares request with
+        | Ok solution ->
+            Ok
+                {
+                    recovered = ofScaled scaling solution.solution
+                    solution = solution
+                    scaling = scaling
+                    residual = residual
+                }
+        | Error e -> Error (NonlinearFitErr e)
+
+    /// Fit a TRANSPARENT sample's observations: normalized Mueller elements only (`residualFor`).
+    let fitObservations
+        (forward : ForwardModelProxy<'Parameters>)
+        (box : SearchBox)
+        (observations : MuellerObservation list)
+        (scaling : ParameterScaling<'Parameters>)
+        : Result<MuellerFitData<'Parameters>, MuellerFitError> =
+        fitWithResidual box (residualFor forward observations scaling) scaling
+
+    /// Fit an ABSORBING sample's observations: normalized elements plus absolute throughput (`throughputResidualFor`),
+    /// whose log term is mandatory because normalization alone cannot see the isotropic absorption.
+    let fitAbsorbingObservations
+        (forward : ForwardModelProxy<'Parameters>)
+        (box : SearchBox)
+        (observations : MuellerObservation list)
+        (scaling : ParameterScaling<'Parameters>)
+        : Result<MuellerFitData<'Parameters>, MuellerFitError> =
+        fitWithResidual box (throughputResidualFor forward observations scaling) scaling

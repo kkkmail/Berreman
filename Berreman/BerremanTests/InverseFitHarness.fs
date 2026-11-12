@@ -25,39 +25,6 @@ type RelativeError =
     static member between (actual : double) (expected : double) : RelativeError =
         abs (actual - expected) / abs expected |> RelativeError
 
-/// The box the optimizer may search, as a half-width in SCALED units — so one unit is whatever the
-/// `ParameterScaling.scale` says it is (1e-3 in refractive index and 1e-5 in gyration, throughout these
-/// suites).
-///
-/// It is a parameter of the fit rather than a constant because start guesses sit at very different
-/// distances from the truth. A box that comfortably brackets the truth from a 0.2 % perturbed start does
-/// NOT bracket it from a blind `n = 1.5` start, and a box that silently excludes the answer produces a
-/// converged-looking fit pinned against a bound.
-type SearchBox =
-    | SearchBox of double
-
-    /// The half-width in scaled units (the arithmetic seam).
-    member this.halfWidth = let (SearchBox h) = this in h
-
-/// Everything a fit produced, and everything a diagnostic built on it needs afterwards: the recovered
-/// constants, the solver's own account of the run, the scaling the vector lives in, and the residual
-/// closure a Jacobian is taken of.
-[<ReferenceEquality>]
-type InverseFit<'Parameters> =
-    {
-        recovered : 'Parameters
-        solution : NonlinearSolution
-        scaling : ParameterScaling<'Parameters>
-        residual : ScaledVector -> ResidualVector
-    }
-
-    /// Σ residualᵢ² at the solution.
-    member this.chiSquared : double = this.solution.finalResiduals.value |> Array.sumBy (fun r -> r * r)
-
-    /// The root-mean-square residual entry at the solution — the noise level, when there is noise.
-    member this.rmsResidual : double =
-        sqrt (this.chiSquared / float (max 1 this.solution.finalResiduals.value.Length))
-
 // =====================================================================================================
 // The MEASUREMENT-ERROR model (manual task 010, generalized for task 014).
 //
@@ -291,7 +258,7 @@ type RecoveryStatistics<'Parameters> =
 type NoisyExperiment<'Parameters> =
     {
         seed : NoiseSeed
-        fit : InverseFit<'Parameters>
+        fit : MuellerFitData<'Parameters>
     }
 
 /// Spec 0044 — the machinery every inverse-problem suite in this assembly shares.
@@ -311,7 +278,7 @@ module InverseFitHarness =
         | Error e -> failwith $"%A{e}"
 
     /// FitQuality's report on a fit, at its solution.
-    let fitReportOf (fit : InverseFit<'Parameters>) : FitQuality.FitReport =
+    let fitReportOf (fit : MuellerFitData<'Parameters>) : FitQuality.FitReport =
         let (ScaledVector solution) = fit.solution.solution
         FitQuality.reportFrom
             (fun (OptimizationInterface.DesignVector v) -> fit.residual (ScaledVector v))
@@ -341,59 +308,6 @@ module InverseFitHarness =
             | Some i -> w.[i] <- 1.0
             | None -> failwith $"no fitted parameter named {name}"
         w
-
-    /// THE CORE RUNNER. Recover the material parameters from a GIVEN set of observations, over a given
-    /// scaling and a given box. Every fit in every inverse-problem suite goes through this one function,
-    /// so two suites differ in their DATA and their MATERIAL and in nothing else.
-    ///
-    /// It deliberately takes observations rather than configurations: that is the seam noise enters
-    /// through. A noisy experiment is the same fit run against data generated at slightly wrong angles
-    /// and read back by a slightly wrong detector, and nothing about the fit itself changes.
-    let fitWithResidual
-        (box : SearchBox)
-        (residual : ScaledVector -> ResidualVector)
-        (scaling : ParameterScaling<'Parameters>)
-        : InverseFit<'Parameters> =
-        let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
-        let request =
-            {
-                residual = residual
-                initial = Array.zeroCreate scaling.dimension |> ScaledVector
-                lowerBounds = Array.create scaling.dimension -box.halfWidth |> ScaledVector
-                upperBounds = Array.create scaling.dimension box.halfWidth |> ScaledVector
-                maxIterations = IterationCount 400
-                epsX = StepTolerance 1.0e-12
-            }
-        match solver.solveNonlinearLeastSquares request with
-        | Ok solution ->
-            {
-                recovered = ofScaled scaling solution.solution
-                solution = solution
-                scaling = scaling
-                residual = residual
-            }
-        | Error e -> failwith $"the inverse fit failed: %A{e}"
-
-    /// The core runner for a TRANSPARENT sample: normalized Mueller elements only. Every fit in every
-    /// transparent suite goes through it, so two suites differ in their DATA and their MATERIAL and in
-    /// nothing else.
-    let fitObservations
-        (forward : ForwardModelProxy<'Parameters>)
-        (box : SearchBox)
-        (observations : MuellerObservation list)
-        (scaling : ParameterScaling<'Parameters>)
-        : InverseFit<'Parameters> =
-        fitWithResidual box (residualFor forward observations scaling) scaling
-
-    /// The core runner for an ABSORBING sample: normalized Mueller elements PLUS absolute throughput.
-    /// See `throughputResidualFor` for why the extra term is mandatory rather than optional.
-    let fitAbsorbingObservations
-        (forward : ForwardModelProxy<'Parameters>)
-        (box : SearchBox)
-        (observations : MuellerObservation list)
-        (scaling : ParameterScaling<'Parameters>)
-        : InverseFit<'Parameters> =
-        fitWithResidual box (throughputResidualFor forward observations scaling) scaling
 
     /// The relative error of every fitted parameter against the truth, paired with its name.
     let recoveryErrors
@@ -572,7 +486,7 @@ module InverseFitHarness =
     /// assumption.
     let predictedRelativeErrors
         (truth : 'Parameters)
-        (fit : InverseFit<'Parameters>)
+        (fit : MuellerFitData<'Parameters>)
         (quality : FitQuality.FitReport)
         : (ParameterName * RelativeError) list =
         fit.scaling.axes

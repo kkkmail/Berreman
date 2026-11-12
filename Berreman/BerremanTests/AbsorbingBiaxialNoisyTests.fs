@@ -9,6 +9,7 @@ open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample
@@ -74,7 +75,7 @@ type AbsorbingBiaxialNoisyTests() =
         let observations = noisyObserveAbsoluteWith forward absorbing noise seed fullConfigurations
         {
             seed = seed
-            fit = fitAbsorbingObservations forward searchBox observations (absorbingScalingAround perturbedStart)
+            fit = fitAbsorbingObservations forward searchBox observations (absorbingScalingAround perturbedStart) |> expectOk
         }
 
     /// The quantities the ensemble reports on: the fifteen fitted unknowns, plus the three birefringences

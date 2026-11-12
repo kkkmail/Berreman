@@ -375,7 +375,7 @@ type AbsorbingBiaxialInverseTests() =
         // once, from Mueller data with absolute throughput.
         let observations = observe fullConfigurations
         let scaling = absorbingScalingAround perturbedStart
-        let fit = fitAbsorbingObservations forward box observations scaling
+        let fit = fitAbsorbingObservations forward box observations scaling |> expectOk
 
         Assert.True(fit.solution.iterations.value > 0, "the fit should have taken at least one step")
 
