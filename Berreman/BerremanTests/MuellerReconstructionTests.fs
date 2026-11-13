@@ -32,7 +32,8 @@ open BerremanTestSupport
 ///     data-backed facts no longer skip: absent data is now a defect and fails;
 ///   - the §7.2 matrices and the Stage-1 constants are asserted against the reference pipeline's own
 ///     full-precision output (`reference_step*_summary.json` in `data/optics-mueller/data/reference/`) at
-///     `dataMatrixTol` / `stage1Tol`, rather than against the report's rounded printed values at ~2e-3.
+///     `dataMatrixTol` / `stage1Tol`, rather than against the report's rounded printed values at ~2e-3; the
+///     expectations live in `BerremanTestSupport.MuellerReference` (spec 0050 S10.3).
 ///
 /// The following report facets are deliberately NOT asserted here — each is a candidate for a future slice:
 ///   - §6 calibration table (the per-constant re-derivation table),
@@ -123,40 +124,6 @@ type MuellerReconstructionTests() =
     // in a class type every `let` binding precedes the first member). Radians-per-degree reached by its full
     // module path (no extra `open` of the numeric-wrapper module, which would drag unrelated names into scope).
     let degree = Angle.radiansPerDegree
-
-    // ---------------------------------------------------------------------------------------------------
-    // Spec 0044 §8.5 / §9 — acceptance bands for the measured-data facts, against the reference pipeline's
-    // OWN full-precision output (data/optics-mueller/data/reference/reference_step1_summary.json and
-    // reference_step2_linear_summary.json). These replaced the former ~1° / 2e-3 bands, which compared
-    // against the report's ROUNDED printed values and therefore could not detect numerical drift smaller
-    // than the rounding.
-    //
-    // The §9 protocol governs these two numbers: measure the actual agreement, pin ONE ORDER OF MAGNITUDE
-    // looser than observed, and record the observed figure here. They are never widened to make a failing
-    // test pass — the F# re-derives every constant independently through a different SVD implementation, so
-    // agreement worse than ~1e-6 would indicate a PROCEDURAL divergence from the reference pipeline that
-    // must be found and fixed, not absorbed.
-    //
-    // OBSERVED (measured 2026-08-02; recorded per §9, see specs/0044/.manual/006-implementation-log.md):
-    //   Stage-1 constants — dark_mean, z_LP, z_CPL and δ_an reproduce the reference BIT-EXACTLY (Δ = 0);
-    //                       θ_src is off by 7.1e-15° and δ_src by 1.4e-14°, i.e. one to two ulp.
-    //   Stage-3 matrices  — worst element deviations 4.5e-11 (M_QZ, M[2,3]), 4.9e-11 (M_LR, M[0,0]) and
-    //                       3.9e-11 (M_{QZ+LR}, M[1,3]).
-    // The matrix figures are the amplification of that ulp-level calibration difference through a
-    // 900-row × 16-column least-squares solve of condition number ≈ 10 — that is, the F# port and the Python
-    // reference agree to the last bit the calculation can carry, and differ only in floating-point summation
-    // order. For scale: the reconstructed elements are O(1) and the previous acceptance band was 2e-3, so
-    // these bands are seven to eight orders of magnitude tighter than what they replace.
-    // ---------------------------------------------------------------------------------------------------
-
-    /// Acceptance band for the Stage-1 calibration constants (degrees). Pinned per §9 at ~70× the observed
-    /// worst deviation of 1.4e-14°; the extra headroom over the bare order-of-magnitude rule absorbs
-    /// cross-CPU differences in vectorized summation, which this quantity is directly exposed to.
-    let stage1Tol = 1.0e-12
-
-    /// Acceptance band for the Stage-3 reconstructed matrix elements and the §8 cascade metrics. Pinned per
-    /// §9 at ~20× the observed worst deviation of 4.9e-11.
-    let dataMatrixTol = 1.0e-9
 
     /// One lab file of the optics-mueller kit, read read-only through the Phone ROI CSV import profile; a missing kit
     /// folder or any refusal fails the test with what it says (spec 0050 S9.4).
@@ -537,12 +504,8 @@ type MuellerReconstructionTests() =
         // Stage-1 functions from the committed measured data are compared against the REFERENCE PIPELINE's
         // own output at full precision, not against the report's 2-decimal rounded values.
         //
-        // Provenance of the expected values: data/optics-mueller/data/reference/reference_step1_summary.json,
-        // which is the Python reference implementation's own emitted summary (see
-        // data/optics-mueller/data/reference/README.md for the source repository, branch and commit).
-        // Transcribing the literals here rather than parsing the JSON at run time is deliberate — the test
-        // then reads NO file for its expectations, which is what keeps it free of any location knowledge
-        // (§8.5).
+        // The expected values are `MuellerReference`'s, transcribed from the reference pipeline's
+        // reference_step1_summary.json, so the test reads NO file for its expectations (§8.5; spec 0050 S10.3).
         //
         // This fact no longer skips. The data is committed to the repository, so a load failure is a defect
         // (§8.4 / R6) and `loadDataSet` fails the test with the typed error.
@@ -569,16 +532,16 @@ type MuellerReconstructionTests() =
         // Every constant is compared in ONE assertion reporting all six deviations, so a regression message
         // shows which constants moved and by how much rather than stopping at the first one out of band.
         let constants =
-            [ "dark_mean", darkMean, 869.666
-              "z_LP", lpLpFit.zeroAzimuth.degrees, 155.44011830109392
-              "z_CPL", lpCplFit.zeroAzimuth.degrees, 96.99613336321012
-              "δ_an", deltaAnDeg, 83.66804489441891
-              "θ_src", source.thetaRel.degrees, 39.31100224361002
-              "δ_src", source.retardance.degrees, 82.55344158462403 ]
+            [ "dark_mean", darkMean, MuellerReference.darkMean.value
+              "z_LP", lpLpFit.zeroAzimuth.degrees, MuellerReference.lpAnalyzerZero.degrees
+              "z_CPL", lpCplFit.zeroAzimuth.degrees, MuellerReference.cplAnalyzerZero.degrees
+              "δ_an", deltaAnDeg, MuellerReference.cplAnalyzerRetardance.degrees
+              "θ_src", source.thetaRel.degrees, MuellerReference.cplSourceAxisOffset.degrees
+              "δ_src", source.retardance.degrees, MuellerReference.cplSourceRetardance.degrees ]
         let worst = constants |> List.map (fun (_, actual, expected) -> abs (actual - expected)) |> List.max
         Assert.True(
-            worst < stage1Tol,
-            $"""Stage-1 constants (tol {stage1Tol}): {String.concat "; " [ for (n, a, e) in constants -> $"{n} {a} vs {e} (Δ {abs (a - e)})" ]}""")
+            worst < MuellerReference.stage1Tol,
+            $"""Stage-1 constants (tol {MuellerReference.stage1Tol}): {String.concat "; " [ for (n, a, e) in constants -> $"{n} {a} vs {e} (Δ {abs (a - e)})" ]}""")
 
     [<Fact>]
     member _.``Stage-3 signal reduction pins darkSubtract, scalarGain, airIdentityPred, correctSignal and every per-family familyGain rule (always-run)`` () =
@@ -715,10 +678,8 @@ type MuellerReconstructionTests() =
     member _.``buildDesign keeps only the requested kind, dropping AIR rows and the excluded contaminated point (always-run)`` () =
         // Spec 0042 (010): buildDesign selects the science rows of the requested MatrixKind, drops AIR#0
         // calibration rows and the one contaminated point (LP-(LR#90)-CPL-2 / description 140 / capture_index
-        // 17 — supplied here as BerremanTests data per spec §0), and assembles one designRow + one corrected
-        // signal per kept row via the injected per-row projection.
-        let excluded : ExcludedPoint list =
-            [ { experiment = MuellerExperimentLabel "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0<Berreman.Constants.deg>; captureIndex = CaptureIndex 17 } ]
+        // 17 — supplied as `MuellerReference.excludedPoints` per spec §0), and assembles one designRow + one
+        // corrected signal per kept row via the injected per-row projection.
         // A stub per-row projection: unit effective states (one 16-wide designRow) and the row's avgTotal as the
         // corrected signal (no dark floor, unit gain), so the assembled target identifies exactly which rows
         // survived, in order.
@@ -733,7 +694,7 @@ type MuellerReconstructionTests() =
               { experiment = MuellerExperimentLabel "LP-(QZ#0)-LP"; captureIndex = CaptureIndex 2; capturedAt = t; description = Angle.degree 30.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 3.0 }          // QZ — wrong kind, dropped
               { experiment = MuellerExperimentLabel "LP-(LR#90)-CPL-2"; captureIndex = CaptureIndex 17; capturedAt = t; description = Angle.degree 140.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 4.0 }    // contaminated — dropped
               { experiment = MuellerExperimentLabel "LP-(LR#0)-LP"; captureIndex = CaptureIndex 3; capturedAt = t; description = Angle.degree 40.0<Berreman.Constants.deg>; avgTotal = MeasuredIntensity 5.0 } ]        // LR — kept
-        let system = buildDesign prepareRow excluded rows Lr
+        let system = buildDesign prepareRow MuellerReference.excludedPoints rows Lr
         // Only the two LR science rows survive (avgTotal 1.0 and 5.0), in order; each contributes one 16-wide row.
         Assert.Equal(2, system.design.Length)
         Assert.Equal(2, system.rhs.Length)
@@ -760,10 +721,9 @@ type MuellerReconstructionTests() =
         //          report's 6-decimal printed matrices, and the band tightened from 2e-3 to `dataMatrixTol`
         //          accordingly. At 2e-3 a refactor could introduce a real numerical error a thousand times
         //          larger than the port's actual reproducibility and nothing would notice.
-        //          Provenance: data/optics-mueller/data/reference/reference_step2_linear_summary.json (see
-        //          data/optics-mueller/data/reference/README.md for the source repository, branch and
-        //          commit). The literals are transcribed rather than parsed at run time, so this test reads
-        //          no file for its expectations and therefore knows nothing about where anything lives.
+        //          The expected values are `MuellerReference`'s, transcribed from
+        //          reference_step2_linear_summary.json, so this test reads no file for its expectations and
+        //          therefore knows nothing about where anything lives (spec 0050 S10.3).
         //
         // ---- Composition root: the REAL proxies (the WIRE deliverable). ----
         let solver = createMathNetSvd ()
@@ -898,15 +858,10 @@ type MuellerReconstructionTests() =
               cplCplDay1Rows, prepareRow sourceCpl analyzerCpl CplCpl day1Cal
               cplCplDay2Rows, prepareRow sourceCpl analyzerCpl CplCpl calibration ]
 
-        // The one contaminated point excluded from every fit (matrix_glue.py EXCLUDED_POINTS[0]), supplied
-        // here as BerremanTests data (spec section 0).
-        let excluded : ExcludedPoint list =
-            [ { experiment = MuellerExperimentLabel "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0<Berreman.Constants.deg>; captureIndex = CaptureIndex 17 } ]
-
         // Assemble the full n*16 design + corrected-signal target for one kind across every family, then solve
         // through the real SVD proxy (buildDesign drops AIR rows and the excluded point per file).
         let reconstructKind (kind : MatrixKind) : ReconstructedMatrix =
-            let parts = families |> List.map (fun (rows, prep) -> buildDesign prep excluded rows kind)
+            let parts = families |> List.map (fun (rows, prep) -> buildDesign prep MuellerReference.excludedPoints rows kind)
             let system =
                 {
                     design = parts |> List.collect (fun p -> List.ofArray p.design) |> List.toArray
@@ -921,11 +876,11 @@ type MuellerReconstructionTests() =
         let mComb = reconstructKind QzLrProduct
 
         // ---- Section 7.2 acceptance: each solve is full rank 16, and each reconstructed matrix reproduces
-        //      the reference pipeline's own value to `dataMatrixTol` (spec 0044 §8.5). ----
+        //      the reference pipeline's own value to `MuellerReference.dataMatrixTol` (spec 0044 §8.5). ----
         //
-        // The expected matrices below are `qz_matrix`, `lr_matrix` and `combined_matrix` transcribed verbatim
-        // from data/optics-mueller/data/reference/reference_step2_linear_summary.json. They are the SAME
-        // numbers the report prints in §7.2, carried to full precision instead of six decimals — so this
+        // The expected matrices are `MuellerReference`'s `qz_matrix`, `lr_matrix` and `combined_matrix` from
+        // reference_step2_linear_summary.json. They are the SAME numbers the report prints in §7.2, carried to
+        // full precision instead of six decimals — so this
         // assertion is simultaneously the physics claim (the port reproduces the published result) and a
         // characterization test (nothing in the pipeline drifts numerically without a test failing).
         // Reports the WORST element deviation over the whole matrix rather than failing on the first element
@@ -941,69 +896,43 @@ type MuellerReconstructionTests() =
             let (worst, i, j) = worstElementDeviation expected actual
             worst, $"{label} worst {worst} at M[{i},{j}]"
 
-        let expectedQz =
-            RealMatrix4x4.create
-                [ [  0.9412063946;  0.0409543238; -0.0259356814; -0.1220013287 ]
-                  [  0.0525351141;  0.6606049231; -0.3659862371; -0.1421373359 ]
-                  [ -0.0129854586;  0.4061015401;  0.6094438915; -0.0169558310 ]
-                  [ -0.0957187769;  0.0752040278;  0.0184691606;  1.0306648444 ] ]
-            |> MuellerMatrix
-        let expectedLr =
-            RealMatrix4x4.create
-                [ [  0.9931797644; -0.0046529422;  0.0596850441; -0.1036207527 ]
-                  [  0.3531940843;  0.1474307188; -0.0954724381; -0.6568249890 ]
-                  [  0.3425940212; -0.3946501705;  0.6900321099; -0.5968927113 ]
-                  [ -0.0104722933;  0.1247347199;  0.4614122160;  0.5910486653 ] ]
-            |> MuellerMatrix
-        let expectedComb =
-            RealMatrix4x4.create
-                [ [  0.9001173290;  0.0831007067;  0.0350162173; -0.1712567077 ]
-                  [  0.3413132788; -0.1694202380; -0.1576526274; -0.5502997288 ]
-                  [  0.3377633308; -0.1048712506;  0.7681312510; -0.5366531986 ]
-                  [  0.0999436274;  0.0459751884;  0.3292576266;  0.3168329794 ] ]
-            |> MuellerMatrix
-
         Assert.Equal(MatrixRank 16, mQz.rank)
         Assert.Equal(MatrixRank 16, mLr.rank)
         Assert.Equal(MatrixRank 16, mComb.rank)
         // One assertion over ALL THREE matrices, reporting every matrix's worst element so a regression run
         // shows the whole picture in a single message instead of stopping at the first element out of band.
         let matrixDeviations =
-            [ describeDeviation "M_QZ" expectedQz mQz.matrix
-              describeDeviation "M_LR" expectedLr mLr.matrix
-              describeDeviation "M_{QZ+LR}" expectedComb mComb.matrix ]
+            [ describeDeviation "M_QZ" MuellerReference.qzMatrix mQz.matrix
+              describeDeviation "M_LR" MuellerReference.lrMatrix mLr.matrix
+              describeDeviation "M_{QZ+LR}" MuellerReference.combinedMatrix mComb.matrix ]
         let worstMatrixDeviation = matrixDeviations |> List.map fst |> List.max
         Assert.True(
-            worstMatrixDeviation < dataMatrixTol,
-            $"""section 7.2 matrices (tol {dataMatrixTol}): {String.concat "; " (matrixDeviations |> List.map snd)}""")
+            worstMatrixDeviation < MuellerReference.dataMatrixTol,
+            $"""section 7.2 matrices (tol {MuellerReference.dataMatrixTol}): {String.concat "; " (matrixDeviations |> List.map snd)}""")
 
         // ---- Section 8 cascade identity: M_{QZ+LR} vs the QZ-first product M_LR . M_QZ. ----
-        // Expected values transcribed from `combined_vs_product_matrix` in the same reference summary.
+        // The expected values are `MuellerReference`'s, from `combined_vs_product_matrix` in the same summary.
         let cascade = cascadeProduct mLr.matrix mQz.matrix
         let d = frobeniusDiff mComb.matrix cascade
         let worstMetricDeviation =
-            [ abs (d.frobenius.value - 0.5714178795538456)
-              abs (d.meanAbs.value - 0.11328628636347338)
-              abs (d.maxAbs.value - 0.26806464658062423) ]
+            [ abs (d.frobenius.value - MuellerReference.cascadeFrobenius.value)
+              abs (d.meanAbs.value - MuellerReference.cascadeMeanAbs.value)
+              abs (d.maxAbs.value - MuellerReference.cascadeMaxAbs.value) ]
             |> List.max
         Assert.True(
-            worstMetricDeviation < dataMatrixTol,
-            $"cascade metrics: worst deviation {worstMetricDeviation} (frobenius = {d.frobenius.value}, meanAbs = {d.meanAbs.value}, maxAbs = {d.maxAbs.value}, tol {dataMatrixTol})")
+            worstMetricDeviation < MuellerReference.dataMatrixTol,
+            $"cascade metrics: worst deviation {worstMetricDeviation} (frobenius = {d.frobenius.value}, meanAbs = {d.meanAbs.value}, maxAbs = {d.maxAbs.value}, tol {MuellerReference.dataMatrixTol})")
 
         // The two largest element differences both live in the 4th row (1-indexed) — at columns 4 and 2, each
         // ~0.268 and near-tied. (The slice text names (4,2) and (2,2) 1-indexed; the real data's runner-up to
         // (4,2) is (4,4), not (2,2): (2,2)~0.193 is only the 4th-largest. Followed the data per the base
         // protocol's skepticism rule — see the state-of-the-world Gotchas.)
-        //
-        // Spec 0044 note: the reference pipeline's own `delta_matrix` now corroborates this independently —
-        // delta[3][3] = -0.2680646466 and delta[3][1] = -0.2678257477 are the two largest by magnitude, so
-        // the data-driven correction the 0042 implementation made was right and this assertion stands.
         let topTwoDiffPositions =
             [ for i in 0 .. 3 do
                 for j in 0 .. 3 ->
-                    (i, j), abs (mComb.matrix.element i j - cascade.element i j) ]
+                    (MuellerRowIndex i, MuellerColumnIndex j), abs (mComb.matrix.element i j - cascade.element i j) ]
             |> List.sortByDescending snd
             |> List.truncate 2
             |> List.map fst
             |> Set.ofList
-        Assert.True((topTwoDiffPositions = Set.ofList [ (3, 3); (3, 1) ]), $"the two largest abs-delta positions (0-indexed) = %A{topTwoDiffPositions}")
+        Assert.True((topTwoDiffPositions = MuellerReference.cascadeLargestDeltaPositions), $"the two largest abs-delta positions (0-indexed) = %A{topTwoDiffPositions}")

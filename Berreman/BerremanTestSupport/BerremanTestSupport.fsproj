@@ -16,6 +16,7 @@
         <Compile Include="CommittedKits.fs" />
         <Compile Include="BiaxialSample.fs" />
         <Compile Include="AbsorbingBiaxialSample.fs" />
+        <Compile Include="MuellerReference.fs" />
     </ItemGroup>
 
     <ItemGroup>
