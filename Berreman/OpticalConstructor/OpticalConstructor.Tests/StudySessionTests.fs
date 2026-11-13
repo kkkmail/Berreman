@@ -160,14 +160,26 @@ module StudySessionTests =
         let emptyReason = "the CPL-LP session lists no run"
         let missingReason = "'CPL-(AIR#0)-CPL-BR' is not among the 1 AIR gains given"
         let freeReason = "the LP-LP session gain is an unknown"
+        let nameReason = "'  ': a study name must not be blank"
+        let duplicateReason = "'QZ-LR' beside 'qz-lr': both are stored as qz-lr.study-json, ignoring case"
+        let experimentReason = "'E9' is not among the kit's 3 experiments"
+        let weightReason = "-1 is not a finite number above zero"
         let rendered =
             [ (EmptyGainAnchorsErr emptyReason).describe
               (MissingAnchorGainErr missingReason).describe
-              (FreeSessionGainErr freeReason).describe ]
+              (FreeSessionGainErr freeReason).describe
+              (InvalidStudyNameErr nameReason).describe
+              (DuplicateStudyNameErr duplicateReason).describe
+              (UnknownStudyExperimentErr experimentReason).describe
+              (InvalidResidualWeightErr weightReason).describe ]
 
         Assert.Equal($"the gain model names no AIR run: {emptyReason}", rendered.[0])
         Assert.Equal($"the AIR run's gain is not known: {missingReason}", rendered.[1])
         Assert.Equal($"the session gain is fitted, not derived from AIR runs: {freeReason}", rendered.[2])
+        Assert.Equal($"the study name is not valid: {nameReason}", rendered.[3])
+        Assert.Equal($"the kit already has a study of that name: {duplicateReason}", rendered.[4])
+        Assert.Equal($"the kit has no such experiment: {experimentReason}", rendered.[5])
+        Assert.Equal($"the residual weight is not valid: {weightReason}", rendered.[6])
         Assert.Equal(rendered.Length, rendered |> List.distinct |> List.length)
 
     [<Fact>]

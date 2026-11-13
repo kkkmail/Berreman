@@ -1,5 +1,12 @@
 namespace OpticalConstructor.Domain
 
+open System
+open System.Globalization
+open OpticalConstructor.Domain.CrystalPhysics
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MuellerReconstruction
 
@@ -15,12 +22,24 @@ module Studies =
         | MissingAnchorGainErr of reason : string
         /// A free session gain is fitted, so no AIR rule derives it.
         | FreeSessionGainErr of reason : string
+        /// A blank study name.
+        | InvalidStudyNameErr of reason : string
+        /// A study name whose file another study of the kit already holds, ignoring case.
+        | DuplicateStudyNameErr of reason : string
+        /// A study names an experiment the kit does not hold.
+        | UnknownStudyExperimentErr of reason : string
+        /// A residual weight that is not finite or not above zero.
+        | InvalidResidualWeightErr of reason : string
 
         member this.describe : string =
             match this with
             | EmptyGainAnchorsErr reason -> $"the gain model names no AIR run: {reason}"
             | MissingAnchorGainErr reason -> $"the AIR run's gain is not known: {reason}"
             | FreeSessionGainErr reason -> $"the session gain is fitted, not derived from AIR runs: {reason}"
+            | InvalidStudyNameErr reason -> $"the study name is not valid: {reason}"
+            | DuplicateStudyNameErr reason -> $"the kit already has a study of that name: {reason}"
+            | UnknownStudyExperimentErr reason -> $"the kit has no such experiment: {reason}"
+            | InvalidResidualWeightErr reason -> $"the residual weight is not valid: {reason}"
 
     /// The AIR runs that open and close a drifting session (spec 0050 S11.1).
     type AirRepeatPair =
@@ -157,3 +176,240 @@ module Studies =
             match this.experiments |> List.filter (fun run -> List.contains run darkRuns) with
             | [] -> darkRuns
             | own -> own
+
+    /// A study's name, kept as given; its `<name>.study-json` stem follows the shared name rule (spec 0050 S11.1; 001 §A).
+    type StudyName =
+        | StudyName of string
+
+        member this.value : string = let (StudyName text) = this in text
+
+        static member tryCreate (text : string) : Result<StudyName, StudyError> =
+            if String.IsNullOrWhiteSpace text then
+                Error (InvalidStudyNameErr $"'{text}': a study name must not be blank")
+            else
+                Ok (StudyName text)
+
+        member this.fileStem : FileStem = FileStem.ofText this.value
+
+    /// A reviewer's free-text notes on a study; they live in its file (spec 0050 S11.1; 001 §E).
+    type StudyNotes =
+        | StudyNotes of string
+
+        member this.value : string = let (StudyNotes text) = this in text
+
+        static member none : StudyNotes = StudyNotes ""
+
+    /// The sharing rule of an unknown: one value per item, per material version, per session block or per experiment;
+    /// its disk tag is an int, 1 to 4 in case order (spec 0050 S11.1; 001 §L).
+    type ParameterScope =
+        | ItemScope
+        | MaterialScope
+        | SessionBlockScope
+        | ExperimentScope
+
+        member this.value : int =
+            match this with
+            | ItemScope -> 1
+            | MaterialScope -> 2
+            | SessionBlockScope -> 3
+            | ExperimentScope -> 4
+
+        /// The scope a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S11.1).
+        static member tryOfWire (tag : int) : ParameterScope option =
+            match tag with
+            | 1 -> Some ItemScope
+            | 2 -> Some MaterialScope
+            | 3 -> Some SessionBlockScope
+            | 4 -> Some ExperimentScope
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | ItemScope -> "Item"
+            | MaterialScope -> "Material"
+            | SessionBlockScope -> "Session"
+            | ExperimentScope -> "Experiment"
+
+        /// Every scope in tag order (spec 0050 S11.1).
+        static member all : ParameterScope list = [ ItemScope; MaterialScope; SessionBlockScope; ExperimentScope ]
+
+    /// A study's unknown by its owner: an item's parameter or an opened material version's (spec 0050 S11.1; 001 §L).
+    type StudyParameterRef =
+        | ItemParameterRef of item : ItemId * name : ParameterName
+        | MaterialParameterRef of material : MaterialVersionId * name : ParameterName
+
+        member this.name : ParameterName =
+            match this with
+            | ItemParameterRef (_, name) -> name
+            | MaterialParameterRef (_, name) -> name
+
+        /// `item <GUID> <name>` or `material <GUID> v<n> <name>` (spec 0050 S11.1).
+        member this.describe : string =
+            match this with
+            | ItemParameterRef (item, name) -> $"item {item.value} {name.value}"
+            | MaterialParameterRef (material, name) ->
+                let version = material.version.value.ToString(CultureInfo.InvariantCulture)
+                $"material {material.materialId.value} v{version} {name.value}"
+
+    /// A scope the study sets on one of its unknowns (spec 0050 S11.1; 001 §L).
+    type ScopedParameter =
+        {
+            parameter : StudyParameterRef
+            scope : ParameterScope
+        }
+
+    /// An explicit constraint, `CPL2.δ = CPL1.δ`: the follower takes the leader's value (spec 0050 S11.1; 001 §L).
+    type ParameterLink =
+        {
+            follower : StudyParameterRef
+            leader : StudyParameterRef
+        }
+
+    /// How one session block's gain is known, as the study sets it (spec 0050 S11.1).
+    type SessionGainSetting =
+        {
+            session : SessionName
+            model : SessionGainModel
+        }
+
+    /// How a study's unknowns are fitted, all at once or stage by stage; its disk tag is an int, 1 to 2 in case order
+    /// (spec 0050 S11.1; 001 §L; S11.3 runs them).
+    type FitMode =
+        | JointFit
+        | StagedFit
+
+        member this.value : int =
+            match this with
+            | JointFit -> 1
+            | StagedFit -> 2
+
+        /// The mode a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S11.1).
+        static member tryOfWire (tag : int) : FitMode option =
+            match tag with
+            | 1 -> Some JointFit
+            | 2 -> Some StagedFit
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | JointFit -> "Joint"
+            | StagedFit -> "Staged"
+
+        /// Every mode in tag order (spec 0050 S11.1).
+        static member all : FitMode list = [ JointFit; StagedFit ]
+
+    /// The factor a residual is weighted by: finite and above zero (spec 0050 S11.1; 001 §L).
+    type ResidualWeight =
+        | ResidualWeight of float
+
+        member this.value : float = let (ResidualWeight weight) = this in weight
+
+        static member tryCreate (value : float) : Result<ResidualWeight, StudyError> =
+            if Double.IsFinite value && value > 0.0 then
+                Ok (ResidualWeight value)
+            else
+                let rendered = value.ToString("R", CultureInfo.InvariantCulture)
+                Error (InvalidResidualWeightErr $"{rendered} is not a finite number above zero")
+
+        static member unit : ResidualWeight = ResidualWeight 1.0
+
+    /// One experiment's residual weight in a study (spec 0050 S11.1; 001 §L).
+    type ExperimentWeightSetting =
+        {
+            experiment : ExperimentName
+            weight : ResidualWeight
+        }
+
+    /// One detector's residual weight in a study (spec 0050 S11.1; 001 §L).
+    type DetectorWeightSetting =
+        {
+            detector : ItemId
+            weight : ResidualWeight
+        }
+
+    /// A study's fit mode, its residual weights and the experiments it leaves out (spec 0050 S11.1; 001 §L).
+    type StudyFitSettings =
+        {
+            mode : FitMode
+            experimentWeights : ExperimentWeightSetting list
+            detectorWeights : DetectorWeightSetting list
+            disabled : ExperimentName list
+        }
+
+        /// A joint fit with no weight set and nothing left out (spec 0050 S11.1).
+        static member initial : StudyFitSettings =
+            {
+                mode = JointFit
+                experimentWeights = []
+                detectorWeights = []
+                disabled = []
+            }
+
+    /// The study-local working copy of an opened material version, stored in the study file (spec 0050 S11.1; 001 §I).
+    type OpenedMaterial =
+        {
+            version : MaterialVersionId
+            name : EntryName
+            crystal : CrystalParameters
+            parameters : Parameter list
+        }
+
+    /// A named set of one kit's experiments fitted together, with its opened materials, scopes, links, session gains,
+    /// fit settings and notes; its fit runs are their own files (spec 0050 S11.1, S11.3; 001 §L).
+    type Study =
+        {
+            name : StudyName
+            experiments : ExperimentName list
+            materials : OpenedMaterial list
+            scopes : ScopedParameter list
+            links : ParameterLink list
+            sessionGains : SessionGainSetting list
+            settings : StudyFitSettings
+            notes : StudyNotes
+        }
+
+        /// CreateStudy's pure half: the study of `experiments` in order, each once, nothing opened, scoped or linked.
+        /// Refused: a name whose `<name>.study-json` a `held` study's equals ignoring case, as every study file shares
+        /// the kit root; then the first experiment `kitExperiments` lacks (spec 0050 S11.1; 001 §P).
+        static member create
+            (name : StudyName)
+            (experiments : ExperimentName list)
+            (held : Study list)
+            (kitExperiments : Experiment list)
+            : Result<Study, StudyError> =
+            let sameFile (study : Study) : bool =
+                String.Equals(study.name.fileStem.value, name.fileStem.value, StringComparison.OrdinalIgnoreCase)
+
+            let inKit (run : ExperimentName) : bool = kitExperiments |> List.exists (fun experiment -> experiment.name = run)
+
+            match held |> List.tryFind sameFile, experiments |> List.tryFind (fun run -> not (inKit run)) with
+            | Some study, _ ->
+                let file = StudyKitFile.fileNameOf study.name.fileStem
+                Error (DuplicateStudyNameErr $"'{name.value}' beside '{study.name.value}': both are stored as {file.value}, ignoring case")
+            | None, Some missing ->
+                Error (UnknownStudyExperimentErr $"'{missing.value}' is not among the kit's {kitExperiments.Length} experiments")
+            | None, None ->
+                Ok
+                    {
+                        name = name
+                        experiments = List.distinct experiments
+                        materials = []
+                        scopes = []
+                        links = []
+                        sessionGains = []
+                        settings = StudyFitSettings.initial
+                        notes = StudyNotes.none
+                    }
+
+        /// `StudySession.splitAll` of the study's experiments as `kitExperiments` holds them, in study order
+        /// (spec 0050 S11.1).
+        member this.sessionsIn (kitExperiments : Experiment list) : StudySession list =
+            this.experiments
+            |> List.choose (fun run -> kitExperiments |> List.tryFind (fun experiment -> experiment.name = run))
+            |> StudySession.splitAll
+
+        /// The session's gain model as the study sets it, else a free gain fitted with the unknowns (spec 0050 S11.1).
+        member this.gainModelOf (session : SessionName) : SessionGainModel =
+            match this.sessionGains |> List.tryFind (fun setting -> setting.session = session) with
+            | Some setting -> setting.model
+            | None -> FreeSessionGain

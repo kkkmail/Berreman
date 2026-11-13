@@ -220,6 +220,7 @@
         <Compile Include="ExperimentMatrixTests.fs" />
         <Compile Include="StagedMuellerPathTests.fs" />
         <Compile Include="StudySessionTests.fs" />
+        <Compile Include="StudyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
