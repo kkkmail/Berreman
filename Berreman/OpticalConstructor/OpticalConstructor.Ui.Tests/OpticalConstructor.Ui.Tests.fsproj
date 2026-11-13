@@ -276,6 +276,7 @@
         <!-- Spec 0038 Part C (step 004): the standalone diagnostic-launcher
              executable under test (TestLauncherWindow + its App lifetime). -->
         <ProjectReference Include="..\OpticalConstructor.TestWindows.App\OpticalConstructor.TestWindows.App.fsproj" />
+        <ProjectReference Include="..\..\BerremanTestSupport\BerremanTestSupport.fsproj" />
     </ItemGroup>
 
 </Project>

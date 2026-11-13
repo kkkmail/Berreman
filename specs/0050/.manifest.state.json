@@ -2,8 +2,8 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0050\\.manifest",
   "branch": "0050",
   "started_utc": "2026-11-05T11:30:30Z",
-  "last_updated_utc": "2026-11-13T02:30:51Z",
-  "cumulative_wall_seconds": 478247.891581499,
+  "last_updated_utc": "2026-11-13T02:47:48Z",
+  "cumulative_wall_seconds": 479264.096984799,
   "completed_slices": [
     {
       "index": 0,
@@ -2419,11 +2419,18 @@
       "commit": "f178062022cc668a291e6b63895a7f8fe31a4a10",
       "manual": false,
       "utc": "2026-11-13T02:30:51Z"
+    },
+    {
+      "index": 345,
+      "path": "specs\\0050\\.slices\\0346.slice-md",
+      "commit": "667e80b18a69bfd2fefc7d847efd622bac67c9de",
+      "manual": false,
+      "utc": "2026-11-13T02:47:47Z"
     }
   ],
   "current_slice": {
-    "index": 345,
-    "path": "specs\\0050\\.slices\\0346.slice-md",
+    "index": 346,
+    "path": "specs\\0050\\.slices\\0347.slice-md",
     "status": "running",
     "reason": "",
     "worker_logs": "",
@@ -2444,23 +2451,23 @@
       }
     ],
     "phase": "finalize",
-    "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+    "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
     "review_epoch": 1,
     "review_cycle": 1,
     "review_attestation": {
-      "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
-      "slice_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0346.slice-md",
-      "slice_sha256": "d6828ecf889316a811e7b762d9ef9f427f6d06298cc98b829ad5a8834304d2be",
-      "gate_snapshot_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0346.gates",
-      "gate_snapshot_sha256": "b6d5c31818e49a090321a3de320177a212d6505a34ef6146fa4ecc7b7b41c13d",
+      "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
+      "slice_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0347.slice-md",
+      "slice_sha256": "4094d07e906c0ca3086a0907f904374280d0ee320990e9707cfc61c70d23f518",
+      "gate_snapshot_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0347.gates",
+      "gate_snapshot_sha256": "c4ecc0ef5dfab3d0df9cba0f701c7e8fe0dc1f3bb5e8a8c61619ddfb67d5833c",
       "review_epoch": 1,
       "review_cycle": 1,
       "critic_artifacts": [],
-      "judge_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0346-01-code-judge.md",
-      "judge_sha256": "b7293304c721dcbee92fc2423025adce46e369d237e4cb4289f3716dcf2d3c35",
+      "judge_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0347-01-code-judge.md",
+      "judge_sha256": "8b38e42777668560ea1459e98978b9cadb6ff1aa4c70ae6f2314f9c2aa1c4a85",
       "verdict": "review-green",
       "mode": "full",
-      "timestamp_utc": "2026-11-13T02:40:35.654656+00:00",
+      "timestamp_utc": "2026-11-13T02:59:51.816140+00:00",
       "resolved_agents": [
         "code_judge"
       ]
@@ -2473,11 +2480,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 3.699607899878174,
+        "elapsed_sec": 3.7400155002251267,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "0be88f915c0087a8f42cdf883121271749fcf20b8fbadb87104215977ac94190",
         "contract": {
           "command": "dotnet build Berreman.slnx -c Release -nologo -v:m",
@@ -2488,12 +2495,12 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:40:40.932209+00:00"
+        "timestamp_utc": "2026-11-13T02:59:57.097163+00:00"
       }
     ],
     "build_repair_attempts": 0,
     "current_failed_build_gate": null,
-    "verification_gate_cursor": 22,
+    "verification_gate_cursor": 23,
     "verification_evidence": [
       {
         "gate": "elevation",
@@ -2501,11 +2508,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 220.11686450010166,
+        "elapsed_sec": 216.54571340000257,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "2a49709324ea912aa29a65e426507048f55e318f814079fb9517342ea0e55a06",
         "contract": {
           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004",
@@ -2516,51 +2523,353 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993064+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.707839+00:00"
       },
       {
-        "gate": "unit-tests",
+        "gate": "ui-smoke",
         "phase": "verify",
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 177.620736700017,
+        "elapsed_sec": 224.25396190024912,
         "detail": "passed",
-        "counting_stdout": "Running tests from C:\\GitHub\\Berreman\\Berreman\\BerremanTests\\bin\\x64\\Release\\net10.0\\BerremanTests.dll (net10.0|x64)\nC:\\GitHub\\Berreman\\Berreman\\BerremanTests\\bin\\x64\\Release\\net10.0\\BerremanTests.dll (net10.0|x64) passed (2m 56s 500ms)\n\n  In process file artifacts produced:\n    - C:\\GitHub\\Berreman\\Berreman\\BerremanTests\\TestResults\\unit-tests.trx\n\nTest run summary: Passed!\n  total: 7\n  failed: 0\n  succeeded: 7\n  skipped: 0\n  duration: 2m 57s 010ms\n\n\n",
+        "counting_stdout": "Running tests from C:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Ui.Tests\\bin\\x64\\Release\\net10.0\\OpticalConstructor.Ui.Tests.dll (net10.0|x64)\nC:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Ui.Tests\\bin\\x64\\Release\\net10.0\\OpticalConstructor.Ui.Tests.dll (net10.0|x64) passed (3m 43s 111ms)\n\n  In process file artifacts produced:\n    - C:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Ui.Tests\\TestResults\\ui-smoke.trx\n\nTest run summary: Passed!\n  total: 258\n  failed: 0\n  succeeded: 258\n  skipped: 0\n  duration: 3m 43s 637ms\n\n\n",
         "case_observation": {
-          "slice": "specs/0050/.slices/0346.slice-md",
-          "slice_sha256": "d6828ecf889316a811e7b762d9ef9f427f6d06298cc98b829ad5a8834304d2be",
-          "descriptor_sha256": "1df9dcaa64344a4ecfccf264c078bca71efe7f223e54de7f9098d831733cc20e",
-          "report": "Berreman/BerremanTests/TestResults/unit-tests.trx",
-          "report_sha256": "6f50efa4847950b8df73f1da91e6b1e55f2fc5085f0b8d8b9e3db6d4bcf2ee84",
-          "captured_utc": "2026-11-13T02:47:21.660911+00:00",
-          "report_mtime_ns": 1794538040266031700,
+          "slice": "specs/0050/.slices/0347.slice-md",
+          "slice_sha256": "4094d07e906c0ca3086a0907f904374280d0ee320990e9707cfc61c70d23f518",
+          "descriptor_sha256": "9e02e699c9a831d295634ab916b086305e1a92d92aa8bd9bc679b2f532d53230",
+          "report": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/TestResults/ui-smoke.trx",
+          "report_sha256": "d178640e26f9d5a62f04ad2a5c612d19aeae6d1e63165746074315c679e03ea8",
+          "captured_utc": "2026-11-13T03:07:20.932788+00:00",
+          "report_mtime_ns": 1794539239487709100,
           "outcomes": {
-            "BerremanTests.AbsorbingBiaxialInverseTests.normalized data is markedly blind to isotropic absorption, and absolute throughput restores it": "passed",
-            "BerremanTests.AbsorbingBiaxialInverseTests.absorption and refraction do NOT share principal axes, which is what makes this crystal triclinic-absorbing": "passed",
-            "BerremanTests.AbsorbingBiaxialInverseTests.the scaled parameter space round-trips all fifteen coordinates and a unit step moves exactly one": "passed",
-            "BerremanTests.AbsorbingBiaxialInverseTests.all fifteen parameters are observable and the problem is conditioned well enough to solve": "passed",
-            "BerremanTests.AbsorbingBiaxialInverseTests.the absorbing sample attenuates, and every configuration stays physically realizable": "passed",
-            "BerremanTests.AbsorbingBiaxialInverseTests.the absorbing measurement set recovers all FIFTEEN material constants from a perturbed start": "passed",
-            "BerremanTests.AbsorbingBiaxialInverseTests.the REAL part of rho has no first-order effect, so circular dichroism is not expressible through it": "passed"
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance: the Library window backs up and restores the app-scope library through its buttons": "passed",
+            "OpticalConstructor.Ui.Tests.SetupGridPanelTests.pressing Setup grid, items, an angle and Generate records the grid's setups in the kit": "passed",
+            "OpticalConstructor.Ui.Tests.ImportWizardTests.acceptance: the import wizard window maps a picked file and its Attach reaches the kit window as messages": "passed",
+            "OpticalConstructor.Ui.Tests.RayPositionControlsTests.the element-movement screen mounts the shared ray-position control": "passed",
+            "OpticalConstructor.Ui.Tests.InverseConstructorTests.the inverse workbench renders the collection builder without throwing": "passed",
+            "OpticalConstructor.Ui.Tests.RibbonPaneTests.selecting each bay in turn shows exactly that bay's content and no other pane, with no recycling error": "passed",
+            "OpticalConstructor.Ui.Tests.CategoryEditorWindowTests.acceptance: Rename edits a category name in place through updateCategory": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.spec 0038 (033): a dirty Cancel confirm \u2014 Keep editing returns, then Discard closes": "passed",
+            "OpticalConstructor.Ui.Tests.LightSourceEditorTests.a user source and a seeded lithography source bind to the table's source and resolve": "passed",
+            "OpticalConstructor.Ui.Tests.LayerBandsControlsTests.the LayerBands view renders a titled stack of bands": "passed",
+            "OpticalConstructor.Ui.Tests.WorkbenchInfoAndCaptureTests.the menu's Choose\u2026 hands the Library the element's current binding": "passed",
+            "OpticalConstructor.Ui.Tests.ElementMenuTests.the Rotation bay's checkbox switches every element to rotate about its incident face": "passed",
+            "OpticalConstructor.Ui.Tests.SlotBarTests.pressing Record experiment twice records two experiments over the active setup": "passed",
+            "OpticalConstructor.Ui.Tests.RendererTestTests.the page exposes the SHARED renderer control (rail / cap / transparency sliders)": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.flipping a series to the right axis moves its scatter to plot.Axes.Right": "passed",
+            "OpticalConstructor.Ui.Tests.DataLocationsWindowTests.the Data locations window opens once through the registry": "passed",
+            "OpticalConstructor.Ui.Tests.SolverHandoffWindowTests.a valid experiment shows a ready status; a missing file and a range mismatch show their typed message": "passed",
+            "OpticalConstructor.Ui.Tests.SmokeTests.app host opens the launcher with the persisted theme without throwing": "passed",
+            "OpticalConstructor.Ui.Tests.ElementRendererBindingTests.the wireframe renderer dashes an unbound element's box edges and leaves a bound one solid": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.forgetting a live key on close makes the next open create afresh": "passed",
+            "OpticalConstructor.Ui.Tests.RotationControlsTests.arming Reset turns the two buttons into the Yes/No confirmation in place (no rename exception)": "passed",
+            "OpticalConstructor.Ui.Tests.WireUiFinalCompositionTests.both faceted windows render in Select state over the app scope": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsControlsTests.every selected row offers the Edit verb and a click dispatches editMaterial": "passed",
+            "OpticalConstructor.Ui.Tests.ItemsPanelTests.pressing Add item, a model, a label and Add records the item in the kit": "passed",
+            "OpticalConstructor.Ui.Tests.SnapToBeamTests.the snap-to-beam window host opens and renders headlessly": "passed",
+            "OpticalConstructor.Ui.Tests.DataStepTests.pressing a matrix entry reviews that experiment": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.Main: Render bay, swap the renderer, then back to Rotation does not crash (ribbon recycling)": "passed",
+            "OpticalConstructor.Ui.Tests.KitStartWindowTests.acceptance: Open kit from zip extracts a sent kit and opens it in the constructor of the screen's mode": "passed",
+            "OpticalConstructor.Ui.Tests.FacetedTreeControlsTests.the FacetedTree view mounts every declared automation id and each click dispatches its matching handler": "passed",
+            "OpticalConstructor.Ui.Tests.MainWorkbenchTests.headless acceptance: both workbench tabs are gone, both strip buttons ride the ribbon row, and the table canvas persists": "passed",
+            "OpticalConstructor.Ui.Tests.SnapToReflectedTests.the snap-to-reflected window host opens and renders headlessly": "passed",
+            "OpticalConstructor.Ui.Tests.TableRotationTests.Shift + a real button click rotates by 5 degrees, not 15": "passed",
+            "OpticalConstructor.Ui.Tests.SampleLibraryControlsTests.the Samples view mounts every UiIds control and each click dispatches its matching handler": "passed",
+            "OpticalConstructor.Ui.Tests.SetupSaveLoadTests.the setup row renders the active setup, its name field, Create setup, Save setup and the saved setups": "passed",
+            "OpticalConstructor.Ui.Tests.ElementRotationTests.the element rotation window host opens and renders headlessly": "passed",
+            "OpticalConstructor.Ui.Tests.EmbeddedChartTests.the embedded n/k chart renders one frame with n on the left and k on the right (non-dispersive)": "passed",
+            "OpticalConstructor.Ui.Tests.WireUi0040CompositionTests.composition acceptance (013): a Mirror Sample editor over the app scope pins R on and shows no T control": "passed",
+            "OpticalConstructor.Ui.Tests.SourceAndDetectorMoveTests.the Move bay shows the x / y / z bar for the source and the uncapped along-beam bar for a detector": "passed",
+            "OpticalConstructor.Ui.Tests.WireUiCompositionTests.composition acceptance: Categories\u2026 on the REAL Materials window opens the real Category editor over the root-wired CategoryProxy": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.spec 0038 (033): the window chrome (OnClosing) is equally gated": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.the Inverse button opens the inverse constructor scene": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the renderer button opens its test window": "passed",
+            "OpticalConstructor.Ui.Tests.CategoryControlsTests.the Category view mounts every UiIds control and an Add click dispatches the add handler": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryControlsTests.a leaf-row membership shift re-renders without a styled-element rename throw": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.acceptance: an item added in a constructor window is a kit file with its model's snapshot, and the window reopened lists it": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (023): an older sample version opens VIEW-ONLY inline while the latest stays editable": "passed",
+            "OpticalConstructor.Ui.Tests.RibbonPaneTests.the ribbon realizes only the initially-selected bay's content in one keyed slot": "passed",
+            "OpticalConstructor.Ui.Tests.CategoryEditorWindowTests.acceptance: removing a referenced category surfaces the block and leaves the list unchanged": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (019): deleting the target row first makes the Select return a NO-OP plus the status line": "passed",
+            "OpticalConstructor.Ui.Tests.LightSourceEditorTests.the editor window stores a typed source on Save and closes": "passed",
+            "OpticalConstructor.Ui.Tests.LayerBandsControlsTests.the Details bay renders the bound multilayer sample's bands and description": "passed",
+            "OpticalConstructor.Ui.Tests.WorkbenchInfoAndCaptureTests.hovering an element shows what it is, and its menu says the same, wrapped, at most 460 px wide": "passed",
+            "OpticalConstructor.Ui.Tests.ElementMenuTests.right-clicking an element on the real Main view opens its menu, whose rows switch the ray": "passed",
+            "OpticalConstructor.Ui.Tests.SlotBarTests.pressing a chip and an item swaps the table to a kit setup that holds it": "passed",
+            "OpticalConstructor.Ui.Tests.RendererTestTests.the renderer test window host opens and renders headlessly": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.dispatching OpenExperimentChartWindow actually constructs a ChartWindow": "passed",
+            "OpticalConstructor.Ui.Tests.DataLocationsWindowTests.pressing Open folder hands that location's folder to the explorer": "passed",
+            "OpticalConstructor.Ui.Tests.SolverHandoffWindowTests.the window mounts carrying its id, the summary list, the solver-comes-later message, and each status row": "passed",
+            "OpticalConstructor.Ui.Tests.ElementRendererBindingTests.the shape renderer draws an unbound element dashed+ghosted, a bound one solid, a lens normally": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.acceptance: Add twice creates two NewUnsaved editors whose distinct upfront Guids persist through addMaterial": "passed",
+            "OpticalConstructor.Ui.Tests.RotationControlsTests.holding an axis modifier lights up that axis's buttons only, and releasing reverts": "passed",
+            "OpticalConstructor.Ui.Tests.WireUiFinalCompositionTests.the launcher and both constructor states render over ONE root-composed app scope": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsControlsTests.the Materials view mounts every UiIds control and each click dispatches its matching handler": "passed",
+            "OpticalConstructor.Ui.Tests.DataStepTests.pressing Review shows the experiment's points and their chart": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.the Main scene renders its add/remove palette (the only UI difference from the test scene)": "passed",
+            "OpticalConstructor.Ui.Tests.KitStartWindowTests.New kit and Open kit open the folder the picker answers": "passed",
+            "OpticalConstructor.Ui.Tests.FacetedTreeControlsTests.the filter box never commits per keystroke \u2014 Enter commits once, blur commits the current text": "passed",
+            "OpticalConstructor.Ui.Tests.TableRotationTests.a real Shift+wheel notch rotates ONLY R1 by exactly 5 degrees": "passed",
+            "OpticalConstructor.Ui.Tests.SampleLibraryControlsTests.with no selection the row-targeted verbs are inert while Add and Make-multilayer stay live": "passed",
+            "OpticalConstructor.Ui.Tests.ElementRotationTests.a real click selects the nearest element": "passed",
+            "OpticalConstructor.Ui.Tests.EmbeddedChartTests.the embedded n/k chart draws n and k and rasterizes for every transcendental model kind": "passed",
+            "OpticalConstructor.Ui.Tests.WireUi0040CompositionTests.composition acceptance (013): a Plate Sample editor over the app scope renders R/T checkboxes and sets its substrate through the Materials Select window": "passed",
+            "OpticalConstructor.Ui.Tests.SourceAndDetectorMoveTests.the Rotation bay offers the R1 / R2 locks for an element, not for the table, and survives switching": "passed",
+            "OpticalConstructor.Ui.Tests.WireUiCompositionTests.composition acceptance: Add and Edit on the REAL Main window open both real editor windows through the default launchers, and the root couples materials to the live samples": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.the window mounts with every slice-mandated UiId present": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the element-rotation button opens its test window": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryControlsTests.the Select bay survives select, bind, and kind-change re-renders": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.acceptance: choosing a kit whose window is open activates that window and opens no second one": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.pressing the Data step shows the data files and the Split a file by key button": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance: the by-kind faceted tree renders every entry kind with counts over the whole corpus": "passed",
+            "OpticalConstructor.Ui.Tests.CategoryEditorWindowTests.acceptance: Add then Save grows the category list through addCategory": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance: Save UPDATES an existing sample in place through SampleProxy.updateSample": "passed",
+            "OpticalConstructor.Ui.Tests.LayerBandsControlsTests.the empty LayerBands view renders just the title, no bands": "passed",
+            "OpticalConstructor.Ui.Tests.WorkbenchInfoAndCaptureTests.the capture step appears only once something to vary is chosen": "passed",
+            "OpticalConstructor.Ui.Tests.ElementMenuTests.the Main view draws the orientation markers on the selected element only": "passed",
+            "OpticalConstructor.Ui.Tests.RendererTestTests.the shape renderer draws an element code label (LP) headlessly; the wireframe renderer does not": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.returning from polar to XY restores the cartesian axes and data-fit limits": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.acceptance: two different editor keys create two windows \u2014 while the same minted id activates": "passed",
+            "OpticalConstructor.Ui.Tests.RotationControlsTests.clicking the armed buttons runs confirm (Yes) / cancel (No), not the original Reset actions": "passed",
+            "OpticalConstructor.Ui.Tests.WireUiFinalCompositionTests.the root window-launcher factory opens and renders Materials, Library, the three editors, and the SolverHandoff": "passed",
+            "OpticalConstructor.Ui.Tests.DataStepTests.the Data step renders a split and Apply split attaches its matched group": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.the table+element window host opens and renders headlessly": "passed",
+            "OpticalConstructor.Ui.Tests.KitStartWindowTests.pressing a row's star, its Remove from history and a present row sends StarKit, ForgetKit and OpenKit": "passed",
+            "OpticalConstructor.Ui.Tests.FacetedTreeControlsTests.the selected node's row renders the chosen fill plus a thicker border while every other row stays idle": "passed",
+            "OpticalConstructor.Ui.Tests.TableRotationTests.a real click-and-drag PANS the table across the screen": "passed",
+            "OpticalConstructor.Ui.Tests.ElementRotationTests.a real Ctrl+Alt+wheel zooms only the selected element, Ctrl+Alt+Shift zooms all": "passed",
+            "OpticalConstructor.Ui.Tests.EmbeddedChartTests.the Materials view panel embeds the shared AvaPlot for a non-dispersive entry (glass)": "passed",
+            "OpticalConstructor.Ui.Tests.WireUi0040CompositionTests.composition acceptance (013): the Material editor composes over the app scope with a wrapping description and restricted gyration/mu tabs": "passed",
+            "OpticalConstructor.Ui.Tests.WireUiCompositionTests.composition acceptance: the REAL Main window renders every ribbon bay, with the Select bay and the Materials / Library windows over the root-wired stores": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.the Gyration tab appears exactly when optically active": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the test-windows app host opens the test launcher as its startup window": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryControlsTests.the Select bay shows the pending description, then a Confirm click binds the valueId": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.acceptance: in a kit window, Record experiment twice, a chip swap and Record experiment again write two setups and three experiments, and the reopened window lists them": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.headless: removing a sample through the confirm gate drops its row in the same render pass": "passed",
+            "OpticalConstructor.Ui.Tests.CategoryEditorWindowTests.the window mounts carrying the CategoryEditorWindow id and the CategoryControls surface": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (019): a material saved through the Material editor appears after the sample editor's ACTIVATION re-query": "passed",
+            "OpticalConstructor.Ui.Tests.ElementMenuTests.the Main view scrolls, and the Experiments bay shows only the captures the detectors allow": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.the Experiments bay lists candidates and a click picks the element": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.real launcher: a second open of the same key ACTIVATES the live shown window \u2014 one factory call": "passed",
+            "OpticalConstructor.Ui.Tests.RotationControlsTests.the bar reflects a changed r3Locked prop from the host (no stale per-element lock)": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.a kit whose snapshots the library holds byte for byte confirms every reuse row before opening": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.Shift + a real button click rotates the selection by 5 degrees": "passed",
+            "OpticalConstructor.Ui.Tests.KitStartWindowTests.Open kit from zip asks for a zip, then a folder, and starts one extraction of that zip into that folder": "passed",
+            "OpticalConstructor.Ui.Tests.FacetedTreeControlsTests.gated materialization shows the Show-Search button INSTEAD of tree rows and its click dispatches requestBuild": "passed",
+            "OpticalConstructor.Ui.Tests.TableRotationTests.a real clean click selects the table": "passed",
+            "OpticalConstructor.Ui.Tests.ElementRotationTests.a real Shift+wheel rotates ONLY the selected element's R1 by exactly 5 degrees": "passed",
+            "OpticalConstructor.Ui.Tests.EmbeddedChartTests.the Material editor preview embeds the shared AvaPlot for a non-dispersive default and a transcendental model": "passed",
+            "OpticalConstructor.Ui.Tests.WireUi0040CompositionTests.composition acceptance (013): the Materials and Library windows open from the App root and render the collapsed tree with a visible selection": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.a non-editable entry opens view-only with no Save affordance and no ladder": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the element-movement button opens its test window": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.acceptance: the Data step splits a lab file across the kit's experiments, excludes a point and corrects a setup, all kept in the kit": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (017): an under-threshold kind shows the quick-pick strip beside Choose\u2026": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (019): Choose material\u2026 opens the Materials window in Select state targeted at the row \u2014 the return binds it and becomes the chosen material": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.selecting a previously added experiment loads it for editing": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.real launcher: closing the window unregisters it \u2014 the next open creates afresh": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.the Main ribbon shows the bay tabs and reveals ONLY the selected bay's controls": "passed",
+            "OpticalConstructor.Ui.Tests.KitStartWindowTests.acceptance: New kit opens the new kit in the constructor of the screen's mode, bumps the history and closes the screen": "passed",
+            "OpticalConstructor.Ui.Tests.FacetedTreeControlsTests.a parent node renders a disclosure chevron whose click dispatches toggleNode; a leaf renders none": "passed",
+            "OpticalConstructor.Ui.Tests.TableRotationTests.a real Ctrl+Shift+wheel rotates ONLY R2 and Alt+wheel rotates ONLY R3": "passed",
+            "OpticalConstructor.Ui.Tests.ElementRotationTests.Shift + a real button click rotates the selected element by 5 degrees, not 15": "passed",
+            "OpticalConstructor.Ui.Tests.EmbeddedChartTests.the embedded n/k chart renders one frame for a dispersive built-in (silicon)": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.Cancel on a kit open elsewhere opens nothing": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.acceptance: unchecking a toggle restores the default model losslessly": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the table-rotation button opens its test window": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.a two-variable experiment recorded through the bay keeps its scan, role, session and notes in its kit file": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (017): a second Choose\u2026 RE-TARGETS the live Select window and the handle survives reference-keyed": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance: select-by-material bulk set-thickness updates only the matching layers": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.ChartWindow constructs and really renders a live experiment chart": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.acceptance: a Select-state open follows the step-005 switch \u2014 ShowDialog owned by the requester under modal, unowned Show under modeless": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.the palette's polarizer trio and sample buttons add pre-bound / unbound elements (018)": "passed",
+            "OpticalConstructor.Ui.Tests.FacetedTreeControlsTests.the manual range box commits its raw text on Enter only \u2014 never per keystroke": "passed",
+            "OpticalConstructor.Ui.Tests.TableRotationTests.the table rotation window host opens and renders headlessly": "passed",
+            "OpticalConstructor.Ui.Tests.EmbeddedChartTests.the Materials view panel embeds the shared AvaPlot for a dispersive entry (silicon)": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.acceptance: Recreate library from catalogues keeps the old file in Backups, opens a new library and enables the buttons": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.spec 0038 (033): a dirty Cancel shows the confirm; Keep editing returns; Discard closes without saving": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the table-and-element-rotation button opens its test window": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.a constructor window's kit bar offers Send kit, and Copy experiments only to a kit opened read-write": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (016): a vanished target element makes the Select return a NO-OP plus a status line \u2014 never a throw": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (019): a material added while the editor is open appears through the SELECT-RETURN re-query": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.clicking Add in the Experiments bay adds the experiment to the collection": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.real launcher: a stale window's close never drops its successor's registration": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.clicking an element then Shift+wheel rotates that element, not the table": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.acceptance: the eps branch offers Constant and Dispersive as two mutually-exclusive options": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the snap-to-reflected button opens its test window": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.acceptance: a kit open elsewhere offers Open read-only and Cancel in one row, and Open read-only opens it without writing": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.Close kit closes the window and releases the kit": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (023): marking a sample inactive hides it, the toggle reveals it badged, and its reference still resolves": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.the QWOT entry derives the read-only thickness in nanometres and Set thickness applies it": "passed",
+            "OpticalConstructor.Ui.Tests.ImportDialogTests.acceptance: the import dialog window renders its rows with Apply and Cancel in one row, and Apply imports the chosen entries and closes it": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.the Experiments bay shows the intensity polyline for a varied polarizer": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.acceptance (016): a second Select-state open RE-TARGETS the existing single instance \u2014 no second factory call": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.a real Shift+wheel rotates the table (table selected at start)": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.the editor is a two-pane split whose full-height n/k chart renders one frame": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the snap-to-beam button opens its test window": "passed",
+            "OpticalConstructor.Ui.Tests.ScrollExtentTests.Main: every bay leaves the whole page reachable \u2014 the table below a tall bay included": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.Materials from the launcher then the constructor strip activates ONE single instance": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.pressing the kit bar's buttons sends their messages": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance: Remove on a protected entry surfaces the typed refusal and changes nothing": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance: Save persists a NEW sample through SampleProxy.addSample and closes": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.toggling the T-R-both capture (series count) re-renders without a crash": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.acceptance: a second open of the same WindowKey activates the live window instead of creating": "passed",
+            "OpticalConstructor.Ui.Tests.TableAndElementRotationTests.a real drag pans the table": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.one frame renders per preview tab (isotropic, biaxial, active, magnetic)": "passed",
+            "OpticalConstructor.Ui.Tests.TestLauncherTests.the test launcher renders all seven scene buttons under a headless frame": "passed",
+            "OpticalConstructor.Ui.Tests.ScrollExtentTests.wheeling down over the table scrolls the page until the whole table is visible, then zooms it": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.the Materials button opens the single-instance Materials window": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.acceptance: activating a constructor window offers the kit files changed outside the app, and Reload reads them in": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (002): the tree opens collapsed and the entries chevron toggles its leaves in the same render pass": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.Cancel on a dirty editor shows the discard confirm, and Discard closes without touching the store": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.removing a collected experiment re-renders without a name-collision crash": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.acceptance: Edit of the same material twice ACTIVATES one editor window \u2014 never a second copy": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.spec 0040 (007): the description box carries wrapping so it grows multiline rather than clipping": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.a kit can be opened again once its window is closed": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.pressing Send kit asks for a zip named for the kit and starts the send, and Cancel cancels it": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (017): binding through the strip and through the Choose\u2026 Select window land the IDENTICAL valueId": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance: Make-multilayer opens the editor showing the seeded 2-layer period and Save persists a NEW sample": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.removing a scene element re-renders the Experiments bay without a crash": "passed",
+            "OpticalConstructor.Ui.Tests.WindowLauncherTests.acceptance: a sample Add opened through the launcher persists through addSample under its minted id": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.acceptance: enabling activity on a uniaxial medium offers only the uniaxial gyration classes": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.pressing the flow strip's steps shows the Items panel, the Experiments bay and the table": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (016): the Select state shows the Select-Close pair and the NON-REMOVABLE kind constraint \u2014 everything else IS the ordinary window": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.the Main button opens the kit the picker answers, with its experiments": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (010): a Plate editor renders both emission checkboxes; a T click clears T, leaves R, and dirties the editor": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.the ChartWindow polar toggle and axis editing run without throwing": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.acceptance: the activity Dispersive sub-toggle swaps each gyration component for a formula editor and back": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.pressing Copy experiments, a toggle and Copy brings the experiment into the kit": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (016): Select returns the highlighted entry through the TARGETED dispatch into the workbench and closes": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.the Library button opens the single-instance Library window": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (010): a Mirror editor shows the R emission checkbox fixed on and disabled, with no T control": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.pressing Add variable between two axes and Add records one two-variable experiment": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.the mu tab appears exactly when magnetic": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.acceptance: Attach data file maps a picked lab file through the wizard into the kit and validates it": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance: a source file dropped on the Library window opens the import dialog, and Apply adds it to the app library": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.acceptance: a start-up catalogue whose rows await a choice opens the import dialog from the launcher; Cancel keeps it waiting and Apply settles it": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (011): a film-less Plate sets its substrate through the Materials Select window": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.switching the varied element's kind re-renders without a name-collision crash": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.spec 0038 (033): a pristine editor's Cancel closes immediately": "passed",
+            "OpticalConstructor.Ui.Tests.KitWindowTests.pressing a mapping choice and Copy adds or maps the item as chosen": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (023): a protected library entry shows NO lifecycle verbs; a sample shows them": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.the Data locations link stays enabled when the library fails to open": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.the window mounts with every slice-mandated UiId present": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.the per-experiment View button opens a ChartWindow": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.acceptance: choosing biaxial exposes three principal-index fields": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance: the Library window lists a registered catalogue folder, and Unregister removes it and keeps its entries": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.the Main button opens the forward Main constructor scene": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.spec 0038 (033): a pristine editor's Cancel closes immediately": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.there is no separate Open chart window button; a collected experiment's View opens its chart": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.Save UPDATES an existing editable entry in place through MaterialProxy.saveMaterial (metadata-only mutate in place)": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.spec 0046: the element menu's Choose\u2026 specifies the LIGHT SOURCE through the same Select window as the Selector's": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance (019): a second Choose material\u2026 RE-TARGETS the live Materials window at the new row": "passed",
+            "OpticalConstructor.Ui.Tests.ExperimentControlsTests.the ChartWindow opens with the element picker, properties panel and polar toggle": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.the segment editor adds segments and a transcendental pick derives a dispersive eps": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance: the strip button opens ONE Library window and a second click ACTIVATES it": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.spec 0038 (033): the window chrome (OnClosing) is equally gated": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.acceptance: Save round-trips a NEW entry through MaterialProxy with its complexity": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.headless: a gated tree shows Show-Search with ZERO rows and the click materializes the entry leaves": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.the per-layer orientation editor exists for anisotropic layers and is REMOVED for isotropic ones": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.acceptance: the magnetic Dispersive sub-toggle swaps the Polder components for formula editors and back": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (016): a changed table selection cancels and CLOSES the open Select-state Library window": "passed",
+            "OpticalConstructor.Ui.Tests.SampleEditorWindowTests.acceptance: repeating a 2-layer selection K times expands the structure to 2K films": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialEditorWindowTests.a negative k surfaces the advisory gain warning and a non-negative k clears it": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.headless: Edit opens the real Sample editor on the selected sample and Make multilayer opens the seeded editor": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (017): an over-threshold kind offers Choose\u2026 alone \u2014 no quick-pick strip": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance: Add sample persists through the real editor into the shared store and the window lists it": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.headless: selecting an entry leaf shows the view panel with the kind, protection and full description": "passed",
+            "OpticalConstructor.Ui.Tests.LibraryWindowTests.acceptance (003): selecting an entry leaf highlights exactly that row with the chosen fill and a thicker border": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.a kit that cannot be opened is shown on the start screen and opens no window": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.a cancelled pick opens nothing": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.cancelling a kit's import dialog opens nothing and releases the kit": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.acceptance: a kit whose snapshot needs a decision opens the import dialog first, and Apply opens the constructor over its library": "passed",
+            "OpticalConstructor.Ui.Tests.LauncherTests.acceptance: the Data locations link opens one Data locations window listing the configured locations": "passed",
+            "OpticalConstructor.Ui.Tests.AppContextTests.acceptance: two Main windows over ONE app scope share the stores \u2014 a sample added through one is listed by the other": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (002): the tree opens collapsed and the entries chevron toggles its leaves in the same render pass": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (016): a changed table selection cancels and CLOSES the open Select-state Materials window too": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (016): a vanished target layer makes the Select return a NO-OP plus the editor status line \u2014 never a throw": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance: the verbs operate over the shared app-scoped stores \u2014 Add persists through the real editor, a referenced remove is refused inline": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance: a category renamed through the shared proxy re-labels the category facet and the create picker": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.headless: a gated tree shows Show-Search with ZERO rows and the click materializes the entry leaves": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance: a material file dropped on the Materials window opens the import dialog, and Apply adds it to the app library": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.headless: Edit opens the Material editor on the selected entry and Categories opens the Category editor": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance: the strip button opens ONE Materials window and a second click ACTIVATES it": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (016): Select returns the material through the TARGETED dispatch into the sample editor's layer and closes": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.headless: selecting an entry leaf shows the view panel with metadata and the embedded n-k chart": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (023): marking a material inactive hides it, the toggle reveals it badged, and its reference still resolves": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (003): selecting an entry leaf highlights exactly that row with the chosen fill and a thicker border": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (016): the Materials Select state shows the Select-Close pair and the non-removable constraint \u2014 the ordinary window otherwise": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance (023): an older material version opens VIEW-ONLY inline while the latest stays editable": "passed",
+            "OpticalConstructor.Ui.Tests.MaterialsWindowTests.acceptance: applying a facet constraint narrows the corpus in the same render pass and the chip restores it": "passed"
           },
           "granularity": "row",
-          "total": 7,
+          "total": 258,
           "failed": 0,
           "skipped": 0
         },
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
-        "descriptor_sha256": "1df9dcaa64344a4ecfccf264c078bca71efe7f223e54de7f9098d831733cc20e",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
+        "descriptor_sha256": "9e02e699c9a831d295634ab916b086305e1a92d92aa8bd9bc679b2f532d53230",
         "contract": {
-          "command": "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename unit-tests.trx {selector}",
-          "cwd": "Berreman/BerremanTests",
+          "command": "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-smoke.trx --filter-trait \"Category=ui-smoke\" {selector}",
+          "cwd": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
           "environment_names": [],
-          "attempt_timeout_seconds": 7200,
+          "attempt_timeout_seconds": 600,
           "filtered_timeout_seconds": null,
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993211+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708035+00:00"
+      },
+      {
+        "gate": "ui-tests",
+        "phase": "verify",
+        "status": "pass",
+        "outcome": "PASS",
+        "exit_code": 0,
+        "elapsed_sec": 70.92367709986866,
+        "detail": "passed",
+        "counting_stdout": "Running tests from C:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Ui.Tests\\bin\\x64\\Release\\net10.0\\OpticalConstructor.Ui.Tests.dll (net10.0|x64)\nC:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Ui.Tests\\bin\\x64\\Release\\net10.0\\OpticalConstructor.Ui.Tests.dll (net10.0|x64) passed (1m 09s 809ms)\n\n  In process file artifacts produced:\n    - C:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Ui.Tests\\TestResults\\ui-tests.trx\n\nTest run summary: Passed!\n  total: 14\n  failed: 0\n  succeeded: 14\n  skipped: 0\n  duration: 1m 10s 309ms\n\n\n",
+        "case_observation": {
+          "slice": "specs/0050/.slices/0347.slice-md",
+          "slice_sha256": "4094d07e906c0ca3086a0907f904374280d0ee320990e9707cfc61c70d23f518",
+          "descriptor_sha256": "faf0381f7c954a960937f18ba016dd5965a658130f77ef47deab1a6cc9967676",
+          "report": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/TestResults/ui-tests.trx",
+          "report_sha256": "75c540fa5ceae31a3fb693e69bb29ff0c6cf369fcb9c2c98a076b90ca238b004",
+          "captured_utc": "2026-11-13T03:08:33.719678+00:00",
+          "report_mtime_ns": 1794539312536065400,
+          "outcomes": {
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm_EUV__002.fsx \u2014 100 pairs of its own complex-index layers at 10 nm: R and T against incidence match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm_02.fsx \u2014 100 glass pairs on glass: R and T against incidence match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.LangasiteOnSilicon.fsx \u2014 a 10 \u00b5m langasite film on silicon at normal incidence: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm.fsx \u2014 the 41-layer quarter-wave stack: R and T against incidence match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm_02.fsx \u2014 100 glass pairs on glass: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm_EUV__002.fsx \u2014 100 pairs of its own complex-index layers: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm_EUV.fsx \u2014 100 Mo/Si pairs: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.Glass_Dispersive.fsx \u2014 a Sellmeier glass FILM at 79\u00b0: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.Glass.fsx \u2014 the same glass as a PLATE: R and T against incidence match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.Glass_Dispersive.fsx \u2014 the same glass as a PLATE at 79\u00b0: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm_EUV.fsx \u2014 100 Mo/Si pairs at 10 nm: R and T against incidence match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.LangasiteOnSilicon.fsx \u2014 the same film at 79\u00b0: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.MultilayerThinFilm.fsx \u2014 the 41-layer quarter-wave stack: R and T against wavelength match the script": "passed",
+            "OpticalConstructor.Ui.Tests.FsxAcceptanceTests.Glass.fsx \u2014 a 1 \u00b5m n = 1.78 FILM: R and T against incidence match the script": "passed"
+          },
+          "granularity": "row",
+          "total": 14,
+          "failed": 0,
+          "skipped": 0
+        },
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
+        "descriptor_sha256": "faf0381f7c954a960937f18ba016dd5965a658130f77ef47deab1a6cc9967676",
+        "contract": {
+          "command": "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename ui-tests.trx --filter-not-trait \"Category=ui-smoke\" --filter-not-trait \"Category=kit-acceptance\" {selector}",
+          "cwd": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests",
+          "environment_names": [],
+          "attempt_timeout_seconds": null,
+          "filtered_timeout_seconds": null,
+          "total_timeout_seconds": null,
+          "platform": "Windows-11-10.0.22631-SP0"
+        },
+        "timestamp_utc": "2026-11-13T03:08:56.708206+00:00"
       },
       {
         "gate": "invariant-s34-elev-list-empty",
@@ -2568,11 +2877,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1806296999566257,
+        "elapsed_sec": 0.18019819958135486,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "6e260c1cc9826f17efb0f885160b9480570dbd738fab69462b462dad6f9ca439",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVMRVYwIiAtLSBFbGV2YXRpb24vZWxldmF0aW9uLWtub3duLWZpbmRpbmdzLmpzb24=",
@@ -2583,7 +2892,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993253+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708250+00:00"
       },
       {
         "gate": "invariant-s34-no-vstest",
@@ -2591,11 +2900,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17053529992699623,
+        "elapsed_sec": 0.17317970003932714,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "a6cbfbe46acc7e576530349e96d99b8b260469199ac37481d4df53d9c2a204a2",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIk1pY3Jvc29mdC5ORVQuVGVzdC5TZGt8eHVuaXQucnVubmVyLnZpc3VhbHN0dWRpb3xYdW5pdC5Ta2lwcGFibGVGYWN0fElzVGVzdGluZ1BsYXRmb3JtQXBwbGljYXRpb24iIC0tICIqLmZzcHJvaiIgIioucHJvcHMiICIqLnRhcmdldHMi",
@@ -2606,7 +2915,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993298+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708298+00:00"
       },
       {
         "gate": "invariant-s34-no-kit-kit-json",
@@ -2614,11 +2923,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17868970008566976,
+        "elapsed_sec": 0.19401789968833327,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "2cf545137477e49258e694c87f6a9ec5494924abeceebc618be948a373ebe401",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImtpdC5raXQtanNvbiIgLS0gQmVycmVtYW4v",
@@ -2629,7 +2938,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993334+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708337+00:00"
       },
       {
         "gate": "invariant-s34-no-eps-axis-evaluated",
@@ -2637,11 +2946,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18810860021039844,
+        "elapsed_sec": 0.18138020019978285,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "ab1065e22dc128e10a37f4dbada73d02cd685d38e4360e7552e8f3cc2bbfdf48",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVwc0F4aXNFdmFsdWF0ZWQiIC0tIEJlcnJlbWFuLw==",
@@ -2652,7 +2961,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993372+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708375+00:00"
       },
       {
         "gate": "invariant-s34-complexity-mandatory",
@@ -2660,11 +2969,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18261530017480254,
+        "elapsed_sec": 0.18536300025880337,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "029fccdeca243d5850640651e80e878dbbfc160599515ddf440c44f4047053c6",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImNvbXBsZXhpdHkgPSAoTm9uZXxTb21lKSIgLS0gQmVycmVtYW4v",
@@ -2675,7 +2984,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993407+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708413+00:00"
       },
       {
         "gate": "invariant-s34-no-seeded-string-preset-ids",
@@ -2683,11 +2992,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18760750023648143,
+        "elapsed_sec": 0.18551870016381145,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "1569080b6d9759bb358bac57bae6264ef8526988dd6ab66a9b55c256fe02f24d",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIihzcmMtKDYwMHxoZW5lLXxhci00fGFyLTV8aGVjZC18ZGlvZGUtfHJ1YnktfHRpc2EtfG5keWFnLXxlci0xNTUwfGNvMi18aGctfGtyZi18YXJmLXxmMi0xfGV1di18YmV1di18eGUtbW9ub3xzdXBlcmNvbnRpbnV1bSl8ZGV0LShpbnRlbnNpdHl8ZWxsaXBzb21ldGVyKXxwb2wtKGxwfGNwLWxlZnR8Y3AtcmlnaHQpKSIgLS0gIkJlcnJlbWFuLyouZnMi",
@@ -2698,7 +3007,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993454+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708465+00:00"
       },
       {
         "gate": "invariant-s34-no-seeding-seam",
@@ -2706,11 +3015,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18642779998481274,
+        "elapsed_sec": 0.1876290002837777,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "cba5bf748752a60aa25f2c2e232649e12084c1ae71cf913e209bef63c29ffffd",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNlZWRpbmdQcm94eXxzZWVkQWxsfE9wdGljYWxDb25zdHJ1Y3Rvci5TZWVkaW5nIiAtLSBCZXJyZW1hbi8=",
@@ -2721,7 +3030,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993492+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708507+00:00"
       },
       {
         "gate": "invariant-s34-t1-no-code-seeds",
@@ -2729,11 +3038,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18480039993301034,
+        "elapsed_sec": 0.18200680008158088,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "a56993c6d386bed0ee24301a11351ab6db1dfc6bd71220b0470cac1ef3245f3b",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImxldCAoYnVpbHRJbkVudHJpZXN8c2VlZEVudHJpZXN8c3RhbmRhcmRDYXRlZ29yaWVzKSAiIC0tIEJlcnJlbWFuL09wdGljYWxDb25zdHJ1Y3Rvci8=",
@@ -2744,7 +3053,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993531+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708549+00:00"
       },
       {
         "gate": "invariant-s34-no-seed-modules",
@@ -2752,11 +3061,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18785730004310608,
+        "elapsed_sec": 0.18153299996629357,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "fe631443c3f7fec48bc0088570bbc1261d86529c31b34d002902f2edc448763e",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNlZWRTYW1wbGVzfFNlZWRTb3VyY2VzfFNlZWRFbnRyeUlkcyIgLS0gQmVycmVtYW4v",
@@ -2767,7 +3076,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993566+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708587+00:00"
       },
       {
         "gate": "invariant-s34-no-test-db",
@@ -2775,11 +3084,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18516119988635182,
+        "elapsed_sec": 0.18754180008545518,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "64a25bfde61b7854ef7d66389379681a6a3b94912600a0cacceb80c2f19f9eb4",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLXcgLUUgIlRlc3REYkNvbnRleHR8RGF0YWJhc2VQcm92aWRlcnxkYXRhYmFzZVByb3ZpZGVyfE9wdGljYWxDb25zdHJ1Y3Rvck1zc3FsIiAtLSBCZXJyZW1hbi8=",
@@ -2790,7 +3099,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993603+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708629+00:00"
       },
       {
         "gate": "invariant-s34-no-versions-in-use",
@@ -2798,11 +3107,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18164000008255243,
+        "elapsed_sec": 0.199333599768579,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "fd8e488d4d1802fe1be7dcd3f0ff42e4468a5b790e704ec13b2b37d53534ab01",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlZlcnNpb25zSW5Vc2V8dmVyc2lvbnNJblVzZVNlYW0iIC0tIEJlcnJlbWFuLw==",
@@ -2813,7 +3122,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993638+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708666+00:00"
       },
       {
         "gate": "invariant-s34-no-scene-collection-seams",
@@ -2821,11 +3130,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18450070032849908,
+        "elapsed_sec": 0.18498319992795587,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "ff284637550dab7070881bb24101f442b220b727d827e749af3a8190e80a7e8f",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNjZW5lUHJveHl8RXhwZXJpbWVudENvbGxlY3Rpb25Qcm94eSIgLS0gQmVycmVtYW4v",
@@ -2836,7 +3145,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993673+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708703+00:00"
       },
       {
         "gate": "invariant-s34-t4-no-ocproj",
@@ -2844,11 +3153,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18092320021241903,
+        "elapsed_sec": 0.18673459999263287,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "028faf6cfa7f7358f7a3224a63baa9ce26b9f82dbdb2b4404099b12704570414",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLWkgLUYgIm9jcHJvaiIgLS0gQmVycmVtYW4vT3B0aWNhbENvbnN0cnVjdG9yLw==",
@@ -2859,7 +3168,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993708+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708740+00:00"
       },
       {
         "gate": "invariant-s34-no-recent-json",
@@ -2867,11 +3176,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17888890020549297,
+        "elapsed_sec": 0.18204900017008185,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "ac265f0b5f13244302090bcfc3f191db1f95c3a8bcb433b1f9f10732993565cd",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgInJlY2VudC5qc29uIiAtLSBCZXJyZW1hbi8=",
@@ -2882,7 +3191,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993741+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708777+00:00"
       },
       {
         "gate": "invariant-s34-no-measured-element-of",
@@ -2890,11 +3199,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18383400002494454,
+        "elapsed_sec": 0.18544839974492788,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "4902fe9e625c988617ab17132cbd4f6ef44eb2df3f80b185965903ebe5c259a3",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIm1lYXN1cmVkRWxlbWVudE9mIiAtLSBCZXJyZW1hbi8=",
@@ -2905,7 +3214,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993774+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708813+00:00"
       },
       {
         "gate": "invariant-s34-t8-no-experiment-regex",
@@ -2913,11 +3222,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1798216998577118,
+        "elapsed_sec": 0.1800829996354878,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "661a03050ea91ecc997361f8e88ef7f7e3dbffc28e73546ee038c9d13ef2b124",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImV4cGVyaW1lbnRSZWdleCIgLS0gQmVycmVtYW4v",
@@ -2928,7 +3237,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993807+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708849+00:00"
       },
       {
         "gate": "invariant-s34-t9-no-mueller-data-set",
@@ -2936,11 +3245,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18390640011057258,
+        "elapsed_sec": 0.18295529996976256,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "977ffeb19a32cb70410bb6b867db0575b29013edf0bd188b4d334e796c76b96a",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIk11ZWxsZXJEYXRhU2V0IiAtLSBCZXJyZW1hbi8=",
@@ -2951,7 +3260,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993840+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708885+00:00"
       },
       {
         "gate": "invariant-s34-t9-no-data-mueller-matrix",
@@ -2959,11 +3268,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18080150010064244,
+        "elapsed_sec": 0.1815707003697753,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "9f602508ca18c99f9511a2a4114ff79b5fbde7f8c06e25237b5fdad58e75a1e4",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkRhdGEvTXVlbGxlck1hdHJpeCIgLS0gQmVycmVtYW4v",
@@ -2974,7 +3283,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993873+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708921+00:00"
       },
       {
         "gate": "invariant-s34-no-archive-data-proxy",
@@ -2982,11 +3291,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18565959995612502,
+        "elapsed_sec": 0.18189529981464148,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "936cfe300c0101b59cb7b7ad62acfc3a66f0478784e78bc1390cff05062e15c5",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIk11ZWxsZXJEYXRhUHJveHl8Y3JlYXRlQXJjaGl2ZUJhY2tlZCIgLS0gQmVycmVtYW4v",
@@ -2997,7 +3306,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993908+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.708969+00:00"
       },
       {
         "gate": "invariant-s34-t10-no-harness-noise",
@@ -3005,11 +3314,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1703435000963509,
+        "elapsed_sec": 0.17252689972519875,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "tree_fingerprint": "94df0b77d77178f1d45b51a58b1e59d50a187a847cceed03c777446619b8cccf",
         "descriptor_sha256": "5c2d7cbc57ecb31e303d57e717a487deb4e6a38161a2ef26f29bdf8a2e693063",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImxldCBub2lzeU9ic2VydmVBYnNvbHV0ZVdpdGgiIC0tIEJlcnJlbWFuL0JlcnJlbWFuVGVzdHMv",
@@ -3020,13 +3329,12 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:47:43.993943+00:00"
+        "timestamp_utc": "2026-11-13T03:08:56.709008+00:00"
       }
     ],
     "post_repair_route": null
   },
   "remaining_slices": [
-    "specs\\0050\\.slices\\0347.slice-md",
     "specs\\0050\\.slices\\0348.slice-md",
     "specs\\0050\\.slices\\0349.slice-md",
     "specs\\0050\\.slices\\0350.slice-md",
