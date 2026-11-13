@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Domain
 
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.MeasuredData
@@ -73,3 +75,33 @@ module PrefitChecks =
                         | EmptyDataFileErr _ -> UnreadableDataErr error
                         | DataRangeMismatchErr _
                         | DataUnitsMismatchErr _ -> InconsistentDataErr error)
+
+    /// Whether an experiment's data file is missing, changed since attach or changed since the last fit run read it;
+    /// derived before a fit, never stored (spec 0050 S11.2; 001 §E).
+    type DataChangeFlag =
+        | DataUnchangedFlag
+        | ChangedSinceAttachFlag of current : ContentHash
+        | ChangedSinceFitFlag of current : ContentHash
+        | MissingDataFileFlag
+
+        member this.text : string =
+            match this with
+            | DataUnchangedFlag -> "data unchanged"
+            | ChangedSinceAttachFlag _ -> "data changed since attach"
+            | ChangedSinceFitFlag _ -> "data changed since the last fit run"
+            | MissingDataFileFlag -> "data file missing"
+
+    type MappedAttachment with
+
+        /// Over S4.2's `status` of this attachment, in precedence: missing, changed since attach, then read at another hash
+        /// by the study's last fit run, whose attachments `fitted` holds, empty before its first (spec 0050 S11.2).
+        member this.changeWith (status : DataAttachmentStatus) (fitted : DataAttachment list) : DataChangeFlag =
+            match status with
+            | AttachedDataMissing -> MissingDataFileFlag
+            | AttachedDataChanged current -> ChangedSinceAttachFlag current
+            | AttachedDataUnchanged ->
+                let attached = this.attachment
+
+                match fitted |> List.tryFind (fun read -> read.path = attached.path && read.contentHash <> attached.contentHash) with
+                | Some _ -> ChangedSinceFitFlag attached.contentHash
+                | None -> DataUnchangedFlag

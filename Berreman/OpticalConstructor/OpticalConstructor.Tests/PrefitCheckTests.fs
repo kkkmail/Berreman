@@ -222,3 +222,42 @@ module PrefitCheckTests =
 
         for error, text in rendered do
             Assert.Equal(text, error.describe)
+
+    [<Fact>]
+    let ``a data file is flagged when it went missing, changed since attach, or changed since the last fit run read it`` () : unit =
+        let attachedHash : ContentHash = ContentHash "0f3c"
+        let changedHash : ContentHash = ContentHash "9a1d"
+        let otherFile : KitRelativePath = KitRelativePath "data/other.csv"
+
+        let data : MappedAttachment =
+            {
+                attachment = { path = goodFile; contentHash = attachedHash }
+                profile = ImportProfileName.intensitySeries
+                rows = AllDataRows
+                exclusions = []
+            }
+
+        let readAsAttached : DataAttachment = { path = goodFile; contentHash = attachedHash }
+        let readAtAnotherHash : DataAttachment = { path = goodFile; contentHash = changedHash }
+        let readOtherFile : DataAttachment = { path = otherFile; contentHash = changedHash }
+
+        // A missing file outranks a change since attach, which outranks a change since the last fit run.
+        for fitted in [ []; [ readAtAnotherHash ] ] do
+            Assert.Equal<DataChangeFlag>(MissingDataFileFlag, data.changeWith AttachedDataMissing fitted)
+            Assert.Equal<DataChangeFlag>(ChangedSinceAttachFlag changedHash, data.changeWith (AttachedDataChanged changedHash) fitted)
+
+        for fitted in [ []; [ readAsAttached ]; [ readOtherFile ] ] do
+            Assert.Equal<DataChangeFlag>(DataUnchangedFlag, data.changeWith AttachedDataUnchanged fitted)
+
+        Assert.Equal<DataChangeFlag>(ChangedSinceFitFlag attachedHash, data.changeWith AttachedDataUnchanged [ readOtherFile; readAtAnotherHash ])
+
+        let rendered : (DataChangeFlag * string) list =
+            [
+                DataUnchangedFlag, "data unchanged"
+                ChangedSinceAttachFlag changedHash, "data changed since attach"
+                ChangedSinceFitFlag attachedHash, "data changed since the last fit run"
+                MissingDataFileFlag, "data file missing"
+            ]
+
+        for flag, text in rendered do
+            Assert.Equal(text, flag.text)
