@@ -15,6 +15,7 @@ open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.RecoveryEnsembles
+open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.MatrixComparison
 open BerremanTests.InverseFitHarness
@@ -1298,7 +1299,7 @@ type MuellerInverseTests() =
         // The report lives in the SCALED space the fit searches, so each standard error is converted back
         // through that parameter's own scale before being compared with a relative scatter.
         let first = List.head experiments
-        let quality = fitReportOf first.fit
+        let quality = first.fit.report
 
         let predictions = predictedRelativeErrors quartz first.fit quality
         let observedScatter (name : ParameterName) : RelativeError = (rowFor table name |> expectOk).scatter
@@ -1347,15 +1348,16 @@ type MuellerInverseTests() =
         // the scales. With the conversion right, the route works — and the "five-digit cancellation
         // kills it" story was an artifact of the bug rather than a measurement.
         let birefringenceRow = (rowFor table (ParameterName "n_e - n_o") |> expectOk)
-        let pairVariance = combinationVariance quality (differenceWeights first.fit.scaling "n_e" "n_o")
+        let pairVariance =
+            combinationVariance quality (differenceWeights first.fit.scaling (ParameterName "n_e") (ParameterName "n_o") |> expectOk)
         let pairPrediction =
-            sqrt (max 0.0 pairVariance) * abs first.fit.scaling.scale.ordinaryIndex.value
+            sqrt (max 0.0 pairVariance.value) * abs first.fit.scaling.scale.ordinaryIndex.value
             / abs (quartz.extraordinaryIndex.value - quartz.ordinaryIndex.value)
         let pairRatio = pairPrediction / birefringenceRow.scatter.value
         Assert.True(
             pairRatio > 0.5 && pairRatio < 2.0,
             $"the pair-covariance route predicts {pairPrediction} against an observed {birefringenceRow.scatter.value} "
-            + $"(ratio {pairRatio}, raw quadratic form {pairVariance})")
+            + $"(ratio {pairRatio}, raw quadratic form {pairVariance.value})")
 
         // Finally, the interval the single experiment would have QUOTED must contain the truth — the
         // question an experimenter actually asks of a fit report.

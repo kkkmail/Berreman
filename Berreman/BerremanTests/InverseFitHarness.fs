@@ -28,14 +28,6 @@ module InverseFitHarness =
         | Ok value -> value
         | Error e -> failwith $"%A{e}"
 
-    /// FitQuality's report on a fit, at its solution.
-    let fitReportOf (fit : MuellerFitData<'Parameters>) : FitQuality.FitReport =
-        let (ScaledVector solution) = fit.solution.solution
-        FitQuality.reportFrom
-            (fun (OptimizationInterface.DesignVector v) -> fit.residual (ScaledVector v))
-            (OptimizationInterface.DesignVector solution)
-            fit.solution.finalResiduals
-
     /// How hard the residual pushes back along ONE DIRECTION in parameter space — `‖J·v‖` for a unit
     /// direction `v`, computed from the residual Jacobian.
     ///
@@ -86,47 +78,3 @@ module InverseFitHarness =
     ///
     /// Both suites use the same eight, which is what makes their ensembles directly comparable.
     let ensembleSeeds : NoiseSeed list = [ 1; 2; 3; 4; 5; 6; 7; 8 ] |> List.map NoiseSeed
-
-    /// What a SINGLE fit's own covariance says its uncertainty is, per fitted parameter, converted out
-    /// of the scaled space into the same RELATIVE units an ensemble scatter is quoted in.
-    ///
-    /// This is the quantity that can be checked against an ensemble and almost never is: a covariance
-    /// estimate is a PREDICTION ABOUT REPEAT EXPERIMENTS, and an ensemble is exactly a set of repeat
-    /// experiments, so the two are comparable and their agreement is a real result rather than an
-    /// assumption.
-    let predictedRelativeErrors
-        (truth : 'Parameters)
-        (fit : MuellerFitData<'Parameters>)
-        (quality : FitQuality.FitReport)
-        : (ParameterName * RelativeError) list =
-        fit.scaling.axes
-        |> List.mapi (fun i a ->
-            a.name,
-            quality.standardErrors.value.[i] * abs (a.read fit.scaling.scale) / abs (a.read truth) |> RelativeErr)
-
-    /// The variance a fit's covariance predicts for a LINEAR COMBINATION of the fitted parameters,
-    /// `wᵀ C w` — the only route this report offers to an error bar on a DERIVED quantity such as a
-    /// birefringence.
-    ///
-    /// It is offered rather than trusted. When two parameters are strongly correlated the combination
-    /// that isolates their difference is a near-total cancellation between comparable numbers, and the
-    /// covariance it is formed from has already spent its precision inverting `JᵀJ`. Both suites measure
-    /// what actually comes out; neither assumes it is usable.
-    let combinationVariance (quality : FitQuality.FitReport) (weights : float[]) : double =
-        let n = weights.Length
-        [ for i in 0 .. n - 1 do
-            for j in 0 .. n - 1 -> weights.[i] * quality.covariance.value.[i].[j] * weights.[j] ]
-        |> List.sum
-
-    /// The weight vector that picks out the DIFFERENCE of two named parameters, `plus − minus`, in the
-    /// axis order of a given scaling. Built from the axis names rather than from indices typed at the
-    /// call site, so it cannot silently address the wrong column.
-    let differenceWeights (scaling : ParameterScaling<'Parameters>) (plus : string) (minus : string) : float[] =
-        let index (name : string) =
-            match scaling.axes |> List.tryFindIndex (fun a -> a.name.value = name) with
-            | Some i -> i
-            | None -> failwith $"no fitted parameter named {name}"
-        let w = Array.zeroCreate scaling.dimension
-        w.[index plus] <- 1.0
-        w.[index minus] <- -1.0
-        w

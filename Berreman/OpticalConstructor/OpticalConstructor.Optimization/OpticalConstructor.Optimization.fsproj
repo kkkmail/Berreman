@@ -42,6 +42,7 @@
         <Compile Include="MuellerFitting.fs" />
         <Compile Include="BenchNoise.fs" />
         <Compile Include="RecoveryEnsembles.fs" />
+        <Compile Include="FitUncertainty.fs" />
         <Compile Include="Synthesis.fs" />
     </ItemGroup>
 

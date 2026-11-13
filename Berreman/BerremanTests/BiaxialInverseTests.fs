@@ -14,6 +14,7 @@ open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.RecoveryEnsembles
+open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
@@ -949,7 +950,7 @@ type BiaxialInverseTests() =
         // other seven actually produced. There are very few places where that comparison is available at
         // all.
         let first = List.head experiments
-        let quality = fitReportOf first.fit
+        let quality = first.fit.report
 
         let predictions = predictedRelativeErrors triclinic first.fit quality
         let observedScatter (name : ParameterName) : RelativeError = (rowFor table name |> expectOk).scatter

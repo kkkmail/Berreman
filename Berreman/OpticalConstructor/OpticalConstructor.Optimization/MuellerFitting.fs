@@ -19,6 +19,8 @@ module MuellerFitting =
         | MuellerNormalizationErr of InversionError
         /// No ensemble row has that name (`RecoveryEnsembles.rowFor`).
         | UnknownQuantityErr of ItemModels.ParameterName
+        /// No fitted parameter has that name (`FitUncertainty.differenceWeights`).
+        | UnknownAxisErr of ItemModels.ParameterName
 
     /// One measurement configuration, its incidence and sample azimuth given in degrees.
     /// `IncidenceAngle.create` folds the incidence into [0, 90) deg, so a negative one is not a tilt the other way.
@@ -140,6 +142,14 @@ module MuellerFitting =
         /// The root-mean-square residual entry at the solution — the noise level, when there is noise.
         member this.rmsResidual : double =
             sqrt (this.chiSquared / float (max 1 this.solution.finalResiduals.value.Length))
+
+        /// FitQuality's report at the solution, in the scaled space the fit searches (spec 0050 S10.1).
+        member this.report : FitQuality.FitReport =
+            let (ScaledVector solution) = this.solution.solution
+            FitQuality.reportFrom
+                (fun (OptimizationInterface.DesignVector v) -> this.residual (ScaledVector v))
+                (OptimizationInterface.DesignVector solution)
+                this.solution.finalResiduals
 
     /// Minimize a residual closure by ALGLIB Levenberg–Marquardt from the zero scaled vector, within the box.
     let fitWithResidual
