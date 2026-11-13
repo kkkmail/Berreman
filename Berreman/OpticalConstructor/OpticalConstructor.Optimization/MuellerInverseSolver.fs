@@ -18,6 +18,50 @@ open OpticalConstructor.Optimization.AlglibAdapter
 /// ellipsometry literature uses throughout; `AlglibAdapter` maps it onto `minlm`.
 module MuellerInverseSolver =
 
+    type IterationWatch with
+
+        /// The ALGLIB Levenberg–Marquardt `NonlinearSolverProxy` under this watch (spec 0050 S11.3). A cancelled solve
+        /// ends `OptimizationFailed`, so it answers `DidNotConvergeErr`; the caller tells a cancel by its own token.
+        member this.levenbergMarquardtSolver : NonlinearSolverProxy =
+            {
+                solveNonlinearLeastSquares =
+                    fun (request : NonlinearRequest) ->
+                        let (ScaledVector initial) = request.initial
+                        let (ScaledVector lower) = request.lowerBounds
+                        let (ScaledVector upper) = request.upperBounds
+                        if initial.Length = 0 then
+                            Error (InvalidNonlinearRequestErr "the initial parameter vector is empty")
+                        elif lower.Length <> initial.Length || upper.Length <> initial.Length then
+                            Error (
+                                InvalidNonlinearRequestErr
+                                    $"the bounds must match the parameter count: {initial.Length} parameters, {lower.Length} lower, {upper.Length} upper")
+                        else
+                            let optimizationRequest : OptimizationRequest =
+                                {
+                                    residual = fun (DesignVector x) -> request.residual (ScaledVector x)
+                                    jacobian = None
+                                    initial = DesignVector (Array.copy initial)
+                                    bounds = { lower = DesignVector (Array.copy lower); upper = DesignVector (Array.copy upper) }
+                                    inequalityTargets = []
+                                    method = LevenbergMarquardt
+                                    maxIterations = request.maxIterations
+                                    epsX = request.epsX
+                                }
+                            match optimizationRequest.optimizeWatched this with
+                            | Error (OptimizationRunExn reason) -> Error (DidNotConvergeErr reason)
+                            | Ok result ->
+                                match result.outcome with
+                                | OptimizationSucceeded ->
+                                    let (DesignVector solution) = result.solution
+                                    Ok
+                                        {
+                                            solution = ScaledVector solution
+                                            finalResiduals = result.finalResiduals
+                                            iterations = result.iterations
+                                        }
+                                | OptimizationFailed -> Error (DidNotConvergeErr $"%A{result.terminationReason}")
+            }
+
     /// Build the real ALGLIB Levenberg–Marquardt-backed `NonlinearSolverProxy`.
     ///
     /// The request's residual, start point and bounds are passed straight through to the existing
@@ -33,42 +77,4 @@ module MuellerInverseSolver =
     ///
     /// `terminationReason` is folded into the `Result`: a run that ALGLIB reports as unsuccessful becomes
     /// `DidNotConvergeErr` carrying that reason, rather than a solution the caller might mistake for converged.
-    let createAlglibLevenbergMarquardt () : NonlinearSolverProxy =
-        {
-            solveNonlinearLeastSquares =
-                fun (request : NonlinearRequest) ->
-                    let (ScaledVector initial) = request.initial
-                    let (ScaledVector lower) = request.lowerBounds
-                    let (ScaledVector upper) = request.upperBounds
-                    if initial.Length = 0 then
-                        Error (InvalidNonlinearRequestErr "the initial parameter vector is empty")
-                    elif lower.Length <> initial.Length || upper.Length <> initial.Length then
-                        Error (
-                            InvalidNonlinearRequestErr
-                                $"the bounds must match the parameter count: {initial.Length} parameters, {lower.Length} lower, {upper.Length} upper")
-                    else
-                        let optimizationRequest : OptimizationRequest =
-                            {
-                                residual = fun (DesignVector x) -> request.residual (ScaledVector x)
-                                jacobian = None
-                                initial = DesignVector (Array.copy initial)
-                                bounds = { lower = DesignVector (Array.copy lower); upper = DesignVector (Array.copy upper) }
-                                inequalityTargets = []
-                                method = LevenbergMarquardt
-                                maxIterations = request.maxIterations
-                                epsX = request.epsX
-                            }
-                        match optimizationRequest.optimize () with
-                        | Error (OptimizationRunExn reason) -> Error (DidNotConvergeErr reason)
-                        | Ok result ->
-                            match result.outcome with
-                            | OptimizationSucceeded ->
-                                let (DesignVector solution) = result.solution
-                                Ok
-                                    {
-                                        solution = ScaledVector solution
-                                        finalResiduals = result.finalResiduals
-                                        iterations = result.iterations
-                                    }
-                            | OptimizationFailed -> Error (DidNotConvergeErr $"%A{result.terminationReason}")
-        }
+    let createAlglibLevenbergMarquardt () : NonlinearSolverProxy = UnwatchedIterations.levenbergMarquardtSolver

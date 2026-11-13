@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Tests
 
+open System.Threading
 open Berreman.Constants
 open Berreman.MaterialProperties
 open Berreman.Media
@@ -7,6 +8,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.AlglibAdapter
 open OpticalConstructor.Optimization.DesignParameters
+open OpticalConstructor.Optimization.MuellerInverseSolver
 open OpticalConstructor.Optimization
 open Xunit
 
@@ -23,21 +25,22 @@ module OptimizationInterfaceTests =
 
     // ----------------------------------------------------------------- AC-G1
 
+    // r(x) = [x0 - 3; x1 + 1]; the least-squares minimum is at (3, -1).
+    let private acG1Request : OptimizationRequest =
+        {
+            residual = fun (DesignVector x) -> ResidualVector [| x.[0] - 3.0; x.[1] + 1.0 |]
+            jacobian = None
+            initial = DesignVector [| 0.0; 0.0 |]
+            bounds = noBounds 2
+            inequalityTargets = []
+            method = LevenbergMarquardt
+            maxIterations = IterationCount 100
+            epsX = StepTolerance 1.0e-9
+        }
+
     [<Fact>]
     let ``AC-G1 LevenbergMarquardt returns an OptimizationResult within maxIterations`` () =
-        // r(x) = [x0 - 3; x1 + 1]; the least-squares minimum is at (3, -1).
-        let residual (DesignVector x) = ResidualVector [| x.[0] - 3.0; x.[1] + 1.0 |]
-        let request =
-            {
-                residual = residual
-                jacobian = None
-                initial = DesignVector [| 0.0; 0.0 |]
-                bounds = noBounds 2
-                inequalityTargets = []
-                method = LevenbergMarquardt
-                maxIterations = IterationCount 100
-                epsX = StepTolerance 1.0e-9
-            }
+        let request = acG1Request
         match request.optimize () with
         | Ok result ->
             // The returned value is the G.1 `OptimizationResult` — no ALGLIB type
@@ -107,6 +110,81 @@ module OptimizationInterfaceTests =
         match request.optimize () with
         | Ok _ -> failwith "expected the failure to surface as Result.Error, not an escaped exception"
         | Error _ -> ()
+
+    // ----------------------------------------------------------------- spec 0050 S11.3, the watched solve
+
+    // r(x) = [10 (x1 - x0²); 1 - x0]: the Rosenbrock valley, far from its minimum (1, 1) at the start (-1.2, 1).
+    let private rosenbrock (x : float[]) : ResidualVector = ResidualVector [| 10.0 * (x.[1] - x.[0] * x.[0]); 1.0 - x.[0] |]
+
+    let private rosenbrockRequest : OptimizationRequest =
+        {
+            residual = fun (DesignVector x) -> rosenbrock x
+            jacobian = None
+            initial = DesignVector [| -1.2; 1.0 |]
+            bounds = noBounds 2
+            inequalityTargets = []
+            method = LevenbergMarquardt
+            maxIterations = IterationCount 400
+            epsX = StepTolerance 1.0e-12
+        }
+
+    /// Records every report and cancels its source at the first.
+    let private cancellingAtFirstReport
+        (source : CancellationTokenSource)
+        (reports : ResizeArray<IterationCount>)
+        : OptimizerIterationObserver =
+        {
+            reportIteration =
+                fun count ->
+                    reports.Add count
+                    match count with
+                    | IterationCount 1 -> source.Cancel()
+                    | _ -> ()
+            cancellation = source.Token
+        }
+
+    [<Fact>]
+    let ``a watched Levenberg-Marquardt solve reports each iteration and answers what the unwatched solve answers`` () =
+        let reports = ResizeArray<IterationCount>()
+        let observer = { reportIteration = reports.Add; cancellation = CancellationToken.None }
+        match acG1Request.optimize (), acG1Request.optimizeWatched (WatchedIterations observer) with
+        | Ok unwatched, Ok watched ->
+            Assert.Equal(unwatched.solution.value.Length, watched.solution.value.Length)
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) unwatched.solution.value watched.solution.value
+            Assert.Equal<IterationCount>(unwatched.iterations, watched.iterations)
+            Assert.Equal<TerminationReason>(unwatched.terminationReason, watched.terminationReason)
+            Assert.NotEmpty reports
+            // ALGLIB also reports its start point, so every iteration is reported and the count runs ahead of it.
+            Assert.True(reports.Count >= watched.iterations.value, $"{reports.Count} reports for {watched.iterations.value} iterations")
+            Assert.Equal<IterationCount list>([ for k in 1 .. reports.Count -> IterationCount k ], List.ofSeq reports)
+        | unwatched, watched -> failwith $"expected two Ok results, got {unwatched} and {watched}"
+
+    [<Fact>]
+    let ``a watched Levenberg-Marquardt solve stops when its cancellation is requested`` () =
+        use direct = new CancellationTokenSource()
+        let directReports = ResizeArray<IterationCount>()
+        match rosenbrockRequest.optimizeWatched (WatchedIterations (cancellingAtFirstReport direct directReports)) with
+        | Ok result ->
+            Assert.Equal<TerminationReason>(SearchCancelled, result.terminationReason)
+            Assert.Equal<OptimizationOutcome>(OptimizationFailed, result.outcome)
+            Assert.InRange(directReports.Count, 1, 2)
+        | Error e -> failwith $"expected Ok carrying SearchCancelled, got Error {e}"
+
+        use proxied = new CancellationTokenSource()
+        let proxiedReports = ResizeArray<IterationCount>()
+        let request : NonlinearRequest =
+            {
+                residual = fun (ScaledVector x) -> rosenbrock x
+                initial = ScaledVector [| -1.2; 1.0 |]
+                lowerBounds = ScaledVector [| -10.0; -10.0 |]
+                upperBounds = ScaledVector [| 10.0; 10.0 |]
+                maxIterations = IterationCount 400
+                epsX = StepTolerance 1.0e-12
+            }
+        let solver = (WatchedIterations (cancellingAtFirstReport proxied proxiedReports)).levenbergMarquardtSolver
+        match solver.solveNonlinearLeastSquares request with
+        | Error (DidNotConvergeErr _) -> Assert.InRange(proxiedReports.Count, 1, 2)
+        | other -> failwith $"expected DidNotConvergeErr, got %A{other}"
 
     // ----------------------------------------------------------------- AC-G2
 
