@@ -5,10 +5,12 @@ open System.Globalization
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MuellerReconstruction
+open OpticalConstructor.Domain.MuellerInverse
 
 /// A study: a named set of one kit's experiments fitted together, with its unknowns, scopes, links, sessions and
 /// opened materials (spec 0050 S11.1).
@@ -30,6 +32,16 @@ module Studies =
         | UnknownStudyExperimentErr of reason : string
         /// A residual weight that is not finite or not above zero.
         | InvalidResidualWeightErr of reason : string
+        /// A material whose physics is a complexity tree, which publishes no parameter axis.
+        | MaterialWithoutParametersErr of reason : string
+        /// A material version the study has already opened.
+        | MaterialAlreadyOpenErr of reason : string
+        /// A material version the study has not opened.
+        | UnknownStudyMaterialErr of reason : string
+        /// A parameter name that no component of an opened material has.
+        | UnknownStudyParameterErr of reason : string
+        /// A parameter state that breaks its rules.
+        | InvalidStudyParameterErr of reason : string
 
         member this.describe : string =
             match this with
@@ -40,6 +52,11 @@ module Studies =
             | DuplicateStudyNameErr reason -> $"the kit already has a study of that name: {reason}"
             | UnknownStudyExperimentErr reason -> $"the kit has no such experiment: {reason}"
             | InvalidResidualWeightErr reason -> $"the residual weight is not valid: {reason}"
+            | MaterialWithoutParametersErr reason -> $"the material publishes no parameter to fit: {reason}"
+            | MaterialAlreadyOpenErr reason -> $"the study already opens that material version: {reason}"
+            | UnknownStudyMaterialErr reason -> $"the study opens no such material version: {reason}"
+            | UnknownStudyParameterErr reason -> $"the study has no such parameter: {reason}"
+            | InvalidStudyParameterErr reason -> $"the parameter state is not valid: {reason}"
 
     /// The AIR runs that open and close a drifting session (spec 0050 S11.1).
     type AirRepeatPair =
@@ -345,6 +362,81 @@ module Studies =
                 disabled = []
             }
 
+    type ParameterAxis<'Parameters> with
+
+        /// The axis's read of `p` as a parameter's number: the one conversion from an axis read (spec 0050 S11.1).
+        member this.parameterValueOf (p : 'Parameters) : ParameterValue = ParameterValue (this.read p)
+
+        /// `p` with the axis written at a parameter's number: the one conversion back (spec 0050 S11.1).
+        member this.writeValue (value : ParameterValue) (p : 'Parameters) : 'Parameters = this.write value.value p
+
+    type CrystalParameters with
+
+        /// `axis` of a record lifted onto the crystal: the same name and field case, reading the record `recordOf`
+        /// finds, else `own`, and writing back `wrap` of it; a crystal of another case is left unchanged (spec 0050 S11.1).
+        static member private liftedAxis
+            (own : 'Record)
+            (recordOf : CrystalParameters -> 'Record option)
+            (wrap : 'Record -> CrystalParameters)
+            (axis : ParameterAxis<'Record>)
+            : ParameterAxis<CrystalParameters> =
+            let lifted (access : ParameterAccess<'Record, 'Value>) : ParameterAccess<CrystalParameters, 'Value> =
+                {
+                    read = fun crystal -> access.read (recordOf crystal |> Option.defaultValue own)
+                    write =
+                        fun value crystal ->
+                            match recordOf crystal with
+                            | Some record -> wrap (access.write value record)
+                            | None -> crystal
+                }
+
+            {
+                name = axis.name
+                field =
+                    match axis.field with
+                    | RefractionIndexField access -> RefractionIndexField (lifted access)
+                    | RhoValueField access -> RhoValueField (lifted access)
+                    | EpsValueField access -> EpsValueField (lifted access)
+            }
+
+        static member private uniaxialAxis (own : UniaxialParameters) (axis : ParameterAxis<UniaxialParameters>) : ParameterAxis<CrystalParameters> =
+            let recordOf (crystal : CrystalParameters) : UniaxialParameters option =
+                match crystal with
+                | UniaxialCrystal parameters -> Some parameters
+                | TriclinicCrystal _
+                | AbsorbingTriclinicCrystal _ -> None
+
+            CrystalParameters.liftedAxis own recordOf UniaxialCrystal axis
+
+        static member private triclinicAxis (own : TriclinicParameters) (axis : ParameterAxis<TriclinicParameters>) : ParameterAxis<CrystalParameters> =
+            let recordOf (crystal : CrystalParameters) : TriclinicParameters option =
+                match crystal with
+                | TriclinicCrystal parameters -> Some parameters
+                | UniaxialCrystal _
+                | AbsorbingTriclinicCrystal _ -> None
+
+            CrystalParameters.liftedAxis own recordOf TriclinicCrystal axis
+
+        static member private absorbingTriclinicAxis
+            (own : AbsorbingTriclinicParameters)
+            (axis : ParameterAxis<AbsorbingTriclinicParameters>)
+            : ParameterAxis<CrystalParameters> =
+            let recordOf (crystal : CrystalParameters) : AbsorbingTriclinicParameters option =
+                match crystal with
+                | AbsorbingTriclinicCrystal parameters -> Some parameters
+                | UniaxialCrystal _
+                | TriclinicCrystal _ -> None
+
+            CrystalParameters.liftedAxis own recordOf AbsorbingTriclinicCrystal axis
+
+        /// The record's axes in their order, generated onto the crystal; a study applies them to its own working copy
+        /// only (spec 0050 S11.1; 001 §N).
+        member this.parameterAxes : ParameterAxis<CrystalParameters> list =
+            match this with
+            | UniaxialCrystal own -> UniaxialParameters.axes |> List.map (CrystalParameters.uniaxialAxis own)
+            | TriclinicCrystal own -> TriclinicParameters.axes |> List.map (CrystalParameters.triclinicAxis own)
+            | AbsorbingTriclinicCrystal own -> AbsorbingTriclinicParameters.axes |> List.map (CrystalParameters.absorbingTriclinicAxis own)
+
     /// The study-local working copy of an opened material version, stored in the study file (spec 0050 S11.1; 001 §I).
     type OpenedMaterial =
         {
@@ -353,6 +445,47 @@ module Studies =
             crystal : CrystalParameters
             parameters : Parameter list
         }
+
+        /// OpenMaterial's working copy: one known parameter per generated axis of the crystal, in order; a complexity
+        /// tree publishes no axis and is refused (spec 0050 S11.1; 001 §I, §P).
+        static member openFrom (version : MaterialVersionId) (entry : MaterialEntry) : Result<OpenedMaterial, StudyError> =
+            match entry.physics with
+            | CrystalParameterPhysics crystal ->
+                Ok
+                    {
+                        version = version
+                        name = entry.name
+                        crystal = crystal
+                        parameters =
+                            crystal.parameterAxes
+                            |> List.map (fun axis -> ({ name = axis.name; state = KnownParameter (axis.parameterValueOf crystal) } : Parameter))
+                    }
+            | ComplexityPhysics _ ->
+                Error (MaterialWithoutParametersErr $"'{entry.name.value}' ({entry.id.value}) holds a complexity tree, not a crystal-parameter record")
+
+        /// The copy with that component's state replaced in place, so freeing one is its unknown state; refused when no
+        /// component has the name or the state breaks its rules (spec 0050 S11.1; 001 §I).
+        member this.withParameterState (name : ParameterName) (state : ParameterState) : Result<OpenedMaterial, StudyError> =
+            match this.parameters |> List.tryFind (fun parameter -> parameter.name = name) with
+            | None ->
+                let reference = MaterialParameterRef (this.version, name)
+                Error (UnknownStudyParameterErr $"{reference.describe} is not among the {this.parameters.Length} parameters of '{this.name.value}'")
+            | Some _ ->
+                ({ name = name; state = state } : Parameter).validate
+                |> Result.mapError (fun error -> InvalidStudyParameterErr error.describe)
+                |> Result.map (fun parameter ->
+                    { this with parameters = this.parameters |> List.map (fun held -> if held.name = name then parameter else held) })
+
+        /// The crystal with each component written through its generated axis at its parameter's current number, in
+        /// order: a known or calibrated value, an unknown's start (spec 0050 S11.1).
+        member this.currentCrystal : CrystalParameters =
+            let axes = this.crystal.parameterAxes
+
+            this.parameters
+            |> List.fold (fun (crystal : CrystalParameters) (parameter : Parameter) ->
+                match axes |> List.tryFind (fun axis -> axis.name = parameter.name) with
+                | Some axis -> axis.writeValue parameter.state.currentValue crystal
+                | None -> crystal) this.crystal
 
     /// A named set of one kit's experiments fitted together, with its opened materials, scopes, links, session gains,
     /// fit settings and notes; its fit runs are their own files (spec 0050 S11.1, S11.3; 001 §L).
@@ -414,6 +547,30 @@ module Studies =
                 let added = names |> List.filter (fun run -> not (List.contains run this.experiments)) |> List.distinct
                 Ok { this with experiments = this.experiments @ added }
 
+        /// OpenMaterial's pure half: the study with the version's working copy appended; refused when the study already
+        /// opens the version or `entry` publishes no parameter (spec 0050 S11.1; 001 §I, §P).
+        member this.openMaterial (version : MaterialVersionId) (entry : MaterialEntry) : Result<Study, StudyError> =
+            match this.materials |> List.tryFind (fun material -> material.version = version) with
+            | Some held -> Error (MaterialAlreadyOpenErr $"material {version.materialId.value} v{version.version.value} is opened as '{held.name.value}'")
+            | None ->
+                OpenedMaterial.openFrom version entry
+                |> Result.map (fun material -> { this with materials = this.materials @ [ material ] })
+
+        /// The study with that opened version's component state set in place by its working copy; refused when the
+        /// study does not open the version (spec 0050 S11.1; 001 §I).
+        member this.withMaterialParameterState
+            (version : MaterialVersionId)
+            (name : ParameterName)
+            (state : ParameterState)
+            : Result<Study, StudyError> =
+            match this.materials |> List.tryFind (fun material -> material.version = version) with
+            | None ->
+                Error (UnknownStudyMaterialErr $"material {version.materialId.value} v{version.version.value} is not among the study's {this.materials.Length} opened materials")
+            | Some material ->
+                material.withParameterState name state
+                |> Result.map (fun changed ->
+                    { this with materials = this.materials |> List.map (fun held -> if held.version = version then changed else held) })
+
         /// `StudySession.splitAll` of the study's experiments as `kitExperiments` holds them, in study order
         /// (spec 0050 S11.1).
         member this.sessionsIn (kitExperiments : Experiment list) : StudySession list =
@@ -456,3 +613,11 @@ module Studies =
                 schemaVersion = StudyFile.currentSchemaVersion
                 study = this
             }
+
+    type Sample with
+
+        /// The study's working copies of the material versions the sample is made of, in study order: every sample of an
+        /// opened material reads the same copy (`MaterialScope`) (spec 0050 S11.1; 001 §I).
+        member this.openedMaterialsIn (study : Study) : OpenedMaterial list =
+            let referenced = this.structure.referencedMaterialVersions
+            study.materials |> List.filter (fun material -> referenced.Contains material.version)

@@ -164,6 +164,11 @@ module StudySessionTests =
         let duplicateReason = "'QZ-LR' beside 'qz-lr': both are stored as qz-lr.study-json, ignoring case"
         let experimentReason = "'E9' is not among the kit's 3 experiments"
         let weightReason = "-1 is not a finite number above zero"
+        let complexityReason = "'Constant glass' (3e7a1c5b-9d2f-4a6e-b8c0-000000000001) holds a complexity tree, not a crystal-parameter record"
+        let openReason = "material 36100000-0000-4000-8000-000000000001 v1 is opened as 'Probe absorbing crystal'"
+        let materialReason = "material 36100000-0000-4000-8000-000000000002 v1 is not among the study's 1 opened materials"
+        let parameterReason = "material 36100000-0000-4000-8000-000000000001 v1 n_o is not among the 15 parameters of 'Probe absorbing crystal'"
+        let stateReason = "the parameter state is not valid: n3: the lower bound 1.8 is not below the upper bound 1.6"
         let rendered =
             [ (EmptyGainAnchorsErr emptyReason).describe
               (MissingAnchorGainErr missingReason).describe
@@ -171,7 +176,12 @@ module StudySessionTests =
               (InvalidStudyNameErr nameReason).describe
               (DuplicateStudyNameErr duplicateReason).describe
               (UnknownStudyExperimentErr experimentReason).describe
-              (InvalidResidualWeightErr weightReason).describe ]
+              (InvalidResidualWeightErr weightReason).describe
+              (MaterialWithoutParametersErr complexityReason).describe
+              (MaterialAlreadyOpenErr openReason).describe
+              (UnknownStudyMaterialErr materialReason).describe
+              (UnknownStudyParameterErr parameterReason).describe
+              (InvalidStudyParameterErr stateReason).describe ]
 
         Assert.Equal($"the gain model names no AIR run: {emptyReason}", rendered.[0])
         Assert.Equal($"the AIR run's gain is not known: {missingReason}", rendered.[1])
@@ -180,6 +190,11 @@ module StudySessionTests =
         Assert.Equal($"the kit already has a study of that name: {duplicateReason}", rendered.[4])
         Assert.Equal($"the kit has no such experiment: {experimentReason}", rendered.[5])
         Assert.Equal($"the residual weight is not valid: {weightReason}", rendered.[6])
+        Assert.Equal($"the material publishes no parameter to fit: {complexityReason}", rendered.[7])
+        Assert.Equal($"the study already opens that material version: {openReason}", rendered.[8])
+        Assert.Equal($"the study opens no such material version: {materialReason}", rendered.[9])
+        Assert.Equal($"the study has no such parameter: {parameterReason}", rendered.[10])
+        Assert.Equal($"the parameter state is not valid: {stateReason}", rendered.[11])
         Assert.Equal(rendered.Length, rendered |> List.distinct |> List.length)
 
     [<Fact>]

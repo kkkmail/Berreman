@@ -222,6 +222,7 @@
         <Compile Include="StudySessionTests.fs" />
         <Compile Include="StudyTests.fs" />
         <Compile Include="KitStudyFileTests.fs" />
+        <Compile Include="StudyMaterialTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
