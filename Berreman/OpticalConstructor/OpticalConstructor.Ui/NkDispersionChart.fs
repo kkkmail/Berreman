@@ -206,6 +206,18 @@ type MaterialComplexity with
         | Some (MuWithDispValue _) -> GyromagneticMuKind
         | None -> GyromagneticMuKind
 
+type MaterialPhysics with
+
+    /// The gyration components a VIEW-ONLY entry's physics admits (spec 0050 S11.1).
+    member this.gyrationComponents : GyrationComponent list =
+        match this with
+        | ComplexityPhysics complexity -> gyrationComponentsOfComplexity complexity
+
+    /// The Polder-μ kind a VIEW-ONLY entry's physics denotes (spec 0050 S11.1).
+    member this.muKind : MuKind =
+        match this with
+        | ComplexityPhysics complexity -> complexity.muKind
+
 /// The Polder-μ chart (shown only when the entry is magnetic), restricted to the components the
 /// entry's `MuKind` distinguishes (spec 0040 step 006): a SINGLE scalar μ series for `ScalarMuKind`
 /// (a scalar permeability is μ·I — one curve says everything), versus the real diagonal μ₁₁/μ₂₂/μ₃₃

@@ -275,14 +275,17 @@ type MaterialsWindowModel =
             | Error _ -> None
         | Select _, _ | Browse, None -> None
 
-    /// The selected entry when its complexity is LOSSLESSLY EDITABLE — the Edit verb's target. A
+    /// The selected entry when its physics is LOSSLESSLY EDITABLE — the Edit verb's target. A
     /// view-only entry offers NO Edit affordance (removed, not greyed). The gate is
-    /// `MaterialComplexity.isEditable` (MaterialComplexityEditor): a complexity that is not editable
-    /// term data (Silicon / Langasite carry published laws) stays view-only.
+    /// `MaterialPhysics.editableComplexityOpt` (MaterialComplexityEditor, spec 0050 S11.1): a physics
+    /// that is not editable term data (Silicon / Langasite carry published laws) stays view-only.
     member this.editableSelection : MaterialEntry option =
         match this.selectedEntry with
-        | Some entry when entry.complexity.isEditable -> Some entry
-        | Some _ | None -> None
+        | Some entry ->
+            match entry.physics.editableComplexityOpt with
+            | Some _ -> Some entry
+            | None -> None
+        | None -> None
 
     /// The ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass). A
     /// material present in `IncludeInactive` but NOT here has a retired latest version; that is how the
@@ -1323,12 +1326,14 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             |> List.tryPick (fun (vn, e) -> if vn = shownVersion then Some e else None)
             |> Option.defaultValue latestEntry
         let viewingOlder = shownVersion <> latestVersion
-        let anisotropy = shownEntry.complexity.anisotropy
+        let anisotropy = shownEntry.physics.anisotropy
         let chart = NkDispersionChart.nkDispersionChart anisotropy shownEntry.properties Nanometer MaterialEditorView.previewRange
         let editability =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
-            elif shownEntry.complexity.isEditable then ""
-            else " (view-only)"
+            else
+                match shownEntry.physics.editableComplexityOpt with
+                | Some _ -> ""
+                | None -> " (view-only)"
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [

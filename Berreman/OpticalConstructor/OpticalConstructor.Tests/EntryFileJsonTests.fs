@@ -63,7 +63,7 @@ module EntryFileJsonTests =
             name = EntryName name
             category = CategoryIds.crystal
             description = Some (EntryDescription $"{name}, a test material")
-            complexity = complexity
+            physics = ComplexityPhysics complexity
         }
 
     let private epsOnly (eps : EpsWithDispValue) : MaterialComplexity = { eps = eps; magnetic = None; active = None }

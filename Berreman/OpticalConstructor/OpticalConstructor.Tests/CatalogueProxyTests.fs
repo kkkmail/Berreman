@@ -51,7 +51,7 @@ module CatalogueProxyTests =
             name = EntryName "Langasite"
             category = CategoryIds.crystal
             description = Some (EntryDescription "Langasite, a test material")
-            complexity = { eps = EpsWithoutDispValue (UniaxialTransparent { ordinary = RefractionIndex 1.91; extraordinary = RefractionIndex 2.01 }); magnetic = None; active = None }
+            physics = ComplexityPhysics { eps = EpsWithoutDispValue (UniaxialTransparent { ordinary = RefractionIndex 1.91; extraordinary = RefractionIndex 2.01 }); magnetic = None; active = None }
         }
 
     let private quarterWaveCell : Sample =

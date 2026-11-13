@@ -237,6 +237,7 @@ module ExportImportTests =
                 | Ok imported ->
                     Assert.Equal(List.length entries, List.length imported)
                     for e in imported do
-                        Assert.Equal(vacuumPlaceholderComplexity, e.complexity)
+                        match e.physics with
+                        | ComplexityPhysics complexity -> Assert.Equal(vacuumPlaceholderComplexity, complexity)
         finally
             if File.Exists path.value then File.Delete path.value

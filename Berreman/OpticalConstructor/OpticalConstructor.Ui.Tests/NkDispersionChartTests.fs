@@ -298,3 +298,13 @@ module NkDispersionChartTests =
                 active = Some (PublishedLawRho LangasiteGyrationLaw)
             }
         Assert.Equal<GyrationComponent list>(allGyrationComponents, gyrationComponentsOfComplexity complexity)
+
+    [<Fact>]
+    let ``a complexity physics charts the gyration components and the mu kind of its complexity`` () =
+        // Spec 0050 S11.1: a complexity physics answers the chart's readers as its complexity does.
+        let complexity = complexityOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn; SetMagnetic MagneticOn ]
+        let physics = ComplexityPhysics complexity
+        Assert.Equal<GyrationComponent list>([ G11; G33 ], gyrationComponentsOfComplexity complexity)
+        Assert.Equal<GyrationComponent list>(gyrationComponentsOfComplexity complexity, physics.gyrationComponents)
+        Assert.Equal(ScalarMuKind, complexity.muKind)
+        Assert.Equal(complexity.muKind, physics.muKind)

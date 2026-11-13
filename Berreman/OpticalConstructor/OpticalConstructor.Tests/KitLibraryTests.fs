@@ -1019,7 +1019,7 @@ module KitLibraryTests =
             {
                 BuiltinCatalogue.material MaterialIds.silicon with
                     description = Some (EntryDescription "Latest library Silicon")
-                    complexity = (BuiltinCatalogue.material MaterialIds.glass152).complexity
+                    physics = (BuiltinCatalogue.material MaterialIds.glass152).physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial newer)
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some newer), session.materials.tryGetMaterial MaterialIds.silicon)

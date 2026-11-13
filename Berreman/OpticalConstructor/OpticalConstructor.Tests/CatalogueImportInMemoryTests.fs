@@ -425,7 +425,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let first = MaterialVersionId.firstOf material.id
@@ -478,7 +478,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let firstVersion = MaterialVersionId.firstOf firstId
@@ -615,7 +615,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let first = MaterialVersionId.firstOf labId
@@ -771,7 +771,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let first = MaterialVersionId.firstOf labId
@@ -781,10 +781,10 @@ type CatalogueImportContract () =
                     version = first.version.next
             }
         match stores.materials.resolveVersion first with
-        | Ok (Some original) -> Assert.Equal((BuiltinCatalogue.material MaterialIds.silicon).complexity, original.complexity)
+        | Ok (Some original) -> Assert.Equal((BuiltinCatalogue.material MaterialIds.silicon).physics, original.physics)
         | _ -> Assert.Fail("Pinned version 1 must remain resolvable with Silicon's physics.")
         match stores.materials.resolveVersion second with
-        | Ok (Some minted) -> Assert.Equal(langasite.complexity, minted.complexity)
+        | Ok (Some minted) -> Assert.Equal(langasite.physics, minted.physics)
         | _ -> Assert.Fail("Editing the pinned material must mint version 2 with Langasite's physics.")
 
         let sample = BuiltinCatalogue.sampleContentOver sampleId labId sampleName

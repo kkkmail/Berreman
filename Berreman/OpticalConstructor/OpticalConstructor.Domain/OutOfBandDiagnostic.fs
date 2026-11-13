@@ -84,7 +84,9 @@ module OutOfBandDiagnostic =
         static member ofEntry (entry : MaterialEntry) : ReachableMaterial =
             {
                 materialName = entry.name
-                definedSegments = ReachableMaterial.definedSegmentsOf entry.complexity
+                definedSegments =
+                    match entry.physics with
+                    | ComplexityPhysics complexity -> ReachableMaterial.definedSegmentsOf complexity
             }
 
     /// One material flagged out-of-band (spec 0038 step 031): its name and both

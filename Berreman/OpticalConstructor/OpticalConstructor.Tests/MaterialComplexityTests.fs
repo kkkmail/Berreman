@@ -13,12 +13,13 @@ open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Domain.LibraryFacets
 open Xunit
 
 /// Spec 0033 step 013 (AC-B7) — the `MaterialComplexity` edit-model option tree.
 /// `toProperties` MUST default absent magnetic/active options to the vacuum μ/ρ and
 /// assemble present options through `toMuWithDisp` / `toRhoWithDisp`; every
-/// re-expressed built-in's `complexity.toProperties` MUST reproduce the original
+/// re-expressed built-in's physics `toProperties` MUST reproduce the original
 /// engine preset's tensors at reference wavelengths.
 module MaterialComplexityTests =
 
@@ -117,7 +118,9 @@ module MaterialComplexityTests =
             ]
         for (label, id, original, grid) in cases do
             let entry = entryOf id
-            let rebuilt = entry.complexity.toProperties
+            let rebuilt =
+                match entry.physics with
+                | ComplexityPhysics complexity -> complexity.toProperties
             for w in grid do
                 let expected = original.getProperties w
                 Assert.True(propertiesClose 1e-12 (rebuilt.getProperties w) expected, $"{label}: toProperties must reproduce the preset at λ={w}")
@@ -384,3 +387,28 @@ module MaterialComplexityTests =
         let expected12 = Complex(0.0, absorbing.epsIm12.value)
         Assert.True(closeC 1e-15 actual11 expected11, $"absorbing: eps[0,0] = {actual11}, expected n1² + i·e11 = {expected11}")
         Assert.True(closeC 1e-15 actual12 expected12, $"absorbing: eps[0,1] = {actual12}, expected i·e12 = {expected12}")
+
+    [<Fact>]
+    let ``a complexity physics composes, classifies and offers its complexity as the complexity does`` () =
+        // Spec 0050 S11.1: each shared member of a complexity physics answers what its complexity answers.
+        let constantIsotropic =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = None
+            }
+        let uniaxialDispersive = derived (applied [ ChooseAnisotropy Uniaxial; SetDispersion DispersiveSegments ])
+        match uniaxialDispersive.eps with
+        | EpsWithDispValue (UniaxialDispersive _) -> ()
+        | other -> Assert.Fail($"expected a uniaxial dispersive eps, got %A{other}")
+        let w = WaveLength.nm 600.0<nm>
+        for complexity, anisotropy in [ constantIsotropic, Isotropic; uniaxialDispersive, Uniaxial ] do
+            let physics = ComplexityPhysics complexity
+            Assert.True(
+                propertiesClose 0.0 (complexity.toProperties.getProperties w) (physics.toProperties.getProperties w),
+                $"the physics must compose its complexity's properties at λ={w}")
+            Assert.Equal(anisotropy, complexity.anisotropy)
+            Assert.Equal(complexity.anisotropy, physics.anisotropy)
+            Assert.Equal<MaterialComplexity option>(Some complexity, physics.editableComplexityOpt)
+        let publishedGyration = { constantIsotropic with active = Some (PublishedLawRho LangasiteGyrationLaw) }
+        Assert.Equal<MaterialComplexity option>(None, (ComplexityPhysics publishedGyration).editableComplexityOpt)

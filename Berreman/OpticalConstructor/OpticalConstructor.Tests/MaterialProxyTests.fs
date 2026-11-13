@@ -24,7 +24,7 @@ module private MaterialProxyTestData =
         BuiltinCatalogue.material MaterialIds.glass200
 
     let glassPhysicsChanged : MaterialEntry =
-        { glass with complexity = otherPhysics.complexity }
+        { glass with physics = otherPhysics.physics }
 
     let glassRenamed : MaterialEntry =
         { glass with name = EntryName "Renamed glass (metadata only)" }
@@ -153,7 +153,7 @@ type MaterialProxyContract () =
         | Ok None -> ()
         | other -> Assert.Fail($"expected no version 2 after a no-op save, got %A{other}")
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(glass.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(glass.physics, e.physics)
         | other -> Assert.Fail($"expected version 1 intact, got %A{other}")
 
     [<Fact>]
@@ -177,7 +177,7 @@ type MaterialProxyContract () =
         | Error err -> Assert.Fail($"%A{err}")
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, proxy.resolveVersion (v2Id MaterialIds.glass152))
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(otherPhysics.physics, e.physics)
         | other -> Assert.Fail($"expected version 1 physics mutated in place, got %A{other}")
 
     [<Fact>]
@@ -187,13 +187,13 @@ type MaterialProxyContract () =
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(glass.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(glass.physics, e.physics)
         | other -> Assert.Fail($"expected version 1 frozen with original physics, got %A{other}")
         match proxy.resolveVersion (v2Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(otherPhysics.physics, e.physics)
         | other -> Assert.Fail($"expected version 2 with the new physics, got %A{other}")
         match proxy.tryGetMaterial MaterialIds.glass152 with
-        | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(otherPhysics.physics, e.physics)
         | other -> Assert.Fail($"expected the latest entry to be version 2, got %A{other}")
 
     [<Fact>]
@@ -207,7 +207,7 @@ type MaterialProxyContract () =
             Assert.Equal(List.length (BuiltinCatalogue.materials ()), List.length entries)
             let glassEntries = entries |> List.filter (fun e -> e.id = MaterialIds.glass152)
             Assert.Equal(1, List.length glassEntries)
-            Assert.Equal(otherPhysics.complexity, glassEntries.Head.complexity)
+            Assert.Equal(otherPhysics.physics, glassEntries.Head.physics)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
@@ -347,17 +347,17 @@ type MaterialProxyContract () =
 
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glassPhysicsChanged)
         match proxy.resolveVersion second with
-        | Ok (Some entry) -> Assert.Equal(glassPhysicsChanged.complexity, entry.complexity)
+        | Ok (Some entry) -> Assert.Equal(glassPhysicsChanged.physics, entry.physics)
         | other -> Assert.Fail($"expected a minted version 2, got %A{other}")
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glass)
         match proxy.resolveVersion second with
-        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
+        | Ok (Some entry) -> Assert.Equal(glass.physics, entry.physics)
         | other -> Assert.Fail($"expected version 2 to mutate in place, got %A{other}")
         match proxy.resolveVersion third with
         | Ok None -> ()
         | other -> Assert.Fail($"expected no version 3, got %A{other}")
         match proxy.resolveVersion first with
-        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
+        | Ok (Some entry) -> Assert.Equal(glass.physics, entry.physics)
         | other -> Assert.Fail($"expected version 1 to keep its original physics, got %A{other}")
 
         for version in [ missing; third ] do
@@ -591,7 +591,7 @@ type MaterialProxySqliteTests () =
         let first = MaterialVersionId.firstOf silicon.id
         let changed =
             {
-                renamed with complexity = (BuiltinCatalogue.material MaterialIds.langasite).complexity
+                renamed with physics = (BuiltinCatalogue.material MaterialIds.langasite).physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion first)
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial changed)

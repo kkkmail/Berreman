@@ -170,6 +170,13 @@ module LibraryFacets =
                 | UniaxialDispersive _ -> Uniaxial
                 | BiaxialDispersive _ -> Biaxial
 
+    type MaterialPhysics with
+
+        /// The anisotropy the physics denotes (spec 0050 S11.1).
+        member this.anisotropy : Anisotropy =
+            match this with
+            | ComplexityPhysics complexity -> complexity.anisotropy
+
     type ConstantEpsValue with
 
         /// The transparency the CONSTANT eps value denotes (the editor's
@@ -183,21 +190,29 @@ module LibraryFacets =
 
         /// The constant eps value tree of the entry, when it carries one.
         member private entry.constantEpsOpt : ConstantEpsValue option =
-            match entry.complexity.eps with
-            | EpsWithoutDispValue constant -> Some constant
-            | EpsWithDispValue _ -> None
+            match entry.physics with
+            | ComplexityPhysics complexity ->
+                match complexity.eps with
+                | EpsWithoutDispValue constant -> Some constant
+                | EpsWithDispValue _ -> None
 
         /// The dispersive eps segment tree of the entry, when it carries one.
         member private entry.dispersiveEpsOpt : EpsDispersiveValue option =
-            match entry.complexity.eps with
-            | EpsWithDispValue dispersive -> Some dispersive
-            | EpsWithoutDispValue _ -> None
+            match entry.physics with
+            | ComplexityPhysics complexity ->
+                match complexity.eps with
+                | EpsWithDispValue dispersive -> Some dispersive
+                | EpsWithoutDispValue _ -> None
 
         /// The optical-activity value tree of the entry, when it carries one.
-        member private entry.activeOpt : RhoWithDispValue option = entry.complexity.active
+        member private entry.activeOpt : RhoWithDispValue option =
+            match entry.physics with
+            | ComplexityPhysics complexity -> complexity.active
 
         /// The magnetic (Polder μ) value tree of the entry, when it carries one.
-        member private entry.magneticOpt : MuWithDispValue option = entry.complexity.magnetic
+        member private entry.magneticOpt : MuWithDispValue option =
+            match entry.physics with
+            | ComplexityPhysics complexity -> complexity.magnetic
 
     // =======================================================================
     // The MATERIAL facet catalogue (over MaterialEntry).
@@ -213,17 +228,16 @@ module LibraryFacets =
             extract = fun entry -> [ DiscreteValue (entry.category.categoryName categories).facetKey ]
         }
 
-    /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree. TOTAL
-    /// (spec 0040 Part B / operator 010/Q2): every entry carries a `complexity`
-    /// value tree, so the facet applies to ALL of them and `extract` reads
-    /// `complexity.anisotropy` for each.
+    /// Anisotropy — Isotropic/Uniaxial/Biaxial from the physics. TOTAL
+    /// (spec 0040 Part B / operator 010/Q2): every entry carries a physics, so the facet
+    /// applies to ALL of them and `extract` reads `physics.anisotropy` for each (spec 0050 S11.1).
     let private materialAnisotropyDef : AttributeDef<MaterialEntry> =
         {
             key = materialAnisotropyKey
             name = (FacetCaption "Anisotropy")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue entry.complexity.anisotropy.facetKey ]
+            extract = fun entry -> [ DiscreteValue entry.physics.anisotropy.facetKey ]
         }
 
     /// Constant vs dispersive — from the engine `properties`
@@ -255,10 +269,12 @@ module LibraryFacets =
             appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun entry ->
-                    match entry.dispersion, entry.constantEpsOpt with
-                    | ConstantMaterial, Some constant -> [ DiscreteValue constant.transparency.facetKey ]
-                    | ConstantMaterial, None
-                    | DispersiveMaterial, _ -> [ DiscreteValue Absorbing.facetKey ]
+                    match entry.physics with
+                    | ComplexityPhysics _ ->
+                        match entry.dispersion, entry.constantEpsOpt with
+                        | ConstantMaterial, Some constant -> [ DiscreteValue constant.transparency.facetKey ]
+                        | ConstantMaterial, None
+                        | DispersiveMaterial, _ -> [ DiscreteValue Absorbing.facetKey ]
         }
 
     /// Dispersion model — MULTI-VALUED per axis/segment (a dispersive

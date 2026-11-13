@@ -103,7 +103,7 @@ module LibraryFacetsTests =
             name = EntryName name
             category = CategoryIds.crystal
             description = None
-            complexity = complexity
+            physics = ComplexityPhysics complexity
         }
 
     let private modelOfKind (kindCode : string) : DispersionModel =
@@ -267,7 +267,7 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``the anisotropy facet applies to every entry and classifies the re-seeded presets`` () =
-        // Spec 0040 step 004: every built-in now carries a `complexity` value tree, so
+        // Spec 0040 step 004: every built-in now carries a physics (spec 0050 S11.1), so
         // the anisotropy facet — reading the eps CASE, never the engine tensor — applies
         // to ALL of them, including the former coded presets, and classifies them.
         let def = materialDef materialAnisotropyKey
@@ -282,9 +282,12 @@ module LibraryFacetsTests =
         // Spec 0040 step 004 acceptance: anisotropyOf classifies Silicon Isotropic,
         // Langasite Uniaxial and the Vacuum spacer Isotropic — from the value-tree
         // CASE, with NO engine-tensor evaluation.
-        Assert.Equal(Isotropic, siliconEntry.complexity.anisotropy)
-        Assert.Equal(Uniaxial, langasiteEntry.complexity.anisotropy)
-        Assert.Equal(Isotropic, vacuumEntry.complexity.anisotropy)
+        let anisotropyOf (entry : MaterialEntry) : Anisotropy =
+            match entry.physics with
+            | ComplexityPhysics complexity -> complexity.anisotropy
+        Assert.Equal(Isotropic, anisotropyOf siliconEntry)
+        Assert.Equal(Uniaxial, anisotropyOf langasiteEntry)
+        Assert.Equal(Isotropic, anisotropyOf vacuumEntry)
 
     [<Fact>]
     let ``the anisotropy facet classifies the encoded eps value-tree shape`` () =

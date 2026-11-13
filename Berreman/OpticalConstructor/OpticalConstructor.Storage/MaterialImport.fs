@@ -180,7 +180,7 @@ module MaterialImport =
                     name = name
                     category = category
                     description = Some (EntryDescription "Imported tabulated n,k (refractiveindex.info).")
-                    complexity = complexity
+                    physics = ComplexityPhysics complexity
                 }
 
     // ==========================================================================
@@ -453,7 +453,7 @@ module MaterialImport =
             name = EntryName $"Imported (refractiveindex.info formula %d{formula.value})"
             category = CategoryIds.glass
             description = Some (EntryDescription $"Imported %s{formula.family} (refractiveindex.info formula %d{formula.value}).")
-            complexity = complexity
+            physics = ComplexityPhysics complexity
         }
 
     type RefractiveIndexInfoText with

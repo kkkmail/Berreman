@@ -164,7 +164,7 @@ module DispersionModelsTests =
                 name = EntryName "Round-trip entry"
                 category = CategoryIds.glass
                 description = None
-                complexity = complexity
+                physics = ComplexityPhysics complexity
             }
         let lib : MaterialLibrary =
             {

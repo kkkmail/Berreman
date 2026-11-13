@@ -53,7 +53,7 @@ module OutOfBandDiagnosticTests =
             name = EntryName name
             category = CategoryIds.glass
             description = None
-            complexity = c
+            physics = ComplexityPhysics c
         }
 
     // ============================ the acceptance cases ============================

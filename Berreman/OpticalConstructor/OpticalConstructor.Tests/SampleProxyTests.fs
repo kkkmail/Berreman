@@ -493,7 +493,7 @@ type SampleProxyTests () =
         Assert.Equal<Result<unit, MaterialError>>(Ok (), materials.pinMaterialVersion firstVersion)
         let glass = BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialIds.glass152)
         let other = BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialIds.glass200)
-        let glassPhysicsChanged = { glass with complexity = other.complexity }
+        let glassPhysicsChanged = { glass with physics = other.physics }
         match materials.saveMaterial glassPhysicsChanged with
         | Ok () -> ()
         | Error err -> Assert.Fail($"the mint failed: %A{err}")
@@ -513,10 +513,10 @@ type SampleProxyTests () =
         | Ok _ -> ()
         | Error err -> Assert.Fail($"the pinned layer failed to resolve after the mint: %A{err}")
         match materials.resolveVersion pinned with
-        | Ok (Some e) -> Assert.Equal(glass.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(glass.physics, e.physics)
         | other -> Assert.Fail($"expected the pinned v1 to keep its original physics, got %A{other}")
         match materials.tryGetMaterial MaterialIds.glass152 with
-        | Ok (Some e) -> Assert.Equal(other.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(other.physics, e.physics)
         | other -> Assert.Fail($"expected the latest (v2) to carry the new physics, got %A{other}")
 
 type SampleProxySqliteTests () =

@@ -10,7 +10,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 
 /// Material editor over caller-supplied `materials` and `categories` stores.
 /// Save adds or updates the intent's entry and closes on success; Cancel closes without writing.
-/// Entries without editable complexity open view-only, with no ladder or Save affordance.
+/// Entries whose physics is not editable open view-only, with no ladder or Save affordance (spec 0050 S11.1).
 type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView.MaterialEditorIntent, categories : CategoryProxy) as this =
     inherit HostWindow()
 

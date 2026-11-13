@@ -476,8 +476,12 @@ module LibraryEntryFiles =
             | Some id when protection = provenance.protection -> Ok id
             | Some _ -> Error (ProvenanceMismatchErr $"preset '{name.value}' ({presetId.value}): its protection disagrees with the provenance it is filed under")
 
+        /// A complexity physics is filed as its complexity, so the file keeps its bytes (spec 0050 S11.1).
         static member ofMaterialEntry (version : VersionNumber) (provenance : EntryProvenance) (entry : MaterialEntry) : LibraryEntryContent =
-            { LibraryEntryContent.ofPayload version provenance entry.id.toLibraryEntryId entry.name (MaterialPayload entry.complexity) with
+            let payload =
+                match entry.physics with
+                | ComplexityPhysics complexity -> MaterialPayload complexity
+            { LibraryEntryContent.ofPayload version provenance entry.id.toLibraryEntryId entry.name payload with
                 categoryOpt = Some entry.category
                 descriptionOpt = entry.description }
 
@@ -534,7 +538,7 @@ module LibraryEntryFiles =
                         name = this.name
                         category = category
                         description = this.descriptionOpt
-                        complexity = complexity
+                        physics = ComplexityPhysics complexity
                     }
                 Ok entry
             | MaterialPayload _, None -> Error (MissingEntryFieldErr $"material '{this.name.value}' ({this.id.value}) has no category")
