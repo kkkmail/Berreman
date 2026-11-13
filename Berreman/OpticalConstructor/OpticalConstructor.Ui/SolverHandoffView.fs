@@ -12,6 +12,7 @@ open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.PrefitChecks
 
 /// The fixed message the terminal screen always shows (the how-to's "the actual solver will be done
 /// separately"). A `[<Literal>]` so a test can assert against it and step 044's id-consolidation can
@@ -45,30 +46,15 @@ type ExperimentHandoffStatus =
         | HandoffReady _ -> true
         | UnspecifiedElements _ | MissingDataFile _ | DataFileParseError _ | DataFileValidationError _ -> false
 
-/// How the hand-off reads a slot: specified by its item or its binding, the inverse sample left unknown, or another
-/// slot still unspecified (spec 0038 Part L; spec 0050 S8.2).
-type private HandoffSlotState =
-    | HandoffSpecifiedSlot
-    | HandoffUnknownSample
-    | HandoffUnspecifiedSlot
-
-    /// The tag the setup line shows beside the slot's role.
-    member this.text : string =
-        match this with
-        | HandoffSpecifiedSlot -> "specified"
-        | HandoffUnknownSample -> "the unknown (sample)"
-        | HandoffUnspecifiedSlot -> "UNSPECIFIED"
-
 type SetupSlot with
 
-    /// A slot holding an item or bound by its placement is specified; an empty, unbound `Sample` slot is the unknown the
-    /// solver finds, any other such slot is unspecified (spec 0038 Part L; spec 0050 S8.2).
-    member private this.handoffState : HandoffSlotState =
-        match this.content, this.placement.valueId, this.placement.catalogueKind with
-        | ItemInSlot _, _, _
-        | EmptySlotContent, Some _, _ -> HandoffSpecifiedSlot
-        | EmptySlotContent, None, Placement.Sample -> HandoffUnknownSample
-        | EmptySlotContent, None, _ -> HandoffUnspecifiedSlot
+    /// The tag the setup line shows beside the slot's role: an unspecified `Sample` slot is the unknown the solver finds
+    /// (spec 0038 Part L; spec 0050 S8.2, S11.2).
+    member private this.handoffTag : string =
+        match this.specification, this.placement.catalogueKind with
+        | SpecifiedSlot, _ -> "specified"
+        | UnspecifiedSlot, Placement.Sample -> "the unknown (sample)"
+        | UnspecifiedSlot, _ -> "UNSPECIFIED"
 
 type Experiments.Experiment with
 
@@ -78,7 +64,7 @@ type Experiments.Experiment with
         match this.slotsIn setups with
         | Ok slots ->
             SetupSlot.inLightOrder slots
-            |> List.map (fun roled -> $"{roled.role.text} [{roled.slot.handoffState.text}]")
+            |> List.map (fun roled -> $"{roled.role.text} [{roled.slot.handoffTag}]")
             |> String.concat "  →  "
             |> ControlCaption
         | Error error -> ControlCaption error.describe
@@ -90,37 +76,20 @@ type Experiments.Experiment with
         | Some data -> ControlCaption $"{data.attachment.path.value} ({data.profile.value})"
         | None -> ControlCaption "(no file attached)"
 
-/// The basic validation, in order and with no solver math: the setup revision resolves among `setups` and every slot but
-/// the sample is specified (`UnspecifiedElements`), a data file is attached (`MissingDataFile`), and its mapped points read
-/// and fit the scan through `ExperimentDataLoad.loadAndValidate` (spec 0038 Part L step 039; spec 0050 S8.2, S9.2).
+/// The pre-fit checks of `Experiment.prefitCheckWith` as the screen shows them (spec 0038 Part L step 039; spec 0050 S8.2,
+/// S11.2).
 let validateExperiment
     (library : Library.LibraryProxy)
     (dataProxy : ExperimentData.ExperimentDataProxy)
     (setups : Setup list)
     (experiment : Experiments.Experiment)
     : ExperimentHandoffStatus =
-    match experiment.slotsIn setups with
-    | Error error -> UnspecifiedElements (ControlCaption $"its setup is not in the collection: {error.describe}")
-    | Ok slots ->
-        let unbound =
-            SetupSlot.inLightOrder slots
-            |> List.filter (fun roled ->
-                match roled.slot.handoffState with
-                | HandoffUnspecifiedSlot -> true
-                | HandoffSpecifiedSlot
-                | HandoffUnknownSample -> false)
-        match unbound with
-        | _ :: _ ->
-            let names = unbound |> List.map (fun roled -> roled.role.text) |> String.concat ", "
-            UnspecifiedElements (ControlCaption $"every element except the sample must be specified; still unbound: {names}")
-        | [] ->
-            match experiment.dataOpt with
-            | None -> MissingDataFile (ControlCaption "no measured-data file is attached to this experiment")
-            | Some data ->
-                match ExperimentDataLoad.loadAndValidate library dataProxy slots experiment data with
-                | Ok points -> HandoffReady points.pointCount
-                | Error ((MeasuredData.MalformedDataFileErr _ | MeasuredData.EmptyDataFileErr _) as err) -> DataFileParseError err.caption
-                | Error ((MeasuredData.DataRangeMismatchErr _ | MeasuredData.DataUnitsMismatchErr _) as err) -> DataFileValidationError err.caption
+    match experiment.prefitCheckWith library dataProxy setups with
+    | Ok points -> HandoffReady points.pointCount
+    | Error (UnspecifiedSlotsErr reason) -> UnspecifiedElements (ControlCaption reason)
+    | Error (MissingDataErr reason) -> MissingDataFile (ControlCaption reason)
+    | Error (UnreadableDataErr error) -> DataFileParseError error.caption
+    | Error (InconsistentDataErr error) -> DataFileValidationError error.caption
 
 /// One summarized experiment: the received `Experiment` (its setup reference and attached file ride along), the detector
 /// kind its slots resolve to (fixing the expected data-file shape), and its typed validation status (spec 0050 S8.2).
