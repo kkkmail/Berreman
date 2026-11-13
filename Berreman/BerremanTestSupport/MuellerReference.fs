@@ -42,6 +42,7 @@ module MuellerReference =
 
     /// Acceptance band for the Stage-3 reconstructed matrix elements and the §8 cascade metrics. Pinned per
     /// §9 at ~20× the observed worst deviation of 4.9e-11.
+    /// It also bands the AIR gains, worst 2.9e-11 (`lp_cpl.gain_air2`) when spec 0050 was authored, 2026-11-04 (~34×, §9).
     let dataMatrixTol : float = 1.0e-9
 
     /// `dark_mean_avg_total`.
@@ -103,6 +104,33 @@ module MuellerReference =
     /// the data-driven positions the 0042 implementation chose over the slice text's.
     let cascadeLargestDeltaPositions : Set<MuellerRowIndex * MuellerColumnIndex> =
         Set.ofList [ (MuellerRowIndex 3, MuellerColumnIndex 3); (MuellerRowIndex 3, MuellerColumnIndex 1) ]
+
+    /// `gain_summary.lp_lp.gain_air2`.
+    let lpLpGainA : AirGain = AirGain 45028.89958338373
+
+    /// `gain_summary.lp_lp.gain_air2r`.
+    let lpLpGainB : AirGain = AirGain 44514.55313613668
+
+    /// `gain_summary.lp_cpl.gain_air2`.
+    let lpCplGainA : AirGain = AirGain 64241.39738340334
+
+    /// `gain_summary.lp_cpl.gain_air2r`.
+    let lpCplGainB : AirGain = AirGain 63009.84001492676
+
+    /// `gain_summary.cpl_lp.gain_pre_air2`.
+    let cplLpGainPre : AirGain = AirGain 36886.57620207925
+
+    /// `gain_summary.cpl_lp.gain_post_air2r`.
+    let cplLpGainPost : AirGain = AirGain 40015.20947516168
+
+    /// `gain_summary.cpl_cpl_day1.gain_start`.
+    let cplCplDay1GainStart : AirGain = AirGain 34623.69085844701
+
+    /// `gain_summary.cpl_cpl_day1.gain_end`.
+    let cplCplDay1GainEnd : AirGain = AirGain 37056.15607055087
+
+    /// `gain_summary.cpl_cpl_day2.gain`.
+    let cplCplDay2Gain : AirGain = AirGain 36225.080943100205
 
     /// `matrix_glue.py:22` `EXCLUDED_POINTS`, the caller's data to the reconstruction (`ExcludedPoint`, spec 0042 §0).
     let excludedPoints : ExcludedPoint list =

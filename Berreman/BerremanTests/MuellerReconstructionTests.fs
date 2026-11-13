@@ -652,12 +652,8 @@ type MuellerReconstructionTests() =
 
     [<Fact>]
     member _.``section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and reproduces the reference pipeline exactly`` () =
-        // Spec 0042 (011, WIRE) acceptance — the composition-root cross-check. Wire the REAL
-        // createMathNetSvd () (Domain) proxy, load the optics-mueller kit's five science lab files + the
-        // darkness and bullshit checks (spec 0050 S9.4), RE-derive the Stage-1 AIR calibration constants and
-        // the Stage-2 per-family source/analyzer models through `calibrateStageOne` (spec 0050 S10.3), reduce
-        // each science row to its corrected signal (Stage-3, matrix_fit_linear.py assign_gain_model), and
-        // reconstruct M_QZ / M_LR / M_{QZ+LR} (solve_single_object).
+        // Runs the promoted staged Mueller path (spec 0050 S10.3) over the optics-mueller kit's lab files, through the
+        // REAL createMathNetSvd () proxy, and asserts its gains, matrices and cascade against the reference pipeline.
         //
         // Spec 0044 changed two things here and nothing else about the pipeline:
         //
@@ -673,130 +669,34 @@ type MuellerReconstructionTests() =
         //          The expected values are `MuellerReference`'s, transcribed from
         //          reference_step2_linear_summary.json, so this test reads no file for its expectations and
         //          therefore knows nothing about where anything lives (spec 0050 S10.3).
-        //
-        // ---- Composition root: the REAL proxies (the WIRE deliverable). ----
-        let solver = createMathNetSvd ()
-        let captures = opticsMuellerCaptures ()
+        let staged =
+            match reconstructStaged (createMathNetSvd ()) MuellerReference.excludedPoints (opticsMuellerCaptures ()) with
+            | Ok staged -> staged
+            | Error e -> failwith $"the staged Mueller path failed: %A{e}"
 
-        let lpLpRows = captures.lpLpRows
-        let lpCplRows = captures.lpCplRows
-        let cplLpRows = captures.cplLpRows
-        let cplCplDay1Rows = captures.cplCplDay1Rows
-        let cplCplDay2Rows = captures.cplCplDay2Rows
+        // ---- The nine AIR gains reproduce `gain_summary` to `MuellerReference.dataMatrixTol`, all reported at once. ----
+        let describeGainDeviation (key : string) (expected : AirGain) (actual : AirGain) : float * string =
+            let deviation = abs (actual.value - expected.value)
+            deviation, $"{key} {deviation}"
 
-        // ---- Stages 1 and 2: the staged Mueller path's AIR calibration and the models built from it (spec 0050 S10.3). ----
-        let stageOne =
-            match calibrateStageOne solver captures with
-            | Ok calibration -> calibration
-            | Error e -> failwith $"stage one of the staged Mueller path failed: %A{e}"
-        let sourceLp = LpSource
-        let sourceCpl = stageOne.cplSource
-        let analyzerLp = stageOne.lpAnalyzer
-        let analyzerCpl = stageOne.cplAnalyzer
-
-        // ---- Stage-3 procedure constants supplied as DATA (spec section 0): dark mean + the CPL-LP split time. ----
-        let darkMean = stageOne.darkMean
-        // The CPL-LP AIR gain splits at the FIRST BullshitCheck timestamp (matrix_fit_linear.py:82 reads the
-        // diagnostics[0] capture; the earliest bullshit-check capture is that same first check).
-        let splitTime =
-            match captures.bullshitCheckRows with
-            | [] -> failwith "the bullshit-check data set carried no rows"
-            | rows -> (rows |> List.minBy (fun r -> r.capturedAt)).capturedAt
-
-        // ---- Stage 3 (reduction): the per-family AIR scalar gains (matrix_fit_linear.py assign_gain_model). ----
-        let airRowsOf (rows : MuellerRawRow list) (experiment : MuellerExperimentLabel) : MuellerRawRow list =
-            rows |> List.filter (fun r -> r.experiment = experiment)
-        // The AIR#0 scalar gain fitting `signal_dark_sub ~ gain * (a_eff . s_eff)` over one AIR experiment's
-        // rows (fit_air_gain + fit_scalar_gain). An AIR row carries no object (phi = 0), so its effective
-        // states equal its base states, and `airIdentityPred base base` is the per-row identity prediction.
-        let fitAirGain (source : SourceModel) (analyzer : AnalyzerModel) (rows : MuellerRawRow list) : AirGain =
-            let sBase = source.baseStokes
-            let preds =
-                rows |> List.map (fun r -> airIdentityPred sBase (analyzerBaseRow analyzer r.description)) |> List.toArray
-            let signals = rows |> List.map (fun r -> darkSubtract darkMean r.avgTotal) |> List.toArray
-            scalarGain signals preds
-        // The mean capture time of an AIR block (fit_air_gain's `air_rows["captured_at"].mean()`), computed
-        // relative to the first tick so the tick sum never overflows int64.
-        let meanTime (rows : MuellerRawRow list) : System.DateTimeOffset =
-            match rows with
-            | [] -> failwith "meanTime of an empty AIR block"
-            | first :: _ ->
-                let t0 = first.capturedAt.UtcTicks
-                let meanDelta = rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
-                System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
-
-        let day1Start = airRowsOf cplCplDay1Rows (MuellerExperimentLabel "CPL-(AIR#0)-CPL")
-        let day1End = airRowsOf cplCplDay1Rows (MuellerExperimentLabel "CPL-(AIR#0)-CPL-BR")
-        // The per-family AIR gain calibration bundle. LP-LP / LP-CPL take the mean of two AIR repeats; CPL-LP
-        // splits at the bullshit-check time; CPL-CPL day 2 is one AIR block (the `cplCpl` default below).
-        let calibration : GainCalibration =
-            {
-                lpLp =
-                    {
-                        gainA = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows (MuellerExperimentLabel "LP-(AIR#0)-LP-2"))
-                        gainB = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows (MuellerExperimentLabel "LP-(AIR#0)-LP-2R"))
-                    }
-                lpCpl =
-                    {
-                        gainA = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows (MuellerExperimentLabel "LP-(AIR#0)-CPL-2"))
-                        gainB = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows (MuellerExperimentLabel "LP-(AIR#0)-CPL-2R"))
-                    }
-                cplLp =
-                    {
-                        gainPre = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows (MuellerExperimentLabel "CPL-(AIR#0)-LP-2"))
-                        gainPost = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows (MuellerExperimentLabel "CPL-(AIR#0)-LP-2R"))
-                        splitTime = splitTime
-                    }
-                cplCpl = Day2Single (fitAirGain sourceCpl analyzerCpl (airRowsOf cplCplDay2Rows (MuellerExperimentLabel "CPL-(AIR#0)-CPL-2")))
-            }
-        // CPL-CPL day 1 is a distinct FILE with the time-INTERPOLATED rule (AIR start -> AIR end); day 2 keeps
-        // the single-block rule in `calibration` above.
-        let day1Cal =
-            { calibration with
-                cplCpl =
-                    Day1Interp
-                        {
-                            gainStart = fitAirGain sourceCpl analyzerCpl day1Start
-                            timeStart = meanTime day1Start
-                            gainEnd = fitAirGain sourceCpl analyzerCpl day1End
-                            timeEnd = meanTime day1End
-                        } }
-
-        // ---- The per-row Stage-2+3 projection each family closes over its models + gain (enrich_frame). ----
-        // φ comes from the reading `buildDesign` kept the row by, so the label is read once (spec 0050 S10.3).
-        let prepareRow (source : SourceModel) (analyzer : AnalyzerModel) (fam : Family) (cal : GainCalibration)
-                       (r : MuellerRawRow) (reading : NameReading) : StokesVector * RealVector4 * DetectorIntensity =
-            let phi = reading.objectPhi
-            let sEff = effectiveSource phi source.baseStokes
-            let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer r.description)
-            let signal = correctSignal darkMean r.avgTotal (familyGain fam cal r.capturedAt)
-            sEff, aEff, signal
-
-        // Every science file maps to exactly one family; CPL-CPL day1/day2 are distinct files with distinct
-        // gain rules (interpolated vs single block), so each carries its own calibration.
-        let families : (MuellerRawRow list * (MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity)) list =
-            [ lpLpRows,       prepareRow sourceLp  analyzerLp  LpLp   calibration
-              lpCplRows,      prepareRow sourceLp  analyzerCpl LpCpl  calibration
-              cplLpRows,      prepareRow sourceCpl analyzerLp  CplLp  calibration
-              cplCplDay1Rows, prepareRow sourceCpl analyzerCpl CplCpl day1Cal
-              cplCplDay2Rows, prepareRow sourceCpl analyzerCpl CplCpl calibration ]
-
-        // Assemble the full n*16 design + corrected-signal target for one kind across every family, then solve
-        // through the real SVD proxy (buildDesign drops AIR rows and the excluded point per file).
-        let reconstructKind (kind : MatrixKind) : ReconstructedMatrix =
-            let parts = families |> List.map (fun (rows, prep) -> buildDesign prep MuellerReference.excludedPoints rows kind)
-            let system =
-                {
-                    design = parts |> List.collect (fun p -> List.ofArray p.design) |> List.toArray
-                    rhs = parts |> List.collect (fun p -> List.ofArray p.rhs) |> List.toArray
-                }
-            match reconstruct solver system with
-            | Ok recon -> recon
-            | Error e -> failwith $"the %A{kind} reconstruction failed: %A{e}"
-
-        let mQz = reconstructKind Qz
-        let mLr = reconstructKind Lr
-        let mComb = reconstructKind QzLrProduct
+        let day2Gain =
+            match staged.gains.cplCpl with
+            | Day2Single gain -> gain
+            | Day1Interp _ -> failwith "the staged path's gain bundle carries the day-1 CPL-CPL interpolation, not the day-2 block's gain"
+        let gainDeviations =
+            [ describeGainDeviation "lp_lp.gain_air2" MuellerReference.lpLpGainA staged.gains.lpLp.gainA
+              describeGainDeviation "lp_lp.gain_air2r" MuellerReference.lpLpGainB staged.gains.lpLp.gainB
+              describeGainDeviation "lp_cpl.gain_air2" MuellerReference.lpCplGainA staged.gains.lpCpl.gainA
+              describeGainDeviation "lp_cpl.gain_air2r" MuellerReference.lpCplGainB staged.gains.lpCpl.gainB
+              describeGainDeviation "cpl_lp.gain_pre_air2" MuellerReference.cplLpGainPre staged.gains.cplLp.gainPre
+              describeGainDeviation "cpl_lp.gain_post_air2r" MuellerReference.cplLpGainPost staged.gains.cplLp.gainPost
+              describeGainDeviation "cpl_cpl_day1.gain_start" MuellerReference.cplCplDay1GainStart staged.cplCplDay1Gain.gainStart
+              describeGainDeviation "cpl_cpl_day1.gain_end" MuellerReference.cplCplDay1GainEnd staged.cplCplDay1Gain.gainEnd
+              describeGainDeviation "cpl_cpl_day2.gain" MuellerReference.cplCplDay2Gain day2Gain ]
+        let worstGainDeviation = gainDeviations |> List.map fst |> List.max
+        Assert.True(
+            worstGainDeviation < MuellerReference.dataMatrixTol,
+            $"""AIR gains (tol {MuellerReference.dataMatrixTol}): {String.concat "; " (gainDeviations |> List.map snd)}""")
 
         // ---- Section 7.2 acceptance: each solve is full rank 16, and each reconstructed matrix reproduces
         //      the reference pipeline's own value to `MuellerReference.dataMatrixTol` (spec 0044 §8.5). ----
@@ -819,15 +719,15 @@ type MuellerReconstructionTests() =
             let (worst, i, j) = worstElementDeviation expected actual
             worst, $"{label} worst {worst} at M[{i},{j}]"
 
-        Assert.Equal(MatrixRank 16, mQz.rank)
-        Assert.Equal(MatrixRank 16, mLr.rank)
-        Assert.Equal(MatrixRank 16, mComb.rank)
+        Assert.Equal(MatrixRank 16, staged.qz.rank)
+        Assert.Equal(MatrixRank 16, staged.lr.rank)
+        Assert.Equal(MatrixRank 16, staged.qzLr.rank)
         // One assertion over ALL THREE matrices, reporting every matrix's worst element so a regression run
         // shows the whole picture in a single message instead of stopping at the first element out of band.
         let matrixDeviations =
-            [ describeDeviation "M_QZ" MuellerReference.qzMatrix mQz.matrix
-              describeDeviation "M_LR" MuellerReference.lrMatrix mLr.matrix
-              describeDeviation "M_{QZ+LR}" MuellerReference.combinedMatrix mComb.matrix ]
+            [ describeDeviation "M_QZ" MuellerReference.qzMatrix staged.qz.matrix
+              describeDeviation "M_LR" MuellerReference.lrMatrix staged.lr.matrix
+              describeDeviation "M_{QZ+LR}" MuellerReference.combinedMatrix staged.qzLr.matrix ]
         let worstMatrixDeviation = matrixDeviations |> List.map fst |> List.max
         Assert.True(
             worstMatrixDeviation < MuellerReference.dataMatrixTol,
@@ -835,8 +735,8 @@ type MuellerReconstructionTests() =
 
         // ---- Section 8 cascade identity: M_{QZ+LR} vs the QZ-first product M_LR . M_QZ. ----
         // The expected values are `MuellerReference`'s, from `combined_vs_product_matrix` in the same summary.
-        let cascade = cascadeProduct mLr.matrix mQz.matrix
-        let d = frobeniusDiff mComb.matrix cascade
+        let cascade = cascadeProduct staged.lr.matrix staged.qz.matrix
+        let d = frobeniusDiff staged.qzLr.matrix cascade
         let worstMetricDeviation =
             [ abs (d.frobenius.value - MuellerReference.cascadeFrobenius.value)
               abs (d.meanAbs.value - MuellerReference.cascadeMeanAbs.value)
@@ -853,7 +753,7 @@ type MuellerReconstructionTests() =
         let topTwoDiffPositions =
             [ for i in 0 .. 3 do
                 for j in 0 .. 3 ->
-                    (MuellerRowIndex i, MuellerColumnIndex j), abs (mComb.matrix.element i j - cascade.element i j) ]
+                    (MuellerRowIndex i, MuellerColumnIndex j), abs (staged.qzLr.matrix.element i j - cascade.element i j) ]
             |> List.sortByDescending snd
             |> List.truncate 2
             |> List.map fst
