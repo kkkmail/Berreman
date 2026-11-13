@@ -57,6 +57,8 @@ module Studies =
         | UnknownStudyErr of reason : string
         /// A material version the library could not resolve for OpenMaterial.
         | MaterialUnavailableErr of reason : string
+        /// A fit start count below one (spec 0050 S11.3).
+        | InvalidFitStartCountErr of reason : string
 
         member this.describe : string =
             match this with
@@ -79,6 +81,7 @@ module Studies =
             | UnknownStudyItemErr reason -> $"the study uses no such item: {reason}"
             | UnknownStudyErr reason -> $"the kit has no such study: {reason}"
             | MaterialUnavailableErr reason -> $"the material version could not be read: {reason}"
+            | InvalidFitStartCountErr reason -> $"the fit start count is not valid: {reason}"
 
     /// The AIR runs that open and close a drifting session (spec 0050 S11.1).
     type AirRepeatPair =
@@ -369,22 +372,41 @@ module Studies =
             weight : ResidualWeight
         }
 
-    /// A study's fit mode, its residual weights and the experiments it leaves out (spec 0050 S11.1; 001 §L).
+    /// How many starts a study's nonlinear fit makes: at least one, the first the parameters' own (spec 0050 S11.3;
+    /// 001 §L).
+    type FitStartCount =
+        | FitStartCount of int
+
+        member this.value : int = let (FitStartCount count) = this in count
+
+        static member tryCreate (count : int) : Result<FitStartCount, StudyError> =
+            if count >= 1 then
+                Ok (FitStartCount count)
+            else
+                Error (InvalidFitStartCountErr $"{count.ToString(CultureInfo.InvariantCulture)} is fewer than one start")
+
+        /// The parameters' own start alone, so a study fits as the inverse suites do (spec 0050 S11.3).
+        static member single : FitStartCount = FitStartCount 1
+
+    /// A study's fit mode, its residual weights, the experiments it leaves out and its fit's start count
+    /// (spec 0050 S11.1, S11.3; 001 §L).
     type StudyFitSettings =
         {
             mode : FitMode
             experimentWeights : ExperimentWeightSetting list
             detectorWeights : DetectorWeightSetting list
             disabled : ExperimentName list
+            starts : FitStartCount
         }
 
-        /// A joint fit with no weight set and nothing left out (spec 0050 S11.1).
+        /// A joint fit of one start with no weight set and nothing left out (spec 0050 S11.1, S11.3).
         static member initial : StudyFitSettings =
             {
                 mode = JointFit
                 experimentWeights = []
                 detectorWeights = []
                 disabled = []
+                starts = FitStartCount.single
             }
 
     /// Whether a study fits an experiment or leaves it out (ablation). Not stored: the study keeps its `disabled` list
@@ -662,6 +684,9 @@ module Studies =
 
         /// The study fitted jointly or in stages (spec 0050 S11.1, S11.3).
         member this.withFitMode (mode : FitMode) : Study = { this with settings = { this.settings with mode = mode } }
+
+        /// The study's fit making that many starts (spec 0050 S11.3).
+        member this.withFitStarts (starts : FitStartCount) : Study = { this with settings = { this.settings with starts = starts } }
 
         /// The study with the experiment's residual weight replaced in place, else appended; refused, nothing changed,
         /// for an experiment the study does not hold (spec 0050 S11.1; 001 §L).

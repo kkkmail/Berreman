@@ -111,6 +111,7 @@ module StudyFileFixtures =
                 experimentWeights = [ experimentWeight ]
                 detectorWeights = [ detectorWeight ]
                 disabled = [ e2 ]
+                starts = FitStartCount.single
             }
         {
             name = StudyName "QZ-LR"

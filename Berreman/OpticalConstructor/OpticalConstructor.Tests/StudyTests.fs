@@ -15,7 +15,7 @@ open CrystalMaterialFixtures
 /// Spec 0050 S11.1 — a study's shape: its name and file stem, its scope and fit-mode tags, its residual weights,
 /// CreateStudy's and AddExperimentsToStudy's pure halves over a kit's experiments, the sessions and gain models a
 /// study reads from them, its unknowns with their scopes and owners, SetParameterScope's and LinkParameters' pure
-/// halves, and its settings: session gain models, fit mode, weights, enablement and notes.
+/// halves, and its settings: session gain models, fit mode, weights, enablement, notes and the fit's start count (S11.3).
 module StudyTests =
 
     /// A run over `Bench` revision 1 turning one polarizer, as `StudySessionTests`' is; the study tests vary only its
@@ -581,6 +581,7 @@ module StudyTests =
                 experimentWeights = [ { experiment = e1; weight = ResidualWeight 4.0 } ]
                 detectorWeights = [ { detector = phone.id; weight = ResidualWeight 0.5 } ]
                 disabled = [ e3 ]
+                starts = FitStartCount.single
             }
 
         Assert.Equal({ settingsStudy with settings = expectedSettings; notes = notes }, noted)
@@ -592,6 +593,45 @@ module StudyTests =
         Assert.Equal(ResidualWeight 4.0, noted.residualWeightOf e1 cpl1.id)
         Assert.Equal(ResidualWeight 0.5, noted.residualWeightOf e2 phone.id)
         Assert.Equal(ResidualWeight.unit, settingsStudy.residualWeightOf e1 phone.id)
+
+    [<Fact>]
+    let ``a fit start count refuses fewer than one start, and a study's starts are set in place`` () : unit =
+        Assert.Equal<FitStartCount>(FitStartCount.single, StudyFitSettings.initial.starts)
+        Assert.Equal(1, StudyFitSettings.initial.starts.value)
+
+        for kept in [ 1; 5 ] do
+            match FitStartCount.tryCreate kept with
+            | Ok starts -> Assert.Equal(kept, starts.value)
+            | Error error -> Assert.Fail($"expected the start count {kept} kept, got {error.describe}")
+
+        for refused in [ 0; -2 ] do
+            match FitStartCount.tryCreate refused with
+            | Error (InvalidFitStartCountErr reason) ->
+                Assert.StartsWith(refused.ToString(Globalization.CultureInfo.InvariantCulture), reason)
+            | other -> Assert.Fail($"expected Error (InvalidFitStartCountErr _) for {refused}, got %A{other}")
+
+        let fourStarts =
+            match FitStartCount.tryCreate 4 with
+            | Ok starts -> starts
+            | Error error -> failwith $"expected four starts, got {error.describe}"
+
+        // Four starts leave the mode, the weights and the runs left out as they were.
+        let weighted = studyOf ((settingsStudy.withFitMode StagedFit).withExperimentWeight e1 (ResidualWeight 2.0))
+        let configured = studyOf (weighted.withExperimentEnablement e2 DisabledInStudy)
+        let fourFold = configured.withFitStarts fourStarts
+
+        let expectedSettings : StudyFitSettings =
+            {
+                mode = StagedFit
+                experimentWeights = [ { experiment = e1; weight = ResidualWeight 2.0 } ]
+                detectorWeights = []
+                disabled = [ e2 ]
+                starts = fourStarts
+            }
+
+        Assert.Equal({ configured with settings = expectedSettings }, fourFold)
+        Assert.Equal(4, fourFold.settings.starts.value)
+        Assert.Equal(configured, fourFold.withFitStarts FitStartCount.single)
 
     [<Fact>]
     let ``a setting naming an experiment, item or session the study lacks is refused`` () : unit =

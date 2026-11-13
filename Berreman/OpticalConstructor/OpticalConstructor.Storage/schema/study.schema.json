@@ -33,7 +33,7 @@
           "sessionGains": { "type": "array" },
           "settings": {
             "type": "object",
-            "required": ["mode", "experimentWeights", "detectorWeights", "disabled"],
+            "required": ["mode", "experimentWeights", "detectorWeights", "disabled", "starts"],
             "additionalProperties": false,
             "properties": {
               "mode": { "type": "integer", "minimum": 1, "maximum": 2 },
@@ -42,7 +42,8 @@
               "disabled": {
                 "type": "array",
                 "items": { "type": "string", "minLength": 1 }
-              }
+              },
+              "starts": { "type": "integer", "minimum": 1 }
             }
           },
           "notes": { "type": "string" }

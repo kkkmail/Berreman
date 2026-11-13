@@ -918,13 +918,20 @@ module KitContentFileJsonTests =
 
     [<Fact>]
     let ``a study file round-trips through its canonical text`` () : unit =
-        let file = qzLrStudy.studyFile
+        let threeStarts =
+            match FitStartCount.tryCreate 3 with
+            | Ok starts -> starts
+            | Error error -> failwith error.describe
+
+        let study = qzLrStudy.withFitStarts threeStarts
+        let file = study.studyFile
         let text = file.fileText |> kitContentJsonValue
         let readBack = text.parseStudyFile |> kitContentJsonValue
 
         Assert.Equal<FileSchemaVersion>(FileSchemaVersion 1, file.schemaVersion)
-        Assert.Equal<Study>(qzLrStudy, file.study)
+        Assert.Equal<Study>(study, file.study)
         Assert.Equal<StudyFile>(file, readBack)
+        Assert.Equal<FitStartCount>(threeStarts, readBack.study.settings.starts)
         Assert.DoesNotContain("\r", text.value)
         Assert.EndsWith("}\n", text.value)
         Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
@@ -940,6 +947,11 @@ module KitContentFileJsonTests =
         for tag, written in [ StagedFit.value, mode; ExperimentScope.value, scope ] do
             Assert.Equal(System.Text.Json.JsonValueKind.Number, written.GetValueKind())
             Assert.Equal(tag, written.GetValue<int>())
+
+        // The start count is written as its number (spec 0050 S11.3).
+        let starts = node.["study"].["settings"].["starts"]
+        Assert.Equal(System.Text.Json.JsonValueKind.Number, starts.GetValueKind())
+        Assert.Equal(3, starts.GetValue<int>())
 
         Assert.Equal<KitFileText>(text, readBack.fileText |> kitContentJsonValue)
 
@@ -967,6 +979,8 @@ module KitContentFileJsonTests =
                 (fun node -> node["unexpected"] <- JsonValue.Create "unexpected")
                 (fun node -> node["study"]["name"] <- JsonValue.Create "  ")
                 (fun node -> node.["study"].["settings"].["mode"] <- JsonValue.Create 3)
+                (fun node -> node.["study"].["settings"].["starts"] <- JsonValue.Create 0)
+                (fun node -> node.["study"].["settings"].AsObject().Remove "starts" |> ignore)
             ]
 
         for edit in invalidEdits do
