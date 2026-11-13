@@ -904,3 +904,62 @@ module StudyForward =
                             }
 
                         data)))
+
+    type Study with
+
+        /// The residual at `vector`: every row of `data.runs` in order, each entry times its run's weight, the element
+        /// entries first and every Mueller row's throughput last, as `MuellerFitting.throughputResidualFor` lays them out;
+        /// the first error stops the walk (spec 0050 S11.2; 001 §K, §L).
+        member this.residualWith
+            (context : StudyForwardContext)
+            (layout : StudyParameterLayout)
+            (data : StudyData)
+            (vector : StudyParameterVector)
+            : Result<ResidualVector, StudyForwardError> =
+            // A run whose session reads no Dark run keeps its detector's own dark offset (spec 0050 S11.2; step 374).
+            let darkOf (run : ExperimentName) : MuellerReconstruction.DarkMean option =
+                layout.sessions
+                |> List.tryFind (fun session -> List.contains run session.experiments)
+                |> Option.bind (fun session -> data.darkOf session.name)
+
+            let measuredOf (row : MeasuredRow) : RecordedReading =
+                match row with
+                | SettingsRow (_, _, measured) -> measured
+                | ObservationRow observation -> RecordedMueller observation.measured
+
+            let weightedBy (weight : ResidualWeight) (entries : ResidualVector) : ResidualVector =
+                entries.value |> Array.map (fun entry -> entry * weight.value) |> ResidualVector
+
+            // Folded through `Result.bind`, not `ItemEvaluation.sequenced`: nothing after the first error is solved (spec 0050 S11.2).
+            let walkedRun (run : StudyRun) (read : RowResidual list) : Result<RowResidual list, StudyForwardError> =
+                let name = run.experiment.name
+
+                layout.assignmentFor this context.kit.items name vector
+                |> Result.bind (fun assignment -> run.experiment.boundWith context this assignment (darkOf name))
+                |> Result.bind (fun bound ->
+                    let weight = this.residualWeightOf name bound.detectorItem
+
+                    let rowResidualOf (row : MeasuredRow) : Result<RowResidual, StudyForwardError> =
+                        bound.predictedReadingOf row
+                        |> Result.bind (fun predicted -> predicted.residualAgainst (measuredOf row))
+                        |> Result.map (fun residual ->
+                            let weighted : RowResidual =
+                                {
+                                    elements = weightedBy weight residual.elements
+                                    throughputOpt = residual.throughputOpt |> Option.map (weightedBy weight)
+                                }
+
+                            weighted)
+
+                    let prepended (held : Result<RowResidual list, StudyForwardError>) (row : MeasuredRow) : Result<RowResidual list, StudyForwardError> =
+                        held |> Result.bind (fun residuals -> rowResidualOf row |> Result.map (fun residual -> residual :: residuals))
+
+                    run.rows |> List.fold prepended (Ok read))
+
+            data.runs
+            |> List.fold (fun held run -> held |> Result.bind (walkedRun run)) (Ok [])
+            |> Result.map (fun reversed ->
+                let rows = List.rev reversed
+                let elements = rows |> List.map (fun row -> row.elements.value) |> Array.concat
+                let throughputs = rows |> List.choose (fun row -> row.throughputOpt |> Option.map (fun throughput -> throughput.value)) |> Array.concat
+                Array.append elements throughputs |> ResidualVector)

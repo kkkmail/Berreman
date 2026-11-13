@@ -29,6 +29,7 @@ open OpticalConstructor.Domain.ExperimentData
 open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.PrefitChecks
 open OpticalConstructor.Domain.StudyForward
+open OpticalConstructor.Optimization
 open CrystalMaterialFixtures
 
 /// Spec 0050 S11.2 — what a detector records, each mapped point placed on the scan its experiment was taken over, the
@@ -1430,17 +1431,21 @@ module StudyForwardTests =
     let private attachedHash : LibraryEntryFiles.ContentHash = LibraryEntryFiles.ContentHash "0f3c"
     let private changedHash : LibraryEntryFiles.ContentHash = LibraryEntryFiles.ContentHash "9a1d"
 
-    /// The run with the file at that path attached at `attachedHash`, every row read and no point excluded.
-    let private attachingAt (path : KitRelativePath) (run : Experiment) : Experiment =
+    /// The run with the file at that path attached through the profile at `attachedHash`, every row read and no point
+    /// excluded.
+    let private attachingThrough (profile : ImportProfileName) (path : KitRelativePath) (run : Experiment) : Experiment =
         let data : MappedAttachment =
             {
                 attachment = { path = path; contentHash = attachedHash }
-                profile = ImportProfileName.intensitySeries
+                profile = profile
                 rows = AllDataRows
                 exclusions = []
             }
 
         { run with dataOpt = Some data }
+
+    /// The run with an `Intensity series` file at that path attached.
+    let private attachingAt (path : KitRelativePath) (run : Experiment) : Experiment = attachingThrough ImportProfileName.intensitySeries path run
 
     let private seriesOver (points : IntensityPoint list) : MappedPoints = SeriesPoints (IntensityData { points = points })
 
@@ -1507,15 +1512,17 @@ module StudyForwardTests =
         let created = studyOf (Study.create (StudyName "Prefit") [ e1; k1; x1; e2; e3; p1 ] [] prefitRuns)
         studyOf (created.withExperimentEnablement e3 DisabledInStudy)
 
-    /// The bench's context over the Malus setup, a kit of these runs holding the study, and that data seam.
-    let private contextOverData (study : Study) (runs : Experiment list) (data : ExperimentDataProxy) : StudyForwardContext =
-        let context = benchContext [ laser; prep; analyzer; camera ] [ prefitSetup ]
-
+    /// The context over a kit of these runs holding the study, and that data seam.
+    let private holdingRuns (study : Study) (runs : Experiment list) (data : ExperimentDataProxy) (context : StudyForwardContext) : StudyForwardContext =
         {
             context with
                 kit = { context.kit with studies = [ study ]; experiments = runs }
                 experimentData = data
         }
+
+    /// The bench's context over the Malus setup, a kit of these runs holding the study, and that data seam.
+    let private contextOverData (study : Study) (runs : Experiment list) (data : ExperimentDataProxy) : StudyForwardContext =
+        benchContext [ laser; prep; analyzer; camera ] [ prefitSetup ] |> holdingRuns study runs data
 
     /// The bench's context over these runs, the files read as `prefitPoints` with the statuses given.
     let private prefitContextOver
@@ -1599,11 +1606,17 @@ module StudyForwardTests =
     let private e4File : KitRelativePath = KitRelativePath "data/E4.csv"
     let private k2File : KitRelativePath = KitRelativePath "data/K2.csv"
 
+    /// Every file of `points` unchanged since attach.
+    let private unchangedStatusesOf (points : Map<KitRelativePath, MappedPoints>) : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>> =
+        points |> Map.map (fun _ _ -> Ok AttachedDataUnchanged)
+
+    /// The study's data from its pre-fit over the context.
+    let private studyDataIn (context : StudyForwardContext) (study : Study) : Result<StudyData, StudyForwardError> =
+        study.prefitWith context [] |> Result.bind (study.dataWith context)
+
     /// The study's data from its pre-fit over a kit of these runs, each attached file read as `points` and unchanged.
     let private studyDataOver (study : Study) (runs : Experiment list) (points : Map<KitRelativePath, MappedPoints>) : Result<StudyData, StudyForwardError> =
-        let statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>> = points |> Map.map (fun _ _ -> Ok AttachedDataUnchanged)
-        let context = contextOverData study runs (prefitDataOver statuses points)
-        study.prefitWith context [] |> Result.bind (study.dataWith context)
+        studyDataIn (contextOverData study runs (prefitDataOver (unchangedStatusesOf points) points)) study
 
     let private dataOf (result : Result<StudyData, StudyForwardError>) : StudyData =
         match result with
@@ -1752,3 +1765,268 @@ module StudyForwardTests =
         Assert.Equal<Result<StudyData, StudyForwardError>>(
             Error (PrefitFailedErr (e2, missing)),
             prefitStudy.dataWith context (readingK1As (SeriesPoints (EllipsometricData { points = [ psiDelta ] })) @ [ e2Failed ]))
+
+    let private i1 : ExperimentName = ExperimentName "I1"
+    let private s1 : ExperimentName = ExperimentName "S1"
+    let private m1 : ExperimentName = ExperimentName "M1"
+
+    let private i1File : KitRelativePath = KitRelativePath "data/I1.csv"
+    let private s1File : KitRelativePath = KitRelativePath "data/S1.csv"
+    let private m1File : KitRelativePath = KitRelativePath "data/M1.csv"
+
+    /// LP1, LP2 turned to 30° and the ellipsometer, its slot bound to the Built-in Ellipsometer detector, which is how the
+    /// pre-fit knows a Ψ/Δ file's detector.
+    let private ellipsometerBench : Setup =
+        let turned = { analyzerSlot with placement = { analyzerSlot.placement with r1 = deg 30.0 } }
+        let reading = { detectorSlot with placement = { detectorSlot.placement with valueId = Some PresetIds.detectorEllipsometer } }
+        setupOf (SetupName "Ellipsometer bench") [ placing laser sourceSlot; placing prep prepSlot; placing analyzer turned; placing ellipsometer reading ]
+
+    /// QZ as the lone object, read by the polarimeter.
+    let private plateSetup : Setup = setupOf (SetupName "Plate") (crystalSlots polarimeter)
+
+    /// QZ's incidence, which a Mueller observation's own configuration overrides.
+    let private plateTilt : ScanAxis = { sampleIncidence with elementId = sampleSlot.id; label = ElementLabel "QZ" }
+
+    /// I1, a Science run of `Session 1` over the Malus setup, and K1, that session's Dark run.
+    let private mixedI1 : Experiment = { prefitRun (ExperimentId 21) i1 ScienceRun with sessionOpt = Some session1 } |> attachingAt i1File
+    let private mixedK1 : Experiment = { prefitRun (ExperimentId 22) k1 DarkRun with scan = darkLine; sessionOpt = Some session1 } |> attachingAt k1File
+
+    /// S1, a Science run over the ellipsometer bench.
+    let private mixedS1 : Experiment =
+        { prefitRun (ExperimentId 23) s1 ScienceRun with setup = ellipsometerBench.reference }
+        |> attachingThrough ImportProfileName.ellipsometricSeries s1File
+
+    /// M1, a Science run of Mueller observations over the plate setup.
+    let private mixedM1 : Experiment =
+        { prefitRun (ExperimentId 24) m1 ScienceRun with setup = plateSetup.reference; scan = ExperimentScan.oneAxis plateTilt CaptureTransmitted None }
+        |> attachingThrough ImportProfileName.muellerObservations m1File
+
+    let private mixedRuns : Experiment list = [ mixedI1; mixedK1; mixedS1; mixedM1 ]
+
+    /// I1's two signals, K1's dark 0.25, S1's one Ψ and Δ, and M1's one observation of the X-cut plate.
+    let private mixedPoints : Map<KitRelativePath, MappedPoints> =
+        let psiDelta : EllipsometricPoint = { waveLength = nanometres 632.8; psi = deg 30.0; delta = deg 90.0; aoiOpt = None }
+        let observation : KeyedObservation = { key = DataRowKey "M1"; observation = { configuration = xCutConfiguration; measured = scaledBy 0.8 identityMueller } }
+
+        Map.ofList
+            [
+                i1File, seriesOver [ intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 1.0); intensityAt (MeasuredAbscissa 60.0) (MeasuredIntensity 0.3) ]
+                k1File, seriesOver [ intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 0.25) ]
+                s1File, SeriesPoints (EllipsometricData { points = [ psiDelta ] })
+                m1File, ObservationPoints [ observation ]
+            ]
+
+    /// I1, K1, S1 and M1, the probe crystal opened and its n_o freed.
+    let private mixedStudy : Study =
+        let created = studyOf (Study.create (StudyName "Mixed") [ i1; k1; s1; m1 ] [] mixedRuns)
+        let opened = studyOf (created.openMaterial crystalVersion crystalEntry)
+        studyOf (opened.withMaterialParameterState crystalVersion ordinaryIndex (UnknownParameter ordinaryIndexData))
+
+    /// The context over every bench item, the three setups and the mixed runs holding the study, each file unchanged.
+    let private mixedContextOf (study : Study) : StudyForwardContext =
+        crystalBenchContext [ laser; prep; analyzer; camera; ellipsometer; qz; polarimeter ] [ prefitSetup; ellipsometerBench; plateSetup ]
+        |> holdingRuns study mixedRuns (prefitDataOver (unchangedStatusesOf mixedPoints) mixedPoints)
+
+    /// n_o at 1.55, the mixed study's one value.
+    let private mixedVector : StudyParameterVector = StudyParameterVector [| 1.55 |]
+
+    /// The entries of a study residual, failing with the refusal's text.
+    let private studyEntriesOf (residual : Result<ResidualVector, StudyForwardError>) : float list =
+        match residual with
+        | Ok entries -> List.ofArray entries.value
+        | Error error -> failwith $"expected the study's residual, got {error.describe}"
+
+    /// The study's residual over the mixed kit at `mixedVector`, its layout and data made from its own pre-fit.
+    let private mixedResidualOf (study : Study) : float list =
+        let context = mixedContextOf study
+        studyEntriesOf (study.residualWith context (study.parameterLayoutWith context) (dataOf (studyDataIn context study)) mixedVector)
+
+    /// The run's row residuals as its parts give them: bound at the vector's assignment with that dark level, each row's
+    /// `predictedReadingOf` taken `residualAgainst` its measured reading.
+    let private rowResidualsOf
+        (context : StudyForwardContext)
+        (study : Study)
+        (vector : StudyParameterVector)
+        (darkOpt : DarkMean option)
+        (run : StudyRun)
+        : RowResidual list =
+        let layout = study.parameterLayoutWith context
+        let assignment = assignmentOf (layout.assignmentFor study context.kit.items run.experiment.name vector)
+        let bound = boundOf (run.experiment.boundWith context study assignment darkOpt)
+
+        run.rows
+        |> List.map (fun row ->
+            let measured =
+                match row with
+                | SettingsRow (_, _, reading) -> reading
+                | ObservationRow observation -> RecordedMueller observation.measured
+
+            rowResidualOf (bound.predictedReadingOf row |> Result.bind (fun predicted -> predicted.residualAgainst measured)))
+
+    /// The rows' element entries in order, then their throughput entries in order.
+    let private laidOut (rows : RowResidual list) : float list =
+        let elements = rows |> List.collect (fun row -> List.ofArray row.elements.value)
+
+        let throughputs =
+            rows
+            |> List.collect (fun row ->
+                match row.throughputOpt with
+                | Some throughput -> List.ofArray throughput.value
+                | None -> [])
+
+        elements @ throughputs
+
+    let private assertEntriesWithin (expected : float list) (actual : float list) : unit =
+        Assert.Equal(expected.Length, actual.Length)
+
+        List.iteri2
+            (fun k (e : float) (a : float) -> Assert.True(abs (e - a) <= 1.0e-12, $"entry {k}: expected {e:R}, got {a:R}"))
+            expected
+            actual
+
+    [<Fact>]
+    let ``a mixed study's residual holds every run's entries in study order, the Mueller throughputs last`` () : unit =
+        let context = mixedContextOf mixedStudy
+        let data = dataOf (studyDataIn context mixedStudy)
+        let layout = mixedStudy.parameterLayoutWith context
+
+        // I1, S1 and M1 are fitted in study order, I1's `Session 1` reads K1's 0.25, and the vector is n_o alone.
+        Assert.Equal<ExperimentName list>([ i1; s1; m1 ], data.runs |> List.map (fun run -> run.experiment.name))
+        assertDark session1 0.25 data
+        Assert.Equal<StudyVectorEntry list>([ entryOf crystalOrdinary (MaterialOwner crystalVersion) ], layout.entries)
+
+        let residual = studyEntriesOf (mixedStudy.residualWith context layout data mixedVector)
+
+        let rowsOf (name : ExperimentName) (darkOpt : DarkMean option) : RowResidual list =
+            match data.runs |> List.tryFind (fun run -> run.experiment.name = name) with
+            | Some run -> rowResidualsOf context mixedStudy mixedVector darkOpt run
+            | None -> failwith $"{name.value} is not fitted"
+
+        let rows = rowsOf i1 (Some (DarkMean 0.25)) @ rowsOf s1 None @ rowsOf m1 None
+
+        // The two signal differences, Ψ and Δ, the 15 normalized differences, then the one throughput entry.
+        Assert.Equal<int list>([ 1; 1; 2; 15 ], rows |> List.map (fun row -> row.elements.value.Length))
+        Assert.Equal(20, residual.Length)
+        assertEntriesWithin (laidOut rows) residual
+
+        match rows |> List.choose (fun row -> row.throughputOpt) with
+        | [ throughput ] -> Assert.Equal(throughput.value.[0], residual.[19], 1e-12)
+        | throughputs -> Assert.Fail($"expected M1's one throughput entry, got {throughputs.Length}")
+
+        // The signals take the session's dark 0.25, not the camera's own 0.1: S₀ · 2 + 0.25 less the measured signal.
+        let param = runParamOf context (assignmentOf (layout.assignmentFor mixedStudy context.kit.items i1 mixedVector))
+        let heNe = (BuiltinCatalogue.source PresetIds.heNe633).waveLength
+        let slots = prefitSetup.slots
+
+        let predictedAt (degrees : float) : float =
+            s0Through param heNe [ slots.[1], orientedAt 0.0 0.0; slots.[2], orientedAt degrees 0.0 ] * 2.0 + 0.25
+
+        Assert.Equal(predictedAt 0.0 - 1.0, residual.[0], 1e-12)
+        Assert.Equal(predictedAt 60.0 - 0.3, residual.[1], 1e-12)
+
+    [<Fact>]
+    let ``a run's weight multiplies its entries, and a disabled run adds none`` () : unit =
+        let used = (mixedContextOf mixedStudy).kit.itemsUsedBy mixedStudy
+
+        let weighted =
+            studyOf (
+                mixedStudy.withExperimentWeight i1 (ResidualWeight 3.0)
+                |> Result.bind (fun study -> study.withDetectorWeight camera.id (ResidualWeight 0.5) used)
+            )
+
+        let plain = mixedResidualOf mixedStudy
+        let heavy = mixedResidualOf weighted
+
+        // I1's two entries, read by the camera, are 3 × 0.5 times as large; S1's and M1's are unchanged.
+        Assert.Equal(ResidualWeight 1.5, weighted.residualWeightOf i1 camera.id)
+        Assert.True(plain |> List.take 2 |> List.forall (fun entry -> abs entry > 1.0e-3), $"I1's entries are %A{List.take 2 plain}")
+        Assert.Equal(20, heavy.Length)
+        assertEntriesWithin (plain |> List.take 2 |> List.map (fun entry -> entry * 1.5)) (List.take 2 heavy)
+        assertEntriesWithin (List.skip 2 plain) (List.skip 2 heavy)
+
+        // S1 disabled: no Ψ or Δ entry, and every other entry as before.
+        let withoutS1 = studyOf (weighted.withExperimentEnablement s1 DisabledInStudy)
+        let fewer = mixedResidualOf withoutS1
+
+        Assert.Equal(18, fewer.Length)
+        assertEntriesWithin (List.take 2 heavy @ List.skip 4 heavy) fewer
+
+    [<Fact>]
+    let ``a polarimeter study's residual is the throughput residual of its observations`` () : unit =
+        let w = nanometres 600.0
+
+        let configurations : MeasurementConfiguration list =
+            [
+                MuellerFitting.configurationOf XCut (Thickness.mm 1.0<mm>) 0.0<deg> 30.0<deg> TransmittedMueller w
+                MuellerFitting.configurationOf XCut (Thickness.mm 1.0<mm>) 20.0<deg> 30.0<deg> ReflectedMueller w
+                MuellerFitting.configurationOf ZCut (Thickness.mm 0.5<mm>) 10.0<deg> 30.0<deg> TransmittedMueller w
+            ]
+
+        let forward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) SolverParameters.defaultValue
+
+        // Observed from another crystal, so every entry is a real difference.
+        let observations =
+            match MuellerFitting.observeWith forward observedParameters configurations with
+            | Ok observed -> observed
+            | Error error -> failwith $"the observations were refused: %A{error}"
+
+        let keyed = observations |> List.mapi (fun k observation -> ({ key = DataRowKey $"P{k + 1}"; observation = observation } : KeyedObservation))
+        let points = Map.ofList [ m1File, ObservationPoints keyed ]
+
+        // M1 alone, its version opened with each of the four components unknown from its own value.
+        let study =
+            let created = studyOf (Study.create (StudyName "Plate") [ m1 ] [] [ mixedM1 ])
+            let opened = studyOf (created.openMaterial crystalVersion crystalEntry)
+
+            UniaxialParameters.axes
+            |> List.fold
+                (fun (held : Study) (axis : ParameterAxis<UniaxialParameters>) ->
+                    let value = axis.read uniaxialParameters
+
+                    let unknown : UnknownParameterData =
+                        {
+                            start = ParameterValue value
+                            bounds = { lower = ParameterValue (value - 0.01); upper = ParameterValue (value + 0.01) }
+                            priorOpt = None
+                        }
+
+                    studyOf (held.withMaterialParameterState crystalVersion axis.name (UnknownParameter unknown)))
+                opened
+
+        let context = crystalBenchContext [ laser; qz; polarimeter ] [ plateSetup ] |> holdingRuns study [ mixedM1 ] (prefitDataOver (unchangedStatusesOf points) points)
+        let layout = study.parameterLayoutWith context
+
+        Assert.Equal<UnknownOwner list>(List.replicate 4 (MaterialOwner crystalVersion), layout.entries |> List.map (fun entry -> entry.owner))
+
+        // A vector of the crystal's own values.
+        let valueOf (entry : StudyVectorEntry) : ParameterValue =
+            match entry.unknown.parameter with
+            | MaterialParameterRef (_, name) ->
+                match UniaxialParameters.axes |> List.tryFind (fun axis -> axis.name = name) with
+                | Some axis -> ParameterValue (axis.read uniaxialParameters)
+                | None -> failwith $"no uniaxial component is named {name.value}"
+            | ItemParameterRef (item, name) -> failwith $"item {item.value}'s {name.value} is no crystal component"
+
+        let vector = layout.entries |> List.map valueOf |> StudyParameterVector.ofParameterValues
+        let residual = studyEntriesOf (study.residualWith context layout (dataOf (studyDataIn context study)) vector)
+
+        // Any scale centred on the crystal: the zero scaled vector is the crystal itself.
+        let scale : UniaxialParameters =
+            {
+                ordinaryIndex = RefractionIndex 1.0e-3
+                extraordinaryIndex = RefractionIndex 1.0e-3
+                g11 = RhoValue 1.0e-5
+                g33 = RhoValue 1.0e-5
+            }
+
+        let scaling = MuellerFitting.scalingAround UniaxialParameters.axes scale uniaxialParameters
+        let origin = ScaledVector (Array.zeroCreate UniaxialParameters.axes.Length)
+        let harness = List.ofArray (MuellerFitting.throughputResidualFor forward observations scaling origin).value
+
+        Assert.Equal(16 * observations.Length, residual.Length)
+        Assert.True(harness |> List.exists (fun entry -> abs entry > 1.0e-6), "the observations' crystal is the vector's")
+
+        List.iteri2
+            (fun k (e : float) (a : float) -> Assert.True(abs (e - a) <= 1.0e-12 * abs e, $"entry {k}: expected {e:R}, got {a:R}"))
+            harness
+            residual
