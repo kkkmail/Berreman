@@ -9,6 +9,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 
@@ -52,6 +53,10 @@ module Studies =
         | GainAnchorOutsideSessionErr of reason : string
         /// A detector weight for an item the study's experiments do not use.
         | UnknownStudyItemErr of reason : string
+        /// A study message naming a study the kit does not hold.
+        | UnknownStudyErr of reason : string
+        /// A material version the library could not resolve for OpenMaterial.
+        | MaterialUnavailableErr of reason : string
 
         member this.describe : string =
             match this with
@@ -72,6 +77,8 @@ module Studies =
             | UnknownStudySessionErr reason -> $"the study has no such session: {reason}"
             | GainAnchorOutsideSessionErr reason -> $"the AIR run is not in that session: {reason}"
             | UnknownStudyItemErr reason -> $"the study uses no such item: {reason}"
+            | UnknownStudyErr reason -> $"the kit has no such study: {reason}"
+            | MaterialUnavailableErr reason -> $"the material version could not be read: {reason}"
 
     /// The AIR runs that open and close a drifting session (spec 0050 S11.1).
     type AirRepeatPair =
@@ -896,3 +903,61 @@ module Studies =
                 |> List.filter (fun session -> session.experiments |> List.exists (fun run -> List.contains run users))
                 |> List.map (fun session -> SessionOwner session.name)
             | ExperimentScope -> users |> List.distinct |> List.map ExperimentOwner
+
+    /// What the study messages receive: the kit's studies, experiments, setups and items as the window last read them,
+    /// and the library's resolution of a material version, its store's failure mapped to `MaterialUnavailableErr` by the
+    /// composer (spec 0050 S11.1; 001 §P).
+    [<ReferenceEquality>]
+    type StudyContext =
+        {
+            studies : Study list
+            experiments : Experiment list
+            setups : Setup list
+            items : Item list
+            resolveMaterial : MaterialVersionId -> Result<MaterialEntry, StudyError>
+        }
+
+        /// The kit's items, in its order, that `Experiment.itemsUsedBy` finds in the study's experiments as `experiments`
+        /// holds them; an experiment whose setup revision or held item the kit lacks adds none (spec 0050 S11.1).
+        member this.itemsUsedBy (study : Study) : Item list =
+            let used =
+                study.experiments
+                |> List.choose (fun run -> this.experiments |> List.tryFind (fun experiment -> experiment.name = run))
+                |> List.collect (fun experiment -> Experiment.itemsUsedBy [ experiment ] this.setups this.items |> Result.defaultValue [])
+
+            this.items |> List.filter (fun item -> used |> List.exists (fun held -> held.id = item.id))
+
+    /// A study verb as one semantic message: the study view's buttons and the tests send the same message
+    /// (spec 0050 S11.1; 001 §P).
+    type StudyMsg =
+        /// A new study of the kit's experiments, in order, under a name no other study's file holds (spec 0050 S11.1).
+        | CreateStudy of name : StudyName * experiments : ExperimentName list
+        /// The study's experiments, then each of the kit's experiments it lacks, in order (spec 0050 S11.1).
+        | AddExperimentsToStudy of study : StudyName * experiments : ExperimentName list
+        /// The study with a working copy of the material version, which the kit snapshots when it records the study
+        /// (spec 0050 S11.1).
+        | OpenMaterial of study : StudyName * material : MaterialVersionId
+        /// The study with one of its parameters shared by the given scope (spec 0050 S11.1).
+        | SetParameterScope of study : StudyName * scoped : ScopedParameter
+        /// The study with one of its parameters following another (spec 0050 S11.1).
+        | LinkParameters of study : StudyName * link : ParameterLink
+
+        /// The study the message creates or changes through its pure update, which the caller records and replaces in its
+        /// list; a refusal answers its error and changes nothing (spec 0050 S11.1; 001 §P).
+        member this.applyTo (context : StudyContext) : Result<Study, StudyError> =
+            let studyNamed (name : StudyName) : Result<Study, StudyError> =
+                match context.studies |> List.tryFind (fun study -> study.name = name) with
+                | Some study -> Ok study
+                | None -> Error (UnknownStudyErr $"'{name.value}' is not among the kit's {context.studies.Length} studies")
+
+            match this with
+            | CreateStudy (name, experiments) -> Study.create name experiments context.studies context.experiments
+            | AddExperimentsToStudy (study, experiments) ->
+                studyNamed study |> Result.bind (fun held -> held.withExperiments experiments context.experiments)
+            | OpenMaterial (study, material) ->
+                studyNamed study
+                |> Result.bind (fun held -> context.resolveMaterial material |> Result.bind (held.openMaterial material))
+            | SetParameterScope (study, scoped) ->
+                studyNamed study |> Result.bind (fun held -> held.withParameterScope scoped (context.itemsUsedBy held))
+            | LinkParameters (study, link) ->
+                studyNamed study |> Result.bind (fun held -> held.withLink link (context.itemsUsedBy held))

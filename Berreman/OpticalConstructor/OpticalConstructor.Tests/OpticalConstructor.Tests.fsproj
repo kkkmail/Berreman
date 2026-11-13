@@ -223,6 +223,7 @@
         <Compile Include="StudyTests.fs" />
         <Compile Include="KitStudyFileTests.fs" />
         <Compile Include="StudyMaterialTests.fs" />
+        <Compile Include="StudyMessageTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

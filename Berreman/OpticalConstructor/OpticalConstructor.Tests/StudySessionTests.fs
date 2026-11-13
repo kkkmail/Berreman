@@ -174,6 +174,8 @@ module StudySessionTests =
         let sessionReason = "'Day 9' is not among the study's 2 sessions"
         let outsideReason = "'E3' is not among the 2 experiments of 'Session 1'"
         let itemReason = "item 36200000-0000-4000-8000-000000000013: no item of the 2 the study uses has that id"
+        let studyReason = "'LR' is not among the kit's 1 studies"
+        let unavailableReason = "material 36600000-0000-4000-8000-000000000009 v1 is not in the library"
         let rendered =
             [ (EmptyGainAnchorsErr emptyReason).describe
               (MissingAnchorGainErr missingReason).describe
@@ -191,7 +193,9 @@ module StudySessionTests =
               (InvalidParameterLinkErr linkReason).describe
               (UnknownStudySessionErr sessionReason).describe
               (GainAnchorOutsideSessionErr outsideReason).describe
-              (UnknownStudyItemErr itemReason).describe ]
+              (UnknownStudyItemErr itemReason).describe
+              (UnknownStudyErr studyReason).describe
+              (MaterialUnavailableErr unavailableReason).describe ]
 
         Assert.Equal($"the gain model names no AIR run: {emptyReason}", rendered.[0])
         Assert.Equal($"the AIR run's gain is not known: {missingReason}", rendered.[1])
@@ -210,6 +214,8 @@ module StudySessionTests =
         Assert.Equal($"the study has no such session: {sessionReason}", rendered.[14])
         Assert.Equal($"the AIR run is not in that session: {outsideReason}", rendered.[15])
         Assert.Equal($"the study uses no such item: {itemReason}", rendered.[16])
+        Assert.Equal($"the kit has no such study: {studyReason}", rendered.[17])
+        Assert.Equal($"the material version could not be read: {unavailableReason}", rendered.[18])
         Assert.Equal(rendered.Length, rendered |> List.distinct |> List.length)
 
     [<Fact>]
