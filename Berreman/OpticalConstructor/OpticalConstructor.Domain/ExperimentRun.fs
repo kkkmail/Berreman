@@ -73,6 +73,13 @@ module ExperimentRun =
         | Intensity -> IntensityReading sv.intensity
         | Ellipsometer -> EllipsometricReading sv.psiDelta
 
+    type RunStep with
+
+        /// The path's Mueller matrix: the steps' matrices multiplied in light order, the identity for no step; a
+        /// polarimeter's recorded matrix (spec 0050 S11.2).
+        static member productOf (steps : RunStep list) : MuellerMatrix =
+            steps |> List.fold (fun product step -> step.mueller * product) Propagation.identityMueller
+
     type SourcePreset with
 
         /// The wavelength a run uses when it does not vary it (spec 0046; spec 0050 S11.2): a TUNABLE source's `requested`

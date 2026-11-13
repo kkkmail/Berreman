@@ -1,13 +1,17 @@
 namespace OpticalConstructor.Domain
 
+open Berreman.Constants
 open Berreman.Fields
+open Berreman.Geometry
 open Berreman.Solvers
 open Analytics.AnalysisFunctions
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ExperimentRun
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.BeamLayout
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.MeasuredData
@@ -26,11 +30,20 @@ module StudyForward =
         | UnpairedPointsErr of reason : string
         /// A parameter vector that does not hold one value per entry of the study's layout (spec 0050 S11.2).
         | VectorLengthErr of reason : string
+        /// The setup revision the experiment references does not resolve (spec 0050 S11.2).
+        | ForwardSetupErr of error : SetupError
+        /// A slot's item does not resolve, or its evaluation refused (spec 0050 S11.2).
+        | ForwardSlotErr of error : SlotRunError
+        /// No detector slot of the setup holds a detector item to read the light (spec 0050 S11.2).
+        | StudyDetectorErr of reason : string
 
         member this.describe : string =
             match this with
             | UnpairedPointsErr reason -> $"the data cannot be placed on the scan: {reason}"
             | VectorLengthErr reason -> $"the parameter vector does not fit the study: {reason}"
+            | ForwardSetupErr error -> $"the experiment's setup does not resolve: {error.describe}"
+            | ForwardSlotErr error -> $"a slot cannot be evaluated: {error.describe}"
+            | StudyDetectorErr reason -> $"the setup has no detector item: {reason}"
 
     /// What a detector records, predicted or measured: an intensity detector's signal, an ellipsometer's Ψ and Δ, or a
     /// polarimeter's absolute Mueller matrix, its m₀₀ the throughput as S9.2's readings hold it (spec 0050 S11.2).
@@ -358,3 +371,232 @@ module StudyForward =
                     | None, _ -> assignment
 
                 Ok (study.links |> List.fold followed assigned)
+
+    type ParameterValue with
+
+        /// The number as a dark level in the detector's own units, a `ReadingParameter`'s (spec 0050 S11.2; step 207).
+        member this.darkMean : MuellerReconstruction.DarkMean =
+            let (ParameterValue level) = this
+            MuellerReconstruction.DarkMean level
+
+    /// How the detector item reads the light reaching it: an intensity detector S₀ through its gain and dark level, a
+    /// polarimeter the path's Mueller matrix, an ellipsometer Ψ and Δ; no noise is simulated (spec 0050 S11.2).
+    type DetectorReadout =
+        | IntensityDetectorReadout of gain : ParameterValue * dark : MuellerReconstruction.DarkMean
+        | PolarimeterDetectorReadout
+        | EllipsometerDetectorReadout
+
+    /// One run element on the detector's path, bound over the assignment: its drawn slot, the branch the light leaves it
+    /// by, its drawn incidence and its item's dial and dial zero (spec 0050 S11.2).
+    type BoundPathStep =
+        {
+            slot : SetupSlot
+            element : BoundOpticalElement
+            branch : Propagation.Branch
+            drawnIncidence : IncidenceAngle
+            dial : ItemDial
+            dialZero : Angle
+        }
+
+    /// An experiment bound at one parameter vector: its source's emission and operating wavelength, the run elements on
+    /// its detector's path in light order, and the detector item and its readout (spec 0050 S11.2).
+    type BoundExperiment =
+        {
+            experiment : Experiment
+            emission : SourceEmission
+            operatingWaveLength : WaveLength
+            path : BoundPathStep list
+            detectorItem : ItemId
+            readout : DetectorReadout
+        }
+
+    type Experiment with
+
+        /// The experiment's setup revision drawn, its slots run over `assignment`, read by the first detector slot in light
+        /// order holding a detector item, its dark level `darkOpt` else the item's dark offset; an unresolved setup or slot
+        /// item, or no detector item, is refused (spec 0050 S11.2; 001 §N).
+        member this.boundWith
+            (context : StudyForwardContext)
+            (assignment : ExperimentAssignment)
+            (darkOpt : MuellerReconstruction.DarkMean option)
+            : Result<BoundExperiment, StudyForwardError> =
+            let items = context.kit.items
+
+            let param : SlotRunParam =
+                {
+                    library = context.library
+                    materials = assignment.materialProxyOver context.materials
+                    items = items
+                    choiceOf = context.choiceOf
+                    valuesOf = assignment.valuesOf
+                }
+
+            let intensityReadoutOf (detector : Item) : Result<DetectorReadout, StudyForwardError> =
+                let values = param.valuesOf detector
+
+                let dark : Result<MuellerReconstruction.DarkMean, ItemEvaluationError> =
+                    match darkOpt with
+                    | Some level -> Ok level
+                    | None -> values.valueOf ParameterName.darkOffset |> Result.map (fun offset -> offset.darkMean)
+
+                values.valueOf ParameterName.gain
+                |> Result.bind (fun gain -> dark |> Result.map (fun level -> IntensityDetectorReadout (gain, level)))
+                |> Result.mapError (SlotEvaluationErr >> ForwardSlotErr)
+
+            // A detector slot reads only through an item of a detector form (spec 0050 S8.2, S11.2; step 208).
+            let detectorOf (roled : RoledSlot) : (SetupSlot * Item * Result<DetectorReadout, StudyForwardError>) option =
+                let heldOpt : (Item * ItemModelChoice) option =
+                    match roled.role, roled.slot.content.itemOpt with
+                    | DetectorSlotRole _, Some itemId ->
+                        items
+                        |> List.tryFind (fun item -> item.id = itemId)
+                        |> Option.bind (fun item -> context.choiceOf item |> Option.map (fun choice -> item, choice))
+                    | DetectorSlotRole _, None
+                    | (SourceSlotRole | PrepSlotRole _ | ObjectSlotRole _ | AnalyzerSlotRole _), _ -> None
+
+                match heldOpt with
+                | Some (item, LibraryModelChoice model) ->
+                    match model.entry.model with
+                    | IntensityDetectorModel _ -> Some (roled.slot, item, intensityReadoutOf item)
+                    | MuellerPolarimeterModel _ -> Some (roled.slot, item, Ok PolarimeterDetectorReadout)
+                    | EllipsometerModel _ -> Some (roled.slot, item, Ok EllipsometerDetectorReadout)
+                    | SourcePresetItemModel
+                    | IdealPolarizerItemModel
+                    | StackSampleItemModel
+                    | OpticalElementModel _
+                    | EmptySlotModel -> None
+                | Some (_, (SourcePresetChoice _ | PolarizerPresetChoice _ | StackSampleChoice _))
+                | None -> None
+
+            // A fixed item, or a slot holding none, turns on no dial (spec 0050 S8.2, S11.2).
+            let dialOf (slot : SetupSlot) : Result<ItemDial * Angle, StudyForwardError> =
+                match slot.content.itemOpt with
+                | None -> Ok (FixedMounting, Angle.zero)
+                | Some itemId ->
+                    param.resolveSlotItem itemId
+                    |> Result.mapError (SlotItemErr >> ForwardSlotErr)
+                    |> Result.bind (fun (item, _) ->
+                        match item.dial with
+                        | FixedMounting -> Ok (FixedMounting, Angle.zero)
+                        | DialMounted _ ->
+                            (param.valuesOf item).valueOf ParameterName.dialZero
+                            |> Result.map (fun zero -> item.dial, zero.angle)
+                            |> Result.mapError (SlotEvaluationErr >> ForwardSlotErr))
+
+            this.slotsIn context.kit.setups
+            |> Result.mapError ForwardSetupErr
+            |> Result.bind (fun recorded ->
+                let slots = recorded |> List.map (fun slot -> slot.drawnWith items)
+                let layout = slots |> List.map (fun slot -> slot.layoutElement) |> BeamLayout.layout
+
+                let placedOf (id : Library.ElementId) : (SetupSlot * BeamLayout.PlacedElement) option =
+                    slots
+                    |> List.tryFind (fun slot -> slot.id = id)
+                    |> Option.bind (fun slot ->
+                        layout.elements |> List.tryFind (fun placed -> placed.id = id) |> Option.map (fun placed -> slot, placed))
+
+                // A source, detector, mirror or lens, or an unbound slot, is no run element (spec 0050 S11.2; step 368).
+                let boundStepOf (step : BeamLayout.PathStep) : Result<BoundPathStep option, StudyForwardError> =
+                    match placedOf step.element with
+                    | None -> Ok None
+                    | Some (slot, placed) ->
+                        slot.runElementWith param
+                        |> Result.mapError ForwardSlotErr
+                        |> Result.bind (fun elementOpt ->
+                            match elementOpt with
+                            | None -> Ok None
+                            | Some element ->
+                                dialOf slot
+                                |> Result.map (fun (dial, dialZero) ->
+                                    let bound : BoundPathStep =
+                                        {
+                                            slot = slot
+                                            element = element
+                                            branch = step.branch.propagationBranch
+                                            drawnIncidence = placed.incidenceOn slot.placement
+                                            dial = dial
+                                            dialZero = dialZero
+                                        }
+
+                                    Some bound))
+
+                SetupSlot.runEmissionOf slots param
+                |> Result.mapError ForwardSlotErr
+                |> Result.bind (fun emission ->
+                    match SetupSlot.inLightOrder slots |> List.tryPick detectorOf with
+                    | None -> Error (StudyDetectorErr $"{this.setup.describe}, which {this.name.value} references")
+                    | Some (detector, detectorItem, readoutResult) ->
+                        let path : BeamLayout.PathStep list =
+                            match placedOf detector.id with
+                            | Some (_, placed) -> placed.path
+                            | None -> []
+
+                        readoutResult
+                        |> Result.bind (fun readout ->
+                            path
+                            |> List.map boundStepOf
+                            |> ItemEvaluation.sequenced
+                            |> Result.map (fun steps ->
+                                let source = SetupSlot.boundSourceIn slots context.library
+
+                                let bound : BoundExperiment =
+                                    {
+                                        experiment = this
+                                        emission = emission
+                                        operatingWaveLength = Library.SourcePreset.operatingWaveLengthOf source this.scan.sourceWaveLengthOpt
+                                        path = List.choose id steps
+                                        detectorItem = detectorItem.id
+                                        readout = readout
+                                    }
+
+                                bound))))
+
+    type BoundExperiment with
+
+        /// The detector's predicted reading at the point's settings, at `waveLengthOpt` else the point's wavelength else
+        /// the operating one: S₀ · gain + dark, Ψ and Δ, or the path's Mueller matrix (spec 0050 S11.2; 001 §N).
+        member this.readingAt (settings : ScanSetting list) (waveLengthOpt : WaveLength option) : Result<RecordedReading, StudyForwardError> =
+            let degreesOf (value : SweptValue) : Angle = Angle.degree (value.value * 1.0<deg>)
+
+            let settingOn (step : BoundPathStep) (variable : VariableParameter) : ScanSetting option =
+                settings |> List.tryFindBack (fun setting -> setting.elementId = step.slot.id && setting.variable = variable)
+
+            let w : WaveLength =
+                match waveLengthOpt, settings |> List.tryFindBack (fun setting -> setting.variable = VaryWaveLength) with
+                | Some requested, _ -> requested
+                | None, Some setting -> Units.toWaveLength Units.Nanometer setting.value.toUnitMagnitude
+                | None, None -> this.operatingWaveLength
+
+            // A raw reading turns its slot as `sign · (reading − zero)`, a fixed mounting as the reading (spec 0050 S11.2; step 255).
+            let throughDial (step : BoundPathStep) (reading : Angle) : Angle =
+                match step.dial with
+                | DialMounted sign -> sign.physicalAngleOf step.dialZero reading
+                | FixedMounting -> reading
+
+            let rotationOf (step : BoundPathStep) : Angle =
+                match settingOn step VaryR1, settingOn step VaryDialReading, step.slot.content with
+                | Some setting, _, _ -> degreesOf setting.value
+                | None, Some setting, _ -> throughDial step (degreesOf setting.value)
+                | None, None, ItemInSlot (_, DialTurn reading) -> throughDial step reading
+                | None, None, ItemInSlot (_, PlacementTurn)
+                | None, None, EmptySlotContent -> step.slot.placement.r1
+
+            let incidenceOf (step : BoundPathStep) : IncidenceAngle =
+                match settingOn step VaryR2 with
+                | Some setting -> IncidenceAngle.create (degreesOf setting.value)
+                | None -> step.drawnIncidence
+
+            this.path
+            |> List.map (fun step ->
+                let orientation : ElementOrientation = { rotation = rotationOf step; incidence = incidenceOf step; branch = step.branch }
+                step.element.muellerAt orientation w |> Result.map step.slot.runStepOf)
+            |> ItemEvaluation.sequenced
+            |> Result.mapError (SlotEvaluationErr >> ForwardSlotErr)
+            |> Result.map (fun steps ->
+                // S₀ and Ψ, Δ of the arriving state, the readings `ExperimentRun.read` projects (spec 0050 S11.2; step 252).
+                match this.readout with
+                | IntensityDetectorReadout (gain, dark) ->
+                    let s0 = (detectorStokes this.emission steps).intensity
+                    RecordedSignal (MeasuredIntensity (s0.value * gain.value + dark.value))
+                | EllipsometerDetectorReadout -> RecordedPsiDelta (detectorStokes this.emission steps).psiDelta
+                | PolarimeterDetectorReadout -> RecordedMueller (RunStep.productOf steps))

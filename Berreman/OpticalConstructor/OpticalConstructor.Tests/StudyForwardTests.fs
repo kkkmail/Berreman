@@ -15,6 +15,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ExperimentRun
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.MeasuredData
@@ -30,7 +31,8 @@ open OpticalConstructor.Domain.StudyForward
 open CrystalMaterialFixtures
 
 /// Spec 0050 S11.2 — what a detector records, each mapped point placed on the scan its experiment was taken over, the
-/// study's parameter vector laid out by its unknowns' owners, and the numbers one experiment is evaluated with.
+/// study's parameter vector laid out by its unknowns' owners, the numbers one experiment is evaluated with, and the
+/// reading its detector item predicts at a scan point.
 module StudyForwardTests =
 
     let private polarizer : Library.ElementId = Library.ElementId "polarizer"
@@ -250,12 +252,22 @@ module StudyForwardTests =
     let ``every forward error renders its condition and its payload`` () : unit =
         let reason = "point 3 holds 1 scan value(s), and the scan varies 2"
         let lengthReason = "it holds 3 value(s), and the layout has 4 entry(ies)"
+        let setupError = UnknownSetupErr "'Missing' revision 1"
+        let slotError = SlotItemErr (UnknownSlotItemErr "the kit holds no item LP3")
+        let detectorReason = "'Bench' revision 1, which E1 references"
 
         let cases : (StudyForwardError * string) list =
             [
                 UnpairedPointsErr reason, $"the data cannot be placed on the scan: {reason}"
                 VectorLengthErr lengthReason, $"the parameter vector does not fit the study: {lengthReason}"
+                ForwardSetupErr setupError, $"the experiment's setup does not resolve: {setupError.describe}"
+                ForwardSlotErr slotError, $"a slot cannot be evaluated: {slotError.describe}"
+                StudyDetectorErr detectorReason, $"the setup has no detector item: {detectorReason}"
             ]
+
+        // A wrapped error keeps its own payload in the text.
+        Assert.Contains("'Missing' revision 1", (ForwardSetupErr setupError).describe)
+        Assert.Contains("the kit holds no item LP3", (ForwardSlotErr slotError).describe)
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
@@ -747,3 +759,364 @@ module StudyForwardTests =
         Assert.Equal<Result<ExperimentAssignment, StudyForwardError>>(
             Error (VectorLengthErr "it holds 5 value(s), and the layout has 4 entry(ies)"),
             qzLayout.assignmentFor layoutStudy items e1 (StudyParameterVector [| 0.7; 2.0; 3.0; 1.6; 1.6 |]))
+
+    // The forward model's bench: a HeNe source item, an ideal linear polarizer (the prep), a real linear polarizer (the
+    // analyzer), a glass sample and a detector item of each form; every model is a shipped entry of step 210.
+    let private benchDraftOf (id : string) (label : string) (model : ItemModelChoice) (dial : ItemDial) : ItemDraft =
+        {
+            id = ItemId (Guid.Parse id)
+            label = ItemLabel label
+            model = model
+            dial = dial
+        }
+
+    let private idealLinearPolarizer : PolarizerPreset =
+        match BuiltinCatalogue.preset PresetIds.polarizerLp with
+        | PolarizerItem polarizer -> polarizer
+        | SampleItem _
+        | SourceItem _
+        | DetectorItem _ -> failwith "the Built-in linear polarizer preset is a polarizer"
+
+    let private sampleChoiceOf (id : SampleId) : ItemModelChoice =
+        StackSampleChoice (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId, SampleVersionId.firstOf id, BuiltinCatalogue.sample id)
+
+    let private laserDraft : ItemDraft =
+        benchDraftOf
+            "37400000-0000-4000-8000-000000000001"
+            "HeNe"
+            (SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.heNe633))
+            FixedMounting
+
+    let private prepDraft : ItemDraft =
+        benchDraftOf
+            "37400000-0000-4000-8000-000000000002"
+            "LP1"
+            (PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, idealLinearPolarizer))
+            FixedMounting
+
+    let private analyzerDraft : ItemDraft =
+        benchDraftOf
+            "37400000-0000-4000-8000-000000000003"
+            "LP2"
+            (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId))
+            FixedMounting
+
+    /// The real linear polarizer on a dial read backwards.
+    let private dialAnalyzerDraft : ItemDraft =
+        { analyzerDraft with id = ItemId (Guid.Parse "37400000-0000-4000-8000-000000000004"); label = ItemLabel "LP2 dial"; dial = DialMounted DialNegative }
+
+    let private plateDraft : ItemDraft = benchDraftOf "37400000-0000-4000-8000-000000000005" "Plate" (sampleChoiceOf SampleIds.glassPlate1mmId) FixedMounting
+
+    /// A free-standing 200 nm glass film, whose interference makes the path depend on λ.
+    let private filmDraft : ItemDraft = benchDraftOf "37400000-0000-4000-8000-000000000006" "Film" (sampleChoiceOf SampleIds.glassFilm200Id) FixedMounting
+
+    let private intensityDraft : ItemDraft =
+        benchDraftOf
+            "37400000-0000-4000-8000-000000000007"
+            "Camera"
+            (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.intensityDetectorModelId))
+            FixedMounting
+
+    let private polarimeterDraft : ItemDraft =
+        benchDraftOf
+            "37400000-0000-4000-8000-000000000008"
+            "Polarimeter"
+            (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.muellerPolarimeterModelId))
+            FixedMounting
+
+    let private ellipsometerDraft : ItemDraft =
+        benchDraftOf
+            "37400000-0000-4000-8000-000000000009"
+            "Ellipsometer"
+            (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.ellipsometerModelId))
+            FixedMounting
+
+    let private benchDrafts : ItemDraft list =
+        [ laserDraft; prepDraft; analyzerDraft; dialAnalyzerDraft; plateDraft; filmDraft; intensityDraft; polarimeterDraft; ellipsometerDraft ]
+
+    /// The item with one parameter known at that number, failing with the refusal's text.
+    let private knownAt (name : ParameterName) (value : float) (item : Item) : Item =
+        match item.withParameterState name (KnownParameter (ParameterValue value)) with
+        | Ok known -> known
+        | Error error -> failwith $"'{item.label.value}' refused {name.value}: {error.describe}"
+
+    let private laser : Item = laserDraft.toItem
+    let private prep : Item = prepDraft.toItem
+    let private analyzer : Item = analyzerDraft.toItem
+    let private dialAnalyzer : Item = dialAnalyzerDraft.toItem
+    let private plate : Item = plateDraft.toItem
+    let private film : Item = filmDraft.toItem
+
+    /// An intensity detector at gain 2 and dark offset 0.1.
+    let private camera : Item = intensityDraft.toItem |> knownAt ParameterName.gain 2.0 |> knownAt ParameterName.darkOffset 0.1
+
+    let private polarimeter : Item = polarimeterDraft.toItem
+    let private ellipsometer : Item = ellipsometerDraft.toItem
+
+    let private prepSlot : SetupSlot = emptySlot (Library.ElementId "lp") LinearPolarizer { x = -0.3<meter>; y = 0.0<meter> }
+    let private sampleSlot : SetupSlot = emptySlot (Library.ElementId "plate") Sample { x = 0.0<meter>; y = 0.0<meter> }
+    let private analyzerSlot : SetupSlot = emptySlot (Library.ElementId "analyzer") LinearPolarizer { x = 0.3<meter>; y = 0.0<meter> }
+
+    /// The slot holding the item as `AssignSlot` places it, its slot bound to the item's library entry, failing with the
+    /// refusal's text.
+    let private placing (item : Item) (slot : SetupSlot) : SetupSlot =
+        let model =
+            match benchDrafts |> List.tryFind (fun draft -> draft.id = item.id) with
+            | Some draft -> draft.model
+            | None -> failwith $"'{item.label.value}' is not on the bench"
+
+        match slot.withItem item model with
+        | Ok held -> held
+        | Error error -> failwith error.describe
+
+    /// The forward context over a kit of these items and setups, each item's model as its bench draft chose it.
+    let private benchContext (items : Item list) (setups : Setup list) : StudyForwardContext =
+        let benchChoiceOf (item : Item) : ItemModelChoice option =
+            benchDrafts |> List.tryFind (fun draft -> draft.id = item.id) |> Option.map (fun draft -> draft.model)
+
+        { forwardOver items layoutStudy [] setups with choiceOf = benchChoiceOf }
+
+    /// F1 over the setup's current revision.
+    let private runOver (setup : Setup) : Experiment = { e1Run with id = ExperimentId 5; name = ExperimentName "F1"; setup = setup.reference }
+
+    /// No parameter takes a vector's value: each item is evaluated with its own.
+    let private ownAssignment : ExperimentAssignment = { itemValues = Map.empty; crystals = Map.empty }
+
+    let private boundOf (result : Result<BoundExperiment, StudyForwardError>) : BoundExperiment =
+        match result with
+        | Ok bound -> bound
+        | Error error -> failwith $"expected a bound experiment, got {error.describe}"
+
+    /// The run's parameter as `boundWith` builds it over the context and the assignment.
+    let private runParamOf (context : StudyForwardContext) (assignment : ExperimentAssignment) : SlotRunParam =
+        {
+            library = context.library
+            materials = assignment.materialProxyOver context.materials
+            items = context.kit.items
+            choiceOf = context.choiceOf
+            valuesOf = assignment.valuesOf
+        }
+
+    let private deg (degrees : float) : Angle = Angle.degree (degrees * 1.0<deg>)
+
+    let private nanometres (length : float) : WaveLength = WaveLength.nm (length * 1.0<nm>)
+
+    let private nanometresIn (w : WaveLength) : float = (Units.wavelengthToUnit Units.Nanometer w).value
+
+    /// Transmitting at that rotation and incidence.
+    let private orientedAt (rotation : float) (incidence : float) : ElementOrientation =
+        { rotation = deg rotation; incidence = IncidenceAngle.create (deg incidence); branch = BranchTransmitted }
+
+    /// The slot's run step: its run element evaluated at the orientation and λ, failing when it binds none or refuses.
+    let private runStepAt (param : SlotRunParam) (w : WaveLength) (slot : SetupSlot, orientation : ElementOrientation) : RunStep =
+        match slot.runElementWith param with
+        | Ok (Some element) ->
+            match element.muellerAt orientation w with
+            | Ok mueller -> slot.runStepOf mueller
+            | Error error -> failwith error.describe
+        | Ok None -> failwith $"the slot '{slot.id.value}' binds no run element"
+        | Error error -> failwith error.describe
+
+    /// What the light-source axes' defaults emit: unpolarized light at unit scale.
+    let private defaultEmission : SourceEmission =
+        match SourceEmission.ofValues (ParameterValues.defaultsOf SourcePreset.lightSourceAxes) with
+        | Ok emission -> emission
+        | Error error -> failwith error.describe
+
+    /// S₀ of the default emission through the slots at their orientations and λ, as `ExperimentRun.read Intensity` reads it.
+    let private s0Through (param : SlotRunParam) (w : WaveLength) (oriented : (SetupSlot * ElementOrientation) list) : float =
+        match read Intensity defaultEmission (oriented |> List.map (runStepAt param w)) with
+        | IntensityReading s0 -> s0.value
+        | EllipsometricReading _ -> failwith "an intensity reading is S₀"
+
+    let private settingAt (slot : SetupSlot) (variable : VariableParameter) (value : float) : ScanSetting =
+        {
+            elementId = slot.id
+            variable = variable
+            value = SweptValue value
+        }
+
+    let private signalOf (reading : Result<RecordedReading, StudyForwardError>) : float =
+        match reading with
+        | Ok (RecordedSignal signal) -> signal.value
+        | Ok other -> failwith $"expected a recorded signal, got %A{other}"
+        | Error error -> failwith error.describe
+
+    let private assertSignalWithin (expected : float) (reading : Result<RecordedReading, StudyForwardError>) : unit =
+        let actual = signalOf reading
+        Assert.True(abs (expected - actual) <= 1.0e-12, $"expected {expected:R}, got {actual:R}")
+
+    /// The source, the prep at R1 0° and the analyzer, then the detector slot holding the detector item.
+    let private malusSlots (analyzerItem : Item) (detectorItem : Item) : SetupSlot list =
+        [ placing laser sourceSlot; placing prep prepSlot; placing analyzerItem analyzerSlot; placing detectorItem detectorSlot ]
+
+    [<Fact>]
+    let ``an intensity detector reads S0 times its gain plus its dark level along the setup's path`` () : unit =
+        let setup = setupOf (SetupName "Malus") (malusSlots analyzer camera)
+        let slots = setup.slots
+        let context = benchContext [ laser; prep; analyzer; camera ] [ setup ]
+        let bound = boundOf ((runOver setup).boundWith context ownAssignment None)
+
+        // The HeNe emits the default light at its own line; the path is the prep then the analyzer; the camera reads
+        // through its own gain and dark offset.
+        Assert.Equal<SourceEmission>(defaultEmission, bound.emission)
+        Assert.Equal<WaveLength>((BuiltinCatalogue.source PresetIds.heNe633).waveLength, bound.operatingWaveLength)
+        Assert.Equal<Library.ElementId list>([ prepSlot.id; analyzerSlot.id ], bound.path |> List.map (fun step -> step.slot.id))
+        Assert.Equal<ItemId>(camera.id, bound.detectorItem)
+        Assert.Equal<DetectorReadout>(IntensityDetectorReadout (ParameterValue 2.0, DarkMean 0.1), bound.readout)
+
+        // The analyzer turned to 60°: Malus's cos² 60° = 1/4 of the prepared light.
+        let param = runParamOf context ownAssignment
+        let s0 = s0Through param bound.operatingWaveLength [ slots.[1], orientedAt 0.0 0.0; slots.[2], orientedAt 60.0 0.0 ]
+        Assert.True(abs (s0 - 0.25) <= 1.0e-12, $"S₀ = {s0:R}")
+
+        let turned = [ settingAt analyzerSlot VaryR1 60.0 ]
+        assertSignalWithin (s0 * 2.0 + 0.1) (bound.readingAt turned None)
+
+        // A session's dark level replaces the item's dark offset.
+        let darkBound = boundOf ((runOver setup).boundWith context ownAssignment (Some (DarkMean 0.3)))
+        Assert.Equal<DetectorReadout>(IntensityDetectorReadout (ParameterValue 2.0, DarkMean 0.3), darkBound.readout)
+        assertSignalWithin (s0 * 2.0 + 0.3) (darkBound.readingAt turned None)
+
+        // The gain the assignment holds is the one read.
+        let fitted : ExperimentAssignment =
+            { ownAssignment with itemValues = Map.ofList [ camera.id, (ownValuesOf camera).withValue ParameterName.gain (ParameterValue 3.0) ] }
+
+        assertSignalWithin (s0 * 3.0 + 0.1) ((boundOf ((runOver setup).boundWith context fitted None)).readingAt turned None)
+
+    [<Fact>]
+    let ``a scan setting turns, tilts or retunes the path, and a dial reading turns its slot through the vector's zero`` () : unit =
+        // The analyzer on a backwards dial whose zero is 10° in the assignment, its own zero 0°.
+        let dialZero : ExperimentAssignment =
+            {
+                ownAssignment with
+                    itemValues = Map.ofList [ dialAnalyzer.id, (ownValuesOf dialAnalyzer).withValue ParameterName.dialZero (ParameterValue (Math.PI / 18.0)) ]
+            }
+
+        let dialSetup = setupOf (SetupName "Dial") (malusSlots dialAnalyzer camera)
+        let dialContext = benchContext [ laser; prep; dialAnalyzer; camera ] [ dialSetup ]
+        let dialBound = boundOf ((runOver dialSetup).boundWith dialContext dialZero None)
+        let dialParam = runParamOf dialContext dialZero
+        let w = dialBound.operatingWaveLength
+
+        let at30 = s0Through dialParam w [ dialSetup.slots.[1], orientedAt 0.0 0.0; dialSetup.slots.[2], orientedAt 30.0 0.0 ] * 2.0 + 0.1
+        let at20 = s0Through dialParam w [ dialSetup.slots.[1], orientedAt 0.0 0.0; dialSetup.slots.[2], orientedAt 20.0 0.0 ] * 2.0 + 0.1
+        Assert.True(abs (at30 - at20) > 1.0e-3, "the analyzer at 30° and at 20° read alike")
+
+        // A dial reading of −20° is the analyzer at −(−20° − 10°) = 30°, not the 20° its own zero would give.
+        Assert.Equal<ItemDial>(DialMounted DialNegative, dialBound.path.[1].dial)
+        assertSignalWithin at30 (dialBound.readingAt [ settingAt analyzerSlot VaryDialReading (-20.0) ] None)
+
+        // Recorded as the slot's dial turn, the same reading turns it alike without a setting.
+        let recordedSlots =
+            dialSetup.slots |> List.map (fun slot -> if slot.id = analyzerSlot.id then { slot with content = ItemInSlot (dialAnalyzer.id, DialTurn (deg (-20.0))) } else slot)
+
+        let recordedSetup = setupOf (SetupName "Dial recorded") recordedSlots
+        let recordedContext = benchContext [ laser; prep; dialAnalyzer; camera ] [ recordedSetup ]
+        assertSignalWithin at30 ((boundOf ((runOver recordedSetup).boundWith recordedContext dialZero None)).readingAt [] None)
+
+        // An R1 setting turns the dial-mounted analyzer to its value directly.
+        assertSignalWithin at20 (dialBound.readingAt [ settingAt analyzerSlot VaryR1 20.0 ] None)
+
+        // A glass sample between the polarizers, the analyzer at 45°: an R2 setting tilts it, a wavelength setting retunes
+        // the path, and a requested wavelength wins over it. The film makes λ tell.
+        for sampleItem in [ plate; film ] do
+            let slots = [ placing laser sourceSlot; placing prep prepSlot; placing sampleItem sampleSlot; placing analyzer analyzerSlot; placing camera detectorSlot ]
+            let setup = setupOf (SetupName $"Tilt {sampleItem.label.value}") slots
+            let context = benchContext [ laser; prep; sampleItem; analyzer; camera ] [ setup ]
+            let bound = boundOf ((runOver setup).boundWith context ownAssignment None)
+            let param = runParamOf context ownAssignment
+            let operating = bound.operatingWaveLength
+
+            let expectedAt (incidence : float) (w : WaveLength) : float =
+                s0Through param w [ slots.[1], orientedAt 0.0 0.0; slots.[2], orientedAt 0.0 incidence; slots.[3], orientedAt 45.0 0.0 ] * 2.0 + 0.1
+
+            let turned = settingAt analyzerSlot VaryR1 45.0
+            let tilted = [ turned; settingAt sampleSlot VaryR2 40.0 ]
+            let retuned = tilted @ [ settingAt sourceSlot VaryWaveLength 500.0 ]
+
+            Assert.Equal<Library.ElementId list>([ prepSlot.id; sampleSlot.id; analyzerSlot.id ], bound.path |> List.map (fun step -> step.slot.id))
+            let drawn = bound.path.[1].drawnIncidence.angle.degrees
+            Assert.True(abs drawn <= 1.0e-9, $"the sample is drawn at {drawn:R}°")
+            assertSignalWithin (expectedAt 0.0 operating) (bound.readingAt [ turned ] None)
+            assertSignalWithin (expectedAt 40.0 operating) (bound.readingAt tilted None)
+            Assert.True(abs (expectedAt 40.0 operating - expectedAt 0.0 operating) > 1.0e-4, $"'{sampleItem.label.value}' reads alike at 0° and 40°")
+            assertSignalWithin (expectedAt 40.0 (nanometres 500.0)) (bound.readingAt retuned None)
+            assertSignalWithin (expectedAt 40.0 (nanometres 450.0)) (bound.readingAt retuned (Some (nanometres 450.0)))
+
+        let filmSlots = [ placing laser sourceSlot; placing prep prepSlot; placing film sampleSlot; placing analyzer analyzerSlot; placing camera detectorSlot ]
+        let filmParam = runParamOf (benchContext [ laser; prep; film; analyzer; camera ] []) ownAssignment
+
+        let filmAt (w : WaveLength) : float =
+            s0Through filmParam w [ filmSlots.[1], orientedAt 0.0 0.0; filmSlots.[2], orientedAt 0.0 40.0; filmSlots.[3], orientedAt 45.0 0.0 ]
+
+        let operating = (BuiltinCatalogue.source PresetIds.heNe633).waveLength
+
+        for w, other in [ nanometres 500.0, operating; nanometres 450.0, nanometres 500.0 ] do
+            Assert.True(abs (filmAt w - filmAt other) > 1.0e-4, $"the film reads alike at {nanometresIn w:R} nm and {nanometresIn other:R} nm")
+
+    [<Fact>]
+    let ``a polarimeter reads its path's Mueller matrix, and an ellipsometer Psi and Delta of the arriving state`` () : unit =
+        let turned = [ settingAt analyzerSlot VaryR1 30.0 ]
+        let polarimeterSetup = setupOf (SetupName "Polarimeter") (malusSlots analyzer polarimeter)
+        let polarimeterContext = benchContext [ laser; prep; analyzer; polarimeter ] [ polarimeterSetup ]
+        let polarimeterBound = boundOf ((runOver polarimeterSetup).boundWith polarimeterContext ownAssignment None)
+        let param = runParamOf polarimeterContext ownAssignment
+        let w = polarimeterBound.operatingWaveLength
+        let steps = [ polarimeterSetup.slots.[1], orientedAt 0.0 0.0; polarimeterSetup.slots.[2], orientedAt 30.0 0.0 ] |> List.map (runStepAt param w)
+
+        Assert.Equal<DetectorReadout>(PolarimeterDetectorReadout, polarimeterBound.readout)
+
+        // The analyzer's matrix times the prep's: the path's, its m₀₀ the throughput.
+        let expected = steps.[1].mueller * steps.[0].mueller
+
+        match polarimeterBound.readingAt turned None with
+        | Ok (RecordedMueller recorded) ->
+            for i in 0 .. 3 do
+                for j in 0 .. 3 do
+                    let e = expected.element i j
+                    let a = recorded.element i j
+                    Assert.True(abs (e - a) <= 1.0e-12, $"element ({i},{j}): expected {e:R}, got {a:R}")
+        | Ok other -> Assert.Fail($"expected a recorded Mueller matrix, got %A{other}")
+        | Error error -> Assert.Fail(error.describe)
+
+        // An ellipsometer on the same path reads Ψ and Δ of the state arriving at it.
+        let ellipsometerSetup = setupOf (SetupName "Ellipsometer") (malusSlots analyzer ellipsometer)
+        let ellipsometerContext = benchContext [ laser; prep; analyzer; ellipsometer ] [ ellipsometerSetup ]
+        let ellipsometerBound = boundOf ((runOver ellipsometerSetup).boundWith ellipsometerContext ownAssignment None)
+
+        Assert.Equal<DetectorReadout>(EllipsometerDetectorReadout, ellipsometerBound.readout)
+
+        match read Ellipsometer defaultEmission steps, ellipsometerBound.readingAt turned None with
+        | EllipsometricReading expectedPsiDelta, Ok (RecordedPsiDelta psiDelta) ->
+            Assert.True(abs (expectedPsiDelta.psi.value - psiDelta.psi.value) <= 1.0e-12, $"Ψ: expected {expectedPsiDelta.psi.degrees:R}°, got {psiDelta.psi.degrees:R}°")
+            Assert.True(abs (expectedPsiDelta.delta.value - psiDelta.delta.value) <= 1.0e-12, $"Δ: expected {expectedPsiDelta.delta.degrees:R}°, got {psiDelta.delta.degrees:R}°")
+        | IntensityReading _, _ -> Assert.Fail "an ellipsometric read is Ψ and Δ"
+        | EllipsometricReading _, Ok other -> Assert.Fail($"expected a recorded Ψ and Δ, got %A{other}")
+        | EllipsometricReading _, Error error -> Assert.Fail(error.describe)
+
+    [<Fact>]
+    let ``a setup without a detector item, or whose setup or slot item does not resolve, is refused`` () : unit =
+        // The detector slot holds nothing.
+        let unread = setupOf (SetupName "Unread") [ placing laser sourceSlot; placing prep prepSlot; placing analyzer analyzerSlot; detectorSlot ]
+        let unreadRun = runOver unread
+
+        Assert.Equal<Result<BoundExperiment, StudyForwardError>>(
+            Error (StudyDetectorErr $"{unread.reference.describe}, which {unreadRun.name.value} references"),
+            unreadRun.boundWith (benchContext [ laser; prep; analyzer ] [ unread ]) ownAssignment None)
+
+        // The experiment references a setup the kit lacks.
+        let missing : SetupReference = { name = SetupName "Missing"; revision = SetupRevision.first }
+        let malus = setupOf (SetupName "Malus") (malusSlots analyzer camera)
+        let items = [ laser; prep; analyzer; camera ]
+
+        let missingRun = { runOver malus with setup = missing }
+
+        Assert.Equal<Result<BoundExperiment, StudyForwardError>>(
+            Error (ForwardSetupErr (UnknownSetupErr missing.describe)),
+            missingRun.boundWith (benchContext items [ malus ]) ownAssignment None)
+
+        // The analyzer slot holds an item the kit lacks.
+        Assert.Equal<Result<BoundExperiment, StudyForwardError>>(
+            Error (ForwardSlotErr (SlotItemErr (UnknownSlotItemErr $"the kit holds no item {analyzer.id.value}"))),
+            (runOver malus).boundWith (benchContext [ laser; prep; camera ] [ malus ]) ownAssignment None)

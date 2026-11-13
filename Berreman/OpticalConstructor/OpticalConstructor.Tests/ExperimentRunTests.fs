@@ -98,6 +98,26 @@ module ExperimentRunTests =
         let swapped = detectorStokes defaultEmission [ lp 0.0; ObjectStep second; ObjectStep first; lp 45.0 ]
         Assert.True(abs (swapped.s0 - inLightOrder.s0) > 1.0e-3, $"S0: {inLightOrder.s0:R} in light order, {swapped.s0:R} swapped")
 
+    let private muellerElements (m : MuellerMatrix) : float list = [ for i in 0 .. 3 do for j in 0 .. 3 -> m.element i j ]
+
+    [<Fact>]
+    let ``a path's Mueller matrix is the product of its steps in light order`` () =
+        let a = Propagation.analyzerMueller IdealLinear (deg 20.0)
+        let b = MuellerReconstruction.retarderMueller (deg 30.0) (MuellerReconstruction.Retardance (Math.PI / 2.0))
+        let c = Propagation.analyzerMueller IdealLinear (deg 75.0)
+        let path = [ ElementStep a; ObjectStep b; ElementStep c ]
+        let product = RunStep.productOf path
+
+        List.zip (muellerElements (c * (b * a))) (muellerElements product)
+        |> List.iteri (fun k (e, p) -> Assert.True(abs (e - p) <= tol, $"element ({k / 4},{k % 4}): expected {e:R}, got {p:R}"))
+
+        // Against the light, A · B · C is another matrix, so the order is the light's.
+        let againstLight = muellerElements (a * (b * c))
+        let largest = List.zip againstLight (muellerElements product) |> List.map (fun (x, p) -> abs (x - p)) |> List.max
+        Assert.True(largest > 1.0e-3, $"C · B · A and A · B · C differ by at most {largest:R}")
+
+        Assert.Equal<float list>(muellerElements Propagation.identityMueller, muellerElements (RunStep.productOf []))
+
     [<Fact>]
     let ``a real source emits its own state times its scale`` () =
         let source : SourceEmission =
