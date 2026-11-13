@@ -1,13 +1,68 @@
 namespace OpticalConstructor.Tests
 
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.Studies
 open Xunit
 
 /// Spec 0050 S11.1 — a session's gain model resolves to the per-family AIR gain rules it replaced, over fixed-literal
-/// AIR gains and capture times.
+/// AIR gains and capture times; a study's experiments split into sessions, each with its dark runs.
 module StudySessionTests =
+
+    /// A run over `Bench` revision 1 turning one polarizer, as `ExperimentProxyTests`' E1; the session tests vary only its
+    /// name, role and session.
+    let private benchRun : Experiment =
+        {
+            id = ExperimentId 1
+            name = ExperimentName "E1"
+            setup = { name = SetupName "Bench"; revision = SetupRevision 1 }
+            scan =
+                ExperimentScan.oneAxis
+                    {
+                        elementId = ElementId "lp2"
+                        label = ElementLabel "Linear polarizer #4"
+                        variable = VaryR1
+                        range = VariableRange.forVariable VaryR1
+                    }
+                    CaptureTransmitted
+                    None
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
+            dataOpt = None
+            corrections = []
+        }
+
+    let private run (name : ExperimentName) (role : ExperimentRole) (sessionOpt : SessionName option) : Experiment =
+        { benchRun with name = name; role = role; sessionOpt = sessionOpt }
+
+    let private sessionOf (name : SessionName) (experiments : ExperimentName list) : StudySession =
+        { name = name; experiments = experiments }
+
+    let private e1 = ExperimentName "E1"
+    let private e2 = ExperimentName "E2"
+    let private d1 = ExperimentName "D1"
+    let private e3 = ExperimentName "E3"
+    let private e4 = ExperimentName "E4"
+    let private e5 = ExperimentName "E5"
+    let private d2 = ExperimentName "D2"
+    let private session1 = SessionName "Session 1"
+    let private session2 = SessionName "Session 2"
+    let private session3 = SessionName "Session 3"
+    let private day2 = SessionName "Day 2"
+
+    /// E1 (Science), E2 (Calibration), D1 (Diagnostic), E3 (Science), E4 (Science, hand-set `Day 2`), E5 (Dark) and D2
+    /// (Diagnostic), E1 in `e1Session` when one is given.
+    let private studyRuns (e1Session : SessionName option) : Experiment list =
+        [ run e1 ScienceRun e1Session
+          run e2 CalibrationRun None
+          run d1 DiagnosticRun None
+          run e3 ScienceRun None
+          run e4 ScienceRun (Some day2)
+          run e5 DarkRun None
+          run d2 DiagnosticRun None ]
 
     let private atHour (hour : int) : System.DateTimeOffset =
         System.DateTimeOffset(2026, 7, 15, hour, 0, 0, System.TimeSpan.Zero)
@@ -114,3 +169,37 @@ module StudySessionTests =
         Assert.Equal($"the AIR run's gain is not known: {missingReason}", rendered.[1])
         Assert.Equal($"the session gain is fitted, not derived from AIR runs: {freeReason}", rendered.[2])
         Assert.Equal(rendered.Length, rendered |> List.distinct |> List.length)
+
+    [<Fact>]
+    let ``experiments split into sessions at each diagnostic run, and a hand-set session gathers its own`` () : unit =
+        Assert.Equal<StudySession list>(
+            [ sessionOf session1 [ e1; e2 ]; sessionOf session2 [ e3; e5 ]; sessionOf day2 [ e4 ] ],
+            StudySession.splitAll (studyRuns None))
+
+        // A hand-set `Session 1` takes that name from the first block, which becomes `Session 2`.
+        Assert.Equal<StudySession list>(
+            [ sessionOf session1 [ e1 ]; sessionOf session2 [ e2 ]; sessionOf session3 [ e3; e5 ]; sessionOf day2 [ e4 ] ],
+            StudySession.splitAll (studyRuns (Some session1)))
+
+        Assert.Equal<StudySession list>([], StudySession.splitAll [ run d1 DiagnosticRun None; run d2 DiagnosticRun None ])
+
+    [<Fact>]
+    let ``a session's dark comes from its own dark runs, or else from every dark run of the study`` () : unit =
+        let darkRunsOf (experiments : Experiment list) (session : SessionName) : ExperimentName list =
+            match StudySession.splitAll experiments |> List.tryFind (fun held -> held.name = session) with
+            | Some held -> held.darkRunsIn experiments
+            | None -> failwith $"expected a session named {session.value}"
+
+        let study = studyRuns None
+        Assert.Equal<ExperimentName list>([ e5 ], darkRunsOf study session2)
+        Assert.Equal<ExperimentName list>([ e5 ], darkRunsOf study session1)
+        Assert.Equal<ExperimentName list>([ e5 ], darkRunsOf study day2)
+
+        // E6 (Dark) beside E5 in `Session 2`, and E7 (Dark) after D2 opening `Session 3`.
+        let e6 = ExperimentName "E6"
+        let e7 = ExperimentName "E7"
+        let (beforeD2, fromD2) = List.splitAt 6 study
+        let twoDark = beforeD2 @ [ run e6 DarkRun None ] @ fromD2 @ [ run e7 DarkRun None ]
+        Assert.Equal<ExperimentName list>([ e5; e6 ], darkRunsOf twoDark session2)
+        Assert.Equal<ExperimentName list>([ e7 ], darkRunsOf twoDark session3)
+        Assert.Equal<ExperimentName list>([ e5; e6; e7 ], darkRunsOf twoDark session1)

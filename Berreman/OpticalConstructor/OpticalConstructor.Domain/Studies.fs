@@ -107,3 +107,53 @@ module Studies =
                                 gainEnd = closing.gain
                                 timeEnd = closing.capturedAt
                             }))
+
+    /// One session block of a study: its name and its experiments in list order (spec 0050 S11.1; 001 §L).
+    type StudySession =
+        {
+            name : SessionName
+            experiments : ExperimentName list
+        }
+
+        /// The sessions of `experiments`, in order: a hand-set session gathers its runs, the rest split at each Diagnostic
+        /// run into `Session <k>` blocks, `k` the least name still free; ordered by first experiment (spec 0050 S11.1).
+        static member splitAll (experiments : Experiment list) : StudySession list =
+            let handSet = experiments |> List.choose (fun experiment -> experiment.sessionOpt)
+
+            let firstFree (taken : SessionName list) : SessionName =
+                let rec fromNumber (number : int) : SessionName =
+                    let candidate = SessionName $"Session {number.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                    if List.contains candidate taken then fromNumber (number + 1) else candidate
+
+                fromNumber 1
+
+            let joined (session : SessionName) (run : ExperimentName) (sessions : StudySession list) : StudySession list =
+                if sessions |> List.exists (fun held -> held.name = session) then
+                    sessions
+                    |> List.map (fun held -> if held.name = session then { held with experiments = held.experiments @ [ run ] } else held)
+                else
+                    sessions @ [ ({ name = session; experiments = [ run ] } : StudySession) ]
+
+            // Every hand-set name is known before the fold, so a block is named when its first run opens it.
+            experiments
+            |> List.fold (fun (sessions : StudySession list, openBlockOpt : SessionName option) experiment ->
+                match experiment.sessionOpt, experiment.role, openBlockOpt with
+                | Some session, _, _ -> joined session experiment.name sessions, openBlockOpt
+                | None, DiagnosticRun, _ -> sessions, None
+                | None, _, Some block -> joined block experiment.name sessions, openBlockOpt
+                | None, _, None ->
+                    let block = firstFree (handSet @ (sessions |> List.map (fun held -> held.name)))
+                    joined block experiment.name sessions, Some block) ([], None)
+            |> fst
+
+        /// The session's Dark runs in its order, or, when it holds none, every Dark run of `experiments`: one darkness
+        /// file can serve every session (spec 0050 S11.1).
+        member this.darkRunsIn (experiments : Experiment list) : ExperimentName list =
+            let darkRuns =
+                experiments
+                |> List.filter (fun experiment -> experiment.role = DarkRun)
+                |> List.map (fun experiment -> experiment.name)
+
+            match this.experiments |> List.filter (fun run -> List.contains run darkRuns) with
+            | [] -> darkRuns
+            | own -> own
