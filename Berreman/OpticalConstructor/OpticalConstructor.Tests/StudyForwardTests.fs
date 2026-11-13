@@ -6,6 +6,7 @@ open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
 open Berreman.Media
+open Berreman.MaterialProperties
 open Berreman.Solvers
 open Analytics.AnalysisFunctions
 open OpticalConstructor.Domain
@@ -24,11 +25,12 @@ open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.ExperimentData
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.StudyForward
 open CrystalMaterialFixtures
 
-/// Spec 0050 S11.2 — what a detector records, each mapped point placed on the scan its experiment was taken over, and
-/// the study's parameter vector laid out by its unknowns' owners.
+/// Spec 0050 S11.2 — what a detector records, each mapped point placed on the scan its experiment was taken over, the
+/// study's parameter vector laid out by its unknowns' owners, and the numbers one experiment is evaluated with.
 module StudyForwardTests =
 
     let private polarizer : Library.ElementId = Library.ElementId "polarizer"
@@ -247,7 +249,13 @@ module StudyForwardTests =
     [<Fact>]
     let ``every forward error renders its condition and its payload`` () : unit =
         let reason = "point 3 holds 1 scan value(s), and the scan varies 2"
-        let cases : (StudyForwardError * string) list = [ UnpairedPointsErr reason, $"the data cannot be placed on the scan: {reason}" ]
+        let lengthReason = "it holds 3 value(s), and the layout has 4 entry(ies)"
+
+        let cases : (StudyForwardError * string) list =
+            [
+                UnpairedPointsErr reason, $"the data cannot be placed on the scan: {reason}"
+                VectorLengthErr lengthReason, $"the parameter vector does not fit the study: {lengthReason}"
+            ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
@@ -341,19 +349,30 @@ module StudyForwardTests =
             dial = FixedMounting
         }
 
-    /// The draft's new item with one parameter freed, failing with the refusal's text.
-    let private freeing (name : ParameterName) (unknown : UnknownParameterData) (draft : ItemDraft) : Item =
-        match draft.toItem.withParameterState name (UnknownParameter unknown) with
+    /// A second circular polarizer, outside step 372's bench.
+    let private cpl2Draft : ItemDraft =
+        {
+            cpl1Draft with
+                id = ItemId (Guid.Parse "37300000-0000-4000-8000-000000000011")
+                label = ItemLabel "CPL2"
+        }
+
+    /// The draft's new item with one parameter in that state, failing with the refusal's text.
+    let private stating (name : ParameterName) (state : ParameterState) (draft : ItemDraft) : Item =
+        match draft.toItem.withParameterState name state with
         | Ok item -> item
         | Error error -> failwith $"'{draft.label.value}' refused {name.value}: {error.describe}"
 
-    let private cpl1 : Item = freeing retardance retardanceData cpl1Draft
-    let private phone : Item = freeing ParameterName.gain gainData phoneDraft
+    let private cpl1 : Item = stating retardance (UnknownParameter retardanceData) cpl1Draft
+    let private phone : Item = stating ParameterName.gain (UnknownParameter gainData) phoneDraft
     let private qz : Item = qzDraft.toItem
+
+    /// CPL2 with its retardance known at 1.2.
+    let private cpl2 : Item = stating retardance (KnownParameter (ParameterValue 1.2)) cpl2Draft
 
     /// Each item's model as its draft chose it.
     let private choiceOf (item : Item) : ItemModelChoice option =
-        [ cpl1Draft; phoneDraft; qzDraft ] |> List.tryFind (fun draft -> draft.id = item.id) |> Option.map (fun draft -> draft.model)
+        [ cpl1Draft; phoneDraft; qzDraft; cpl2Draft ] |> List.tryFind (fun draft -> draft.id = item.id) |> Option.map (fun draft -> draft.model)
 
     let private emptySlot (id : Library.ElementId) (kind : CatalogueKind) (point : TablePoint) : SetupSlot =
         {
@@ -429,15 +448,15 @@ module StudyForwardTests =
             readMapped = fun data -> Error (MalformedDataFileErr $"the test holds no file '{data.attachment.path.value}'")
         }
 
-    /// The study's forward context over a kit of these runs and setups, the three items, the Built-in library and
-    /// materials, and the default solver parameters.
-    let private forwardFor (study : Study) (runs : Experiment list) (setups : Setup list) : StudyForwardContext =
+    /// The study's forward context over a kit of these items, runs and setups, the Built-in library and materials, and
+    /// the default solver parameters.
+    let private forwardOver (items : Item list) (study : Study) (runs : Experiment list) (setups : Setup list) : StudyForwardContext =
         let kit : StudyContext =
             {
                 studies = [ study ]
                 experiments = runs
                 setups = setups
-                items = [ cpl1; qz; phone ]
+                items = items
                 resolveMaterial =
                     fun version ->
                         if version = crystalVersion then Ok crystalEntry
@@ -452,6 +471,10 @@ module StudyForwardTests =
             choiceOf = choiceOf
             solverParameters = SolverParameters.defaultValue
         }
+
+    /// The forward context over CPL1, QZ and the Phone.
+    let private forwardFor (study : Study) (runs : Experiment list) (setups : Setup list) : StudyForwardContext =
+        forwardOver [ cpl1; qz; phone ] study runs setups
 
     let private entryOf (unknown : StudyUnknown) (owner : UnknownOwner) : StudyVectorEntry = { unknown = unknown; owner = owner }
 
@@ -560,3 +583,167 @@ module StudyForwardTests =
         Assert.Equal<UnknownOwner list>([ ExperimentOwner e1; ExperimentOwner e2 ], ownersIn gone retardanceRef)
         Assert.Equal<UnknownOwner list>([ SessionOwner session1 ], ownersIn gone phoneGain.parameter)
         Assert.Equal<UnknownOwner list>([ MaterialOwner crystalVersion ], ownersIn gone crystalOrdinary.parameter)
+
+    /// The QZ study's layout over the bench: CPL1's retardance, the Phone's gain in `Session 1` and `Session 2`, n_o.
+    let private qzLayout : StudyParameterLayout = layoutStudy.parameterLayoutWith (forwardFor layoutStudy kitRuns [ bench ])
+
+    /// A vector of that layout: the retardance 0.7, the gain 2 in `Session 1` and 3 in `Session 2`, n_o 1.6.
+    let private qzVector : StudyParameterVector = StudyParameterVector [| 0.7; 2.0; 3.0; 1.6 |]
+
+    /// The probe crystal with its n_o at the vector's 1.6 and its other three components the copy's.
+    let private crystalAtVector : CrystalParameters = UniaxialCrystal { uniaxialParameters with ordinaryIndex = RefractionIndex 1.6 }
+
+    let private assignmentOf (result : Result<ExperimentAssignment, StudyForwardError>) : ExperimentAssignment =
+        match result with
+        | Ok assignment -> assignment
+        | Error error -> failwith $"expected an assignment, got {error.describe}"
+
+    /// The study's working copy of that version, failing when the study has not opened it.
+    let private openedOf (study : Study) (version : MaterialVersionId) : OpenedMaterial =
+        match study.materials |> List.tryFind (fun material -> material.version = version) with
+        | Some material -> material
+        | None -> failwith $"'{study.name.value}' opens no copy of material {version.materialId.value}"
+
+    let private ownValuesOf (item : Item) : ParameterValues = ParameterValues.ofParameters item.parameters
+
+    /// A second version of the probe crystal, opened beside it with every component known.
+    let private twinVersion : MaterialVersionId =
+        MaterialVersionId.firstOf (MaterialId (Guid.Parse "37300000-0000-4000-8000-000000000001"))
+
+    let private twinEntry : MaterialEntry = { crystalEntry with id = twinVersion.materialId; name = EntryName "Probe uniaxial twin" }
+
+    [<Fact>]
+    let ``an experiment's items take the vector's value for the owner that holds it, and every other parameter its own`` () : unit =
+        let items = [ cpl1; qz; phone ]
+        let atE1 = assignmentOf (qzLayout.assignmentFor layoutStudy items e1 qzVector)
+        let atE3 = assignmentOf (qzLayout.assignmentFor layoutStudy items e3 qzVector)
+
+        // CPL1's retardance has one value for every run; the Phone's gain is its session's, its dark offset its own 0.
+        Assert.Equal<ParameterValues>((ownValuesOf cpl1).withValue retardance (ParameterValue 0.7), atE1.valuesOf cpl1)
+        Assert.Equal<ParameterValues>((ownValuesOf phone).withValue ParameterName.gain (ParameterValue 2.0), atE1.valuesOf phone)
+        Assert.Equal<Result<ParameterValue, ItemEvaluationError>>(Ok (ParameterValue 0.0), (atE1.valuesOf phone).valueOf ParameterName.darkOffset)
+        Assert.Equal<ParameterValues>(ownValuesOf qz, atE1.valuesOf qz)
+
+        Assert.Equal<ParameterValues>((ownValuesOf cpl1).withValue retardance (ParameterValue 0.7), atE3.valuesOf cpl1)
+        Assert.Equal<ParameterValues>((ownValuesOf phone).withValue ParameterName.gain (ParameterValue 3.0), atE3.valuesOf phone)
+        Assert.Equal<ParameterValues>(ownValuesOf qz, atE3.valuesOf qz)
+
+        // D1 is in no session, so the Phone keeps its own gain, the unknown's start.
+        let atD1 = assignmentOf (qzLayout.assignmentFor layoutStudy items d1 qzVector)
+        Assert.Equal<ParameterValues>(ownValuesOf phone, atD1.valuesOf phone)
+        Assert.Equal<Result<ParameterValue, ItemEvaluationError>>(Ok (ParameterValue 1.0), (atD1.valuesOf phone).valueOf ParameterName.gain)
+
+        // An item the assignment was not given takes its own values.
+        let withoutQz = assignmentOf (qzLayout.assignmentFor layoutStudy [ cpl1; phone ] e1 qzVector)
+        Assert.Equal<ParameterValues>(ownValuesOf qz, withoutQz.valuesOf qz)
+
+        // Per experiment, each run takes its own value of the retardance.
+        let perExperiment = perExperimentStudy.parameterLayoutWith (forwardFor perExperimentStudy kitRuns [ bench ])
+        let perExperimentVector = StudyParameterVector [| 0.5; 0.6; 0.7; 2.0; 3.0; 1.6 |]
+        let atE2 = assignmentOf (perExperiment.assignmentFor perExperimentStudy items e2 perExperimentVector)
+        let atE3PerExperiment = assignmentOf (perExperiment.assignmentFor perExperimentStudy items e3 perExperimentVector)
+
+        Assert.Equal<ParameterValues>((ownValuesOf cpl1).withValue retardance (ParameterValue 0.6), atE2.valuesOf cpl1)
+        Assert.Equal<ParameterValues>((ownValuesOf phone).withValue ParameterName.gain (ParameterValue 2.0), atE2.valuesOf phone)
+        Assert.Equal<ParameterValues>((ownValuesOf cpl1).withValue retardance (ParameterValue 0.7), atE3PerExperiment.valuesOf cpl1)
+        Assert.Equal<ParameterValues>((ownValuesOf phone).withValue ParameterName.gain (ParameterValue 3.0), atE3PerExperiment.valuesOf phone)
+
+    [<Fact>]
+    let ``an opened material's crystal takes its components from the vector, and a link's follower takes its leader's value`` () : unit =
+        let atE1 = assignmentOf (qzLayout.assignmentFor layoutStudy [ cpl1; qz; phone ] e1 qzVector)
+        let copy = openedOf layoutStudy crystalVersion
+
+        // The copy's n_o is the vector's; its n_e, g11 and g33 are the copy's own.
+        Assert.Equal<CrystalParameters>(crystalAtVector, atE1.crystalOf copy)
+        Assert.Equal<Map<MaterialVersionId, CrystalParameters>>(Map.ofList [ crystalVersion, crystalAtVector ], atE1.crystals)
+
+        // A copy the assignment does not hold is its current crystal: n_o at its unknown's start.
+        let empty : ExperimentAssignment = { itemValues = Map.empty; crystals = Map.empty }
+        Assert.Equal<CrystalParameters>(UniaxialCrystal { uniaxialParameters with ordinaryIndex = RefractionIndex 1.54 }, empty.crystalOf copy)
+
+        // CPL2 (retardance known at 1.2) on the bench and the twin version opened; then CPL2 follows CPL1 and the
+        // twin's n_o the crystal's.
+        let cpl2Slot = emptySlot (Library.ElementId "cpl2") CircularPolarizer { x = -0.1<meter>; y = 0.0<meter> }
+
+        let cpl2Bench =
+            setupOf (SetupName "Bench with CPL2") [ sourceSlot; holding cpl1 cplSlot; holding cpl2 cpl2Slot; holding qz qzSlot; holding phone detectorSlot ]
+
+        let cpl2Runs = kitRuns |> List.map (fun run -> { run with setup = cpl2Bench.reference })
+        let cpl2Items = [ cpl1; qz; phone; cpl2 ]
+        let twinStudy = studyOf (layoutStudy.openMaterial twinVersion twinEntry)
+        let unlinkedContext = forwardOver cpl2Items twinStudy cpl2Runs [ cpl2Bench ]
+        let used = unlinkedContext.kit.itemsUsedBy twinStudy
+
+        let cplLink : ParameterLink = { follower = ItemParameterRef (cpl2.id, retardance); leader = ItemParameterRef (cpl1.id, retardance) }
+
+        let twinLink : ParameterLink =
+            {
+                follower = MaterialParameterRef (twinVersion, ordinaryIndex)
+                leader = MaterialParameterRef (crystalVersion, ordinaryIndex)
+            }
+
+        let linkedStudy = studyOf (twinStudy.withLink cplLink used |> Result.bind (fun linked -> linked.withLink twinLink used))
+        let unlinkedLayout = twinStudy.parameterLayoutWith unlinkedContext
+        let linkedLayout = linkedStudy.parameterLayoutWith (forwardOver cpl2Items linkedStudy cpl2Runs [ cpl2Bench ])
+
+        // Neither follower is an unknown, so the vector is the QZ study's.
+        Assert.Equal<StudyVectorEntry list>(qzLayout.entries, unlinkedLayout.entries)
+        Assert.Equal<StudyVectorEntry list>(qzLayout.entries, linkedLayout.entries)
+
+        let before = assignmentOf (unlinkedLayout.assignmentFor twinStudy cpl2Items e1 qzVector)
+        let after = assignmentOf (linkedLayout.assignmentFor linkedStudy cpl2Items e1 qzVector)
+        let twin = openedOf linkedStudy twinVersion
+
+        Assert.Equal<Result<ParameterValue, ItemEvaluationError>>(Ok (ParameterValue 1.2), (before.valuesOf cpl2).valueOf retardance)
+        Assert.Equal<ParameterValues>((ownValuesOf cpl2).withValue retardance (ParameterValue 0.7), after.valuesOf cpl2)
+        Assert.Equal<CrystalParameters>(UniaxialCrystal uniaxialParameters, before.crystalOf twin)
+        Assert.Equal<CrystalParameters>(crystalAtVector, after.crystalOf twin)
+
+        // The leaders keep their values.
+        Assert.Equal<ParameterValues>(before.valuesOf cpl1, after.valuesOf cpl1)
+        Assert.Equal<CrystalParameters>(crystalAtVector, after.crystalOf copy)
+
+    [<Fact>]
+    let ``a stack sample made of an opened material resolves to the study's working copy`` () : unit =
+        let store = BuiltinCatalogue.materialStore (fun _ -> [])
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), store.saveMaterial crystalEntry)
+
+        let atE1 = assignmentOf (qzLayout.assignmentFor layoutStudy [ cpl1; qz; phone ] e1 qzVector)
+        let over = atE1.materialProxyOver store
+        let e1Crystal = atE1.crystalOf (openedOf layoutStudy crystalVersion)
+
+        // QZ's plate pins the opened version, which resolves to the store's entry over E1's crystal.
+        let plateVersion =
+            match qzPlate.structure.substrate with
+            | Some layer -> layer.materialId
+            | None -> failwith $"'{qzPlate.name.value}' has no substrate"
+
+        Assert.Equal(crystalVersion, plateVersion)
+        Assert.Equal<CrystalParameters>(crystalAtVector, e1Crystal)
+
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(
+            Ok (Some { crystalEntry with physics = CrystalParameterPhysics e1Crystal }),
+            over.resolveVersion plateVersion)
+
+        // Another version, and every other read, is the store's own answer.
+        let glass = MaterialVersionId.firstOf MaterialIds.glass152
+
+        match store.resolveVersion glass with
+        | Ok (Some _) -> ()
+        | Ok None
+        | Error _ -> Assert.Fail($"the Built-in store does not resolve {glass.materialId.value}")
+
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(store.resolveVersion glass, over.resolveVersion glass)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some crystalEntry), over.tryGetMaterial crystalVersion.materialId)
+
+    [<Fact>]
+    let ``a vector of another length is refused`` () : unit =
+        let items = [ cpl1; qz; phone ]
+
+        Assert.Equal<Result<ExperimentAssignment, StudyForwardError>>(
+            Error (VectorLengthErr "it holds 3 value(s), and the layout has 4 entry(ies)"),
+            qzLayout.assignmentFor layoutStudy items e1 (StudyParameterVector [| 0.7; 2.0; 3.0 |]))
+
+        Assert.Equal<Result<ExperimentAssignment, StudyForwardError>>(
+            Error (VectorLengthErr "it holds 5 value(s), and the layout has 4 entry(ies)"),
+            qzLayout.assignmentFor layoutStudy items e1 (StudyParameterVector [| 0.7; 2.0; 3.0; 1.6; 1.6 |]))

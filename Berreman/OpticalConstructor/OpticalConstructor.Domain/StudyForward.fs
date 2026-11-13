@@ -3,6 +3,7 @@ namespace OpticalConstructor.Domain
 open Berreman.Fields
 open Berreman.Solvers
 open Analytics.AnalysisFunctions
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -14,6 +15,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.ExperimentData
+open OpticalConstructor.Domain.ItemEvaluation
 
 /// The forward model of an experiment and the study residual (spec 0050 S11.2).
 module StudyForward =
@@ -22,10 +24,13 @@ module StudyForward =
     type StudyForwardError =
         /// A mapped point the experiment's scan cannot place (spec 0050 S11.2).
         | UnpairedPointsErr of reason : string
+        /// A parameter vector that does not hold one value per entry of the study's layout (spec 0050 S11.2).
+        | VectorLengthErr of reason : string
 
         member this.describe : string =
             match this with
             | UnpairedPointsErr reason -> $"the data cannot be placed on the scan: {reason}"
+            | VectorLengthErr reason -> $"the parameter vector does not fit the study: {reason}"
 
     /// What a detector records, predicted or measured: an intensity detector's signal, an ellipsometer's Ψ and Δ, or a
     /// polarimeter's absolute Mueller matrix, its m₀₀ the throughput as S9.2's readings hold it (spec 0050 S11.2).
@@ -233,3 +238,123 @@ module StudyForward =
                     unknown.owners sessions users |> List.map (fun owner -> ({ unknown = unknown; owner = owner } : StudyVectorEntry)))
 
             { entries = entries; sessions = sessions }
+
+    /// The numbers one experiment is evaluated with at one parameter vector: each item's values and each opened
+    /// material's crystal, which every sample made of it shares (spec 0050 S11.2; 001 §I, §L).
+    type ExperimentAssignment =
+        {
+            itemValues : Map<ItemId, ParameterValues>
+            crystals : Map<MaterialVersionId, CrystalParameters>
+        }
+
+        /// The item's assigned values, or its own for an item the assignment lacks (spec 0050 S11.2).
+        member this.valuesOf (item : Item) : ParameterValues =
+            match this.itemValues |> Map.tryFind item.id with
+            | Some values -> values
+            | None -> ParameterValues.ofParameters item.parameters
+
+        /// The opened material's assigned crystal, or its working copy's current one (spec 0050 S11.2).
+        member this.crystalOf (material : OpenedMaterial) : CrystalParameters =
+            match this.crystals |> Map.tryFind material.version with
+            | Some crystal -> crystal
+            | None -> material.currentCrystal
+
+        /// `materials` with an assigned version resolving to the store's entry over the assigned crystal, so a stack sample
+        /// made of an opened material is solved with the study's working copy; all else passes through (spec 0050 S11.2).
+        member this.materialProxyOver (materials : MaterialProxy) : MaterialProxy =
+            let crystals = this.crystals
+
+            {
+                materials with
+                    resolveVersion =
+                        fun version ->
+                            match crystals |> Map.tryFind version with
+                            | Some crystal ->
+                                materials.resolveVersion version
+                                |> Result.map (Option.map (fun (entry : MaterialEntry) -> { entry with physics = CrystalParameterPhysics crystal }))
+                            | None -> materials.resolveVersion version
+            }
+
+    type StudyParameterLayout with
+
+        /// The experiment's assignment at `vector`: each of `items` and each opened material takes the value of every entry
+        /// whose owner holds the experiment, else its own, then each link's follower its leader's value as assigned; refused
+        /// when the vector does not hold one value per entry (spec 0050 S11.2; 001 §L).
+        member this.assignmentFor
+            (study : Study)
+            (items : Item list)
+            (experiment : ExperimentName)
+            (vector : StudyParameterVector)
+            : Result<ExperimentAssignment, StudyForwardError> =
+            let length = vector.value.Length
+            let count = this.entries.Length
+
+            if length <> count then
+                Error (VectorLengthErr $"it holds {length} value(s), and the layout has {count} entry(ies)")
+            else
+                let holds (owner : UnknownOwner) : bool =
+                    match owner with
+                    | ItemOwner _
+                    | MaterialOwner _ -> true
+                    | SessionOwner session ->
+                        this.sessions |> List.exists (fun block -> block.name = session && List.contains experiment block.experiments)
+                    | ExperimentOwner run -> run = experiment
+
+                let held : (StudyParameterRef * ParameterValue) list =
+                    this.entries
+                    |> List.mapi (fun k entry -> entry, vector.valueAt (StudyVectorIndex k))
+                    |> List.filter (fun (entry, _) -> holds entry.owner)
+                    |> List.map (fun (entry, value) -> entry.unknown.parameter, value)
+
+                let writtenComponent (name : ParameterName) (value : ParameterValue) (crystal : CrystalParameters) : CrystalParameters =
+                    match crystal.parameterAxes |> List.tryFind (fun axis -> axis.name = name) with
+                    | Some axis -> axis.writeValue value crystal
+                    | None -> crystal
+
+                let itemValuesOf (item : Item) : ParameterValues =
+                    held
+                    |> List.fold (fun (values : ParameterValues) (parameter, value) ->
+                        match parameter with
+                        | ItemParameterRef (id, name) when id = item.id -> values.withValue name value
+                        | ItemParameterRef _
+                        | MaterialParameterRef _ -> values) (ParameterValues.ofParameters item.parameters)
+
+                let crystalOf (material : OpenedMaterial) : CrystalParameters =
+                    held
+                    |> List.fold (fun (crystal : CrystalParameters) (parameter, value) ->
+                        match parameter with
+                        | MaterialParameterRef (version, name) when version = material.version -> writtenComponent name value crystal
+                        | MaterialParameterRef _
+                        | ItemParameterRef _ -> crystal) material.currentCrystal
+
+                let assigned : ExperimentAssignment =
+                    {
+                        itemValues = items |> List.map (fun item -> item.id, itemValuesOf item) |> Map.ofList
+                        crystals = study.materials |> List.map (fun material -> material.version, crystalOf material) |> Map.ofList
+                    }
+
+                // A leader never follows (`withLink` refuses a chain), so each follower reads its leader once; a link whose
+                // leader or follower the assignment does not hold changes nothing (spec 0050 S11.1, S11.2).
+                let leaderValueOpt (assignment : ExperimentAssignment) (leader : StudyParameterRef) : ParameterValue option =
+                    match leader with
+                    | ItemParameterRef (item, name) ->
+                        assignment.itemValues |> Map.tryFind item |> Option.bind (fun values -> values.valueOf name |> Result.toOption)
+                    | MaterialParameterRef (version, name) ->
+                        assignment.crystals
+                        |> Map.tryFind version
+                        |> Option.bind (fun crystal ->
+                            crystal.parameterAxes |> List.tryFind (fun axis -> axis.name = name) |> Option.map (fun axis -> axis.parameterValueOf crystal))
+
+                let followed (assignment : ExperimentAssignment) (link : ParameterLink) : ExperimentAssignment =
+                    match leaderValueOpt assignment link.leader, link.follower with
+                    | Some value, ItemParameterRef (item, name) ->
+                        match assignment.itemValues |> Map.tryFind item with
+                        | Some values -> { assignment with itemValues = assignment.itemValues |> Map.add item (values.withValue name value) }
+                        | None -> assignment
+                    | Some value, MaterialParameterRef (version, name) ->
+                        match assignment.crystals |> Map.tryFind version with
+                        | Some crystal -> { assignment with crystals = assignment.crystals |> Map.add version (writtenComponent name value crystal) }
+                        | None -> assignment
+                    | None, _ -> assignment
+
+                Ok (study.links |> List.fold followed assigned)
