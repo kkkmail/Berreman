@@ -44,6 +44,8 @@ module Studies =
         | InvalidStudyParameterErr of reason : string
         /// A scope the parameter's kind does not take, or one set on a linked parameter.
         | ScopeNotAllowedErr of reason : string
+        /// A link to itself, a chain, a second link of one follower, or two parameters of differing scopes.
+        | InvalidParameterLinkErr of reason : string
 
         member this.describe : string =
             match this with
@@ -60,6 +62,7 @@ module Studies =
             | UnknownStudyParameterErr reason -> $"the study has no such parameter: {reason}"
             | InvalidStudyParameterErr reason -> $"the parameter state is not valid: {reason}"
             | ScopeNotAllowedErr reason -> $"the parameter cannot take that scope: {reason}"
+            | InvalidParameterLinkErr reason -> $"the link is not valid: {reason}"
 
     /// The AIR runs that open and close a drifting session (spec 0050 S11.1).
     type AirRepeatPair =
@@ -284,6 +287,9 @@ module Studies =
             follower : StudyParameterRef
             leader : StudyParameterRef
         }
+
+        /// `<follower> = <leader>`, each by its `describe` (spec 0050 S11.1).
+        member this.describe : string = $"{this.follower.describe} = {this.leader.describe}"
 
     /// How one session block's gain is known, as the study sets it (spec 0050 S11.1).
     type SessionGainSetting =
@@ -655,30 +661,32 @@ module Studies =
                 | ItemParameterRef (_, name) when name = ParameterName.gain -> SessionBlockScope
                 | ItemParameterRef _ -> ItemScope
 
+        /// The refusal of a parameter that no item of `used` with its id, or no opened copy of its version, holds; else
+        /// `None` (spec 0050 S11.1).
+        member private this.missingParameterOpt (reference : StudyParameterRef) (used : Item list) : StudyError option =
+            match reference with
+            | ItemParameterRef (itemId, name) ->
+                match used |> List.tryFind (fun item -> item.id = itemId) with
+                | None -> Some (UnknownStudyParameterErr $"{reference.describe}: no item of the {used.Length} the study uses has that id")
+                | Some item ->
+                    match item.tryFindParameter name with
+                    | Some _ -> None
+                    | None ->
+                        Some (UnknownStudyParameterErr $"{reference.describe} is not among the {item.parameters.Length} parameters of '{item.label.value}'")
+            | MaterialParameterRef (version, name) ->
+                match this.materials |> List.tryFind (fun material -> material.version = version) with
+                | None -> Some (UnknownStudyParameterErr $"{reference.describe}: the study opens no copy of that version among its {this.materials.Length}")
+                | Some material ->
+                    match material.parameters |> List.tryFind (fun parameter -> parameter.name = name) with
+                    | Some _ -> None
+                    | None ->
+                        Some (UnknownStudyParameterErr $"{reference.describe} is not among the {material.parameters.Length} parameters of '{material.name.value}'")
+
         /// SetParameterScope's pure half: `scoped` in place of the parameter's entry, else appended. Refused, nothing changed:
         /// a parameter of no item of `used` or opened copy, a scope its kind does not take (an item's Item, Session or
         /// Experiment; a material's Material) and a linked one, as a link joins one scope (spec 0050 S11.1; 001 §L, §P).
         member this.withParameterScope (scoped : ScopedParameter) (used : Item list) : Result<Study, StudyError> =
             let reference = scoped.parameter
-
-            let unknownOpt : StudyError option =
-                match reference with
-                | ItemParameterRef (itemId, name) ->
-                    match used |> List.tryFind (fun item -> item.id = itemId) with
-                    | None -> Some (UnknownStudyParameterErr $"{reference.describe}: no item of the {used.Length} the study uses has that id")
-                    | Some item ->
-                        match item.tryFindParameter name with
-                        | Some _ -> None
-                        | None ->
-                            Some (UnknownStudyParameterErr $"{reference.describe} is not among the {item.parameters.Length} parameters of '{item.label.value}'")
-                | MaterialParameterRef (version, name) ->
-                    match this.materials |> List.tryFind (fun material -> material.version = version) with
-                    | None -> Some (UnknownStudyParameterErr $"{reference.describe}: the study opens no copy of that version among its {this.materials.Length}")
-                    | Some material ->
-                        match material.parameters |> List.tryFind (fun parameter -> parameter.name = name) with
-                        | Some _ -> None
-                        | None ->
-                            Some (UnknownStudyParameterErr $"{reference.describe} is not among the {material.parameters.Length} parameters of '{material.name.value}'")
 
             let allowed : ParameterScope list =
                 match reference with
@@ -687,13 +695,13 @@ module Studies =
 
             let linkOpt = this.links |> List.tryFind (fun link -> link.follower = reference || link.leader = reference)
 
-            match unknownOpt, linkOpt with
+            match this.missingParameterOpt reference used, linkOpt with
             | Some unknown, _ -> Error unknown
             | None, _ when not (List.contains scoped.scope allowed) ->
                 let taken = allowed |> List.map (fun scope -> scope.text) |> String.concat ", "
                 Error (ScopeNotAllowedErr $"{reference.describe} takes {taken}, not {scoped.scope.text}")
             | None, Some link ->
-                Error (ScopeNotAllowedErr $"{reference.describe} is linked, {link.follower.describe} = {link.leader.describe}, and a link joins parameters of one scope")
+                Error (ScopeNotAllowedErr $"{reference.describe} is linked, {link.describe}, and a link joins parameters of one scope")
             | None, None ->
                 let scopes =
                     match this.scopes |> List.tryFindIndex (fun entry -> entry.parameter = reference) with
@@ -701,6 +709,29 @@ module Studies =
                     | None -> this.scopes @ [ scoped ]
 
                 Ok { this with scopes = scopes }
+
+        /// LinkParameters' pure half: the study with `link` appended. Refused, nothing changed: a parameter it lacks, then a
+        /// self link, a follower already linked, a leader that follows (no chain, so a follower reads its leader directly)
+        /// and differing scopes, as a link equates one value per owner (spec 0050 S11.1; 001 §L, §P).
+        member this.withLink (link : ParameterLink) (used : Item list) : Result<Study, StudyError> =
+            let refused (rule : string) : Result<Study, StudyError> = Error (InvalidParameterLinkErr $"{link.describe}: {rule}")
+            let followerHeldOpt = this.links |> List.tryFind (fun held -> held.follower = link.follower || held.leader = link.follower)
+            let leaderHeldOpt = this.links |> List.tryFind (fun held -> held.follower = link.leader)
+
+            match this.missingParameterOpt link.follower used, this.missingParameterOpt link.leader used with
+            | Some missing, _
+            | None, Some missing -> Error missing
+            | None, None when link.follower = link.leader -> refused "a parameter cannot follow itself"
+            | None, None ->
+                match followerHeldOpt, leaderHeldOpt with
+                | Some held, _ when held.follower = link.follower -> refused $"the follower already follows in {held.describe}, and a follower takes one leader"
+                | Some held, _ -> refused $"the follower leads {held.describe}, and a leader follows no one"
+                | None, Some held -> refused $"the leader follows in {held.describe}, and a link does not chain"
+                | None, None ->
+                    match this.scopeOf link.follower, this.scopeOf link.leader with
+                    | followerScope, leaderScope when followerScope <> leaderScope ->
+                        refused $"the follower is per {followerScope.text}, the leader per {leaderScope.text}, and a link equates one value per owner"
+                    | _ -> Ok { this with links = this.links @ [ link ] }
 
         /// The unknown parameters of `used` (the items the study's experiments use), each item's in order, then each
         /// opened material's, with their scopes; a link's follower takes its leader's value, so it is left out

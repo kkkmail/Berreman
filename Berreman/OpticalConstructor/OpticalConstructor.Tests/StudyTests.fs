@@ -14,7 +14,8 @@ open CrystalMaterialFixtures
 
 /// Spec 0050 S11.1 — a study's shape: its name and file stem, its scope and fit-mode tags, its residual weights,
 /// CreateStudy's and AddExperimentsToStudy's pure halves over a kit's experiments, the sessions and gain models a
-/// study reads from them, its unknowns with their scopes and owners, and SetParameterScope's pure half.
+/// study reads from them, its unknowns with their scopes and owners, and SetParameterScope's and LinkParameters' pure
+/// halves.
 module StudyTests =
 
     /// A run over `Bench` revision 1 turning one polarizer, as `StudySessionTests`' is; the study tests vary only its
@@ -438,3 +439,79 @@ module StudyTests =
 
         // The link leaves every other parameter free to take a scope.
         Assert.Equal({ linked with scopes = [ scopedAs phoneGain ExperimentScope ] }, studyOf (linked.withParameterScope (scopedAs phoneGain ExperimentScope) used))
+
+    let private linkOf (follower : StudyParameterRef) (leader : StudyParameterRef) : ParameterLink =
+        { follower = follower; leader = leader }
+
+    [<Fact>]
+    let ``linking CPL2's retardance to CPL1's makes it follow and leaves it out of the unknowns`` () : unit =
+        let used = [ cpl1; cpl2; phone ]
+        let cpl1Retardance = ItemParameterRef (cpl1.id, retardance)
+        let cpl2Retardance = ItemParameterRef (cpl2.id, retardance)
+        let link = linkOf cpl2Retardance cpl1Retardance
+
+        let linked = studyOf (unknownsStudy.withLink link used)
+        Assert.Equal({ unknownsStudy with links = [ link ] }, linked)
+
+        // CPL1's retardance stays an unknown with its own data; CPL2's follows it, so it is not fitted.
+        let unknowns = linked.unknownsWith used
+        let fitted = unknowns |> List.map (fun unknown -> unknown.parameter)
+        Assert.Contains(({ parameter = cpl1Retardance; scope = ItemScope; unknown = cpl1RetardanceData } : StudyUnknown), unknowns)
+        Assert.DoesNotContain(cpl2Retardance, fitted)
+        Assert.Equal<StudyUnknown list>(unknownsStudy.unknownsWith used |> List.filter (fun unknown -> unknown.parameter <> cpl2Retardance), unknowns)
+
+        // A link is held per parameter, not per item: CPL1's offset can follow CPL2's, and the link comes after the first.
+        let offsetLink = linkOf (ItemParameterRef (cpl1.id, fastAxisOffset)) (ItemParameterRef (cpl2.id, fastAxisOffset))
+        let twoLinked = studyOf (linked.withLink offsetLink used)
+        Assert.Equal({ unknownsStudy with links = [ link; offsetLink ] }, twoLinked)
+
+    [<Fact>]
+    let ``a link to itself, a chain, a second link of one follower, a missing parameter or differing scopes is refused`` () : unit =
+        let used = [ cpl1; cpl2; phone ]
+        let cpl1Retardance = ItemParameterRef (cpl1.id, retardance)
+        let cpl2Retardance = ItemParameterRef (cpl2.id, retardance)
+        let cpl2Offset = ItemParameterRef (cpl2.id, fastAxisOffset)
+        let phoneGain = ItemParameterRef (phone.id, ParameterName.gain)
+
+        // Every link refusal opens with the link's own text.
+        let invalidReasonOf (study : Study) (link : ParameterLink) : string =
+            match study.withLink link used with
+            | Error (InvalidParameterLinkErr reason) ->
+                Assert.StartsWith($"{link.describe}: ", reason)
+                reason
+            | other -> failwith $"expected Error (InvalidParameterLinkErr _) for {link.describe}, got %A{other}"
+
+        Assert.EndsWith("a parameter cannot follow itself", invalidReasonOf unknownsStudy (linkOf cpl1Retardance cpl1Retardance))
+
+        let first = linkOf cpl2Retardance cpl1Retardance
+        let linked = studyOf (unknownsStudy.withLink first used)
+
+        // A leader made a follower: CPL1's retardance leads the first link.
+        let leaderReason = invalidReasonOf linked (linkOf cpl1Retardance cpl2Offset)
+        Assert.EndsWith($"the follower leads {first.describe}, and a leader follows no one", leaderReason)
+
+        // A chain through a follower: CPL2's retardance follows the first link.
+        let chainReason = invalidReasonOf linked (linkOf cpl2Offset cpl2Retardance)
+        Assert.EndsWith($"the leader follows in {first.describe}, and a link does not chain", chainReason)
+
+        // A second link of one follower.
+        let secondReason = invalidReasonOf linked (linkOf cpl2Retardance cpl2Offset)
+        Assert.EndsWith($"the follower already follows in {first.describe}, and a follower takes one leader", secondReason)
+
+        // A name CPL1 lacks, as the follower or the leader, is the parameter refusal naming it.
+        let cpl1Gain = ItemParameterRef (cpl1.id, ParameterName.gain)
+
+        for link in [ linkOf cpl1Gain cpl2Offset; linkOf cpl2Offset cpl1Gain ] do
+            match linked.withLink link used with
+            | Error (UnknownStudyParameterErr reason) ->
+                Assert.StartsWith(cpl1Gain.describe, reason)
+                Assert.Contains("'CPL1'", reason)
+            | other -> Assert.Fail($"expected Error (UnknownStudyParameterErr _) for {link.describe}, got %A{other}")
+
+        // An item parameter per item against a detector's gain per session block.
+        let scopeReason = invalidReasonOf linked (linkOf cpl2Offset phoneGain)
+        Assert.EndsWith("the follower is per Item, the leader per Session, and a link equates one value per owner", scopeReason)
+
+        // Every refusal leaves the study as it was: only the first link is held.
+        Assert.Equal<ParameterLink list>([ first ], linked.links)
+        Assert.Equal({ unknownsStudy with links = [ first ] }, linked)
