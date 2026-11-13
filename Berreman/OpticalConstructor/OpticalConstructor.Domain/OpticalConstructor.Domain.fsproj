@@ -186,6 +186,7 @@
         <Compile Include="DataSplits.fs" />
         <Compile Include="ExperimentMatrices.fs" />
         <Compile Include="PrefitChecks.fs" />
+        <Compile Include="StudyForward.fs" />
     </ItemGroup>
 
     <ItemGroup>
