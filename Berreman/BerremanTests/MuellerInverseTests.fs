@@ -14,6 +14,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
 open Xunit
 open BerremanTests.MatrixComparison
 open BerremanTests.InverseFitHarness
@@ -351,7 +352,7 @@ type MuellerInverseTests() =
     /// `RecoveredQuantity`).
     let recoveredQuantities : RecoveredQuantity<UniaxialParameters> list =
         [ for a in UniaxialParameters.axes -> RecoveredQuantity.ofAxis a ]
-        @ [ RecoveredQuantity.derived "n_e - n_o" (fun p -> p.extraordinaryIndex.value - p.ordinaryIndex.value) ]
+        @ [ RecoveredQuantity.derived (ParameterName "n_e - n_o") (fun p -> QuantityValue (p.extraordinaryIndex.value - p.ordinaryIndex.value)) ]
 
     // =================================================================================================
     // T1 / T2 — the forward-side pure helpers.
@@ -1238,7 +1239,7 @@ type MuellerInverseTests() =
         // error — fixed within an experiment, and therefore genuinely systematic FOR that experiment —
         // has no preferred direction across experiments.
         for row in table do
-            let allowance = 3.0 * (standardErrorOfMean (List.length ensembleSeeds) row).value
+            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length ensembleSeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}) — the error is systematic, not random: {report}")
@@ -1253,7 +1254,7 @@ type MuellerInverseTests() =
         // swaps the two roles for the reason finding F1 records (the engine's rho is the bi-anisotropic
         // tensor, not the crystallographic gyration tensor). The ~5 % measured here is the same order as
         // the literature's ~10 % on ITS poorly-determined component.
-        let axial = rowFor table "g33"
+        let axial = (rowFor table (ParameterName "g33") |> expectOk)
         for row in table do
             if row.quantity.name.value <> "g33" then
                 Assert.True(
@@ -1271,12 +1272,12 @@ type MuellerInverseTests() =
         // The comparison is in ABSOLUTE units and must be. Relatively the difference looks no better
         // than the indices (4.0e-4 against 4.9e-4), because it is being divided by a value 170 times
         // smaller — which is exactly the arithmetic that hides the effect.
-        let birefringence = rowFor table "n_e - n_o"
+        let birefringence = (rowFor table (ParameterName "n_e - n_o") |> expectOk)
         for row in table do
             match row.quantity.name.value with
             | "n_o" | "n_e" ->
                 Assert.True(
-                    birefringence.absoluteScatter < row.absoluteScatter / 50.0,
+                    birefringence.absoluteScatter.value < row.absoluteScatter.value / 50.0,
                     $"the birefringence must be determined far better than {row.quantity.name.value} in ABSOLUTE terms: {report}")
             | _ -> ()
 
@@ -1300,7 +1301,7 @@ type MuellerInverseTests() =
         let quality = fitReportOf first.fit
 
         let predictions = predictedRelativeErrors quartz first.fit quality
-        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name.value).scatter
+        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name |> expectOk).scatter
         let comparison =
             System.String.Join(
                 "; ",
@@ -1345,7 +1346,7 @@ type MuellerInverseTests() =
         // DIFFERENCE of two coordinates that share a scale is that scale itself, not the difference of
         // the scales. With the conversion right, the route works — and the "five-digit cancellation
         // kills it" story was an artifact of the bug rather than a measurement.
-        let birefringenceRow = rowFor table "n_e - n_o"
+        let birefringenceRow = (rowFor table (ParameterName "n_e - n_o") |> expectOk)
         let pairVariance = combinationVariance quality (differenceWeights first.fit.scaling "n_e" "n_o")
         let pairPrediction =
             sqrt (max 0.0 pairVariance) * abs first.fit.scaling.scale.ordinaryIndex.value

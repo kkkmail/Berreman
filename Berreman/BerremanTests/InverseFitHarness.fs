@@ -12,81 +12,6 @@ open OpticalConstructor.Optimization.BenchNoise
 open Xunit
 open BerremanTests.MatrixComparison
 
-/// A scalar an experiment recovers: any one of the fitted unknowns, or any DERIVED quantity built from
-/// them.
-///
-/// Derived quantities are not decoration. The most important number a biaxial or uniaxial experiment
-/// produces is often a DIFFERENCE of two fitted parameters — linear retardance depends on `n_e − n_o`,
-/// not on either index alone — and because that difference is one to two orders of magnitude smaller
-/// than the indices themselves, the two are strongly correlated and the difference is determined far
-/// better than either. An ensemble that reported only the fitted parameters would understate the
-/// experiment by exactly that factor.
-[<ReferenceEquality>]
-type RecoveredQuantity<'Parameters> =
-    {
-        name : ParameterName
-        valueIn : 'Parameters -> double
-    }
-
-    /// The quantity that IS a fitted parameter.
-    static member ofAxis (axis : ParameterAxis<'Parameters>) : RecoveredQuantity<'Parameters> =
-        {
-            name = axis.name
-            valueIn = axis.read
-        }
-
-    /// A quantity computed FROM the fitted parameters — a birefringence, say.
-    static member derived (name : string) (valueIn : 'Parameters -> double) : RecoveredQuantity<'Parameters> =
-        {
-            name = ParameterName name
-            valueIn = valueIn
-        }
-
-/// What an ensemble of noisy experiments says about ONE recovered quantity — the answer to "and what is
-/// the error bar?", which a single noisy experiment cannot give.
-[<ReferenceEquality>]
-type RecoveryStatistics<'Parameters> =
-    {
-        /// Which quantity this row is about.
-        quantity : RecoveredQuantity<'Parameters>
-        /// The mean recovered value over the ensemble, in that quantity's own physical units (a
-        /// refractive index for some of them and a gyration component for others, which is why it cannot
-        /// be an elevated type here). Carried for the report, not asserted on directly.
-        mean : double
-        /// `|mean − truth| / |truth|` — what is left of the error once the ensemble has averaged, and
-        /// therefore the place a SYSTEMATIC displacement would show up. It is measured rather than
-        /// assumed to be zero: a rotation-angle error is genuinely systematic within one experiment,
-        /// because the fit assumes angles the sample was never at, and whether it also survives the
-        /// average is exactly the question.
-        bias : RelativeError
-        /// The sample standard deviation of the recovered values over `|truth|` — the RANDOM error, and
-        /// the number an experimenter would quote as the "±" after a repeat-measurement study.
-        scatter : RelativeError
-        /// The same standard deviation in the quantity's OWN units. Carried alongside the relative one
-        /// because a pair of indices and their DIFFERENCE cannot be compared relatively: the difference
-        /// is one to two orders of magnitude smaller than either index, so dividing each by its own value
-        /// flatters the indices by exactly that factor and hides the very effect the comparison exists to
-        /// show.
-        absoluteScatter : double
-        /// The worst single experiment's relative error over the ensemble.
-        worst : RelativeError
-    }
-
-    /// One line of the ensemble table.
-    member this.describe : string =
-        $"{this.quantity.name.value}: mean {this.mean}, bias {this.bias.value}, scatter {this.scatter.value} "
-        + $"(absolute {this.absoluteScatter}), worst {this.worst.value}"
-
-/// Everything ONE noisy experiment produced: which seed generated it, and the fit it led to. The fit
-/// carries the scaling and the residual closure alongside the recovered constants, so an ensemble can
-/// ask a single experiment what uncertainty IT thinks it has without paying for a second fit.
-[<ReferenceEquality>]
-type NoisyExperiment<'Parameters> =
-    {
-        seed : NoiseSeed
-        fit : MuellerFitData<'Parameters>
-    }
-
 /// Spec 0044 — the machinery every inverse-problem suite in this assembly shares.
 ///
 /// `MuellerInverseTests` (uniaxial quartz, four unknowns) and `BiaxialInverseTests` (triclinic, nine
@@ -161,48 +86,6 @@ module InverseFitHarness =
     ///
     /// Both suites use the same eight, which is what makes their ensembles directly comparable.
     let ensembleSeeds : NoiseSeed list = [ 1; 2; 3; 4; 5; 6; 7; 8 ] |> List.map NoiseSeed
-
-    /// Reduce an ensemble of recovered parameter sets to one statistics row per quantity.
-    ///
-    /// The scatter is the SAMPLE standard deviation (Bessel-corrected, `n − 1`), because the ensemble is
-    /// a sample of possible experiments rather than the whole population of them — which is exactly what
-    /// an experimenter repeating a measurement has.
-    let statisticsFor
-        (truth : 'Parameters)
-        (recovered : 'Parameters list)
-        (quantity : RecoveredQuantity<'Parameters>)
-        : RecoveryStatistics<'Parameters> =
-        let trueValue = quantity.valueIn truth
-        let values = recovered |> List.map quantity.valueIn
-        let count = List.length values
-        let mean = List.average values
-        let variance = (values |> List.sumBy (fun v -> (v - mean) ** 2.0)) / float (count - 1)
-        {
-            quantity = quantity
-            mean = mean
-            bias = RelativeError.between (QuantityValue mean) (QuantityValue trueValue)
-            scatter = sqrt variance / abs trueValue |> RelativeErr
-            absoluteScatter = sqrt variance
-            worst =
-                values
-                |> List.map (fun v -> RelativeError.between (QuantityValue v) (QuantityValue trueValue))
-                |> List.max
-        }
-
-    /// The standard error of the MEAN of an `n`-experiment ensemble, `scatter / sqrt n` — the yardstick a
-    /// bias has to be measured against. A departure of the ensemble mean from the truth that is smaller
-    /// than this is not evidence of a systematic error at all; it is the random error, not yet averaged
-    /// away by a finite number of experiments.
-    let standardErrorOfMean (count : int) (row : RecoveryStatistics<'Parameters>) : RelativeError =
-        row.scatter.value / sqrt (float count) |> RelativeErr
-
-    /// Find a quantity's row in an ensemble table BY NAME. `RecoveredQuantity` holds a function and so
-    /// has no structural equality; the name is the identity, and it comes from the material's own axis
-    /// list rather than from a string typed at the call site.
-    let rowFor (table : RecoveryStatistics<'Parameters> list) (name : string) : RecoveryStatistics<'Parameters> =
-        match table |> List.tryFind (fun row -> row.quantity.name.value = name) with
-        | Some row -> row
-        | None -> failwith $"no ensemble row named {name}"
 
     /// What a SINGLE fit's own covariance says its uncertainty is, per fitted parameter, converted out
     /// of the scaled space into the same RELATIVE units an ensemble scatter is quoted in.

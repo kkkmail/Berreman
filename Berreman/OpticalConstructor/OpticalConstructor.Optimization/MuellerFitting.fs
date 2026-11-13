@@ -17,6 +17,8 @@ module MuellerFitting =
         | NonlinearFitErr of NonlinearSolverError
         /// A generated matrix could not be normalized.
         | MuellerNormalizationErr of InversionError
+        /// No ensemble row has that name (`RecoveryEnsembles.rowFor`).
+        | UnknownQuantityErr of ItemModels.ParameterName
 
     /// One measurement configuration, its incidence and sample azimuth given in degrees.
     /// `IncidenceAngle.create` folds the incidence into [0, 90) deg, so a negative one is not a tilt the other way.

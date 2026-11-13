@@ -7,7 +7,10 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.RecoveryEnsembles
 
 /// Spec 0044 — the TRICLINIC (class 1) gyrotropic sample every biaxial suite in this assembly shares:
 /// its ground-truth constants, the builder that turns nine numbers into engine tensors, its fit scaling,
@@ -170,6 +173,6 @@ module BiaxialSample =
     /// only the nine parameters would understate the experiment by roughly the ratio of those scales.
     let recoveredQuantities : RecoveredQuantity<TriclinicParameters> list =
         [ for a in TriclinicParameters.axes -> RecoveredQuantity.ofAxis a ]
-        @ [ RecoveredQuantity.derived "n2 - n1" (fun p -> p.index2.value - p.index1.value)
-            RecoveredQuantity.derived "n3 - n2" (fun p -> p.index3.value - p.index2.value)
-            RecoveredQuantity.derived "n3 - n1" (fun p -> p.index3.value - p.index1.value) ]
+        @ [ RecoveredQuantity.derived (ParameterName "n2 - n1") (fun p -> QuantityValue (p.index2.value - p.index1.value))
+            RecoveredQuantity.derived (ParameterName "n3 - n2") (fun p -> QuantityValue (p.index3.value - p.index2.value))
+            RecoveredQuantity.derived (ParameterName "n3 - n1") (fun p -> QuantityValue (p.index3.value - p.index1.value)) ]

@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
@@ -859,12 +860,12 @@ type BiaxialInverseTests() =
         // protocol at ~2.5x the observed values: the three indices come out at 0.088-0.091 % and the
         // three birefringences at 0.038-0.097 %.
         for name in [ "n1"; "n2"; "n3" ] do
-            let row = rowFor table name
+            let row = (rowFor table (ParameterName name) |> expectOk)
             Assert.True(row.scatter.value < 2.5e-3, $"{name} scatter {row.scatter.value} out of band: {report}")
             Assert.True(row.worst.value < 4.0e-3, $"{name} worst-case {row.worst.value} out of band: {report}")
 
         for name in [ "n2 - n1"; "n3 - n2"; "n3 - n1" ] do
-            let row = rowFor table name
+            let row = (rowFor table (ParameterName name) |> expectOk)
             Assert.True(row.scatter.value < 2.5e-3, $"{name} scatter {row.scatter.value} out of band: {report}")
             Assert.True(row.worst.value < 6.0e-3, $"{name} worst-case {row.worst.value} out of band: {report}")
 
@@ -893,7 +894,7 @@ type BiaxialInverseTests() =
         //
         // Bands pinned per the §9 protocol at ~2x the observed absolute scatters.
         let gyrationNames = [ "g11"; "g22"; "g33"; "g23"; "g13"; "g12" ]
-        let gyrationScatters = [ for name in gyrationNames -> (rowFor table name).absoluteScatter ]
+        let gyrationScatters = [ for name in gyrationNames -> (rowFor table (ParameterName name) |> expectOk).absoluteScatter.value ]
         for (name, scatter) in List.zip gyrationNames gyrationScatters do
             Assert.True(scatter < 6.0e-5, $"{name} absolute scatter {scatter} out of band: {report}")
 
@@ -908,7 +909,7 @@ type BiaxialInverseTests() =
         // fixed it would announce itself here: at least one component is quoted with an error bar of the
         // same order as its own value.
         Assert.True(
-            gyrationNames |> List.exists (fun name -> (rowFor table name).scatter.value > 0.5),
+            gyrationNames |> List.exists (fun name -> (rowFor table (ParameterName name) |> expectOk).scatter.value > 0.5),
             $"this bench is expected NOT to determine the gyration tensor usefully: {report}")
 
         // THE ERRORS ARE RANDOM, NOT SYSTEMATIC — a result rather than an assumption, and the reason the
@@ -916,7 +917,7 @@ type BiaxialInverseTests() =
         // the standard error of the ensemble MEAN: a departure smaller than that is the random error not
         // yet averaged away, not evidence of anything systematic.
         for row in table do
-            let allowance = 3.0 * (standardErrorOfMean (List.length ensembleSeeds) row).value
+            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length ensembleSeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}): {report}")
@@ -933,11 +934,11 @@ type BiaxialInverseTests() =
         // Measured: the three indices all scatter by ~1.42e-3 in absolute terms, and the three
         // DIFFERENCES by 1.05e-5, 1.46e-5 and 1.57e-5 — 91 to 135 times better. Band pinned at 50x, the
         // same figure the uniaxial suite uses for its single birefringence.
-        let indexRows = [ for name in [ "n1"; "n2"; "n3" ] -> rowFor table name ]
-        let worstIndexScatter = indexRows |> List.map (fun row -> row.absoluteScatter) |> List.max
+        let indexRows = [ for name in [ "n1"; "n2"; "n3" ] -> (rowFor table (ParameterName name) |> expectOk) ]
+        let worstIndexScatter = indexRows |> List.map (fun row -> row.absoluteScatter.value) |> List.max
         for name in [ "n2 - n1"; "n3 - n2"; "n3 - n1" ] do
             Assert.True(
-                (rowFor table name).absoluteScatter < worstIndexScatter / 50.0,
+                (rowFor table (ParameterName name) |> expectOk).absoluteScatter.value < worstIndexScatter / 50.0,
                 $"{name} must be determined far better than any single index in ABSOLUTE terms: {report}")
 
         // ------------------------------------------------------- the fit's OWN account of its error
@@ -951,7 +952,7 @@ type BiaxialInverseTests() =
         let quality = fitReportOf first.fit
 
         let predictions = predictedRelativeErrors triclinic first.fit quality
-        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name.value).scatter
+        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name |> expectOk).scatter
         let comparison =
             System.String.Join(
                 "; ",
