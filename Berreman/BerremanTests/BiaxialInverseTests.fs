@@ -17,7 +17,7 @@ open OpticalConstructor.Optimization.RecoveryEnsembles
 open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
+open BerremanTestSupport.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
 
 /// Spec 0044, manual task 012 — the inverse problem for the HARDEST transparent crystal there is: a
 /// biaxial, optically active, TRICLINIC one.

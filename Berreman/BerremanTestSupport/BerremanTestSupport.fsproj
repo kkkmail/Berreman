@@ -14,10 +14,12 @@
 
     <ItemGroup>
         <Compile Include="CommittedKits.fs" />
+        <Compile Include="BiaxialSample.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
     </ItemGroup>
 
 </Project>

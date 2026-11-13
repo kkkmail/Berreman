@@ -15,7 +15,7 @@ open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.RecoveryEnsembles
 open Xunit
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample
+open BerremanTestSupport.BiaxialSample
 open BerremanTests.AbsorbingBiaxialSample              // the fifteen-parameter sample, shared with the noiseless suite
 
 /// Spec 0044, manual task 016 part 3 — what a decent-but-ordinary optical bench actually recovers from

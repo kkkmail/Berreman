@@ -1,4 +1,4 @@
-namespace BerremanTests
+namespace BerremanTestSupport
 
 open Berreman.Constants
 open Berreman.MathNetNumericsMath
@@ -12,9 +12,10 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.RecoveryEnsembles
 
-/// Spec 0044 — the TRICLINIC (class 1) gyrotropic sample every biaxial suite in this assembly shares:
+/// Spec 0044 — the TRICLINIC (class 1) gyrotropic sample every biaxial suite shares:
 /// its ground-truth constants, the builder that turns nine numbers into engine tensors, its fit scaling,
-/// and the pure geometry that follows from the constants.
+/// and the pure geometry that follows from the constants. Spec 0050 S10.2 (001 §Q AT-2): the sample lives
+/// in `BerremanTestSupport`, so one compiled copy serves `BerremanTests` and `OpticalConstructor.Ui.Tests`.
 ///
 /// It lives in its own module because more than one suite now measures this same crystal with DIFFERENT
 /// EXPERIMENTS — `BiaxialInverseTests` with the theoretically-clean 4 µm design and
@@ -22,7 +23,7 @@ open OpticalConstructor.Optimization.RecoveryEnsembles
 /// comparison is that the SAMPLE is held fixed while the measurement set changes. Duplicating the
 /// constants would silently destroy the comparison the moment one copy was edited.
 ///
-/// Spec R3 keeps the material in the TEST assembly rather than in the `OpticalProperties` library, which
+/// Spec R3 keeps the material in test code rather than in the `OpticalProperties` library, which
 /// has no biaxial gyrotropic material and should not grow one for a test.
 ///
 /// WHY TRICLINIC. Class 1 has no symmetry element beyond the identity, so nothing constrains either

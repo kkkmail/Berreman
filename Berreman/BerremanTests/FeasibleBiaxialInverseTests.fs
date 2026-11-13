@@ -12,7 +12,7 @@ open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample                       // the SAME crystal BiaxialInverseTests measures
+open BerremanTestSupport.BiaxialSample                       // the SAME crystal BiaxialInverseTests measures
 
 /// Spec 0044, manual task 016 part 1 — the same triclinic gyrotropic crystal as `BiaxialInverseTests`,
 /// measured with an experiment a real laboratory could actually perform.

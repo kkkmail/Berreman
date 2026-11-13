@@ -17,7 +17,7 @@ open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample                       // the transparent twin, for the geometry and the scale
+open BerremanTestSupport.BiaxialSample                       // the transparent twin, for the geometry and the scale
 open BerremanTests.AbsorbingBiaxialSample              // the fifteen-parameter sample, shared with the noisy suite
 
 /// Spec 0044, manual task 016 part 2 — the inverse problem for an ABSORBING, gyrotropic, TRICLINIC

@@ -8,7 +8,7 @@ open Berreman.Media
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample
+open BerremanTestSupport.BiaxialSample
 
 /// Spec 0044 — the ABSORBING triclinic sample both absorbing suites share: its ground-truth constants,
 /// the builder that turns fifteen numbers into engine tensors, its fit scaling, and the measurement set.
