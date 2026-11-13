@@ -16,6 +16,7 @@ open OpticalConstructor.Storage
 open OpticalConstructor.Storage.MuellerDataStore
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.LabFileImport
+open OpticalConstructor.Optimization.StagedMuellerPath
 open Xunit
 open BerremanTests.MatrixComparison
 open BerremanTestSupport
@@ -152,52 +153,17 @@ type MuellerReconstructionTests() =
     let darknessChecksFile = kitPath "data/raw/final/darkness_checks.csv"
     let bullshitChecksFile = kitPath "data/raw/final/bullshit_checks.csv"
 
-    /// Reduce an experiment family's raw capture rows to its AIR#0 normalized trace — the reference
-    /// `load_air_traces` + `prepare_normalized_traces` (matrix_step1_air_fit.py:78, :85): keep only the AIR#0
-    /// rows, group by experiment; within each experiment average `avgTotal` per dial `description`, dark-subtract
-    /// (`signal = avg − darkMean`), and normalize by that experiment's own mean signal; concatenate all
-    /// experiments' points. Returns the `AirTrace` `freeCosineFit` consumes.
-    let reduceAirTraces (darkMean : float) (rows : MuellerRawRow list) : AirTrace =
-        let reduced =
-            rows
-            |> List.filter (fun r -> r.experiment.value.Contains("(AIR#0)"))
-            |> List.groupBy (fun r -> r.experiment)
-            |> List.collect (fun (_, expRows) ->
-                let byDescription =
-                    expRows
-                    |> List.groupBy (fun r -> r.description.degrees)
-                    |> List.map (fun (descDeg, g) -> descDeg, (g |> List.averageBy (fun r -> r.avgTotal.value)) - darkMean)
-                    |> List.sortBy fst
-                let meanSignal = byDescription |> List.averageBy snd
-                byDescription |> List.map (fun (descDeg, signal) -> descDeg, signal / meanSignal))
+    /// The seven lab files' capture rows, the input of the staged Mueller path (spec 0050 S10.3).
+    let opticsMuellerCaptures () : StagedMuellerCaptureData =
         {
-            anglesDeg = reduced |> List.map fst |> List.toArray
-            norm = reduced |> List.map snd |> List.toArray
+            lpLpRows = loadDataSet lpLpFile
+            lpCplRows = loadDataSet lpCplFile
+            cplLpRows = loadDataSet cplLpFile
+            cplCplDay1Rows = loadDataSet cplCplDay1File
+            cplCplDay2Rows = loadDataSet cplCplDay2File
+            darknessRows = loadDataSet darknessChecksFile
+            bullshitCheckRows = loadDataSet bullshitChecksFile
         }
-
-    /// The Stage-1 LP-frame fit coefficients `(qLp, uLp)` — the reference `fit_lp_frame_coeffs`
-    /// (matrix_step1_air_fit.py:132): the same 2-column least squares as `freeCosineFit` but with the design
-    /// phased on the source LP zero (`[cos 2(α − zeroDeg), sin 2(α − zeroDeg)]`), returning the raw coefficients
-    /// (not a zero/visibility readout) that feed `sourceCplFromLpFrame`. Solved through the real proxy exactly
-    /// as `freeCosineFit` does; a well-formed AIR trace is full column rank 2, so `Ok` is expected.
-    let lpFrameCoeffs (solver : MuellerSolverProxy) (trace : AirTrace) (zero : Angle) : CosineCoefficient * CosineCoefficient =
-        let zeroDeg = zero.degrees
-        let design =
-            trace.anglesDeg
-            |> Array.map (fun a ->
-                let twoAlpha = 2.0 * (a - zeroDeg) * degree
-                DesignRow [| cos twoAlpha; sin twoAlpha |])
-        let rhs = trace.norm |> Array.map (fun n -> n - 1.0)
-        match solver.solveLinearLeastSquares { design = design; rhs = rhs } with
-        | Ok sol -> CosineCoefficient sol.solution.[0], CosineCoefficient sol.solution.[1]
-        | Error e -> failwith $"the LP-frame calibration least squares failed: %A{e}"
-
-    /// Unwrap a `freeCosineFit` result in the data-dependent cross-check, failing the test (never a silent
-    /// pass) if a well-formed AIR trace somehow yields a `SolverError`.
-    let unwrapFit (label : string) (result : Result<CosineFit, SolverError>) : CosineFit =
-        match result with
-        | Ok fit -> fit
-        | Error e -> failwith $"the {label} calibration cosine fit failed: %A{e}"
 
     /// The label read through the standard naming template, failing the test with the refusal's `describe` (spec 0050
     /// S8.3).
@@ -500,48 +466,31 @@ type MuellerReconstructionTests() =
 
     [<Fact>]
     member _.``Stage-1 re-derived calibration constants match the reference pipeline's full-precision values`` () =
-        // Spec 0042 (008) acceptance, upgraded by spec 0044 §8.5: the constants RE-derived by the three
-        // Stage-1 functions from the committed measured data are compared against the REFERENCE PIPELINE's
-        // own output at full precision, not against the report's 2-decimal rounded values.
+        // Spec 0042 (008) acceptance, upgraded by spec 0044 §8.5: the constants RE-derived by stage one of the
+        // staged Mueller path (spec 0050 S10.3) from the committed measured data are compared against the
+        // REFERENCE PIPELINE's own output at full precision, not against the report's 2-decimal rounded values.
         //
         // The expected values are `MuellerReference`'s, transcribed from the reference pipeline's
         // reference_step1_summary.json, so the test reads NO file for its expectations (§8.5; spec 0050 S10.3).
         //
         // This fact no longer skips. The data is committed to the repository, so a load failure is a defect
         // (§8.4 / R6) and `loadDataSet` fails the test with the typed error.
-        let solver = createMathNetSvd ()
-        let load = loadDataSet
-
-        // dark_mean = mean avg_total over the darkness checks.
-        let darkMean = load darknessChecksFile |> List.averageBy (fun r -> r.avgTotal.value)
-
-        // LP-LP AIR → free cosine fit → the LP analyzer's zero dial z_LP.
-        let traceLpLp = reduceAirTraces darkMean (load lpLpFile)
-        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver traceLpLp)
-
-        // LP-CPL AIR → free cosine fit → the CPL analyzer's zero dial z_CPL; δ_an = arccos(visibility).
-        let traceLpCpl = reduceAirTraces darkMean (load lpCplFile)
-        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver traceLpCpl)
-        let deltaAnDeg = lpCplFit.visibility.retardance.degrees
-
-        // CPL-LP AIR, fit in the source LP frame (phased on z_LP) → the closed-form source model.
-        let traceCplLp = reduceAirTraces darkMean (load cplLpFile)
-        let (qLp, uLp) = lpFrameCoeffs solver traceCplLp lpLpFit.zeroAzimuth
-        let source = sourceCplFromLpFrame qLp uLp
-
-        // Every constant is compared in ONE assertion reporting all six deviations, so a regression message
-        // shows which constants moved and by how much rather than stopping at the first one out of band.
-        let constants =
-            [ "dark_mean", darkMean, MuellerReference.darkMean.value
-              "z_LP", lpLpFit.zeroAzimuth.degrees, MuellerReference.lpAnalyzerZero.degrees
-              "z_CPL", lpCplFit.zeroAzimuth.degrees, MuellerReference.cplAnalyzerZero.degrees
-              "δ_an", deltaAnDeg, MuellerReference.cplAnalyzerRetardance.degrees
-              "θ_src", source.thetaRel.degrees, MuellerReference.cplSourceAxisOffset.degrees
-              "δ_src", source.retardance.degrees, MuellerReference.cplSourceRetardance.degrees ]
-        let worst = constants |> List.map (fun (_, actual, expected) -> abs (actual - expected)) |> List.max
-        Assert.True(
-            worst < MuellerReference.stage1Tol,
-            $"""Stage-1 constants (tol {MuellerReference.stage1Tol}): {String.concat "; " [ for (n, a, e) in constants -> $"{n} {a} vs {e} (Δ {abs (a - e)})" ]}""")
+        match calibrateStageOne (createMathNetSvd ()) (opticsMuellerCaptures ()) with
+        | Error e -> Assert.Fail($"stage one of the staged Mueller path failed: %A{e}")
+        | Ok stageOne ->
+            // Every constant is compared in ONE assertion reporting all six deviations, so a regression message
+            // shows which constants moved and by how much rather than stopping at the first one out of band.
+            let constants =
+                [ "dark_mean", stageOne.darkMean.value, MuellerReference.darkMean.value
+                  "z_LP", stageOne.lpZero.degrees, MuellerReference.lpAnalyzerZero.degrees
+                  "z_CPL", stageOne.cplZero.degrees, MuellerReference.cplAnalyzerZero.degrees
+                  "δ_an", stageOne.cplAnalyzerRetardance.degrees, MuellerReference.cplAnalyzerRetardance.degrees
+                  "θ_src", stageOne.cplSourceModel.thetaRel.degrees, MuellerReference.cplSourceAxisOffset.degrees
+                  "δ_src", stageOne.cplSourceModel.retardance.degrees, MuellerReference.cplSourceRetardance.degrees ]
+            let worst = constants |> List.map (fun (_, actual, expected) -> abs (actual - expected)) |> List.max
+            Assert.True(
+                worst < MuellerReference.stage1Tol,
+                $"""Stage-1 constants (tol {MuellerReference.stage1Tol}): {String.concat "; " [ for (n, a, e) in constants -> $"{n} {a} vs {e} (Δ {abs (a - e)})" ]}""")
 
     [<Fact>]
     member _.``Stage-3 signal reduction pins darkSubtract, scalarGain, airIdentityPred, correctSignal and every per-family familyGain rule (always-run)`` () =
@@ -705,10 +654,10 @@ type MuellerReconstructionTests() =
     member _.``section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and reproduces the reference pipeline exactly`` () =
         // Spec 0042 (011, WIRE) acceptance — the composition-root cross-check. Wire the REAL
         // createMathNetSvd () (Domain) proxy, load the optics-mueller kit's five science lab files + the
-        // darkness and bullshit checks (spec 0050 S9.4), RE-derive the Stage-1 AIR calibration constants
-        // (matrix_step1_air_fit.py), populate the Stage-2 per-family source/analyzer models (matrix_glue.py
-        // load_step1_models), reduce each science row to its corrected signal (Stage-3, matrix_fit_linear.py
-        // assign_gain_model), and reconstruct M_QZ / M_LR / M_{QZ+LR} (solve_single_object).
+        // darkness and bullshit checks (spec 0050 S9.4), RE-derive the Stage-1 AIR calibration constants and
+        // the Stage-2 per-family source/analyzer models through `calibrateStageOne` (spec 0050 S10.3), reduce
+        // each science row to its corrected signal (Stage-3, matrix_fit_linear.py assign_gain_model), and
+        // reconstruct M_QZ / M_LR / M_{QZ+LR} (solve_single_object).
         //
         // Spec 0044 changed two things here and nothing else about the pipeline:
         //
@@ -727,59 +676,32 @@ type MuellerReconstructionTests() =
         //
         // ---- Composition root: the REAL proxies (the WIRE deliverable). ----
         let solver = createMathNetSvd ()
-        let load = loadDataSet
+        let captures = opticsMuellerCaptures ()
 
-        let lpLpRows = load lpLpFile
-        let lpCplRows = load lpCplFile
-        let cplLpRows = load cplLpFile
-        let cplCplDay1Rows = load cplCplDay1File
-        let cplCplDay2Rows = load cplCplDay2File
+        let lpLpRows = captures.lpLpRows
+        let lpCplRows = captures.lpCplRows
+        let cplLpRows = captures.cplLpRows
+        let cplCplDay1Rows = captures.cplCplDay1Rows
+        let cplCplDay2Rows = captures.cplCplDay2Rows
+
+        // ---- Stages 1 and 2: the staged Mueller path's AIR calibration and the models built from it (spec 0050 S10.3). ----
+        let stageOne =
+            match calibrateStageOne solver captures with
+            | Ok calibration -> calibration
+            | Error e -> failwith $"stage one of the staged Mueller path failed: %A{e}"
+        let sourceLp = LpSource
+        let sourceCpl = stageOne.cplSource
+        let analyzerLp = stageOne.lpAnalyzer
+        let analyzerCpl = stageOne.cplAnalyzer
 
         // ---- Stage-3 procedure constants supplied as DATA (spec section 0): dark mean + the CPL-LP split time. ----
-        let darkMeanValue = load darknessChecksFile |> List.averageBy (fun r -> r.avgTotal.value)
-        let darkMean = DarkMean darkMeanValue
+        let darkMean = stageOne.darkMean
         // The CPL-LP AIR gain splits at the FIRST BullshitCheck timestamp (matrix_fit_linear.py:82 reads the
         // diagnostics[0] capture; the earliest bullshit-check capture is that same first check).
         let splitTime =
-            match load bullshitChecksFile with
+            match captures.bullshitCheckRows with
             | [] -> failwith "the bullshit-check data set carried no rows"
             | rows -> (rows |> List.minBy (fun r -> r.capturedAt)).capturedAt
-
-        // ---- Stage 1 (calibration): RE-derive the AIR constants through the real solver (matrix_step1_air_fit.py). ----
-        let traceLpLp = reduceAirTraces darkMeanValue lpLpRows
-        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver traceLpLp)
-        let lpZero = lpLpFit.zeroAzimuth                                            // LP analyzer zero dial (z_LP)
-
-        let traceLpCpl = reduceAirTraces darkMeanValue lpCplRows
-        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver traceLpCpl)
-        let cplZero = lpCplFit.zeroAzimuth                                          // CPL analyzer zero dial (z_CPL)
-        let analyzerDeltaMagDeg = lpCplFit.visibility.retardance.degrees            // |delta_an|
-
-        let traceCplLp = reduceAirTraces darkMeanValue cplLpRows
-        let (qLp, uLp) = lpFrameCoeffs solver traceCplLp lpZero
-        let sourceCplModel = sourceCplFromLpFrame qLp uLp                           // { thetaRel; retardance }
-
-        // ---- Stage 2 (glue): the per-family calibrated SOURCE and ANALYZER models (matrix_glue.py:182). ----
-        // Source retardance is positive, analyzer retardance negative — only the RELATIVE sign is constrained
-        // (matrix_glue.py:211); the analyzer's fixed retarder axis is +45 deg from its LP.
-        let sourceLp = LpSource
-        let sourceCpl = CplSource (sourceCplModel.thetaRel, sourceCplModel.retardance)
-        let analyzerLp : AnalyzerModel =
-            {
-                kind = Library.IdealLinear
-                zeroDial = lpZero
-                dialSign = DialNegative
-                thetaRelOpt = None
-                retardanceOpt = None
-            }
-        let analyzerCpl : AnalyzerModel =
-            {
-                kind = Library.IdealCircularLeft
-                zeroDial = cplZero
-                dialSign = DialPositive
-                thetaRelOpt = Some (Angle.degree 45.0<Berreman.Constants.deg>)
-                retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg * 1.0<Berreman.Constants.deg>))
-            }
 
         // ---- Stage 3 (reduction): the per-family AIR scalar gains (matrix_fit_linear.py assign_gain_model). ----
         let airRowsOf (rows : MuellerRawRow list) (experiment : MuellerExperimentLabel) : MuellerRawRow list =

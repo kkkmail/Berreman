@@ -218,6 +218,7 @@
         <Compile Include="DataSplitTests.fs" />
         <Compile Include="DataSplitModelTests.fs" />
         <Compile Include="ExperimentMatrixTests.fs" />
+        <Compile Include="StagedMuellerPathTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
