@@ -2178,36 +2178,21 @@ type TableAndElementRotationModel with
         | Some (StackSampleChoice (held, version, sample)) -> ControlCaption $"{sample.name.value} v{version.version.value} ({modelPart held})"
         | None -> ControlCaption "(model not in the library)"
 
-    /// The kit's item of that id and its model as the stores resolve it, else `UnknownSlotItemErr` naming it: one
-    /// resolution for `AssignSlot`, `SwapSlot` and the run (spec 0050 S8.2).
-    member internal model.resolveSlotItem (itemId : ItemId) : Result<Item * ItemModelChoice, SetupError> =
-        match model.kitItems |> List.tryFind (fun item -> item.id = itemId) with
-        | None -> Error (UnknownSlotItemErr $"the kit holds no item {itemId.value}")
-        | Some item ->
-            match model.tryItemModelChoice item with
-            | Some choice -> Ok (item, choice)
-            | None -> Error (UnknownSlotItemErr $"'{item.label.value}': its model is not in the library")
+    /// What the table's slots run over: the window's library and material store, the kit's items, each item's model as
+    /// `tryItemModelChoice` resolves it and its own parameters (spec 0050 S11.2).
+    member internal model.slotRunParam : SlotRunParam =
+        {
+            library = model.library
+            materials = model.materials
+            items = model.kitItems
+            choiceOf = model.tryItemModelChoice
+            valuesOf = fun item -> ParameterValues.ofParameters item.parameters
+        }
 
-    /// The run's source: the first light-source slot's item emitting over its own parameters, else the default light;
-    /// the error is what the failure chart says. Its λ stays `boundSource`'s, the preset `withItem` binds (spec 0050 S8.2).
+    /// The run's source as `SetupSlot.runEmissionOf` rules it; the error is what the failure chart says. Its λ stays
+    /// `boundSource`'s, the preset `withItem` binds (spec 0050 S8.2, S11.2).
     member model.runEmission : Result<ExperimentRun.SourceEmission, ControlCaption> =
-        let heldItemOpt =
-            model.elements
-            |> List.tryPick (fun slot ->
-                match slot.placement.catalogueKind, slot.content with
-                | LightSource, Setups.ItemInSlot (itemId, _) -> Some itemId
-                | LightSource, Setups.EmptySlotContent
-                | (LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
-        match heldItemOpt with
-        | Some itemId ->
-            match model.resolveSlotItem itemId with
-            | Ok (item, choice) ->
-                choice.emissionWith (ParameterValues.ofParameters item.parameters)
-                |> Result.mapError (fun error -> ControlCaption error.describe)
-            | Error error -> Error (ControlCaption error.describe)
-        | None ->
-            ExperimentRun.SourceEmission.ofValues (ParameterValues.defaultsOf Library.SourcePreset.lightSourceAxes)
-            |> Result.mapError (fun error -> ControlCaption error.describe)
+        SetupSlot.runEmissionOf model.elements model.slotRunParam |> Result.mapError (fun error -> ControlCaption error.describe)
 
 /// Runs a kit write only while the kit takes writes; a read-only kit answers why and writes nothing (spec 0050 S5.3).
 let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -> TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -2485,7 +2470,7 @@ let private slotAssigned
     match model.elements |> List.tryFind (fun slot -> slot.id = slotId), itemIdOpt with
     | None, _ -> Error (UnknownSetupSlotErr $"'{slotId.value}'")
     | Some slot, None -> Ok slot.withoutItem
-    | Some slot, Some itemId -> model.resolveSlotItem itemId |> Result.bind (fun (item, choice) -> slot.withItem item choice)
+    | Some slot, Some itemId -> model.slotRunParam.resolveSlotItem itemId |> Result.bind (fun (item, choice) -> slot.withItem item choice)
 
 /// The table with `filled` in its slot's place (spec 0050 S8.2).
 let private withSlotFilled (filled : Setups.SetupSlot) (slots : Setups.SetupSlot list) : Setups.SetupSlot list =
@@ -4717,14 +4702,10 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
         match settings |> List.tryFindBack (fun setting -> setting.variable = Experiments.VaryWaveLength) with
         | Some setting -> WaveLength.nm (setting.value.value * 1.0<nm>)
         | None -> w0
-    // One path step → its builder (or nothing: the source, a mirror, a lens, an unbound element), swept when an axis of the
-    // block is on it or varies the wavelength. A slot holding an item is read from `slotItems`, which never holds the
-    // source's: that item emits (spec 0050 S8.2, S9.1).
-    let builderFor
-        (axes : Experiments.ScanAxis list)
-        (slotItems : Map<Library.ElementId, Item * ItemModelChoice>)
-        (step : BeamLayout.PathStep)
-        : Result<StepBuilder option, ItemEvaluationError> =
+    let runParam = model.slotRunParam
+    // One path step → its builder, or nothing for a slot `runElementWith` binds to no run element; swept when an axis of
+    // the block is on it or varies the wavelength (spec 0050 S8.2, S9.1, S11.2).
+    let builderFor (axes : Experiments.ScanAxis list) (step : BeamLayout.PathStep) : Result<StepBuilder option, SlotRunError> =
         match indexOf step.element with
         | None -> Ok None
         | Some j ->
@@ -4743,46 +4724,26 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                     | (Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength), _ -> sweptAngle setting.value.value
                 | None -> e.placement.r1
             // At its drawn incidence and R1 and the operating wavelength, each unless the point sets it (spec 0050 S8.1, S9.1).
-            let sweptOrFixed (bound : BoundOpticalElement) (stepOf : MuellerMatrix -> ExperimentRun.RunStep) : Result<StepBuilder, ItemEvaluationError> =
+            // A polarizer preset ignores the incidence, so every bound element takes the same path (spec 0050 S11.2).
+            let sweptOrFixed (bound : BoundOpticalElement) : Result<StepBuilder, ItemEvaluationError> =
                 let incidence0 = (List.item j layout.elements).incidenceOn e.placement
                 let stepAt (incidence : IncidenceAngle) (rotation : Angle) (w : WaveLength) : Result<ExperimentRun.RunStep, ItemEvaluationError> =
                     let orientation : ElementOrientation = { rotation = rotation; incidence = incidence; branch = branch }
-                    bound.muellerAt orientation w |> Result.map stepOf
+                    bound.muellerAt orientation w |> Result.map e.runStepOf
                 let incidenceAt (settings : Experiments.ScanSetting list) : IncidenceAngle =
                     match settingOn settings e.id [ Experiments.VaryR2 ] with
                     | Some setting -> IncidenceAngle.create (sweptAngle setting.value.value)
                     | None -> incidence0
                 if touched then Ok (SweptStep (fun settings -> stepAt (incidenceAt settings) (rotationAt settings) (waveLengthAt settings)))
                 else stepAt incidence0 e.placement.r1 w0 |> Result.map FixedStep
-            match Map.tryFind e.id slotItems, e.placement.catalogueKind, boundOf e with
-            | Some (item, choice), kind, _ ->
-                // The item's own model over its own values, bound once; an object in a sample slot (spec 0050 S8.2).
-                let stepOf : MuellerMatrix -> ExperimentRun.RunStep =
-                    match kind with
-                    | Sample -> ExperimentRun.ObjectStep
-                    | LightSource | LinearPolarizer | CircularPolarizer | Lens | FlatMirror | CurvedMirror | Detector -> ExperimentRun.ElementStep
-                choice.boundWith model.materials (ParameterValues.ofParameters item.parameters)
-                |> Result.bind (fun bound -> sweptOrFixed bound stepOf)
-                |> Result.map Some
-            | None, (LinearPolarizer | CircularPolarizer), Some (Library.PolarizerItem p) ->
-                let preset = BoundPolarizerPreset p.behavior
-                let elementAt (rotation : Angle) (w : WaveLength) : Result<ExperimentRun.RunStep, ItemEvaluationError> =
-                    let orientation : ElementOrientation = { rotation = rotation; incidence = IncidenceAngle.normal; branch = branch }
-                    preset.muellerAt orientation w |> Result.map ExperimentRun.ElementStep
-                if touched then Ok (Some (SweptStep (fun settings -> elementAt (rotationAt settings) (waveLengthAt settings))))
-                else elementAt e.placement.r1 w0 |> Result.map (fun fixedStep -> Some (FixedStep fixedStep))
-            | None, Sample, Some (Library.SampleItem sample) ->
-                // Bound once per path step, so its materials resolve once for the whole block.
-                BoundOpticalElement.ofStackSample model.materials (ParameterValues.defaultsOf sample.parameterAxes) sample
-                |> Result.bind (fun bound -> sweptOrFixed bound ExperimentRun.ObjectStep)
-                |> Result.map Some
-            | _ -> Ok None
-    let buildersFor
-        (axes : Experiments.ScanAxis list)
-        (slotItems : Map<Library.ElementId, Item * ItemModelChoice>)
-        (path : BeamLayout.PathStep list)
-        : Result<StepBuilder list, ItemEvaluationError> =
-        path |> List.map (builderFor axes slotItems) |> ItemEvaluation.sequenced |> Result.map (List.choose id)
+            // Bound once per path step, so a sample's materials resolve once for the whole block.
+            e.runElementWith runParam
+            |> Result.bind (fun boundOpt ->
+                match boundOpt with
+                | Some bound -> sweptOrFixed bound |> Result.map Some |> Result.mapError SlotEvaluationErr
+                | None -> Ok None)
+    let buildersFor (axes : Experiments.ScanAxis list) (path : BeamLayout.PathStep list) : Result<StepBuilder list, SlotRunError> =
+        path |> List.map (builderFor axes) |> ItemEvaluation.sequenced |> Result.map (List.choose id)
     let stepsAt (builders : StepBuilder list) (settings : Experiments.ScanSetting list) : Result<ExperimentRun.RunStep list, ItemEvaluationError> =
         builders
         |> List.map (fun b ->
@@ -4822,21 +4783,6 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                     measurement.capturedBranches
                     |> List.choose (fun (branch, tag) ->
                         detectors |> List.tryFind (fun (b, _) -> b = branch) |> Option.map (fun (_, j) -> tag, j))
-                // The items the slots on the captured paths hold, resolved before any point is read; the source's item
-                // emits, so it is no step (spec 0050 S8.2).
-                let slotItems : Result<Map<Library.ElementId, Item * ItemModelChoice>, SetupError> =
-                    captured
-                    |> List.collect (fun (_, j) -> (List.item j.value layout.elements).path)
-                    |> List.choose (fun step -> indexOf step.element |> Option.map (fun k -> List.item k model.elements))
-                    |> List.distinctBy (fun slot -> slot.id)
-                    |> List.choose (fun slot ->
-                        match slot.placement.catalogueKind, slot.content with
-                        | LightSource, _
-                        | _, Setups.EmptySlotContent -> None
-                        | (LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), Setups.ItemInSlot (itemId, _) ->
-                            Some (slot.id, itemId))
-                    |> List.fold (fun held (slotId, itemId) ->
-                        held |> Result.bind (fun items -> model.resolveSlotItem itemId |> Result.map (fun resolved -> Map.add slotId resolved items))) (Ok Map.empty)
                 let kinds = captured |> List.map (fun (_, j) -> model.detectorKindAt j) |> List.distinct
                 let quantity =
                     match kinds with
@@ -4912,14 +4858,13 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                             let joined = String.concat ", " parts
                             ControlCaption $"{name.value} — {joined}"
                     // The source leads the light, so its emission is read before the slots' items (spec 0050 S8.2).
-                    match model.runEmission, slotItems with
-                    | Error reason, _ -> Error (cannotEvaluate reason)
-                    | Ok _, Error error -> Error (cannotEvaluate (ControlCaption error.describe))
-                    | Ok emission, Ok items ->
+                    match model.runEmission with
+                    | Error reason -> Error (cannotEvaluate reason)
+                    | Ok emission ->
                         let evaluated =
                             captured
                             |> List.map (fun (tag, j) ->
-                                buildersFor axes items (List.item j.value layout.elements).path
+                                buildersFor axes (List.item j.value layout.elements).path
                                 |> Result.map (fun builders -> tag, model.detectorKindAt j, builders))
                             |> ItemEvaluation.sequenced
                             |> Result.bind (fun branches ->
@@ -4935,16 +4880,18 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                                         |> Result.map (fun readings -> tag, kind, readings))
                                     |> ItemEvaluation.sequenced
                                     |> Result.map (fun runs -> group, runs))
-                                |> ItemEvaluation.sequenced)
+                                |> ItemEvaluation.sequenced
+                                |> Result.mapError SlotEvaluationErr)
                         match evaluated with
-                        | Error (SampleMaterialErr err) ->
+                        | Error (SlotEvaluationErr (SampleMaterialErr err)) ->
                             Error
                                 {
                                     ExperimentChart.emptyExperimentChart with
                                         title = ControlCaption "Sample materials failed to resolve"
                                         description = err.runFailureCaption
                                 }
-                        | Error (MissingParameterValueErr _ | ParameterOutOfRangeErr _ | NotALightSourceErr _ | NotAnOpticalElementErr _ | UnmodelledBranchErr _ | CutPlateSolveErr _ as error) ->
+                        | Error (SlotItemErr _ as error)
+                        | Error (SlotEvaluationErr (MissingParameterValueErr _ | ParameterOutOfRangeErr _ | NotALightSourceErr _ | NotAnOpticalElementErr _ | UnmodelledBranchErr _ | CutPlateSolveErr _) as error) ->
                             Error (cannotEvaluate (ControlCaption error.describe))
                         | Ok groupRuns ->
                             let seriesList =

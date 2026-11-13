@@ -17,6 +17,8 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.ExperimentRun
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.ItemEvaluation
 
 /// The numbers the item-model evaluator reads, in `ItemEvaluation` (spec 0050 S8.1; 001 §I, §N).
@@ -833,3 +835,198 @@ module ItemEvaluationTests =
             | Ok eighthWave -> assertMuellerWithin (afterLp (Math.PI / 4.0)) (muellerAtZero eighthWave)
             | Error error -> Assert.Fail error.describe
         | Error error -> Assert.Fail error.describe
+
+    // ============================== spec 0050 S11.2: how a slot binds for a run ==============================
+
+    /// A slot as `SetupTests` builds one: the kind's placement at the point, on the main beam, holding nothing.
+    let private emptySlot (id : ElementId) (kind : CatalogueKind) (point : TablePoint) : SetupSlot =
+        {
+            id = id
+            placement = ElementPlacement.create kind point
+            zoom = BeamLayout.ElementZoom 5.0
+            beam = BeamLayout.OnMainBeam
+            content = EmptySlotContent
+        }
+
+    let private boundTo (entry : ElementValueId) (slot : SetupSlot) : SetupSlot =
+        { slot with placement = { slot.placement with valueId = Some entry } }
+
+    let private holding (item : Item) (slot : SetupSlot) : SetupSlot = { slot with content = ItemInSlot (item.id, PlacementTurn) }
+
+    let private sourceSlot : SetupSlot = emptySlot (ElementId "src") LightSource RayModel.defaultSourcePoint
+    let private lpSlot : SetupSlot = emptySlot (ElementId "lp") LinearPolarizer { x = -0.3<meter>; y = 0.0<meter> }
+    let private sampleSlot : SetupSlot = emptySlot (ElementId "sample") CatalogueKind.Sample { x = 0.0<meter>; y = 0.0<meter> }
+    let private detectorSlot : SetupSlot = emptySlot (ElementId "det") Detector RayModel.defaultDetectorPoint
+
+    /// The draft's item at its defaults, failing with the refusal's text when `addTo` refuses it (step 216).
+    let private itemOf (id : ItemId) (label : ItemLabel) (model : ItemModelChoice) : Item =
+        let draft : ItemDraft =
+            {
+                id = id
+                label = label
+                model = model
+                dial = FixedMounting
+            }
+
+        match draft.addTo [] with
+        | Ok item -> item
+        | Error error -> failwith $"'{label.value}' was refused: {error.describe}"
+
+    // Every model is a shipped entry of step 210; every binding is a Built-in preset or sample.
+    let private realLpChoice : ItemModelChoice = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId)
+
+    let private heNeChoice : ItemModelChoice =
+        SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.heNe633)
+
+    let private realLp : Item = itemOf (ItemId (Guid.Parse "5a6b7c8d-9eaf-4b01-92c3-4e5f6a7b8c96")) (ItemLabel "LP3") realLpChoice
+    let private laser : Item = itemOf (ItemId (Guid.Parse "6b7c8d9e-af01-4c12-a3d4-5f6a7b8c9da7")) (ItemLabel "Laser") heNeChoice
+
+    /// The run over the Built-in library and materials, the kit holding `items`, each resolved as `choices` says and
+    /// evaluated with `values`.
+    let private runParamOver (items : Item list) (choices : (ItemId * ItemModelChoice) list) (values : ParameterValues) : SlotRunParam =
+        {
+            library = BuiltinCatalogue.library ()
+            materials = BuiltinCatalogue.materialStore (fun _ -> [])
+            items = items
+            choiceOf = fun item -> choices |> List.tryFind (fun (id, _) -> id = item.id) |> Option.map snd
+            valuesOf = fun _ -> values
+        }
+
+    let private assertRunElement (expected : Result<BoundOpticalElement option, SlotRunError>) (actual : Result<BoundOpticalElement option, SlotRunError>) : unit =
+        Assert.Equal<Result<BoundOpticalElement option, SlotRunError>>(expected, actual)
+
+    /// The slot's run element evaluated at the orientation and λ, failing when the slot binds none.
+    let private runMuellerAt
+        (orientation : ElementOrientation)
+        (w : WaveLength)
+        (bound : Result<BoundOpticalElement option, SlotRunError>)
+        : Result<MuellerMatrix, ItemEvaluationError> =
+        match bound with
+        | Ok (Some element) -> element.muellerAt orientation w
+        | Ok None -> failwith "the slot bound no run element"
+        | Error error -> failwith error.describe
+
+    [<Fact>]
+    let ``a slot runs as its item through the given values, else as its library binding, and a source, detector, mirror or lens slot is no run element`` () : unit =
+        let realLpValues = (ParameterValues.ofParameters realLp.parameters).withValue ParameterName.extinctionRatio (ParameterValue 0.01)
+        let param = runParamOver [ realLp; laser ] [ realLp.id, realLpChoice; laser.id, heNeChoice ] realLpValues
+        let linearPolarizer =
+            match BuiltinCatalogue.preset PresetIds.polarizerLp with
+            | PolarizerItem polarizer -> polarizer
+            | SampleItem _ | SourceItem _ | DetectorItem _ -> failwith "the Built-in linear polarizer preset is a polarizer"
+
+        // With no item, the slot is the preset it is bound to, and nothing when it is bound to none.
+        let boundLp = boundTo PresetIds.polarizerLp lpSlot
+        assertRunElement (Ok (Some (BoundPolarizerPreset linearPolarizer.behavior))) (boundLp.runElementWith param)
+        assertRunElement (Ok None) (lpSlot.runElementWith param)
+
+        // Holding the real LP, the slot is that item's model over the given values, whatever it is bound to.
+        let heldLp =
+            match boundLp.withItem realLp realLpChoice with
+            | Ok held -> held
+            | Error error -> failwith error.describe
+
+        let realLpModel = BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId
+
+        match realLpModel.entry.model with
+        | OpticalElementModel form ->
+            assertRunElement
+                (BoundOpticalElement.ofOpticalForm realLpValues form |> Result.map Some |> Result.mapError SlotEvaluationErr)
+                (heldLp.runElementWith param)
+
+            let expected = matrixOf (formMuellerAt form realLpValues Angle.zero at600)
+            assertMuellerWithin expected (runMuellerAt (ElementOrientation.transmittingAt Angle.zero) at600 (heldLp.runElementWith param))
+            // r = 0.01 leaks √r into the S₂ and S₃ rows, which the item's own default r = 0 would zero.
+            assertWithin 0.1 (expected.element 2 2) "m22"
+        | _ -> Assert.Fail "the shipped real linear polarizer is an optical-element model"
+
+        // With no item, a sample slot is its bound sample at its defaults.
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+        let boundSample = boundTo SampleIds.glassPlate1mmId.toElementValueId sampleSlot
+        let plateDefaults = ParameterValues.defaultsOf plate.parameterAxes
+
+        for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+            let orientation : ElementOrientation =
+                { rotation = Angle.degree 20.0<deg>; incidence = IncidenceAngle.create (Angle.degree 30.0<deg>); branch = branch }
+            assertMuellerExact
+                (matrixOf (stackSampleMuellerAt param.materials plateDefaults plate orientation at600))
+                (runMuellerAt orientation at600 (boundSample.runElementWith param))
+
+        // A source emits, a detector reads and a mirror or a lens steers, whatever they hold or are bound to.
+        let steering : SetupSlot list =
+            [
+                holding laser (boundTo PresetIds.heNe633 sourceSlot)
+                detectorSlot
+                emptySlot (ElementId "mirror") FlatMirror { x = 0.2<meter>; y = 0.0<meter> }
+                emptySlot (ElementId "curved") CurvedMirror { x = 0.3<meter>; y = 0.0<meter> }
+                emptySlot (ElementId "lens") Lens { x = 0.4<meter>; y = 0.0<meter> }
+            ]
+
+        for slot in steering do
+            assertRunElement (Ok None) (slot.runElementWith param)
+
+        // A sample slot holds an object; every other slot an element.
+        let m = Propagation.identityMueller
+        Assert.Equal<RunStep>(ObjectStep m, boundSample.runStepOf m)
+        Assert.Equal<RunStep>(ElementStep m, heldLp.runStepOf m)
+        Assert.Equal<RunStep>(ElementStep m, detectorSlot.runStepOf m)
+
+    [<Fact>]
+    let ``a slot whose item the kit lacks or whose model does not resolve answers SlotItemErr`` () : unit =
+        let values = ParameterValues.ofParameters realLp.parameters
+
+        // The kit holds no LP3.
+        let lacking = runParamOver [ laser ] [ realLp.id, realLpChoice; laser.id, heNeChoice ] values
+        assertRunElement
+            (Error (SlotItemErr (UnknownSlotItemErr $"the kit holds no item {realLp.id.value}")))
+            ((holding realLp lpSlot).runElementWith lacking)
+
+        // The kit holds LP3, but its model is in no library.
+        let unresolved = runParamOver [ realLp; laser ] [ laser.id, heNeChoice ] values
+        assertRunElement
+            (Error (SlotItemErr (UnknownSlotItemErr "'LP3': its model is not in the library")))
+            ((holding realLp lpSlot).runElementWith unresolved)
+
+        // The source's item resolves by the same rule.
+        Assert.Equal<Result<SourceEmission, SlotRunError>>(
+            Error (SlotItemErr (UnknownSlotItemErr $"the kit holds no item {laser.id.value}")),
+            SetupSlot.runEmissionOf [ holding laser sourceSlot; lpSlot; detectorSlot ] (runParamOver [ realLp ] [] values)
+        )
+
+        // Each error reads as its inner error.
+        let missing = UnknownSlotItemErr "item QZ9"
+        Assert.Equal(missing.describe, (SlotItemErr missing).describe)
+        let outOfRange = ParameterOutOfRangeErr "extinctionRatio = 2 lies outside [0, 1]"
+        Assert.Equal(outOfRange.describe, (SlotEvaluationErr outOfRange).describe)
+
+    [<Fact>]
+    let ``the run's source emits its item's state through the given values, and the default set without a source item`` () : unit =
+        let azimuth30 = ParameterValue (Math.PI / 6.0)
+        let polarized =
+            (sourceDefaults.withValue ParameterName.degreeOfPolarization (ParameterValue 1.0)).withValue ParameterName.azimuth azimuth30
+        let emitted (values : ParameterValues) (slots : SetupSlot list) : Result<SourceEmission, SlotRunError> =
+            SetupSlot.runEmissionOf slots (runParamOver [ laser ] [ laser.id, heNeChoice ] values)
+        let assertEmitted (expected : Result<SourceEmission, SlotRunError>) (actual : Result<SourceEmission, SlotRunError>) : unit =
+            Assert.Equal<Result<SourceEmission, SlotRunError>>(expected, actual)
+
+        let fullyPolarized : SourceEmission =
+            {
+                azimuth = azimuth30.angle
+                ellipticity = Angle.zero
+                degreeOfPolarization = ParameterValue 1.0
+                intensityScale = ParameterValue 1.0
+            }
+
+        // The first light-source slot holding an item emits; an empty one before it does not.
+        let lit = holding laser sourceSlot
+        let dark = boundTo PresetIds.heNe633 (emptySlot (ElementId "dark") LightSource RayModel.defaultSourcePoint)
+        assertEmitted (Ok fullyPolarized) (emitted polarized [ lit; lpSlot; detectorSlot ])
+        assertEmitted (Ok fullyPolarized) (emitted polarized [ dark; lit; detectorSlot ])
+
+        // Without a source item the light is the axes' defaults, unpolarized at unit scale, a bound preset's included.
+        assertEmitted (Ok defaultEmission) (emitted polarized [ sourceSlot; lpSlot; detectorSlot ])
+        assertEmitted (Ok defaultEmission) (emitted polarized [ dark; holding laser lpSlot; detectorSlot ])
+
+        assertEmitted
+            (Error (SlotEvaluationErr (ParameterOutOfRangeErr "degreeOfPolarization = 1.5 lies outside [0, 1]")))
+            (emitted (polarized.withValue ParameterName.degreeOfPolarization (ParameterValue 1.5)) [ lit; lpSlot; detectorSlot ])

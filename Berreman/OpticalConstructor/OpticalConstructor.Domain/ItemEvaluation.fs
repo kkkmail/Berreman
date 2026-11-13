@@ -12,6 +12,8 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.ExperimentRun
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Setups
 
 /// The item-model evaluator, model × parameters × orientation × λ → Mueller matrix (spec 0050 S8.1; 001 §N).
 module ItemEvaluation =
@@ -48,9 +50,9 @@ module ItemEvaluation =
                 $"the sample's materials do not resolve: {reason}"
             | CutPlateSolveErr reason -> $"the cut plate's Berreman solve failed: {reason}"
 
-    /// Every result in order, or the first error: a black box's elements, a compound's components, a sample's layers
-    /// (spec 0050 S8.1).
-    let sequenced (results : Result<'Item, ItemEvaluationError> list) : Result<'Item list, ItemEvaluationError> =
+    /// Every result in order, or the first error: a black box's elements, a compound's components, a sample's layers,
+    /// a run's path steps (spec 0050 S8.1, S11.2).
+    let sequenced (results : Result<'Item, 'Error> list) : Result<'Item list, 'Error> =
         results
         |> List.fold (fun held result -> held |> Result.bind (fun read -> result |> Result.map (fun item -> item :: read))) (Ok [])
         |> Result.map List.rev
@@ -430,3 +432,102 @@ module ItemEvaluation =
                 | SourcePresetItemModel -> notAnOpticalElement model "a light-source model bound to no source preset"
                 | IdealPolarizerItemModel -> notAnOpticalElement model "an ideal-polarizer model bound to no polarizer preset"
                 | StackSampleItemModel -> notAnOpticalElement model "a stack-sample model bound to no sample"
+
+    /// What a slot runs over: the library a bare slot is bound in, the material store a stack sample resolves through,
+    /// the kit's items, an item's model as the stores resolve it and the numbers an item is evaluated with. It holds
+    /// functions, so it is equal only to itself (spec 0050 S11.2).
+    [<ReferenceEquality>]
+    type SlotRunParam =
+        {
+            library : LibraryProxy
+            materials : MaterialProxy
+            items : Item list
+            choiceOf : Item -> ItemModelChoice option
+            valuesOf : Item -> ParameterValues
+        }
+
+        /// The kit's item of that id and its model, else `UnknownSlotItemErr` naming it: one resolution for `AssignSlot`,
+        /// `SwapSlot` and the run (spec 0050 S8.2, S11.2).
+        member this.resolveSlotItem (itemId : ItemId) : Result<Item * ItemModelChoice, SetupError> =
+            match this.items |> List.tryFind (fun item -> item.id = itemId) with
+            | None -> Error (UnknownSlotItemErr $"the kit holds no item {itemId.value}")
+            | Some item ->
+                match this.choiceOf item with
+                | Some choice -> Ok (item, choice)
+                | None -> Error (UnknownSlotItemErr $"'{item.label.value}': its model is not in the library")
+
+    /// Why a slot could not run: its item is not in the kit or its model not in the library, or the evaluation refused
+    /// (spec 0050 S11.2).
+    type SlotRunError =
+        | SlotItemErr of error : SetupError
+        | SlotEvaluationErr of error : ItemEvaluationError
+
+        /// The inner error's own text, unchanged, so a run's failure reads as it did in the table (spec 0050 S11.2).
+        member this.describe : string =
+            match this with
+            | SlotItemErr error -> error.describe
+            | SlotEvaluationErr error -> error.describe
+
+    type SetupSlot with
+
+        /// The slot bound for a run: a polarizer or sample slot holding an item is its model over `valuesOf`, an empty one
+        /// its library binding (a polarizer preset, a sample at its defaults). A source emits, a detector reads, and a
+        /// mirror or a lens only steers the ray, so they are no run element; nor is an unbound slot (spec 0050 S11.2).
+        member this.runElementWith (param : SlotRunParam) : Result<BoundOpticalElement option, SlotRunError> =
+            match this.placement.catalogueKind, this.content with
+            | (LightSource | Detector | Lens | FlatMirror | CurvedMirror), _ -> Ok None
+            | (LinearPolarizer | CircularPolarizer | Sample), ItemInSlot (itemId, _) ->
+                param.resolveSlotItem itemId
+                |> Result.mapError SlotItemErr
+                |> Result.bind (fun (item, choice) ->
+                    choice.boundWith param.materials (param.valuesOf item) |> Result.mapError SlotEvaluationErr)
+                |> Result.map Some
+            | (LinearPolarizer | CircularPolarizer | Sample) as kind, EmptySlotContent ->
+                let entryOpt : LibraryEntry option =
+                    match this.placement.valueId with
+                    | Some id ->
+                        match param.library.tryGetEntry id with
+                        | Ok entryOpt -> entryOpt
+                        | Error _ -> None
+                    | None -> None
+
+                match kind, entryOpt with
+                | (LinearPolarizer | CircularPolarizer), Some (PolarizerItem polarizer) -> Ok (Some (BoundPolarizerPreset polarizer.behavior))
+                | Sample, Some (SampleItem sample) ->
+                    // Bound once, so a sweep resolves the sample's materials once (spec 0050 S8.1).
+                    BoundOpticalElement.ofStackSample param.materials (ParameterValues.defaultsOf sample.parameterAxes) sample
+                    |> Result.mapError SlotEvaluationErr
+                    |> Result.map Some
+                | _, Some (PolarizerItem _ | SampleItem _ | SourceItem _ | DetectorItem _)
+                | _, None -> Ok None
+
+        /// The slot's Mueller matrix as its run step: a sample slot holds an object, any other slot an element (spec
+        /// 0050 S11.2).
+        member this.runStepOf (mueller : MuellerMatrix) : RunStep =
+            match this.placement.catalogueKind with
+            | Sample -> ObjectStep mueller
+            | LightSource
+            | LinearPolarizer
+            | CircularPolarizer
+            | Lens
+            | FlatMirror
+            | CurvedMirror
+            | Detector -> ElementStep mueller
+
+        /// What the run's source emits: the first light-source slot holding an item emits over `valuesOf`, else the
+        /// light-source axes' defaults, unpolarized at unit scale; its λ is `boundSourceIn`'s (spec 0050 S11.2).
+        static member runEmissionOf (slots : SetupSlot list) (param : SlotRunParam) : Result<SourceEmission, SlotRunError> =
+            let heldItemOpt : ItemId option =
+                slots
+                |> List.tryPick (fun slot ->
+                    match slot.placement.catalogueKind, slot.content with
+                    | LightSource, ItemInSlot (itemId, _) -> Some itemId
+                    | LightSource, EmptySlotContent
+                    | (LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
+
+            match heldItemOpt with
+            | Some itemId ->
+                param.resolveSlotItem itemId
+                |> Result.mapError SlotItemErr
+                |> Result.bind (fun (item, choice) -> choice.emissionWith (param.valuesOf item) |> Result.mapError SlotEvaluationErr)
+            | None -> SourceEmission.ofValues (ParameterValues.defaultsOf SourcePreset.lightSourceAxes) |> Result.mapError SlotEvaluationErr
