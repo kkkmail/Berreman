@@ -20,6 +20,7 @@ open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.ExperimentData
 open OpticalConstructor.Domain.ItemEvaluation
+open OpticalConstructor.Domain.PrefitChecks
 
 /// The forward model of an experiment and the study residual (spec 0050 S11.2).
 module StudyForward =
@@ -43,6 +44,10 @@ module StudyForward =
         | ReadingMismatchErr of reason : string
         /// A Mueller row whose residual cannot be formed, such as a matrix without positive throughput (spec 0050 S11.2).
         | RowResidualErr of error : InversionError
+        /// An experiment the study names that the kit does not hold (spec 0050 S11.2).
+        | MissingStudyRunErr of reason : string
+        /// The kit could not report the status of a run's attached data file (spec 0050 S11.2).
+        | StudyRunKitErr of error : KitError
 
         member this.describe : string =
             match this with
@@ -62,6 +67,8 @@ module StudyForward =
                         $"{counts.measuredCount.value} measured and {counts.modelCount.value} model observation(s) do not pair"
 
                 $"the residual cannot be formed: {cause}"
+            | MissingStudyRunErr reason -> $"the kit has no such experiment: {reason}"
+            | StudyRunKitErr error -> $"the kit cannot report the data's status: {error.describe}"
 
     /// What a detector records, predicted or measured: an intensity detector's signal, an ellipsometer's Ψ and Δ, or a
     /// polarimeter's absolute Mueller matrix, its m₀₀ the throughput as S9.2's readings hold it (spec 0050 S11.2).
@@ -728,3 +735,49 @@ module StudyForward =
             | RecordedPsiDelta _, _
             | RecordedMueller _, _ ->
                 Error (ReadingMismatchErr $"the prediction is {kindOf this}, and the measured reading {kindOf measured}")
+
+    /// One run a fit reads, checked before the fit: its kept, validated points or why it is not ready, and its data's
+    /// change flag, `None` without data, which the check already answers (spec 0050 S11.2; 001 §E, §R).
+    type ExperimentPrefit =
+        {
+            experiment : Experiment
+            check : Result<MappedPoints, PrefitError>
+            changeOpt : DataChangeFlag option
+        }
+
+    type Study with
+
+        /// Every enabled run a fit reads, residual rows or a dark level, checked and flagged in study order, `fitted` the
+        /// attachments the study's last fit run read, empty before its first; a failed check is reported, not raised, but
+        /// a run the kit lacks or a data status it cannot read refuses (spec 0050 S11.2).
+        member this.prefitWith (context : StudyForwardContext) (fitted : DataAttachment list) : Result<ExperimentPrefit list, StudyForwardError> =
+            let kit = context.kit
+
+            let changeOf (experiment : Experiment) : Result<DataChangeFlag option, StudyForwardError> =
+                match experiment.dataOpt with
+                | None -> Ok None
+                | Some data ->
+                    context.experimentData.attachmentStatus data.attachment
+                    |> Result.map (fun status -> Some (data.changeWith status fitted))
+                    |> Result.mapError StudyRunKitErr
+
+            let prefitOf (run : ExperimentName) : Result<ExperimentPrefit option, StudyForwardError> =
+                match kit.experiments |> List.tryFind (fun experiment -> experiment.name = run) with
+                | None -> Error (MissingStudyRunErr $"{run.value}, which the study '{this.name.value}' names")
+                | Some experiment ->
+                    match experiment.role.studyUse with
+                    | UnreadRunUse -> Ok None
+                    | ResidualRunUse
+                    | DarkLevelRunUse ->
+                        changeOf experiment
+                        |> Result.map (fun changeOpt ->
+                            let prefit : ExperimentPrefit =
+                                {
+                                    experiment = experiment
+                                    check = experiment.prefitCheckWith context.library context.experimentData kit.setups
+                                    changeOpt = changeOpt
+                                }
+
+                            Some prefit)
+
+            this.enabledExperiments |> List.map prefitOf |> ItemEvaluation.sequenced |> Result.map (List.choose id)

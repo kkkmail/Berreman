@@ -27,6 +27,7 @@ open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.ExperimentData
 open OpticalConstructor.Domain.ItemEvaluation
+open OpticalConstructor.Domain.PrefitChecks
 open OpticalConstructor.Domain.StudyForward
 open CrystalMaterialFixtures
 
@@ -259,6 +260,8 @@ module StudyForwardTests =
         let mismatchReason = "F1 is read by an intensity detector, which records no Mueller matrix"
         let rotationReason = "the polarization block has trace 5, which no rotation can produce"
         let counts : ObservationCounts = { measuredCount = ObservationCount 3; modelCount = ObservationCount 2 }
+        let missingReason = "E9, which the study 'QZ' names"
+        let kitError = KitIoErr "the test cannot hash 'data/E1.csv'"
 
         let cases : (StudyForwardError * string) list =
             [
@@ -272,11 +275,14 @@ module StudyForwardTests =
                 RowResidualErr (NonPositiveIntensityErr (-0.25)), $"the residual cannot be formed: m₀₀ is {-0.25}, not a positive finite throughput"
                 RowResidualErr (DegenerateRotationErr rotationReason), $"the residual cannot be formed: {rotationReason}"
                 RowResidualErr (MismatchedObservationsErr counts), "the residual cannot be formed: 3 measured and 2 model observation(s) do not pair"
+                MissingStudyRunErr missingReason, $"the kit has no such experiment: {missingReason}"
+                StudyRunKitErr kitError, $"the kit cannot report the data's status: {kitError.describe}"
             ]
 
         // A wrapped error keeps its own payload in the text.
         Assert.Contains("'Missing' revision 1", (ForwardSetupErr setupError).describe)
         Assert.Contains("the kit holds no item LP3", (ForwardSlotErr slotError).describe)
+        Assert.Contains("the test cannot hash 'data/E1.csv'", (StudyRunKitErr kitError).describe)
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
@@ -1387,3 +1393,185 @@ module StudyForwardTests =
         // The throughput term refuses alone as its normalization does, the measured matrix first.
         Assert.Equal<Result<ResidualVector, InversionError>>(Error (NonPositiveIntensityErr 0.0), throughputResidual dark negative)
         Assert.Equal<Result<ResidualVector, InversionError>>(Error (NonPositiveIntensityErr (-0.5)), throughputResidual lp negative)
+
+    let private k1 : ExperimentName = ExperimentName "K1"
+    let private x1 : ExperimentName = ExperimentName "X1"
+    let private p1 : ExperimentName = ExperimentName "P1"
+    let private e9 : ExperimentName = ExperimentName "E9"
+
+    /// Step 374's Malus setup: the HeNe, LP1, LP2 and the camera.
+    let private prefitSetup : Setup = setupOf (SetupName "Malus") (malusSlots analyzer camera)
+
+    /// A run of that role over the Malus setup, turning LP2 over 0…90° in 4 points, with no data.
+    let private prefitRun (id : ExperimentId) (name : ExperimentName) (role : ExperimentRole) : Experiment =
+        let turn : ScanAxis = { polarizerTurn with elementId = analyzerSlot.id; label = ElementLabel "LP2" }
+
+        {
+            e1Run with
+                id = id
+                name = name
+                setup = prefitSetup.reference
+                scan = ExperimentScan.oneAxis turn CaptureTransmitted None
+                role = role
+                sessionOpt = None
+        }
+
+    let private e1File : KitRelativePath = KitRelativePath "data/E1.csv"
+    let private k1File : KitRelativePath = KitRelativePath "data/K1.csv"
+    let private x1File : KitRelativePath = KitRelativePath "data/X1.csv"
+    let private e3File : KitRelativePath = KitRelativePath "data/E3.csv"
+
+    let private attachedHash : LibraryEntryFiles.ContentHash = LibraryEntryFiles.ContentHash "0f3c"
+    let private changedHash : LibraryEntryFiles.ContentHash = LibraryEntryFiles.ContentHash "9a1d"
+
+    /// The run with the file at that path attached at `attachedHash`, every row read and no point excluded.
+    let private attachingAt (path : KitRelativePath) (run : Experiment) : Experiment =
+        let data : MappedAttachment =
+            {
+                attachment = { path = path; contentHash = attachedHash }
+                profile = ImportProfileName.intensitySeries
+                rows = AllDataRows
+                exclusions = []
+            }
+
+        { run with dataOpt = Some data }
+
+    let private seriesOver (points : IntensityPoint list) : MappedPoints = SeriesPoints (IntensityData { points = points })
+
+    /// Malus's law under LP2's turn, as an `Intensity series` file reads it.
+    let private malusPoints : MappedPoints =
+        seriesOver
+            [
+                intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 1.0)
+                intensityAt (MeasuredAbscissa 30.0) (MeasuredIntensity 0.75)
+                intensityAt (MeasuredAbscissa 60.0) (MeasuredIntensity 0.25)
+                intensityAt (MeasuredAbscissa 90.0) (MeasuredIntensity 0.0)
+            ]
+
+    /// One dark reading on a dark line.
+    let private darkPoints : MappedPoints = seriesOver [ intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 0.02) ]
+
+    /// E1's, X1's and E3's files unchanged, K1's changed since attach.
+    let private prefitStatuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>> =
+        Map.ofList
+            [
+                e1File, Ok AttachedDataUnchanged
+                k1File, Ok (AttachedDataChanged changedHash)
+                x1File, Ok AttachedDataUnchanged
+                e3File, Ok AttachedDataUnchanged
+            ]
+
+    /// A data seam answering `readMapped` and `attachmentStatus` by the attachment's path; nothing is picked or attached.
+    let private prefitDataOver (statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>>) : ExperimentDataProxy =
+        let points : Map<KitRelativePath, MappedPoints> =
+            Map.ofList [ e1File, malusPoints; k1File, darkPoints; x1File, malusPoints; e3File, malusPoints ]
+
+        {
+            readPickedFile = fun file -> Error (KitIoErr $"the test reads no picked file '{file.value}'")
+            attachDataFile = fun file -> Error (KitIoErr $"the test attaches no file '{file.value}'")
+            attachmentStatus =
+                fun attachment ->
+                    match statuses |> Map.tryFind attachment.path with
+                    | Some status -> status
+                    | None -> Error (MissingKitFileErr $"the test holds no file '{attachment.path.value}'")
+            readMapped =
+                fun data ->
+                    match points |> Map.tryFind data.attachment.path with
+                    | Some read -> Ok read
+                    | None -> Error (MalformedDataFileErr $"the test holds no file '{data.attachment.path.value}'")
+        }
+
+    let private prefitE1 : Experiment = prefitRun (ExperimentId 11) e1 ScienceRun |> attachingAt e1File
+    let private prefitK1 : Experiment = { prefitRun (ExperimentId 12) k1 DarkRun with scan = darkLine } |> attachingAt k1File
+    let private prefitX1 : Experiment = prefitRun (ExperimentId 13) x1 DiagnosticRun |> attachingAt x1File
+    let private prefitE2 : Experiment = prefitRun (ExperimentId 14) e2 CalibrationRun
+    let private prefitE3 : Experiment = prefitRun (ExperimentId 15) e3 ScienceRun |> attachingAt e3File
+    let private prefitP1 : Experiment = prefitRun (ExperimentId 16) p1 PlannedRun
+
+    /// The kit's runs, in an order other than the study's.
+    let private prefitRuns : Experiment list = [ prefitP1; prefitE3; prefitE2; prefitX1; prefitK1; prefitE1 ]
+
+    /// E1, K1, X1, E2, E3 and P1 in that order, E3 disabled.
+    let private prefitStudy : Study =
+        let created = studyOf (Study.create (StudyName "Prefit") [ e1; k1; x1; e2; e3; p1 ] [] prefitRuns)
+        studyOf (created.withExperimentEnablement e3 DisabledInStudy)
+
+    /// The bench's context over the Malus setup, a kit of these runs holding the study, and the statuses' data seam.
+    let private prefitContextOver
+        (study : Study)
+        (runs : Experiment list)
+        (statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>>)
+        : StudyForwardContext =
+        let context = benchContext [ laser; prep; analyzer; camera ] [ prefitSetup ]
+
+        {
+            context with
+                kit = { context.kit with studies = [ study ]; experiments = runs }
+                experimentData = prefitDataOver statuses
+        }
+
+    let private namesOfPrefits (result : Result<ExperimentPrefit list, StudyForwardError>) : ExperimentName list =
+        match result with
+        | Ok prefits -> prefits |> List.map (fun prefit -> prefit.experiment.name)
+        | Error error -> failwith $"expected the study's pre-fit, got {error.describe}"
+
+    [<Fact>]
+    let ``a study's pre-fit checks every run a fit reads, in study order, with its data-change flag`` () : unit =
+        let context = prefitContextOver prefitStudy prefitRuns prefitStatuses
+
+        // The last fit run read E1's file at another hash.
+        let fitted : DataAttachment list = [ { path = e1File; contentHash = changedHash } ]
+
+        // E1 and the Dark K1 checked and flagged, E2 without data unflagged; the Diagnostic X1, the disabled E3 and the
+        // Planned P1 are not read.
+        let expected : ExperimentPrefit list =
+            [
+                { experiment = prefitE1; check = Ok malusPoints; changeOpt = Some (ChangedSinceFitFlag attachedHash) }
+                { experiment = prefitK1; check = Ok darkPoints; changeOpt = Some (ChangedSinceAttachFlag changedHash) }
+                {
+                    experiment = prefitE2
+                    check = Error (MissingDataErr "no measured-data file is attached to this experiment")
+                    changeOpt = None
+                }
+            ]
+
+        Assert.Equal<Result<ExperimentPrefit list, StudyForwardError>>(Ok expected, prefitStudy.prefitWith context fitted)
+
+        // Each check is the run's own pre-fit check over the context.
+        for prefit in expected do
+            Assert.Equal<Result<MappedPoints, PrefitError>>(
+                prefit.experiment.prefitCheckWith context.library context.experimentData context.kit.setups,
+                prefit.check)
+
+        // Before the study's first fit, E1's data is unchanged.
+        match prefitStudy.prefitWith context [] with
+        | Ok (first :: _) -> Assert.Equal<DataChangeFlag option>(Some DataUnchangedFlag, first.changeOpt)
+        | other -> Assert.Fail($"expected E1 first, got %A{other}")
+
+        // E3 enabled again is read after E2, where the study holds it.
+        let enabled = studyOf (prefitStudy.withExperimentEnablement e3 EnabledInStudy)
+
+        Assert.Equal<ExperimentName list>(
+            [ e1; k1; e2; e3 ],
+            namesOfPrefits (enabled.prefitWith (prefitContextOver enabled prefitRuns prefitStatuses) fitted))
+
+    [<Fact>]
+    let ``a study naming an experiment the kit lacks, or a data status the kit cannot read, is refused`` () : unit =
+        // E9 was in the kit the study was made over, and the context's kit lacks it.
+        let withE9 = studyOf (Study.create (StudyName "Prefit E9") [ e1; e9; k1 ] [] (prefitRuns @ [ prefitRun (ExperimentId 17) e9 ScienceRun ]))
+
+        Assert.Equal<Result<ExperimentPrefit list, StudyForwardError>>(
+            Error (MissingStudyRunErr "E9, which the study 'Prefit E9' names"),
+            withE9.prefitWith (prefitContextOver withE9 prefitRuns prefitStatuses) [])
+
+        // K1's status cannot be read.
+        let unreadable = KitIoErr "the test cannot hash 'data/K1.csv'"
+
+        Assert.Equal<Result<ExperimentPrefit list, StudyForwardError>>(
+            Error (StudyRunKitErr unreadable),
+            prefitStudy.prefitWith (prefitContextOver prefitStudy prefitRuns (prefitStatuses |> Map.add k1File (Error unreadable))) [])
+
+        // The status of a run no fit reads is never asked: X1's unreadable status refuses nothing.
+        Assert.Equal<ExperimentName list>(
+            [ e1; k1; e2 ],
+            namesOfPrefits (prefitStudy.prefitWith (prefitContextOver prefitStudy prefitRuns (prefitStatuses |> Map.add x1File (Error unreadable))) []))
