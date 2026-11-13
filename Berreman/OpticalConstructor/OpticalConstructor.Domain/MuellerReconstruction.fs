@@ -193,6 +193,12 @@ module MuellerReconstruction =
             rhs : float[]
         }
 
+        /// The residual RMSE `‖A·x − b‖ / √m` of a solution over this system's rows, the one the solver reports and the
+        /// product check reuses (spec 0050 S10.3).
+        member this.residualRmseAt (solution : RealVector) : ResidualRmse =
+            let residual = (RealMatrix.create (this.design |> Array.map (fun row -> row.value)) * solution) - RealVector.create this.rhs
+            residual.norm / sqrt (float this.design.Length) |> ResidualRmse
+
     /// The elevated result of a linear least-squares solve. `solution` is the minimizing `x` (for a
     /// reconstruction, the Mueller vec its `columnMajorMueller` un-vecs); `rank` is the numerical rank the
     /// solver reported — a first-class observability check, equal to the column count on a full-rank solve,
@@ -285,10 +291,7 @@ module MuellerReconstruction =
                                 Error (RankDeficientErr (MatrixRank rank))
                             else
                                 let x = svd.Solve(b)
-                                let residual = (am * RealVector x) - bv
-                                let rows = a.RowCount
-                                let rmse = residual.norm / sqrt (float rows)
-                                Ok { solution = RealVector x; rank = MatrixRank rank; rmse = ResidualRmse rmse }
+                                Ok { solution = RealVector x; rank = MatrixRank rank; rmse = system.residualRmseAt (RealVector x) }
                         with
                         | e -> Error (SingularDesignErr $"the SVD least-squares solve failed: {e.Message}")
         }

@@ -127,8 +127,46 @@ module StagedMuellerPath =
                             cplSourceModel = cplSourceModel
                         })))
 
+    /// The cascade's prediction RMSE over the combined fit's own, `product / fit` (`matrix_fit_linear.py:334`).
+    type ProductRmseRatio =
+        | ProductRmseRatio of float
+
+        member this.value = let (ProductRmseRatio r) = this in r
+
+        /// The one place the ratio is formed.
+        static member between (productRmse : ResidualRmse) (fitRmse : ResidualRmse) : ProductRmseRatio =
+            productRmse.value / fitRmse.value |> ProductRmseRatio
+
+    /// The product check for the series objects (`matrix_fit_linear.py:358-373`): the cascade M_LR · M_QZ, its difference
+    /// from M_{QZ+LR}, and the combined fit's RMSE and the cascade's, both over the combined rows.
+    type ProductCheckData =
+        {
+            cascade : MuellerMatrix
+            difference : MatrixDiff
+            fitRmse : ResidualRmse
+            productRmse : ResidualRmse
+        }
+
+        /// `product_rmse / fit_rmse`, the ratio the reference report prints.
+        member this.rmseRatio : ProductRmseRatio = ProductRmseRatio.between this.productRmse this.fitRmse
+
+    /// The product check of `combined`, solved over `combinedSystem`, against the cascade of `qz` then `lr`.
+    let productCheckOf
+        (lr : MuellerMatrix)
+        (qz : MuellerMatrix)
+        (combined : ReconstructedMatrix)
+        (combinedSystem : LeastSquaresSystem)
+        : ProductCheckData =
+        let cascade = cascadeProduct lr qz
+        {
+            cascade = cascade
+            difference = frobeniusDiff combined.matrix cascade
+            fitRmse = combined.rmse
+            productRmse = combinedSystem.residualRmseAt cascade.vecColumnMajor
+        }
+
     /// The staged path's answer: the stage-1 constants, the AIR gain rules (`cplCpl` the day-2 block's `Day2Single`),
-    /// the day-1 CPL-CPL interpolation, and M_QZ, M_LR and M_{QZ+LR} with their rank and residual.
+    /// the day-1 CPL-CPL interpolation, M_QZ, M_LR and M_{QZ+LR} with their rank and residual, and the product check.
     type StagedMuellerData =
         {
             stageOne : StageOneCalibrationData
@@ -137,6 +175,7 @@ module StagedMuellerPath =
             qz : ReconstructedMatrix
             lr : ReconstructedMatrix
             qzLr : ReconstructedMatrix
+            productCheck : ProductCheckData
         }
 
     /// An AIR block holding at least one capture row: the rows of its file whose experiment is its label.
@@ -265,8 +304,8 @@ module StagedMuellerPath =
         sEff, aEff, signal
 
     /// Stages 2 and 3 after `calibrateStageOne` (`matrix_fit_linear.py` `main`): the AIR gain rules, then M_QZ, M_LR
-    /// and M_{QZ+LR}, each the five families' designs over `excluded` solved by `reconstruct`. The first missing
-    /// capture set or failed solve answers its typed error.
+    /// and M_{QZ+LR}, each the five families' designs over `excluded` solved by `reconstruct`, then the product check.
+    /// The first missing capture set or failed solve answers its typed error.
     let reconstructStaged
         (solver : MuellerSolverProxy)
         (excluded : ExcludedPoint list)
@@ -293,21 +332,24 @@ module StagedMuellerPath =
                           captures.cplCplDay1Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer CplCpl day1Gains
                           captures.cplCplDay2Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer CplCpl gains ]
 
-                    let reconstructObject (kind : MatrixKind) : Result<ReconstructedMatrix, StagedMuellerError> =
+                    let systemOf (kind : MatrixKind) : LeastSquaresSystem =
                         let parts = families |> List.map (fun (rows, projection) -> buildDesign projection excluded rows kind)
-                        let system : LeastSquaresSystem =
-                            {
-                                design = parts |> List.map (fun p -> p.design) |> Array.concat
-                                rhs = parts |> List.map (fun p -> p.rhs) |> Array.concat
-                            }
+                        {
+                            design = parts |> List.map (fun p -> p.design) |> Array.concat
+                            rhs = parts |> List.map (fun p -> p.rhs) |> Array.concat
+                        }
 
+                    let reconstructObject (kind : MatrixKind) (system : LeastSquaresSystem) : Result<ReconstructedMatrix, StagedMuellerError> =
                         reconstruct solver system |> Result.mapError (fun error -> ObjectReconstructionErr (kind, error))
 
-                    reconstructObject Qz
+                    reconstructObject Qz (systemOf Qz)
                     |> Result.bind (fun qz ->
-                        reconstructObject Lr
+                        reconstructObject Lr (systemOf Lr)
                         |> Result.bind (fun lr ->
-                            reconstructObject QzLrProduct
+                            // The product check reads the combined rows the M_{QZ+LR} solve fitted.
+                            let combinedSystem = systemOf QzLrProduct
+
+                            reconstructObject QzLrProduct combinedSystem
                             |> Result.map (fun qzLr ->
                                 {
                                     stageOne = stageOne
@@ -316,4 +358,5 @@ module StagedMuellerPath =
                                     qz = qz
                                     lr = lr
                                     qzLr = qzLr
+                                    productCheck = productCheckOf lr.matrix qz.matrix qzLr combinedSystem
                                 })))))

@@ -653,7 +653,7 @@ type MuellerReconstructionTests() =
     [<Fact>]
     member _.``section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and reproduces the reference pipeline exactly`` () =
         // Runs the promoted staged Mueller path (spec 0050 S10.3) over the optics-mueller kit's lab files, through the
-        // REAL createMathNetSvd () proxy, and asserts its gains, matrices and cascade against the reference pipeline.
+        // REAL createMathNetSvd () proxy, and asserts its gains, matrices and product check against the reference pipeline.
         //
         // Spec 0044 changed two things here and nothing else about the pipeline:
         //
@@ -733,10 +733,10 @@ type MuellerReconstructionTests() =
             worstMatrixDeviation < MuellerReference.dataMatrixTol,
             $"""section 7.2 matrices (tol {MuellerReference.dataMatrixTol}): {String.concat "; " (matrixDeviations |> List.map snd)}""")
 
-        // ---- Section 8 cascade identity: M_{QZ+LR} vs the QZ-first product M_LR . M_QZ. ----
+        // ---- Section 8 cascade identity: M_{QZ+LR} vs the QZ-first product M_LR . M_QZ, the staged path's product check. ----
         // The expected values are `MuellerReference`'s, from `combined_vs_product_matrix` in the same summary.
-        let cascade = cascadeProduct staged.lr.matrix staged.qz.matrix
-        let d = frobeniusDiff staged.qzLr.matrix cascade
+        let check = staged.productCheck
+        let d = check.difference
         let worstMetricDeviation =
             [ abs (d.frobenius.value - MuellerReference.cascadeFrobenius.value)
               abs (d.meanAbs.value - MuellerReference.cascadeMeanAbs.value)
@@ -753,9 +753,15 @@ type MuellerReconstructionTests() =
         let topTwoDiffPositions =
             [ for i in 0 .. 3 do
                 for j in 0 .. 3 ->
-                    (MuellerRowIndex i, MuellerColumnIndex j), abs (staged.qzLr.matrix.element i j - cascade.element i j) ]
+                    (MuellerRowIndex i, MuellerColumnIndex j), abs (staged.qzLr.matrix.element i j - check.cascade.element i j) ]
             |> List.sortByDescending snd
             |> List.truncate 2
             |> List.map fst
             |> Set.ofList
         Assert.True((topTwoDiffPositions = MuellerReference.cascadeLargestDeltaPositions), $"the two largest abs-delta positions (0-indexed) = %A{topTwoDiffPositions}")
+
+        // `combined_check`: the cascade's RMSE over the combined rows against the combined fit's own.
+        let ratioDeviation = abs (check.rmseRatio.value - MuellerReference.productCheckRmseRatio.value)
+        Assert.True(
+            ratioDeviation < MuellerReference.dataMatrixTol,
+            $"product-check RMSE ratio: deviation {ratioDeviation} (fit_rmse = {check.fitRmse.value}, product_rmse = {check.productRmse.value}, ratio = {check.rmseRatio.value}, reference ratio = {MuellerReference.productCheckRmseRatio.value}, tol {MuellerReference.dataMatrixTol})")

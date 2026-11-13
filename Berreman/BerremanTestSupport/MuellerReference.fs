@@ -4,6 +4,7 @@ open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.MuellerReconstruction
+open OpticalConstructor.Optimization.StagedMuellerPath
 
 /// The optics-mueller reference pipeline's full-precision results, transcribed from `reference_step1_summary.json` and
 /// `reference_step2_linear_summary.json` in `data/optics-mueller/data/reference/` (step 329), which `MuellerReconstructionTests`
@@ -43,6 +44,7 @@ module MuellerReference =
     /// Acceptance band for the Stage-3 reconstructed matrix elements and the §8 cascade metrics. Pinned per
     /// §9 at ~20× the observed worst deviation of 4.9e-11.
     /// It also bands the AIR gains, worst 2.9e-11 (`lp_cpl.gain_air2`) when spec 0050 was authored, 2026-11-04 (~34×, §9).
+    /// It also bands the product-check RMSE ratio, whose observed deviation was 5.7e-13 when spec 0050 was authored, 2026-11-04.
     let dataMatrixTol : float = 1.0e-9
 
     /// `dark_mean_avg_total`.
@@ -131,6 +133,15 @@ module MuellerReference =
 
     /// `gain_summary.cpl_cpl_day2.gain`.
     let cplCplDay2Gain : AirGain = AirGain 36225.080943100205
+
+    /// `combined_check.fit_rmse`.
+    let combinedFitRmse : ResidualRmse = ResidualRmse 0.10162659513724465
+
+    /// `combined_check.product_rmse`.
+    let productRmse : ResidualRmse = ResidualRmse 0.12833930975940816
+
+    /// The report's `product / fit` (`matrix_fit_linear.py:334`).
+    let productCheckRmseRatio : ProductRmseRatio = ProductRmseRatio.between productRmse combinedFitRmse
 
     /// `matrix_glue.py:22` `EXCLUDED_POINTS`, the caller's data to the reconstruction (`ExcludedPoint`, spec 0042 §0).
     let excludedPoints : ExcludedPoint list =

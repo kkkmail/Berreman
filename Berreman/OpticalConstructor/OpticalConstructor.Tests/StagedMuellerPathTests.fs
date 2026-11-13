@@ -1,13 +1,15 @@
 namespace OpticalConstructor.Tests
 
 open Berreman.Geometry
+open Berreman.Fields
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Optimization.StagedMuellerPath
 open Xunit
 
 /// Spec 0050 S10.3 — the staged Mueller path answers a typed error, never a throw, over fixed-literal capture rows and
-/// the real MathNet SVD solver.
+/// the real MathNet SVD solver, and its product check reads a fixed two-row system.
 module StagedMuellerPathTests =
 
     let private noCaptures : StagedMuellerCaptureData =
@@ -93,3 +95,33 @@ module StagedMuellerPathTests =
         match reconstructStaged (createMathNetSvd ()) [] allAirBlocks with
         | Error (ObjectReconstructionErr (Qz, SingularDesignErr _)) -> ()
         | other -> Assert.Fail($"expected Error (ObjectReconstructionErr (Qz, SingularDesignErr _)), got %A{other}")
+
+    [<Fact>]
+    let ``the product check compares the combined matrix with the cascade and the RMSEs over the combined rows`` () =
+        // The two design rows read M₀₀ and M₁₁ (`kron4`): the cascade predicts 1.0 and 0.5 against the rows' 1.0 and 0.8.
+        let qz =
+            RealMatrix4x4.create
+                [ [ 1.0; 0.0; 0.0; 0.0 ]
+                  [ 0.0; 0.5; 0.0; 0.0 ]
+                  [ 0.0; 0.0; 0.5; 0.0 ]
+                  [ 0.0; 0.0; 0.0; 1.0 ] ]
+            |> MuellerMatrix
+        let combined : ReconstructedMatrix = { matrix = Propagation.identityMueller; rank = MatrixRank 16; rmse = ResidualRmse 0.1 }
+        let combinedSystem : LeastSquaresSystem =
+            {
+                design =
+                    [| kron4 (StokesVector.create [ 1.0; 0.0; 0.0; 0.0 ]) (RealVector4.create [ 1.0; 0.0; 0.0; 0.0 ])
+                       kron4 (StokesVector.create [ 0.0; 1.0; 0.0; 0.0 ]) (RealVector4.create [ 0.0; 1.0; 0.0; 0.0 ]) |]
+                rhs = [| 1.0; 0.8 |]
+            }
+
+        let check = productCheckOf Propagation.identityMueller qz combined combinedSystem
+
+        for i in 0 .. 3 do
+            for j in 0 .. 3 do
+                Assert.Equal(qz.element i j, check.cascade.element i j, 1e-12)
+        Assert.Equal(0.5, check.difference.maxAbs.value, 1e-12)
+        Assert.Equal(sqrt 0.5, check.difference.frobenius.value, 1e-12)
+        Assert.Equal(0.1, check.fitRmse.value, 1e-12)
+        Assert.Equal(sqrt 0.045, check.productRmse.value, 1e-12)
+        Assert.Equal(sqrt 0.045 / 0.1, check.rmseRatio.value, 1e-12)
