@@ -43,6 +43,7 @@
         <Compile Include="Groups.fs" />
         <Compile Include="CurvedElements.fs" />
         <Compile Include="DispersionModels.fs" />
+        <Compile Include="CrystalPhysics.fs" />
         <Compile Include="MaterialLibrary.fs" />
         <!-- Spec 0027 (024): elevated ElementId + the Library (Sample/Source/Detector/Polarizer
              presets), the grouping-tree representations, and the mock LibraryProxy (functional-proxy

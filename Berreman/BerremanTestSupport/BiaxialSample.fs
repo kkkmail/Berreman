@@ -8,6 +8,7 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.RecoveryEnsembles

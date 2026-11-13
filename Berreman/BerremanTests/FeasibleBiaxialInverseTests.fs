@@ -7,6 +7,7 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused, not re-declared
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting

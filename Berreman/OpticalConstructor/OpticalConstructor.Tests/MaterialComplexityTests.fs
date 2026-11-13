@@ -9,6 +9,7 @@ open Berreman.Dispersion
 open OpticalProperties.Standard
 open OpticalProperties.Active
 open OpticalProperties.Dispersive
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
@@ -326,3 +327,60 @@ module MaterialComplexityTests =
         match ofComplexity c with
         | Error (PublishedGyrationNotEditableErr _) -> ()
         | other -> Assert.Fail($"a published gyration law must refuse to seed the editor, got %A{other}")
+
+    [<Fact>]
+    let ``each crystal record's builder composes its permittivity from its own fields`` () =
+        // Spec 0050 S11.1: the records ahead of the material library keep steps 332-334's builders.
+        let uniaxial : UniaxialParameters =
+            {
+                ordinaryIndex = RefractionIndex 1.544
+                extraordinaryIndex = RefractionIndex 1.553
+                g11 = RhoValue 5.8e-5
+                g33 = RhoValue -1.0e-4
+            }
+        let triclinic : TriclinicParameters =
+            {
+                index1 = RefractionIndex 1.52
+                index2 = RefractionIndex 1.56
+                index3 = RefractionIndex 1.61
+                g11 = RhoValue 3.0e-5
+                g22 = RhoValue 4.0e-5
+                g33 = RhoValue 5.0e-5
+                g23 = RhoValue 1.0e-5
+                g13 = RhoValue 2.0e-5
+                g12 = RhoValue 6.0e-6
+            }
+        let absorbing : AbsorbingTriclinicParameters =
+            {
+                index1 = RefractionIndex 1.71
+                index2 = RefractionIndex 1.74
+                index3 = RefractionIndex 1.78
+                epsIm11 = EpsValue 2.0e-3
+                epsIm22 = EpsValue 3.0e-3
+                epsIm33 = EpsValue 4.0e-3
+                epsIm23 = EpsValue 5.0e-4
+                epsIm13 = EpsValue 6.0e-4
+                epsIm12 = EpsValue 7.0e-4
+                g11 = RhoValue 3.0e-5
+                g22 = RhoValue 4.0e-5
+                g33 = RhoValue 5.0e-5
+                g23 = RhoValue 1.0e-5
+                g13 = RhoValue 2.0e-5
+                g12 = RhoValue 6.0e-6
+            }
+        let squared (n : RefractionIndex) : float = n.value * n.value
+        let assertDiagonal (label : string) (eps : Eps) (diagonal : float list) : unit =
+            for i in 0..2 do
+                for j in 0..2 do
+                    let actual = eps.[i, j]
+                    let expected = if i = j then Complex(diagonal.[i], 0.0) else Complex.Zero
+                    Assert.True(closeC 1e-15 actual expected, $"{label}: eps[{i},{j}] = {actual}, expected {expected}")
+        assertDiagonal "uniaxial" uniaxial.opticalProperties.eps [ squared uniaxial.ordinaryIndex; squared uniaxial.ordinaryIndex; squared uniaxial.extraordinaryIndex ]
+        assertDiagonal "triclinic" triclinic.opticalProperties.eps [ squared triclinic.index1; squared triclinic.index2; squared triclinic.index3 ]
+        let absorbingEps = absorbing.opticalProperties.eps
+        let actual11 = absorbingEps.[0, 0]
+        let actual12 = absorbingEps.[0, 1]
+        let expected11 = Complex(squared absorbing.index1, absorbing.epsIm11.value)
+        let expected12 = Complex(0.0, absorbing.epsIm12.value)
+        Assert.True(closeC 1e-15 actual11 expected11, $"absorbing: eps[0,0] = {actual11}, expected n1² + i·e11 = {expected11}")
+        Assert.True(closeC 1e-15 actual12 expected12, $"absorbing: eps[0,1] = {actual12}, expected i·e12 = {expected12}")

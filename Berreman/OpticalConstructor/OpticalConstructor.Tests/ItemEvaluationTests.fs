@@ -15,6 +15,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.ExperimentRun
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.ItemEvaluation
 

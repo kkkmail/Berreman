@@ -5,6 +5,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
 open BerremanTestSupport.BiaxialSample
