@@ -8,7 +8,8 @@ open OpticalConstructor.Domain.Studies
 open Xunit
 
 /// Spec 0050 S11.1 — a study's shape: its name and file stem, its scope and fit-mode tags, its residual weights,
-/// CreateStudy's pure half over a kit's experiments, and the sessions and gain models a study reads from them.
+/// CreateStudy's and AddExperimentsToStudy's pure halves over a kit's experiments, and the sessions and gain models a
+/// study reads from them.
 module StudyTests =
 
     /// A run over `Bench` revision 1 turning one polarizer, as `StudySessionTests`' is; the study tests vary only its
@@ -132,6 +133,25 @@ module StudyTests =
 
         match Study.create name [ e1; e9 ] [] kitRuns with
         | Error (UnknownStudyExperimentErr reason) -> Assert.Contains($"'{e9.value}'", reason)
+        | other -> Assert.Fail($"expected Error (UnknownStudyExperimentErr _) naming {e9.value}, got %A{other}")
+
+    [<Fact>]
+    let ``adding experiments appends the new ones in order and keeps those the study holds`` () : unit =
+        // QZ-LR sets every other field, so a field reset to its initial value shows.
+        let study = { StudyFileFixtures.qzLrStudyOver StudyFileFixtures.studyProbeMaterial with experiments = [ e2 ] }
+        let added = studyOf (study.withExperiments [ e3; e2; e1; e3 ] kitRuns)
+
+        Assert.Equal<ExperimentName list>([ e2; e3; e1 ], added.experiments)
+        Assert.Equal({ study with experiments = [ e2; e3; e1 ] }, added)
+
+    [<Fact>]
+    let ``adding an experiment the kit lacks changes nothing`` () : unit =
+        let study = studyOf (Study.create (StudyName "QZ-LR") [ e2 ] [] kitRuns)
+
+        match study.withExperiments [ e1; e9 ] kitRuns with
+        | Error (UnknownStudyExperimentErr reason) ->
+            Assert.Contains($"'{e9.value}'", reason)
+            Assert.DoesNotContain($"'{e1.value}'", reason)
         | other -> Assert.Fail($"expected Error (UnknownStudyExperimentErr _) naming {e9.value}, got %A{other}")
 
     [<Fact>]

@@ -380,14 +380,11 @@ module Studies =
             let sameFile (study : Study) : bool =
                 String.Equals(study.name.fileStem.value, name.fileStem.value, StringComparison.OrdinalIgnoreCase)
 
-            let inKit (run : ExperimentName) : bool = kitExperiments |> List.exists (fun experiment -> experiment.name = run)
-
-            match held |> List.tryFind sameFile, experiments |> List.tryFind (fun run -> not (inKit run)) with
+            match held |> List.tryFind sameFile, Study.unknownExperimentAmong experiments kitExperiments with
             | Some study, _ ->
                 let file = StudyKitFile.fileNameOf study.name.fileStem
                 Error (DuplicateStudyNameErr $"'{name.value}' beside '{study.name.value}': both are stored as {file.value}, ignoring case")
-            | None, Some missing ->
-                Error (UnknownStudyExperimentErr $"'{missing.value}' is not among the kit's {kitExperiments.Length} experiments")
+            | None, Some unknown -> Error unknown
             | None, None ->
                 Ok
                     {
@@ -400,6 +397,22 @@ module Studies =
                         settings = StudyFitSettings.initial
                         notes = StudyNotes.none
                     }
+
+        /// The first of `runs` that `kitExperiments` lacks, as the refusal a study answers for it (spec 0050 S11.1).
+        static member private unknownExperimentAmong (runs : ExperimentName list) (kitExperiments : Experiment list) : StudyError option =
+            runs
+            |> List.tryFind (fun run -> not (kitExperiments |> List.exists (fun experiment -> experiment.name = run)))
+            |> Option.map (fun missing -> UnknownStudyExperimentErr $"'{missing.value}' is not among the kit's {kitExperiments.Length} experiments")
+
+        /// AddExperimentsToStudy's pure half: the study's experiments in place, then each of `names` it lacks, in order and
+        /// once, every other field kept; refused, with nothing changed, at the first name `kitExperiments` lacks
+        /// (spec 0050 S11.1; 001 §P).
+        member this.withExperiments (names : ExperimentName list) (kitExperiments : Experiment list) : Result<Study, StudyError> =
+            match Study.unknownExperimentAmong names kitExperiments with
+            | Some unknown -> Error unknown
+            | None ->
+                let added = names |> List.filter (fun run -> not (List.contains run this.experiments)) |> List.distinct
+                Ok { this with experiments = this.experiments @ added }
 
         /// `StudySession.splitAll` of the study's experiments as `kitExperiments` holds them, in study order
         /// (spec 0050 S11.1).
