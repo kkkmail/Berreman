@@ -14,7 +14,7 @@ open CrystalMaterialFixtures
 
 /// Spec 0050 S11.1 — a study's shape: its name and file stem, its scope and fit-mode tags, its residual weights,
 /// CreateStudy's and AddExperimentsToStudy's pure halves over a kit's experiments, the sessions and gain models a
-/// study reads from them, and its unknowns with their scopes and owners.
+/// study reads from them, its unknowns with their scopes and owners, and SetParameterScope's pure half.
 module StudyTests =
 
     /// A run over `Bench` revision 1 turning one polarizer, as `StudySessionTests`' is; the study tests vary only its
@@ -352,3 +352,89 @@ module StudyTests =
         Assert.Equal<UnknownOwner list>([ ExperimentOwner e3; ExperimentOwner e1 ], experimentUnknown.owners sessions [ e3; e1 ])
         Assert.Equal<UnknownOwner list>([ ExperimentOwner e3; ExperimentOwner e1 ], experimentUnknown.owners sessions [ e3; e1; e3 ])
         Assert.Empty(experimentUnknown.owners sessions [])
+
+    let private scopedAs (parameter : StudyParameterRef) (scope : ParameterScope) : ScopedParameter =
+        { parameter = parameter; scope = scope }
+
+    [<Fact>]
+    let ``setting a parameter's scope replaces its entry in place or adds it, and the default applies until then`` () : unit =
+        let used = [ cpl1; cpl2; phone ]
+        let cpl1Retardance = ItemParameterRef (cpl1.id, retardance)
+        let phoneGain = ItemParameterRef (phone.id, ParameterName.gain)
+        let materialN1 = MaterialParameterRef (openedVersion, n1)
+
+        Assert.Equal(ItemScope, unknownsStudy.scopeOf cpl1Retardance)
+        Assert.Equal(SessionBlockScope, unknownsStudy.scopeOf phoneGain)
+
+        let perExperiment = studyOf (unknownsStudy.withParameterScope (scopedAs phoneGain ExperimentScope) used)
+        Assert.Equal({ unknownsStudy with scopes = [ scopedAs phoneGain ExperimentScope ] }, perExperiment)
+        Assert.Equal(ExperimentScope, perExperiment.scopeOf phoneGain)
+        Assert.Equal(ItemScope, perExperiment.scopeOf cpl1Retardance)
+
+        let perItem = studyOf (perExperiment.withParameterScope (scopedAs phoneGain ItemScope) used)
+        Assert.Equal({ unknownsStudy with scopes = [ scopedAs phoneGain ItemScope ] }, perItem)
+        Assert.Equal(ItemScope, perItem.scopeOf phoneGain)
+
+        // A later entry stays after the replaced one, and a material component takes its own scope explicitly.
+        let twoScoped = studyOf (perItem.withParameterScope (scopedAs cpl1Retardance SessionBlockScope) used)
+        let threeScoped = studyOf (twoScoped.withParameterScope (scopedAs materialN1 MaterialScope) used)
+        let replaced = studyOf (threeScoped.withParameterScope (scopedAs phoneGain ExperimentScope) used)
+
+        Assert.Equal<ScopedParameter list>(
+            [ scopedAs phoneGain ExperimentScope; scopedAs cpl1Retardance SessionBlockScope; scopedAs materialN1 MaterialScope ],
+            replaced.scopes)
+
+        Assert.Equal(SessionBlockScope, replaced.scopeOf cpl1Retardance)
+        Assert.Equal(MaterialScope, replaced.scopeOf materialN1)
+        Assert.Equal(ItemScope, replaced.scopeOf (ItemParameterRef (cpl2.id, retardance)))
+
+    [<Fact>]
+    let ``a scope is refused for a parameter the study does not use, for a linked parameter, and MaterialScope fits a material component only`` () : unit =
+        let used = [ cpl1; cpl2; phone ]
+        let cpl1Retardance = ItemParameterRef (cpl1.id, retardance)
+        let cpl2Retardance = ItemParameterRef (cpl2.id, retardance)
+        let phoneGain = ItemParameterRef (phone.id, ParameterName.gain)
+        let materialN1 = MaterialParameterRef (openedVersion, n1)
+
+        let unknownReasonOf (study : Study) (scoped : ScopedParameter) (items : Item list) : string =
+            match study.withParameterScope scoped items with
+            | Error (UnknownStudyParameterErr reason) ->
+                Assert.Contains(scoped.parameter.describe, reason)
+                reason
+            | other -> failwith $"expected Error (UnknownStudyParameterErr _) for {scoped.parameter.describe}, got %A{other}"
+
+        let notAllowedReasonOf (study : Study) (scoped : ScopedParameter) : string =
+            match study.withParameterScope scoped used with
+            | Error (ScopeNotAllowedErr reason) ->
+                Assert.Contains(scoped.parameter.describe, reason)
+                reason
+            | other -> failwith $"expected Error (ScopeNotAllowedErr _) for {scoped.parameter.describe}, got %A{other}"
+
+        // An item outside `used`, a name CPL1 lacks, a version the study has not opened and a component it lacks.
+        unknownReasonOf unknownsStudy (scopedAs phoneGain ItemScope) [ cpl1; cpl2 ] |> ignore
+        Assert.Contains("'CPL1'", unknownReasonOf unknownsStudy (scopedAs (ItemParameterRef (cpl1.id, ParameterName.gain)) ItemScope) used)
+
+        let unopened = MaterialVersionId.firstOf (MaterialId (Guid.Parse "36300000-0000-4000-8000-000000000002"))
+        unknownReasonOf unknownsStudy (scopedAs (MaterialParameterRef (unopened, n1)) MaterialScope) used |> ignore
+        Assert.Contains("'Probe absorbing crystal'", unknownReasonOf unknownsStudy (scopedAs (MaterialParameterRef (openedVersion, ParameterName "n_o")) MaterialScope) used)
+
+        // An item parameter takes Item, Session or Experiment; a material component Material only.
+        Assert.EndsWith("not Material", notAllowedReasonOf unknownsStudy (scopedAs cpl1Retardance MaterialScope))
+
+        for scope in [ ItemScope; SessionBlockScope; ExperimentScope ] do
+            Assert.EndsWith($"takes Material, not {scope.text}", notAllowedReasonOf unknownsStudy (scopedAs materialN1 scope))
+
+        // A link joins parameters of one scope, so neither its follower nor its leader takes one of its own.
+        let link : ParameterLink =
+            {
+                follower = cpl2Retardance
+                leader = cpl1Retardance
+            }
+
+        let linked = { unknownsStudy with links = [ link ] }
+        let followerReason = notAllowedReasonOf linked (scopedAs cpl2Retardance ExperimentScope)
+        Assert.Contains($"{cpl2Retardance.describe} = {cpl1Retardance.describe}", followerReason)
+        Assert.Contains($"{cpl2Retardance.describe} = {cpl1Retardance.describe}", notAllowedReasonOf linked (scopedAs cpl1Retardance ItemScope))
+
+        // The link leaves every other parameter free to take a scope.
+        Assert.Equal({ linked with scopes = [ scopedAs phoneGain ExperimentScope ] }, studyOf (linked.withParameterScope (scopedAs phoneGain ExperimentScope) used))

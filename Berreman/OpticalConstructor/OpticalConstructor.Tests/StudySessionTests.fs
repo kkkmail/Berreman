@@ -169,6 +169,7 @@ module StudySessionTests =
         let materialReason = "material 36100000-0000-4000-8000-000000000002 v1 is not among the study's 1 opened materials"
         let parameterReason = "material 36100000-0000-4000-8000-000000000001 v1 n_o is not among the 15 parameters of 'Probe absorbing crystal'"
         let stateReason = "the parameter state is not valid: n3: the lower bound 1.8 is not below the upper bound 1.6"
+        let scopeReason = "material 36100000-0000-4000-8000-000000000001 v1 n1 takes Material, not Item"
         let rendered =
             [ (EmptyGainAnchorsErr emptyReason).describe
               (MissingAnchorGainErr missingReason).describe
@@ -181,7 +182,8 @@ module StudySessionTests =
               (MaterialAlreadyOpenErr openReason).describe
               (UnknownStudyMaterialErr materialReason).describe
               (UnknownStudyParameterErr parameterReason).describe
-              (InvalidStudyParameterErr stateReason).describe ]
+              (InvalidStudyParameterErr stateReason).describe
+              (ScopeNotAllowedErr scopeReason).describe ]
 
         Assert.Equal($"the gain model names no AIR run: {emptyReason}", rendered.[0])
         Assert.Equal($"the AIR run's gain is not known: {missingReason}", rendered.[1])
@@ -195,6 +197,7 @@ module StudySessionTests =
         Assert.Equal($"the study opens no such material version: {materialReason}", rendered.[9])
         Assert.Equal($"the study has no such parameter: {parameterReason}", rendered.[10])
         Assert.Equal($"the parameter state is not valid: {stateReason}", rendered.[11])
+        Assert.Equal($"the parameter cannot take that scope: {scopeReason}", rendered.[12])
         Assert.Equal(rendered.Length, rendered |> List.distinct |> List.length)
 
     [<Fact>]
