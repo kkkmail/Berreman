@@ -161,3 +161,20 @@ module ExperimentRunTests =
             [ PresetIds.xenonMonochromator; PresetIds.tiSapphireTunable; PresetIds.supercontinuum; PresetIds.euvBeamline ]
             |> List.map BuiltinCatalogue.source
         Assert.All(tunables, fun s -> Assert.True(Option.isSome s.tunableLimitsOpt, s.name.value))
+
+    [<Fact>]
+    let ``the run's wavelength is a tunable source's clamped request, a fixed line's own, or 600 nm without a source`` () =
+        let nanometers (w : WaveLength) : float = (Units.wavelengthToUnit Units.Nanometer w).value
+        let assertNanometers (expected : float) (actual : WaveLength) : unit = Assert.Equal(expected, nanometers actual, 1.0e-9)
+        let request (at : float) : WaveLength option = Some (WaveLength.nm (at * 1.0<nm>))
+        let heNe = BuiltinCatalogue.source PresetIds.heNe633
+        let limits : Berreman.Dispersion.WaveLengthInterval = { lower = WaveLength.nm 400.0<nm>; upper = WaveLength.nm 700.0<nm> }
+        let tunableHeNe = Some { heNe with tuning = TunableBetween limits }
+        assertNanometers 500.0 (SourcePreset.operatingWaveLengthOf tunableHeNe (request 500.0))
+        assertNanometers 700.0 (SourcePreset.operatingWaveLengthOf tunableHeNe (request 900.0))
+        assertNanometers 400.0 (SourcePreset.operatingWaveLengthOf tunableHeNe (request 300.0))
+        assertNanometers (nanometers heNe.waveLength) (SourcePreset.operatingWaveLengthOf tunableHeNe None)
+        for requested in [ request 500.0; request 900.0; None ] do
+            assertNanometers 632.8 (SourcePreset.operatingWaveLengthOf (Some heNe) requested)
+        for requested in [ request 500.0; None ] do
+            assertNanometers 600.0 (SourcePreset.operatingWaveLengthOf None requested)

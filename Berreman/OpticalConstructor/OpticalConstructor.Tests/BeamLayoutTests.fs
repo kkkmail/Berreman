@@ -121,6 +121,18 @@ module BeamLayoutTests =
         Assert.True(abs (insideDir outOfPlane).z > 1.0e-3, "the inside run leaves the table plane under R3")
 
     [<Fact>]
+    let ``the drawn incidence is the angle between an element's drawn face normal and its arriving beam`` () =
+        let incidenceIn (scene : LayoutElement list) (id : string) : float =
+            let element = scene |> List.find (fun e -> e.id = Library.ElementId id)
+            ((placedOf id (layout scene)).incidenceOn element.placement).angle.degrees
+        Assert.True(close (incidenceIn (sampleScene 30.0) "s") 30.0, "a sample at R2 30° meets its beam at 30°")
+        Assert.True(close (incidenceIn (sampleScene 0.0) "s") 0.0, "an untilted sample meets its beam at 0°")
+        Assert.True(close (incidenceIn (sampleScene 30.0) "src") 0.0, "the root has no arriving beam")
+        Assert.True(close (incidenceIn (sampleScene 89.5) "s") 89.0, "an incidence past 89° is capped at 89°")
+        Assert.Equal(Propagation.BranchTransmitted, BeamTree.TransmittedBeam.propagationBranch)
+        Assert.Equal(Propagation.BranchReflected, BeamTree.ReflectedBeam.propagationBranch)
+
+    [<Fact>]
     let ``the same law crosses every transmissive kind, and a detector at the end terminates the beam`` () =
         for kind in [ LinearPolarizer; CircularPolarizer; Lens; Sample ] do
             let scene = layout [ el "src" LightSource -1.0; transmitting (tilted 40.0 (el "x" kind 0.0)); el "det" Detector 1.0 ]

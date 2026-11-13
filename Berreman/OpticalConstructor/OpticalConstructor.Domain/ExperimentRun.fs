@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Domain
 
+open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
 open OpticalConstructor.Domain.Library
@@ -71,3 +72,18 @@ module ExperimentRun =
         match kind with
         | Intensity -> IntensityReading sv.intensity
         | Ellipsometer -> EllipsometricReading sv.psiDelta
+
+    type SourcePreset with
+
+        /// The wavelength a run uses when it does not vary it (spec 0046; spec 0050 S11.2): a TUNABLE source's `requested`
+        /// setting clamped to its limits, else its own setting; a fixed line's own wavelength; 600 nm with no source.
+        static member operatingWaveLengthOf (sourceOpt : SourcePreset option) (requested : WaveLength option) : WaveLength =
+            match sourceOpt with
+            | Some source ->
+                match source.tuning, requested with
+                | TunableBetween limits, Some w ->
+                    let inNanometers (x : WaveLength) : Units.UnitMagnitude = Units.wavelengthToUnit Units.Nanometer x
+                    Units.toWaveLength Units.Nanometer (max (inNanometers limits.lower) (min (inNanometers limits.upper) (inNanometers w)))
+                | TunableBetween _, None
+                | FixedLine, _ -> source.waveLength
+            | None -> WaveLength.nm 600.0<nm>

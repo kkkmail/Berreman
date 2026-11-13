@@ -642,3 +642,20 @@ module SetupTests =
 
         let readings = [ for k in 0 .. 18 -> Propagation.SweptValue (20.0 * float k) ]
         Assert.Equal<Propagation.SweptValue list>(readings, (VariableRange.forVariable VaryDialReading).sweptValues)
+
+    // ===================================== spec 0050 S11.2: the source a setup runs =====================================
+
+    [<Fact>]
+    let ``the bound source is the first light-source slot bound to a source preset`` () : unit =
+        let library = BuiltinCatalogue.library ()
+
+        let boundTo (preset : ElementValueId) (slot : SetupSlot) : SetupSlot =
+            { slot with placement = { slot.placement with valueId = Some preset } }
+
+        let lpSource = boundTo Library.PresetIds.polarizerLp (emptySlot (Library.ElementId "srcLp") LightSource RayModel.defaultSourcePoint)
+        let heNeSource = boundTo Library.PresetIds.heNe633 (emptySlot (Library.ElementId "srcHeNe") LightSource RayModel.defaultSourcePoint)
+
+        Assert.Equal<Library.SourcePreset option>(Some heNe, SetupSlot.boundSourceIn [ src; lpSource; heNeSource ] library)
+        Assert.Equal<Library.SourcePreset option>(None, SetupSlot.boundSourceIn [ src; lp; det ] library)
+        // A source preset on a slot that is not a light source binds no source.
+        Assert.Equal<Library.SourcePreset option>(None, SetupSlot.boundSourceIn [ src; boundTo Library.PresetIds.heNe633 lp; det ] library)

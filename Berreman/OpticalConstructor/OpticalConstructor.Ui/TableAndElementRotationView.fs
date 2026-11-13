@@ -30,6 +30,8 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.BeamLayout
+open OpticalConstructor.Domain.ExperimentRun
 open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.ExperimentDataLoad
 open OpticalConstructor.Domain.DataSplits
@@ -1863,29 +1865,13 @@ type WaveLength with
 
 type TableAndElementRotationModel with
 
-    /// The scene's light source entry (spec 0046): the first light-source element bound to a source entry.
-    member model.boundSource : Library.SourcePreset option =
-        model.elements
-        |> List.tryPick (fun e ->
-            match e.placement.catalogueKind, e.placement.valueId with
-            | LightSource, Some id ->
-                match model.library.tryGetEntry id with
-                | Ok (Some (Library.SourceItem source)) -> Some source
-                | Ok (Some _) | Ok None | Error _ -> None
-            | (LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
+    /// The scene's light source entry (spec 0046): Domain's rule, `SetupSlot.boundSourceIn` (spec 0050 S11.2).
+    member model.boundSource : Library.SourcePreset option = SetupSlot.boundSourceIn model.elements model.library
 
-/// The wavelength a run uses when it does not vary it (spec 0046): a TUNABLE source's setting for the run
-/// (`requested`, clamped to its limits) or else its own setting; a fixed line's wavelength; 600 nm with no
-/// bound source (an absent source is defaulted, never synthesized).
+/// The wavelength a run uses when it does not vary it (spec 0046): Domain's rule, `SourcePreset.operatingWaveLengthOf`
+/// (spec 0050 S11.2).
 let operatingWaveLength (model : TableAndElementRotationModel) (requested : WaveLength option) : WaveLength =
-    match model.boundSource with
-    | Some source ->
-        match source.tuning, requested with
-        | Library.TunableBetween limits, Some w ->
-            WaveLength.nm (max limits.lower.nanometers (min limits.upper.nanometers w.nanometers) * 1.0<nm>)
-        | Library.TunableBetween _, None
-        | Library.FixedLine, _ -> source.waveLength
-    | None -> WaveLength.nm 600.0<nm>
+    Library.SourcePreset.operatingWaveLengthOf model.boundSource requested
 
 /// What element `e` lets an experiment vary (spec 0046): its slot's scan variables, a dial-mounted item's reading in R1's
 /// place (spec 0050 S9.1) — except a light source, whose wavelength varies only when the bound source is TUNABLE (a fixed
@@ -4677,20 +4663,6 @@ type TableAndElementRotationModel with
         | Experiments.CaptureReflected -> ControlCaption $"Reflected (R) — {readsOn BeamTree.ReflectedBeam}"
         | Experiments.CaptureBoth -> ControlCaption $"Both — T: {readsOn BeamTree.TransmittedBeam}; R: {readsOn BeamTree.ReflectedBeam}"
 
-type BeamLayout.PlacedElement with
-
-    /// The incidence angle the beam meets this placed element at: the angle between its DRAWN face normal
-    /// and the arriving beam (spec 0046 — its R2 for an in-plane tilt), kept computable (below 90°).
-    member private placed.incidenceOn (placement : ElementPlacement) : IncidenceAngle =
-        let degrees =
-            match placed.incoming with
-            | Some d ->
-                let n = r1Axis (RayModel.orientedToBeam d placement)
-                let c = min 1.0 (abs (n.normalized.dot d.normalized).value)
-                min Propagation.r2SweepMaxDegrees.value (acos c * 180.0 / System.Math.PI)
-            | None -> 0.0
-        IncidenceAngle.create (Angle.degree (degrees * 1.0<deg>))
-
 /// One step of a detector's light path as a run builds it (spec 0046): the same for a whole scan block, or evaluated at
 /// each point's settings, so a sample is re-solved only when something it depends on varies (spec 0050 S8.1, S9.1).
 type private StepBuilder =
@@ -4758,10 +4730,7 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
         | Some j ->
             let e = List.item j model.elements
             let touched = axes |> List.exists (fun axis -> axis.elementId = e.id || axis.variable = Experiments.VaryWaveLength)
-            let branch =
-                match step.branch with
-                | BeamTree.TransmittedBeam -> Propagation.BranchTransmitted
-                | BeamTree.ReflectedBeam -> Propagation.BranchReflected
+            let branch = step.branch.propagationBranch
             // A dial-mounted item's reading turns it to its physical angle, any other rotation setting to the value itself,
             // as a slot with no dial reads its R1 (`SetupSlot.turnAngle`); else its drawn R1 (spec 0050 S9.1; 001 §I).
             let dialOpt = e.tryFindDialMounted model.kitItems

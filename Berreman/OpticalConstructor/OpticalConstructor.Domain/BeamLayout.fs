@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Domain
 
 open Berreman.Constants
+open Berreman.Fields
+open Berreman.Geometry
 open OpticalConstructor.Domain.Placement
 
 /// Spec 0046 — the Main-scene BEAM TREE: which beam each element sits on, where it lands on that beam,
@@ -445,6 +447,28 @@ module BeamLayout =
 
     /// Lay the scene out with every element rotating about its centre (the default `RotationPivot`).
     let layout (elements : LayoutElement list) : SceneLayout = layoutWith PivotAtCentre elements
+
+    type PlacedElement with
+
+        /// The incidence the beam meets this element at: the angle between its DRAWN face normal and its arriving beam
+        /// (spec 0046 — its R2 for an in-plane tilt), kept computable (below 90°); 0° for the root (spec 0050 S11.2).
+        member placed.incidenceOn (placement : ElementPlacement) : IncidenceAngle =
+            let degrees =
+                match placed.incoming with
+                | Some d ->
+                    let n = RayModel.faceNormal d placement
+                    let c = min 1.0 (abs (n.normalized.dot d.normalized).value)
+                    min Propagation.r2SweepMaxDegrees.value (acos c * 180.0 / System.Math.PI)
+                | None -> 0.0
+            IncidenceAngle.create (Angle.degree (degrees * 1.0<deg>))
+
+    type BeamTree.BeamBranch with
+
+        /// The engine branch a run solves an element for when the light leaves it by this beam branch (spec 0050 S11.2).
+        member branch.propagationBranch : Propagation.Branch =
+            match branch with
+            | BeamTree.TransmittedBeam -> Propagation.BranchTransmitted
+            | BeamTree.ReflectedBeam -> Propagation.BranchReflected
 
     /// Every element hosted — directly or through other side beams — on the reflected rays of `id`,
     /// i.e. the elements that move with it. Moving an element onto a beam inside this set would loop.

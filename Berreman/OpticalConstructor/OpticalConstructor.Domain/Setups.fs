@@ -251,6 +251,18 @@ module Setups =
             ]
             |> List.concat
 
+        /// The source the slots run: in slot order, the first light-source slot bound to a source preset the library
+        /// holds; `None` when no slot is (spec 0046; spec 0050 S11.2).
+        static member boundSourceIn (slots : SetupSlot list) (library : Library.LibraryProxy) : Library.SourcePreset option =
+            slots
+            |> List.tryPick (fun slot ->
+                match slot.placement.catalogueKind, slot.placement.valueId with
+                | LightSource, Some id ->
+                    match library.tryGetEntry id with
+                    | Ok (Some (Library.SourceItem source)) -> Some source
+                    | Ok (Some _) | Ok None | Error _ -> None
+                | (LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
+
     type Setup with
 
         /// The setup's current slots with their roles in light order (spec 0050 S8.2).
