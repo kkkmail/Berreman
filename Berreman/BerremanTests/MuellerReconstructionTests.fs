@@ -632,7 +632,7 @@ type MuellerReconstructionTests() =
         // A stub per-row projection: unit effective states (one 16-wide designRow) and the row's avgTotal as the
         // corrected signal (no dark floor, unit gain), so the assembled target identifies exactly which rows
         // survived, in order.
-        let prepareRow (r : MuellerRawRow) : StokesVector * RealVector4 * DetectorIntensity =
+        let prepareRow (r : MuellerRawRow) (_ : NameReading) : StokesVector * RealVector4 * DetectorIntensity =
             StokesVector.create [ 1.0; 0.0; 0.0; 0.0 ],
             RealVector4.create [ 1.0; 0.0; 0.0; 0.0 ],
             correctSignal (DarkMean 0.0) r.avgTotal (AirGain 1.0)
@@ -763,9 +763,10 @@ type MuellerReconstructionTests() =
                         } }
 
         // ---- The per-row Stage-2+3 projection each family closes over its models + gain (enrich_frame). ----
+        // φ comes from the reading `buildDesign` kept the row by, so the label is read once (spec 0050 S10.3).
         let prepareRow (source : SourceModel) (analyzer : AnalyzerModel) (fam : Family) (cal : GainCalibration)
-                       (r : MuellerRawRow) : StokesVector * RealVector4 * DetectorIntensity =
-            let phi = (standardReading r.experiment).objectPhi
+                       (r : MuellerRawRow) (reading : NameReading) : StokesVector * RealVector4 * DetectorIntensity =
+            let phi = reading.objectPhi
             let sEff = effectiveSource phi source.baseStokes
             let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer r.description)
             let signal = correctSignal darkMean r.avgTotal (familyGain fam cal r.capturedAt)
@@ -773,7 +774,7 @@ type MuellerReconstructionTests() =
 
         // Every science file maps to exactly one family; CPL-CPL day1/day2 are distinct files with distinct
         // gain rules (interpolated vs single block), so each carries its own calibration.
-        let families : (MuellerRawRow list * (MuellerRawRow -> StokesVector * RealVector4 * DetectorIntensity)) list =
+        let families : (MuellerRawRow list * (MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity)) list =
             [ lpLpRows,       prepareRow sourceLp  analyzerLp  LpLp   calibration
               lpCplRows,      prepareRow sourceLp  analyzerCpl LpCpl  calibration
               cplLpRows,      prepareRow sourceCpl analyzerLp  CplLp  calibration

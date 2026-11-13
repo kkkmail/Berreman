@@ -784,14 +784,14 @@ module MuellerReconstruction =
     /// `solve_single_object` row selection (matrix_fit_linear.py:169). A science row is kept iff its label reads
     /// through `NamingTemplate.standard` with a `matrixKind` equal to `kind` (a label the template does not read is
     /// never kept, spec 0050 S8.3), it is not an AIR#0 calibration row, and it is not one of the `excluded`
-    /// contaminated points (matched on experiment + capture index + analyzer dial). Each kept row is projected
-    /// through `prepareRow` to its effective source Stokes state `s`, effective analyzer row `a`, and corrected
-    /// signal (the caller — slice 011 — closes `prepareRow` over the calibrated per-family models + gain
-    /// calibration + dark mean, i.e. the reference glue `s_eff` / `a_eff` / `signal_corrected` columns); the
+    /// contaminated points (matched on experiment + capture index + analyzer dial). Each label is read once: a kept
+    /// row is projected by `prepareRow row reading` with the reading that kept it, so no projection reads a label
+    /// again (spec 0050 S10.3). The projection gives the row's effective source Stokes state `s`, effective
+    /// analyzer row `a` and corrected signal (the reference glue's `s_eff` / `a_eff` / `signal_corrected`); the
     /// design row is `designRow s a` (the `lincoef = kron(s_eff, a_eff)` column), the target is the corrected
     /// signal. Returns the system: `design` the stacked `designRow`s `A`, `rhs` the matching targets `b`.
     let buildDesign
-        (prepareRow : MuellerRawRow -> StokesVector * RealVector4 * DetectorIntensity)
+        (prepareRow : MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity)
         (excluded : ExcludedPoint list)
         (rows : MuellerRawRow list)
         (kind : MatrixKind)
@@ -802,17 +802,17 @@ module MuellerReconstruction =
                 r.experiment = e.experiment
                 && r.captureIndex = e.captureIndex
                 && abs (r.description.value - e.description.value) < 1e-9)
-        let isOfKind (r : MuellerRawRow) : bool =
-            match NamingTemplate.standard.readName r.experiment.nameText with
-            | Ok reading -> reading.matrixKind = kind
-            | Error _ -> false
-        let kept =
+        let prepared =
             rows
-            |> List.filter (fun r ->
-                isOfKind r
-                && not (r.experiment.value.Contains("(AIR#0)"))
-                && not (isExcluded r))
-        let prepared = kept |> List.map prepareRow
+            |> List.choose (fun r ->
+                match NamingTemplate.standard.readName r.experiment.nameText with
+                | Ok reading when
+                    reading.matrixKind = kind
+                    && not (r.experiment.value.Contains("(AIR#0)"))
+                    && not (isExcluded r) ->
+                    Some (prepareRow r reading)
+                | Ok _
+                | Error _ -> None)
         {
             design = prepared |> List.map (fun (s, a, _) -> designRow s a) |> List.toArray
             rhs = prepared |> List.map (fun (_, _, signal) -> signal.value) |> List.toArray
