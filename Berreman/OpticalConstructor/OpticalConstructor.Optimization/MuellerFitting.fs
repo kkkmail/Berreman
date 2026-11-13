@@ -6,6 +6,7 @@ open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Optimization.MuellerInverseSolver
 
 /// The Mueller-matrix fit machinery the inverse-problem suites, the study engine and the Planner share, moved from
 /// `BerremanTests/InverseFitHarness.fs` by spec 0050 S10.1 (spec 0044 manual tasks 010-016).
@@ -123,6 +124,43 @@ module MuellerFitting =
 
         member this.halfWidth = let (SearchBox h) = this in h
 
+    /// Where a scaled solve starts and the box it keeps to: the study engine's parameters' own starts and bounds, or a
+    /// search box's centred search (spec 0050 S11.3).
+    type ScaledSearch =
+        {
+            start : ScaledVector
+            lowerBounds : ScaledVector
+            upperBounds : ScaledVector
+        }
+
+        /// The one bounded ALGLIB Levenberg–Marquardt solve of a residual from this start within this box, under the
+        /// watch (spec 0050 S11.3).
+        member this.solveWith
+            (watch : OptimizationInterface.IterationWatch)
+            (residual : ScaledVector -> ResidualVector)
+            : Result<NonlinearSolution, NonlinearSolverError> =
+            let request : NonlinearRequest =
+                {
+                    residual = residual
+                    initial = this.start
+                    lowerBounds = this.lowerBounds
+                    upperBounds = this.upperBounds
+                    maxIterations = IterationCount 400
+                    epsX = StepTolerance 1.0e-12
+                }
+            watch.levenbergMarquardtSolver.solveNonlinearLeastSquares request
+
+    type SearchBox with
+
+        /// The zero start within minus and plus the half-width in every coordinate of the scaling, the S10.1 fit's
+        /// search (spec 0050 S11.3).
+        member this.centredSearch (scaling : ParameterScaling<'Parameters>) : ScaledSearch =
+            {
+                start = Array.zeroCreate scaling.dimension |> ScaledVector
+                lowerBounds = Array.create scaling.dimension -this.halfWidth |> ScaledVector
+                upperBounds = Array.create scaling.dimension this.halfWidth |> ScaledVector
+            }
+
     /// What a fit produced: the recovered constants, the solver's account of the run, the scaling the vector lives
     /// in, and the residual closure a Jacobian is taken of.
     [<ReferenceEquality>]
@@ -155,17 +193,7 @@ module MuellerFitting =
         (residual : ScaledVector -> ResidualVector)
         (scaling : ParameterScaling<'Parameters>)
         : Result<MuellerFitData<'Parameters>, MuellerFitError> =
-        let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
-        let request =
-            {
-                residual = residual
-                initial = Array.zeroCreate scaling.dimension |> ScaledVector
-                lowerBounds = Array.create scaling.dimension -box.halfWidth |> ScaledVector
-                upperBounds = Array.create scaling.dimension box.halfWidth |> ScaledVector
-                maxIterations = IterationCount 400
-                epsX = StepTolerance 1.0e-12
-            }
-        match solver.solveNonlinearLeastSquares request with
+        match (box.centredSearch scaling).solveWith OptimizationInterface.UnwatchedIterations residual with
         | Ok solution ->
             Ok
                 {
