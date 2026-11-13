@@ -32,7 +32,6 @@
         <Compile Include="RhoWithDispValueTests.fs" />
         <Compile Include="MuWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
-        <Compile Include="CommittedKits.fs" />
         <Compile Include="MuellerReconstructionTests.fs" />
         <!-- Spec 0044 (manual task 012): the fit driver MuellerInverseTests and BiaxialInverseTests
              share. It declares namespace-level types (RelativeError, SearchBox, InverseFit) that both
@@ -75,6 +74,7 @@
              per R-4). -->
         <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
         <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
+        <ProjectReference Include="..\BerremanTestSupport\BerremanTestSupport.fsproj" />
     </ItemGroup>
 
 </Project>

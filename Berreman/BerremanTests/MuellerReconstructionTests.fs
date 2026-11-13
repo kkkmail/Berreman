@@ -18,6 +18,7 @@ open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.LabFileImport
 open Xunit
 open BerremanTests.MatrixComparison
+open BerremanTestSupport
 
 /// Spec 0042 — acceptance suite for the Mueller-reconstruction pipeline (`MuellerReconstruction` + the
 /// Phone ROI CSV parser + the vendored-MathNet SVD solver). Most facts reuse the

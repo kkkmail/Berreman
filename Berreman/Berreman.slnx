@@ -17,6 +17,9 @@
   <Project Path="BerremanTests/BerremanTests.fsproj">
     <Platform Project="x64" />
   </Project>
+  <Project Path="BerremanTestSupport/BerremanTestSupport.fsproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj">
     <Platform Project="x64" />
   </Project>

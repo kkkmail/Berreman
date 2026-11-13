@@ -1,12 +1,13 @@
-namespace BerremanTests
+namespace BerremanTestSupport
 
 open System
 open System.IO
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Kit
 
-/// The committed reference kits under the repository's `data/` folder, which tests read read-only (spec 0050 S9.4);
-/// S10.2 moves this type to `BerremanTestSupport`.
+/// The committed reference kits under the repository's `data/` folder, found from the folder holding
+/// `Berreman/Berreman.slnx` and read read-only (spec 0050 §3.21, S9.4); both test suites share them through
+/// `BerremanTestSupport` (S10.2).
 type CommittedKit =
     | OpticsMuellerKit
 
