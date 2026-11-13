@@ -227,6 +227,7 @@
         <Compile Include="PrefitCheckTests.fs" />
         <Compile Include="StudyForwardTests.fs" />
         <Compile Include="StudyEngineTests.fs" />
+        <Compile Include="FitRunTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
