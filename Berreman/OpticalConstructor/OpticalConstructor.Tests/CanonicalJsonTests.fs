@@ -23,6 +23,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.Errors
@@ -236,6 +237,8 @@ module CanonicalJsonTests =
         assertWrittenAsTag<ByteOrderMark> (fun mark -> mark.value)
         assertWrittenAsTag<ScanColumnUnit> (fun columnUnit -> columnUnit.value)
         assertWrittenAsTag<ScanReading> (fun reading -> reading.value)
+        assertWrittenAsTag<ParameterScope> (fun scope -> scope.value)
+        assertWrittenAsTag<FitMode> (fun mode -> mode.value)
 
         for star, tag in [ StarredKit, 1; UnstarredKit, 2 ] do
             let json = toJson star
@@ -256,6 +259,10 @@ module CanonicalJsonTests =
         Assert.Equal<ScanColumnUnit>(WavenumberColumnUnit, ofJson<ScanColumnUnit> "6")
         Assert.Equal<string>("1", toJson RawDialReading)
         Assert.Equal<ScanReading>(RawDialReading, ofJson<ScanReading> "1")
+        Assert.Equal<string>("3", toJson SessionBlockScope)
+        Assert.Equal<ParameterScope>(SessionBlockScope, ofJson<ParameterScope> "3")
+        Assert.Equal<string>("2", toJson StagedFit)
+        Assert.Equal<FitMode>(StagedFit, ofJson<FitMode> "2")
 
         let schema : EntrySchema = { kind = SourceEntryKind; version = FileSchemaVersion 1 }
         let json = toJson schema
@@ -273,9 +280,23 @@ module CanonicalJsonTests =
         Assert.Throws<JsonException>(fun () -> ofJson<ExperimentRole> "8" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<DataDelimiter> "4" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<ScanColumnUnit> "7" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<ParameterScope> "5" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitMode> "3" |> ignore) |> ignore
 
         // No file holds a role before step 288, so the role rides an anonymous record through the readers' seam.
         let roleText = JsonText "{ \"schemaVersion\": 1, \"role\": 8 }"
         match parseVersionedText<{| schemaVersion : FileSchemaVersion; role : ExperimentRole |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) roleText with
         | Error (MalformedJsonErr reason) -> Assert.Contains(nameof ExperimentRole, reason)
         | other -> Assert.Fail($"the role tag 8: expected MalformedJsonErr, got %A{other}")
+
+        // The study schema refuses mode 3 before binding, so the converters' own refusals ride the seam unvalidated
+        // (spec 0050 S11.1).
+        let studyTagsText = JsonText "{ \"schemaVersion\": 1, \"scope\": 5, \"mode\": 1 }"
+        match parseVersionedText<{| schemaVersion : FileSchemaVersion; scope : ParameterScope; mode : FitMode |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) studyTagsText with
+        | Error (MalformedJsonErr reason) -> Assert.Contains(nameof ParameterScope, reason)
+        | other -> Assert.Fail($"the scope tag 5: expected MalformedJsonErr, got %A{other}")
+
+        let modeText = JsonText "{ \"schemaVersion\": 1, \"scope\": 3, \"mode\": 3 }"
+        match parseVersionedText<{| schemaVersion : FileSchemaVersion; scope : ParameterScope; mode : FitMode |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) modeText with
+        | Error (MalformedJsonErr reason) -> Assert.Contains(nameof FitMode, reason)
+        | other -> Assert.Fail($"the mode tag 3: expected MalformedJsonErr, got %A{other}")

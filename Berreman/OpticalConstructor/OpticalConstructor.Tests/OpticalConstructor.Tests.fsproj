@@ -221,6 +221,7 @@
         <Compile Include="StagedMuellerPathTests.fs" />
         <Compile Include="StudySessionTests.fs" />
         <Compile Include="StudyTests.fs" />
+        <Compile Include="KitStudyFileTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -19,6 +19,111 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
+
+/// QZ-LR, the test-local study this project's study-file facts share (spec 0050 S11.1). It lives here because this file
+/// compiles first among those facts.
+module StudyFileFixtures =
+
+    open OpticalConstructor.Domain.CrystalPhysics
+    open OpticalConstructor.Domain.Studies
+    open CrystalMaterialFixtures
+
+    /// The opened material's one parameter, its third principal index, left to a fit under a prior.
+    let private n3 : Parameter =
+        let unknown : UnknownParameterData =
+            {
+                start = ParameterValue 1.78
+                bounds =
+                    {
+                        lower = ParameterValue 1.7
+                        upper = ParameterValue 1.9
+                    }
+                priorOpt =
+                    Some
+                        {
+                            centre = ParameterValue 1.78
+                            sigma = ParameterSigma 0.01
+                        }
+            }
+        {
+            name = ParameterName "n3"
+            state = UnknownParameter unknown
+        }
+
+    /// The study's working copy of that absorbing crystal material version, its `n3` unknown under a prior.
+    let openedCrystalMaterial (version : MaterialVersionId) (name : EntryName) : OpenedMaterial =
+        {
+            version = version
+            name = name
+            crystal = AbsorbingTriclinicCrystal absorbingTriclinicParameters
+            parameters = [ n3 ]
+        }
+
+    /// A test-local probe: an absorbing crystal material version no library holds.
+    let studyProbeMaterial : OpenedMaterial =
+        let version = MaterialVersionId.firstOf (MaterialId (Guid.Parse "35900000-0000-4000-8000-000000000001"))
+        openedCrystalMaterial version (EntryName "Probe crystal")
+
+    /// QZ-LR over E1 and E2 holding `material`: its `n3` scoped per experiment, CPL2's retardance linked to CPL1's, one
+    /// gain setting of each model, both weights, a staged fit with E2 disabled and two lines of notes.
+    let qzLrStudyOver (material : OpenedMaterial) : Study =
+        let e1 = ExperimentName "E1"
+        let e2 = ExperimentName "E2"
+        let cpl1 = ItemId (Guid.Parse "35900000-0000-4000-8000-000000000011")
+        let cpl2 = ItemId (Guid.Parse "35900000-0000-4000-8000-000000000012")
+        let phone = ItemId (Guid.Parse "35900000-0000-4000-8000-000000000013")
+        let retardance = ParameterName "c2.retardance"
+        let scope : ScopedParameter =
+            {
+                parameter = MaterialParameterRef (material.version, n3.name)
+                scope = ExperimentScope
+            }
+        let link : ParameterLink =
+            {
+                follower = ItemParameterRef (cpl2, retardance)
+                leader = ItemParameterRef (cpl1, retardance)
+            }
+        let repeats : AirRepeatPair =
+            {
+                opening = e1
+                closing = e2
+            }
+        let gains : SessionGainSetting list =
+            [
+                { session = SessionName "Session 1"; model = FreeSessionGain }
+                { session = SessionName "Session 2"; model = AnchoredSessionGain [ e1 ] }
+                { session = SessionName "Session 3"; model = InterpolatedSessionGain repeats }
+            ]
+        let experimentWeight : ExperimentWeightSetting =
+            {
+                experiment = e1
+                weight = ResidualWeight 2.0
+            }
+        let detectorWeight : DetectorWeightSetting =
+            {
+                detector = phone
+                weight = ResidualWeight 0.5
+            }
+        let settings : StudyFitSettings =
+            {
+                mode = StagedFit
+                experimentWeights = [ experimentWeight ]
+                detectorWeights = [ detectorWeight ]
+                disabled = [ e2 ]
+            }
+        {
+            name = StudyName "QZ-LR"
+            experiments = [ e1; e2 ]
+            materials = [ material ]
+            scopes = [ scope ]
+            links = [ link ]
+            sessionGains = gains
+            settings = settings
+            notes = StudyNotes "QZ then LR between the two circular polarizers.\nE2 is left out until its dark run is retaken."
+        }
+
+open StudyFileFixtures
 
 module KitLibraryTests =
 
@@ -1997,6 +2102,73 @@ module KitLibraryTests =
             Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
             assertSnapshots [] fixture
             Assert.Empty(fixture.context.kit.proxy.readItems () |> expectKitOk)
+
+    [<Fact>]
+    let ``recording a study snapshots and pins its opened material versions, then writes its file`` () : unit =
+        // The library database's material store and import proxy share it, so a saved material resolves (spec 0050 S11.1).
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let materials = MaterialProxy.createInDatabase database
+        let glass = BuiltinCatalogue.material MaterialIds.glass152
+        let version = MaterialVersionId.firstOf (MaterialId (Guid.Parse "35900000-0000-4000-8000-000000000002"))
+        let opened = openedCrystalMaterial version (EntryName "QZ-LR absorbing crystal")
+        let crystal : MaterialEntry =
+            {
+                glass with
+                    id = version.materialId
+                    name = opened.name
+                    physics = CrystalParameterPhysics opened.crystal
+            }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), materials.saveMaterial crystal)
+        let fixture = snapshotFixture (CatalogueImportProxy.createInDatabase database) ReadWriteKitAccess
+        let material =
+            fixture.context.imports.proxy.tryHeldEnvelope crystal.id.toLibraryEntryId version.version
+            |> expectImportOk
+            |> Option.defaultWith (fun () -> failwith "The saved material must be held at version 1.")
+        let category = catalogueEnvelope glass.category.toLibraryEntryId
+        let expected = [ material; category ]
+        let study = qzLrStudyOver opened
+        Assert.Equal<VersionNumber>(VersionNumber.first, material.content.version)
+        Assert.Equal<EntryReference list>([ EntryVersionReference material.libraryVersionRef ], study.libraryReferences)
+        let materialPath = KitRelativePath $"library/{crystal.id.value:D}@v1.material-json"
+        let studyPath = KitRelativePath "QZ-LR.study-json"
+        Assert.Equal<KitRelativePath>(materialPath, material.snapshotPath)
+        let before = fixture.folder.paths ()
+        let context, writes = observeContentWrites expected fixture
+        context.recordStudy study |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ StudyKitFile ], List.ofSeq writes)
+        assertSnapshots expected fixture
+        Assert.Equal<LibraryVersionRef list>([ material.libraryVersionRef; category.libraryVersionRef ], List.ofSeq fixture.pins)
+        Assert.Equal<Set<KitRelativePath>>(
+            Set.ofList [ studyPath; materialPath; category.snapshotPath ], fixture.folder.paths () |> List.except before |> Set.ofList)
+        Assert.Equal<Studies.Study list>([ study ], context.kit.proxy.readStudies () |> expectKitOk)
+
+        // Recording it again rewrites its file and snapshots and pins nothing more.
+        context.recordStudy study |> expectSnapshotOk
+        Assert.Equal<KitFileKind list>([ StudyKitFile; StudyKitFile ], List.ofSeq writes)
+        Assert.Equal<LibraryVersionRef list>([ material.libraryVersionRef; category.libraryVersionRef ], List.ofSeq fixture.pins)
+        Assert.Equal<Studies.Study list>([ study ], context.kit.proxy.readStudies () |> expectKitOk)
+
+    [<Fact>]
+    let ``a read-only kit records no study`` () : unit =
+        let fixture = snapshotFixture (BuiltinCatalogue.freshStores ()).proxy ReadOnlyKitAccess
+        let paths = fixture.folder.paths ()
+        let probe = qzLrStudyOver studyProbeMaterial
+        let unopened =
+            {
+                probe with
+                    materials = []
+                    scopes = []
+            }
+        for study in [ probe; unopened ] do
+            match fixture.context.recordStudy study with
+            | Error (KitLibraryKitErr (KitReadOnlyErr reason)) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail(error.describe)
+            | Ok () -> Assert.Fail("A read-only kit must refuse recording a study, even one that opens no material.")
+            Assert.Empty fixture.pins
+            Assert.Empty fixture.operations
+            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+            assertSnapshots [] fixture
+            Assert.Empty(fixture.context.kit.proxy.readStudies () |> expectKitOk)
 
     /// The item under the new label, alone in its kit (spec 0050 S7.2).
     let private relabelledItem (item : Item) (label : ItemLabel) : Item =

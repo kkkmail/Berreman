@@ -413,3 +413,33 @@ module Studies =
             match this.sessionGains |> List.tryFind (fun setting -> setting.session = session) with
             | Some setting -> setting.model
             | None -> FreeSessionGain
+
+        /// What the kit snapshots and pins when it records the study: each opened material's exact version, in study
+        /// order (spec 0050 S11.1; 001 §E).
+        member this.libraryReferences : EntryReference list =
+            this.materials
+            |> List.map (fun material ->
+                EntryVersionReference
+                    {
+                        entryId = material.version.materialId.toLibraryEntryId
+                        version = material.version.version
+                    })
+
+    /// One study's versioned `<name>.study-json` content; a file is read back as its `study` (spec 0050 S11.1; 001 §A).
+    type StudyFile =
+        {
+            schemaVersion : FileSchemaVersion
+            study : Study
+        }
+
+        /// The only supported study file schema version (spec 0050 S11.1).
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+
+    type Study with
+
+        /// The study in the current study file schema (spec 0050 S11.1).
+        member this.studyFile : StudyFile =
+            {
+                schemaVersion = StudyFile.currentSchemaVersion
+                study = this
+            }

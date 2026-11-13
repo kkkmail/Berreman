@@ -14,9 +14,11 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.KitContentFiles
+open StudyFileFixtures
 
 module KitContentFileJsonTests =
 
@@ -147,11 +149,15 @@ module KitContentFileJsonTests =
                 corrections = [ correction ]
         }
 
-    let private editedFileOf (experiment : Experiment) (edit : JsonObject -> unit) : KitFileText =
-        let text = experiment.experimentFile.fileText |> kitContentJsonValue
+    /// The rendered file's JSON with the edit applied, written canonically again.
+    let private editedRendering (rendered : Result<KitFileText, StorageError>) (edit : JsonObject -> unit) : KitFileText =
+        let text = rendered |> kitContentJsonValue
         let node = (JsonNode.Parse text.value).AsObject()
         edit node
         node.canonicalFileText |> KitFileText
+
+    let private editedFileOf (experiment : Experiment) (edit : JsonObject -> unit) : KitFileText =
+        editedRendering experiment.experimentFile.fileText edit
 
     let private editedExperimentFile : (JsonObject -> unit) -> KitFileText = editedFileOf e1
 
@@ -364,11 +370,7 @@ module KitContentFileJsonTests =
 
     let private setupFile : Setups.SetupFile = setupFixture.setupFile
 
-    let private editedSetupFile (edit : JsonObject -> unit) : KitFileText =
-        let text = setupFile.fileText |> kitContentJsonValue
-        let node = (JsonNode.Parse text.value).AsObject()
-        edit node
-        node.canonicalFileText |> KitFileText
+    let private editedSetupFile (edit : JsonObject -> unit) : KitFileText = editedRendering setupFile.fileText edit
 
     [<Fact>]
     let ``a setup is stored under its name made filesystem-safe`` () : unit =
@@ -750,10 +752,7 @@ module KitContentFileJsonTests =
         ]
 
     let private editedItemFileOf (item : Item) (edit : JsonObject -> unit) : KitFileText =
-        let text = item.itemFile.fileText |> kitContentJsonValue
-        let node = (JsonNode.Parse text.value).AsObject()
-        edit node
-        node.canonicalFileText |> KitFileText
+        editedRendering item.itemFile.fileText edit
 
     let private editedItemFile (edit : JsonObject -> unit) : KitFileText = editedItemFileOf cpl1 edit
 
@@ -904,3 +903,87 @@ module KitContentFileJsonTests =
             | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
             | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
             | Ok _ -> Assert.Fail($"accepted malformed item file text: {text.value}")
+
+    let private qzLrStudy : Study = qzLrStudyOver studyProbeMaterial
+
+    let private editedStudyFile (edit : JsonObject -> unit) : KitFileText = editedRendering qzLrStudy.studyFile.fileText edit
+
+    [<Fact>]
+    let ``a study is stored under its name`` () : unit =
+        let expectedName = FileName "QZ-LR.study-json"
+
+        Assert.Equal<FileStem>(FileStem "QZ-LR", (StudyName "QZ-LR").fileStem)
+        Assert.Equal<FileName>(expectedName, StudyKitFile.fileNameOf (StudyName "QZ-LR").fileStem)
+        Assert.Equal<FileName>(expectedName, StudyKitFile.fileNameOf qzLrStudy.name.fileStem)
+
+    [<Fact>]
+    let ``a study file round-trips through its canonical text`` () : unit =
+        let file = qzLrStudy.studyFile
+        let text = file.fileText |> kitContentJsonValue
+        let readBack = text.parseStudyFile |> kitContentJsonValue
+
+        Assert.Equal<FileSchemaVersion>(FileSchemaVersion 1, file.schemaVersion)
+        Assert.Equal<Study>(qzLrStudy, file.study)
+        Assert.Equal<StudyFile>(file, readBack)
+        Assert.DoesNotContain("\r", text.value)
+        Assert.EndsWith("}\n", text.value)
+        Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
+
+        let node = (JsonNode.Parse text.value).AsObject()
+        let keys = [ for KeyValue (key, _) in node -> key ]
+        Assert.Equal<string list>([ "schemaVersion"; "study" ], keys)
+        Assert.Equal<string list>(keys |> List.sortWith (fun first second -> String.CompareOrdinal(first, second)), keys)
+
+        // The fit mode and the scope are written as their int tags, not their case names.
+        let mode = node.["study"].["settings"].["mode"]
+        let scope = node.["study"].["scopes"].[0].["scope"]
+        for tag, written in [ StagedFit.value, mode; ExperimentScope.value, scope ] do
+            Assert.Equal(System.Text.Json.JsonValueKind.Number, written.GetValueKind())
+            Assert.Equal(tag, written.GetValue<int>())
+
+        Assert.Equal<KitFileText>(text, readBack.fileText |> kitContentJsonValue)
+
+    [<Fact>]
+    let ``a study file of another schema version is UnsupportedSchemaVersionErr`` () : unit =
+        let withBody = editedStudyFile (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
+        let versionOnly = KitFileText "{ \"schemaVersion\": 2 }"
+        let expectedFound = FileSchemaVersion 2
+        let expectedVersion = FileSchemaVersion 1
+
+        for text in [ withBody; versionOnly ] do
+            match text.parseStudyFile with
+            | Error (UnsupportedSchemaVersionErr info) ->
+                Assert.Equal(StudyKitFile.extension, info.fileExtension)
+                Assert.Equal<FileSchemaVersion>(expectedFound, info.found)
+                Assert.Equal<FileSchemaVersion>(expectedVersion, info.expected)
+            | Error error -> Assert.Fail($"expected UnsupportedSchemaVersionErr: {error.describe}")
+            | Ok _ -> Assert.Fail "accepted a study file of another schema version"
+
+    [<Fact>]
+    let ``a schema-invalid or malformed study file is refused before it binds`` () : unit =
+        let invalidEdits : (JsonObject -> unit) list =
+            [
+                (fun node -> node.Remove "study" |> ignore)
+                (fun node -> node["unexpected"] <- JsonValue.Create "unexpected")
+                (fun node -> node["study"]["name"] <- JsonValue.Create "  ")
+                (fun node -> node.["study"].["settings"].["mode"] <- JsonValue.Create 3)
+            ]
+
+        for edit in invalidEdits do
+            let text = editedStudyFile edit
+            match text.parseStudyFile with
+            | Error (SchemaValidationErr messages) ->
+                Assert.NotEmpty messages
+                for message in messages do
+                    Assert.False(String.IsNullOrWhiteSpace message)
+            | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"accepted a schema-invalid study file: {text.value}")
+
+        // The schema leaves the inner shapes to the serializer: an unknown scope tag is malformed, as is a cut-off file.
+        let unknownScope = editedStudyFile (fun node -> node.["study"].["scopes"].[0].["scope"] <- JsonValue.Create 5)
+
+        for text in [ KitFileText "{"; unknownScope ] do
+            match text.parseStudyFile with
+            | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"accepted malformed study file text: {text.value}")

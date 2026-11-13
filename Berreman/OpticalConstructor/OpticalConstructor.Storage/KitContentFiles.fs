@@ -10,6 +10,7 @@ open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 
@@ -34,6 +35,12 @@ module KitContentFiles =
         member this.fileText : Result<KitFileText, StorageError> =
             nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
 
+    type StudyFile with
+
+        /// Canonical study JSON with LF line ends and one final newline (spec 0050 S11.1).
+        member this.fileText : Result<KitFileText, StorageError> =
+            nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
+
     type KitFileText with
 
         member private this.toContentJsonText : JsonText = JsonText this.value
@@ -51,6 +58,11 @@ module KitContentFiles =
         /// Validates the item schema and rejects unsupported versions before binding; no older version is read (spec 0050 S7.1).
         member this.parseItemFile : Result<ItemFile, StorageError> =
             parseVersionedText SchemaValidation.validateItemFile ItemKitFile.extension ItemFile.currentSchemaVersion this.toContentJsonText
+
+        /// Validates the study schema and rejects unsupported versions before binding; no older version is read (spec
+        /// 0050 S11.1).
+        member this.parseStudyFile : Result<StudyFile, StorageError> =
+            parseVersionedText SchemaValidation.validateStudyFile StudyKitFile.extension StudyFile.currentSchemaVersion this.toContentJsonText
 
     let private contentStorageRejectedErr (file : FileName) (error : StorageError) : KitError =
         KitFileRejectedErr $"the file '{file.value}': {error.describe}"
@@ -153,6 +165,24 @@ module KitContentFiles =
             readEveryKindFile this ItemKitFile (fun text -> text.parseItemFile) accept
             |> Result.map (List.map snd >> List.sortWith (fun first second -> String.CompareOrdinal(first.label.value, second.label.value)))
 
+        /// Replaces the study's `<name>.study-json` whole at its name's safe stem, naming any rendering refusal (spec
+        /// 0050 S11.1).
+        member this.writeStudy (study : Study) : Result<unit, KitError> =
+            writeRenderedKindFile this StudyKitFile study.name.fileStem study.studyFile.fileText
+
+        /// Reads every study in its name's ordinal order. A file that does not read, or holds a study of another name,
+        /// refuses the whole read, so a kit never opens with a study left out (spec 0050 S11.1).
+        member this.readStudies () : Result<Study list, KitError> =
+            let accept (file : FileName) (stem : FileStem) (_ : Study list) (parsed : StudyFile) : Result<Study, KitError> =
+                let study = parsed.study
+                if String.Equals(study.name.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
+                    Ok study
+                else
+                    Error (KitFileRejectedErr $"the file '{file.value}' holds study '{study.name.value}' instead of '{stem.value}'")
+
+            readEveryKindFile this StudyKitFile (fun text -> text.parseStudyFile) accept
+            |> Result.map (List.sortWith (fun first second -> String.CompareOrdinal(first.name.value, second.name.value)))
+
     type ItemModelInstance with
 
         /// The entry a slot holding the item is bound to: the preset, the sample, or none for a standalone model, never
@@ -199,6 +229,13 @@ module KitContentFiles =
         member this.recordItem (item : Item) : Result<unit, KitLibraryError> =
             this.snapshotReferences item.libraryReferences
             |> Result.bind (fun _ -> this.kit.proxy.writeItem item |> Result.mapError KitLibraryKitErr)
+
+        /// Snapshots and pins the material versions the study opens, each with its closure, before writing its
+        /// `<name>.study-json`, so a study never names a version the kit lacks (spec 0050 S11.1; 001 §E).
+        /// A failure stops recording and retains snapshots already written.
+        member this.recordStudy (study : Study) : Result<unit, KitLibraryError> =
+            this.snapshotReferences study.libraryReferences
+            |> Result.bind (fun _ -> this.kit.proxy.writeStudy study |> Result.mapError KitLibraryKitErr)
 
         /// Records `relabelled`, `previous` under a new label, and deletes the old label's file; a failure undoes what it
         /// wrote, so the item stays under its old label and never in two files of one id (spec 0050 S7.2).

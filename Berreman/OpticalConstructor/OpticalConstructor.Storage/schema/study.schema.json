@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/study.json",
+  "title": "StudyFile",
+  "description": "One study's <name>.study-json content (spec 0050 S11.1). Only version 1's body is validated so other positive schema versions reach the typed version check before binding; the inner shapes are bound by the serializer.",
+  "type": "object",
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" }
+  },
+  "if": {
+    "required": ["schemaVersion"],
+    "properties": { "schemaVersion": { "const": 1 } }
+  },
+  "then": {
+    "required": ["schemaVersion", "study"],
+    "additionalProperties": false,
+    "properties": {
+      "schemaVersion": true,
+      "study": {
+        "type": "object",
+        "required": ["name", "experiments", "materials", "scopes", "links", "sessionGains", "settings", "notes"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "\\S" },
+          "experiments": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "materials": { "type": "array" },
+          "scopes": { "type": "array" },
+          "links": { "type": "array" },
+          "sessionGains": { "type": "array" },
+          "settings": {
+            "type": "object",
+            "required": ["mode", "experimentWeights", "detectorWeights", "disabled"],
+            "additionalProperties": false,
+            "properties": {
+              "mode": { "type": "integer", "minimum": 1, "maximum": 2 },
+              "experimentWeights": { "type": "array" },
+              "detectorWeights": { "type": "array" },
+              "disabled": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}
