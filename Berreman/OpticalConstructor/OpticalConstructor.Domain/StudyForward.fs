@@ -36,6 +36,11 @@ module StudyForward =
         | ForwardSlotErr of error : SlotRunError
         /// No detector slot of the setup holds a detector item to read the light (spec 0050 S11.2).
         | StudyDetectorErr of reason : string
+        /// A Mueller observation whose setup holds no one object item made of one opened material (spec 0050 S11.2).
+        | ObservationPlateErr of reason : string
+        /// A measured row the experiment's detector does not record, such as a Mueller observation under an intensity
+        /// detector (spec 0050 S11.2).
+        | ReadingMismatchErr of reason : string
 
         member this.describe : string =
             match this with
@@ -44,6 +49,8 @@ module StudyForward =
             | ForwardSetupErr error -> $"the experiment's setup does not resolve: {error.describe}"
             | ForwardSlotErr error -> $"a slot cannot be evaluated: {error.describe}"
             | StudyDetectorErr reason -> $"the setup has no detector item: {reason}"
+            | ObservationPlateErr reason -> $"the observation has no single plate of one opened crystal: {reason}"
+            | ReadingMismatchErr reason -> $"the reading is not what the detector records: {reason}"
 
     /// What a detector records, predicted or measured: an intensity detector's signal, an ellipsometer's Ψ and Δ, or a
     /// polarimeter's absolute Mueller matrix, its m₀₀ the throughput as S9.2's readings hold it (spec 0050 S11.2).
@@ -399,7 +406,8 @@ module StudyForward =
         }
 
     /// An experiment bound at one parameter vector: its source's emission and operating wavelength, the run elements on
-    /// its detector's path in light order, and the detector item and its readout (spec 0050 S11.2).
+    /// its detector's path in light order, the detector item and its readout, and the crystal and solver parameters its
+    /// Mueller observations are predicted with (spec 0050 S11.2).
     type BoundExperiment =
         {
             experiment : Experiment
@@ -408,15 +416,18 @@ module StudyForward =
             path : BoundPathStep list
             detectorItem : ItemId
             readout : DetectorReadout
+            observedCrystalOpt : CrystalParameters option
+            solverParameters : SolverParameters
         }
 
     type Experiment with
 
-        /// The experiment's setup revision drawn, its slots run over `assignment`, read by the first detector slot in light
-        /// order holding a detector item, its dark level `darkOpt` else the item's dark offset; an unresolved setup or slot
-        /// item, or no detector item, is refused (spec 0050 S11.2; 001 §N).
+        /// The setup revision drawn, its slots run over `assignment`, read by the first detector item in light order (dark
+        /// level `darkOpt` else its own), observing the assigned crystal of a lone object item made of one material `study`
+        /// opened; an unresolved setup or slot item, or no detector item, is refused (spec 0050 S11.2; 001 §K, §N).
         member this.boundWith
             (context : StudyForwardContext)
+            (study : Study)
             (assignment : ExperimentAssignment)
             (darkOpt : MuellerReconstruction.DarkMean option)
             : Result<BoundExperiment, StudyForwardError> =
@@ -483,6 +494,30 @@ module StudyForward =
                             |> Result.map (fun zero -> item.dial, zero.angle)
                             |> Result.mapError (SlotEvaluationErr >> ForwardSlotErr))
 
+            // An observation is a plate of one crystal: the lone object item's stack sample, made of one opened material,
+            // at its assigned crystal (spec 0050 S11.2; 001 §K).
+            let observedCrystalIn (slots : SetupSlot list) : CrystalParameters option =
+                let objectItems : ItemId list =
+                    SetupSlot.inLightOrder slots
+                    |> List.choose (fun roled ->
+                        match roled.role with
+                        | ObjectSlotRole _ -> roled.slot.content.itemOpt
+                        | SourceSlotRole
+                        | PrepSlotRole _
+                        | AnalyzerSlotRole _
+                        | DetectorSlotRole _ -> None)
+
+                match objectItems with
+                | [ itemId ] ->
+                    match items |> List.tryFind (fun item -> item.id = itemId) |> Option.bind context.choiceOf with
+                    | Some (StackSampleChoice (_, _, sample)) ->
+                        match sample.openedMaterialsIn study with
+                        | [ material ] -> Some (assignment.crystalOf material)
+                        | _ -> None
+                    | Some (SourcePresetChoice _ | PolarizerPresetChoice _ | LibraryModelChoice _)
+                    | None -> None
+                | _ -> None
+
             this.slotsIn context.kit.setups
             |> Result.mapError ForwardSetupErr
             |> Result.bind (fun recorded ->
@@ -547,6 +582,8 @@ module StudyForward =
                                         path = List.choose id steps
                                         detectorItem = detectorItem.id
                                         readout = readout
+                                        observedCrystalOpt = observedCrystalIn slots
+                                        solverParameters = context.solverParameters
                                     }
 
                                 bound))))
@@ -600,3 +637,39 @@ module StudyForward =
                     RecordedSignal (MeasuredIntensity (s0.value * gain.value + dark.value))
                 | EllipsometerDetectorReadout -> RecordedPsiDelta (detectorStokes this.emission steps).psiDelta
                 | PolarimeterDetectorReadout -> RecordedMueller (RunStep.productOf steps))
+
+    type MeasurementConfiguration with
+
+        /// The configuration as a cut plate's orientation, its azimuth the rotation and its observable the branch, so
+        /// `sampleAzimuth` and `observable` give its own back (spec 0050 S11.2; 001 §N).
+        member this.elementOrientation : ElementOrientation =
+            let branch : Propagation.Branch =
+                match this.observable with
+                | TransmittedMueller -> Propagation.BranchTransmitted
+                | ReflectedMueller -> Propagation.BranchReflected
+
+            { rotation = this.azimuth.angle; incidence = this.incidenceAngle; branch = branch }
+
+    type BoundExperiment with
+
+        /// The detector's predicted reading of a measured row: a settings row's by `readingAt`, a Mueller observation's as
+        /// the cut plate of the observed crystal through the spec 0044 forward at its own configuration (spec 0050 S11.2;
+        /// 001 §K, §N).
+        member this.predictedReadingOf (row : MeasuredRow) : Result<RecordedReading, StudyForwardError> =
+            match row with
+            | SettingsRow (settings, waveLengthOpt, _) -> this.readingAt settings waveLengthOpt
+            | ObservationRow observation ->
+                let configuration = observation.configuration
+                let name = this.experiment.name.value
+
+                match this.readout, this.observedCrystalOpt with
+                | PolarimeterDetectorReadout, Some crystal ->
+                    let forward = createBerremanForward (fun (c : CrystalParameters) -> c.opticalProperties) this.solverParameters
+                    let plate = BoundCutPlate (CutPlate.ofForward forward crystal configuration.cut configuration.thickness)
+
+                    plate.muellerAt configuration.elementOrientation configuration.waveLength
+                    |> Result.map RecordedMueller
+                    |> Result.mapError (SlotEvaluationErr >> ForwardSlotErr)
+                | PolarimeterDetectorReadout, None -> Error (ObservationPlateErr $"{this.experiment.setup.describe}, which {name} references")
+                | IntensityDetectorReadout _, _ -> Error (ReadingMismatchErr $"{name} is read by an intensity detector, which records no Mueller matrix")
+                | EllipsometerDetectorReadout, _ -> Error (ReadingMismatchErr $"{name} is read by an ellipsometer, which records no Mueller matrix")

@@ -255,6 +255,8 @@ module StudyForwardTests =
         let setupError = UnknownSetupErr "'Missing' revision 1"
         let slotError = SlotItemErr (UnknownSlotItemErr "the kit holds no item LP3")
         let detectorReason = "'Bench' revision 1, which E1 references"
+        let plateReason = "'Crystal' revision 1, which F1 references"
+        let mismatchReason = "F1 is read by an intensity detector, which records no Mueller matrix"
 
         let cases : (StudyForwardError * string) list =
             [
@@ -263,6 +265,8 @@ module StudyForwardTests =
                 ForwardSetupErr setupError, $"the experiment's setup does not resolve: {setupError.describe}"
                 ForwardSlotErr slotError, $"a slot cannot be evaluated: {slotError.describe}"
                 StudyDetectorErr detectorReason, $"the setup has no detector item: {detectorReason}"
+                ObservationPlateErr plateReason, $"the observation has no single plate of one opened crystal: {plateReason}"
+                ReadingMismatchErr mismatchReason, $"the reading is not what the detector records: {mismatchReason}"
             ]
 
         // A wrapped error keeps its own payload in the text.
@@ -761,7 +765,8 @@ module StudyForwardTests =
             qzLayout.assignmentFor layoutStudy items e1 (StudyParameterVector [| 0.7; 2.0; 3.0; 1.6; 1.6 |]))
 
     // The forward model's bench: a HeNe source item, an ideal linear polarizer (the prep), a real linear polarizer (the
-    // analyzer), a glass sample and a detector item of each form; every model is a shipped entry of step 210.
+    // analyzer), glass samples, QZ's crystal plate and a detector item of each form; every model is a shipped entry of
+    // step 210.
     let private benchDraftOf (id : string) (label : string) (model : ItemModelChoice) (dial : ItemDial) : ItemDraft =
         {
             id = ItemId (Guid.Parse id)
@@ -832,7 +837,7 @@ module StudyForwardTests =
             FixedMounting
 
     let private benchDrafts : ItemDraft list =
-        [ laserDraft; prepDraft; analyzerDraft; dialAnalyzerDraft; plateDraft; filmDraft; intensityDraft; polarimeterDraft; ellipsometerDraft ]
+        [ laserDraft; prepDraft; analyzerDraft; dialAnalyzerDraft; plateDraft; filmDraft; intensityDraft; polarimeterDraft; ellipsometerDraft; qzDraft ]
 
     /// The item with one parameter known at that number, failing with the refusal's text.
     let private knownAt (name : ParameterName) (value : float) (item : Item) : Item =
@@ -955,7 +960,7 @@ module StudyForwardTests =
         let setup = setupOf (SetupName "Malus") (malusSlots analyzer camera)
         let slots = setup.slots
         let context = benchContext [ laser; prep; analyzer; camera ] [ setup ]
-        let bound = boundOf ((runOver setup).boundWith context ownAssignment None)
+        let bound = boundOf ((runOver setup).boundWith context layoutStudy ownAssignment None)
 
         // The HeNe emits the default light at its own line; the path is the prep then the analyzer; the camera reads
         // through its own gain and dark offset.
@@ -974,7 +979,7 @@ module StudyForwardTests =
         assertSignalWithin (s0 * 2.0 + 0.1) (bound.readingAt turned None)
 
         // A session's dark level replaces the item's dark offset.
-        let darkBound = boundOf ((runOver setup).boundWith context ownAssignment (Some (DarkMean 0.3)))
+        let darkBound = boundOf ((runOver setup).boundWith context layoutStudy ownAssignment (Some (DarkMean 0.3)))
         Assert.Equal<DetectorReadout>(IntensityDetectorReadout (ParameterValue 2.0, DarkMean 0.3), darkBound.readout)
         assertSignalWithin (s0 * 2.0 + 0.3) (darkBound.readingAt turned None)
 
@@ -982,7 +987,7 @@ module StudyForwardTests =
         let fitted : ExperimentAssignment =
             { ownAssignment with itemValues = Map.ofList [ camera.id, (ownValuesOf camera).withValue ParameterName.gain (ParameterValue 3.0) ] }
 
-        assertSignalWithin (s0 * 3.0 + 0.1) ((boundOf ((runOver setup).boundWith context fitted None)).readingAt turned None)
+        assertSignalWithin (s0 * 3.0 + 0.1) ((boundOf ((runOver setup).boundWith context layoutStudy fitted None)).readingAt turned None)
 
     [<Fact>]
     let ``a scan setting turns, tilts or retunes the path, and a dial reading turns its slot through the vector's zero`` () : unit =
@@ -995,7 +1000,7 @@ module StudyForwardTests =
 
         let dialSetup = setupOf (SetupName "Dial") (malusSlots dialAnalyzer camera)
         let dialContext = benchContext [ laser; prep; dialAnalyzer; camera ] [ dialSetup ]
-        let dialBound = boundOf ((runOver dialSetup).boundWith dialContext dialZero None)
+        let dialBound = boundOf ((runOver dialSetup).boundWith dialContext layoutStudy dialZero None)
         let dialParam = runParamOf dialContext dialZero
         let w = dialBound.operatingWaveLength
 
@@ -1013,7 +1018,7 @@ module StudyForwardTests =
 
         let recordedSetup = setupOf (SetupName "Dial recorded") recordedSlots
         let recordedContext = benchContext [ laser; prep; dialAnalyzer; camera ] [ recordedSetup ]
-        assertSignalWithin at30 ((boundOf ((runOver recordedSetup).boundWith recordedContext dialZero None)).readingAt [] None)
+        assertSignalWithin at30 ((boundOf ((runOver recordedSetup).boundWith recordedContext layoutStudy dialZero None)).readingAt [] None)
 
         // An R1 setting turns the dial-mounted analyzer to its value directly.
         assertSignalWithin at20 (dialBound.readingAt [ settingAt analyzerSlot VaryR1 20.0 ] None)
@@ -1024,7 +1029,7 @@ module StudyForwardTests =
             let slots = [ placing laser sourceSlot; placing prep prepSlot; placing sampleItem sampleSlot; placing analyzer analyzerSlot; placing camera detectorSlot ]
             let setup = setupOf (SetupName $"Tilt {sampleItem.label.value}") slots
             let context = benchContext [ laser; prep; sampleItem; analyzer; camera ] [ setup ]
-            let bound = boundOf ((runOver setup).boundWith context ownAssignment None)
+            let bound = boundOf ((runOver setup).boundWith context layoutStudy ownAssignment None)
             let param = runParamOf context ownAssignment
             let operating = bound.operatingWaveLength
 
@@ -1060,7 +1065,7 @@ module StudyForwardTests =
         let turned = [ settingAt analyzerSlot VaryR1 30.0 ]
         let polarimeterSetup = setupOf (SetupName "Polarimeter") (malusSlots analyzer polarimeter)
         let polarimeterContext = benchContext [ laser; prep; analyzer; polarimeter ] [ polarimeterSetup ]
-        let polarimeterBound = boundOf ((runOver polarimeterSetup).boundWith polarimeterContext ownAssignment None)
+        let polarimeterBound = boundOf ((runOver polarimeterSetup).boundWith polarimeterContext layoutStudy ownAssignment None)
         let param = runParamOf polarimeterContext ownAssignment
         let w = polarimeterBound.operatingWaveLength
         let steps = [ polarimeterSetup.slots.[1], orientedAt 0.0 0.0; polarimeterSetup.slots.[2], orientedAt 30.0 0.0 ] |> List.map (runStepAt param w)
@@ -1083,7 +1088,7 @@ module StudyForwardTests =
         // An ellipsometer on the same path reads Ψ and Δ of the state arriving at it.
         let ellipsometerSetup = setupOf (SetupName "Ellipsometer") (malusSlots analyzer ellipsometer)
         let ellipsometerContext = benchContext [ laser; prep; analyzer; ellipsometer ] [ ellipsometerSetup ]
-        let ellipsometerBound = boundOf ((runOver ellipsometerSetup).boundWith ellipsometerContext ownAssignment None)
+        let ellipsometerBound = boundOf ((runOver ellipsometerSetup).boundWith ellipsometerContext layoutStudy ownAssignment None)
 
         Assert.Equal<DetectorReadout>(EllipsometerDetectorReadout, ellipsometerBound.readout)
 
@@ -1103,7 +1108,7 @@ module StudyForwardTests =
 
         Assert.Equal<Result<BoundExperiment, StudyForwardError>>(
             Error (StudyDetectorErr $"{unread.reference.describe}, which {unreadRun.name.value} references"),
-            unreadRun.boundWith (benchContext [ laser; prep; analyzer ] [ unread ]) ownAssignment None)
+            unreadRun.boundWith (benchContext [ laser; prep; analyzer ] [ unread ]) layoutStudy ownAssignment None)
 
         // The experiment references a setup the kit lacks.
         let missing : SetupReference = { name = SetupName "Missing"; revision = SetupRevision.first }
@@ -1114,9 +1119,162 @@ module StudyForwardTests =
 
         Assert.Equal<Result<BoundExperiment, StudyForwardError>>(
             Error (ForwardSetupErr (UnknownSetupErr missing.describe)),
-            missingRun.boundWith (benchContext items [ malus ]) ownAssignment None)
+            missingRun.boundWith (benchContext items [ malus ]) layoutStudy ownAssignment None)
 
         // The analyzer slot holds an item the kit lacks.
         Assert.Equal<Result<BoundExperiment, StudyForwardError>>(
             Error (ForwardSlotErr (SlotItemErr (UnknownSlotItemErr $"the kit holds no item {analyzer.id.value}"))),
-            (runOver malus).boundWith (benchContext [ laser; prep; camera ] [ malus ]) ownAssignment None)
+            (runOver malus).boundWith (benchContext [ laser; prep; camera ] [ malus ]) layoutStudy ownAssignment None)
+
+    /// The probe crystal as an assignment holds it: n_o 1.544, n_e 1.553 and no gyration.
+    let private observedParameters : UniaxialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.544
+            extraordinaryIndex = RefractionIndex 1.553
+            g11 = RhoValue 0.0
+            g33 = RhoValue 0.0
+        }
+
+    /// Every item at its own values and the probe crystal at those parameters.
+    let private observedAssignment : ExperimentAssignment =
+        { ownAssignment with crystals = Map.ofList [ crystalVersion, UniaxialCrystal observedParameters ] }
+
+    /// The bench's context over these items and setups, its material store also holding the probe crystal QZ's plate pins.
+    let private crystalBenchContext (items : Item list) (setups : Setup list) : StudyForwardContext =
+        let store = BuiltinCatalogue.materialStore (fun _ -> [])
+
+        match store.saveMaterial crystalEntry with
+        | Ok () -> { benchContext items setups with materials = store }
+        | Error error -> failwith (SampleMaterialErr error).describe
+
+    /// The source, QZ as the lone object, then the detector slot holding the detector item.
+    let private crystalSlots (detectorItem : Item) : SetupSlot list =
+        [ placing laser sourceSlot; placing qz sampleSlot; placing detectorItem detectorSlot ]
+
+    /// An X-cut 1 mm plate at incidence 20°, azimuth 30° and 600 nm, transmitted.
+    let private xCutConfiguration : MeasurementConfiguration =
+        {
+            cut = XCut
+            thickness = Thickness.mm 1.0<mm>
+            incidenceAngle = IncidenceAngle.create (deg 20.0)
+            azimuth = SampleAzimuth.degree 30.0<deg>
+            observable = TransmittedMueller
+            waveLength = nanometres 600.0
+        }
+
+    let private observationAt (configuration : MeasurementConfiguration) : MeasuredRow =
+        ObservationRow { configuration = configuration; measured = identityMueller }
+
+    /// The recorded Mueller matrix of a reading, failing on any other reading or a refusal.
+    let private recordedMuellerOf (reading : Result<RecordedReading, StudyForwardError>) : MuellerMatrix =
+        match reading with
+        | Ok (RecordedMueller matrix) -> matrix
+        | Ok other -> failwith $"expected a recorded Mueller matrix, got %A{other}"
+        | Error error -> failwith error.describe
+
+    /// The matrix's sixteen elements, row by row.
+    let private elementsOf (matrix : MuellerMatrix) : float list =
+        [
+            for i in 0 .. 3 do
+                for j in 0 .. 3 do
+                    matrix.element i j
+        ]
+
+    [<Fact>]
+    let ``an observation is predicted as a cut plate of its object's opened crystal at its own configuration`` () : unit =
+        let setup = setupOf (SetupName "Crystal") (crystalSlots polarimeter)
+        let context = crystalBenchContext [ laser; qz; polarimeter ] [ setup ]
+        let bound = boundOf ((runOver setup).boundWith context layoutStudy observedAssignment None)
+
+        // QZ is the lone object and its plate is made of the opened probe version, so the assignment's crystal is
+        // observed, solved with the context's solver parameters.
+        Assert.Equal<DetectorReadout>(PolarimeterDetectorReadout, bound.readout)
+        Assert.Equal<CrystalParameters option>(Some (UniaxialCrystal observedParameters), bound.observedCrystalOpt)
+        Assert.Equal<SolverParameters>(SolverParameters.defaultValue, bound.solverParameters)
+
+        // An assignment holding no crystal observes the study's working copy: n_o at its unknown's start, gyrating.
+        let ownBound = boundOf ((runOver setup).boundWith context layoutStudy ownAssignment None)
+        let copy = (openedOf layoutStudy crystalVersion).currentCrystal
+        Assert.Equal<CrystalParameters option>(Some copy, ownBound.observedCrystalOpt)
+        Assert.NotEqual<CrystalParameters>(UniaxialCrystal observedParameters, copy)
+
+        // The configuration's orientation gives its azimuth, incidence and observable back.
+        let reflected = { xCutConfiguration with observable = ReflectedMueller }
+
+        for configuration in [ xCutConfiguration; reflected ] do
+            let orientation = configuration.elementOrientation
+            Assert.Equal<SampleAzimuth>(configuration.azimuth, orientation.sampleAzimuth)
+            Assert.Equal<IncidenceAngle>(configuration.incidenceAngle, orientation.incidence)
+            Assert.Equal<Observable>(configuration.observable, orientation.observable)
+
+        Assert.Equal<Propagation.Branch>(BranchTransmitted, xCutConfiguration.elementOrientation.branch)
+        Assert.Equal<Propagation.Branch>(BranchReflected, reflected.elementOrientation.branch)
+
+        // Each observation reads exactly the spec 0044 forward's matrix at its own configuration and those parameters.
+        let forward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) SolverParameters.defaultValue
+
+        let forwardAt (configuration : MeasurementConfiguration) : MuellerMatrix =
+            match forward.muellerOf configuration observedParameters with
+            | Ok matrix -> matrix
+            | Error (ForwardSolveFailedErr (_, reason)) -> failwith reason
+
+        let transmittedReading = recordedMuellerOf (bound.predictedReadingOf (observationAt xCutConfiguration))
+        let reflectedReading = recordedMuellerOf (bound.predictedReadingOf (observationAt reflected))
+
+        Assert.Equal<float list>(elementsOf (forwardAt xCutConfiguration), elementsOf transmittedReading)
+        Assert.Equal<float list>(elementsOf (forwardAt reflected), elementsOf reflectedReading)
+        Assert.NotEqual<float list>(elementsOf transmittedReading, elementsOf reflectedReading)
+
+        // The working copy's crystal predicts another transmitted matrix: the observed crystal is the one solved.
+        let copyReading = recordedMuellerOf (ownBound.predictedReadingOf (observationAt xCutConfiguration))
+        let largestChange = List.map2 (fun a b -> abs (a - b)) (elementsOf transmittedReading) (elementsOf copyReading) |> List.max
+        Assert.True(largestChange > 1.0e-3, $"the copy's crystal changes the transmitted matrix by at most {largestChange:R}")
+
+        // A settings row reads as `readingAt` does, at its own wavelength when it carries one; its measured value plays no part.
+        let tilted = [ settingAt sampleSlot VaryR2 20.0 ]
+
+        for waveLengthOpt in [ None; Some (nanometres 600.0) ] do
+            Assert.Equal<float list>(
+                elementsOf (recordedMuellerOf (bound.readingAt tilted waveLengthOpt)),
+                elementsOf (recordedMuellerOf (bound.predictedReadingOf (SettingsRow (tilted, waveLengthOpt, RecordedMueller identityMueller)))))
+
+    [<Fact>]
+    let ``an observation without one opened plate, or under a detector that is no polarimeter, is refused`` () : unit =
+        let observation = observationAt xCutConfiguration
+
+        let boundOver (setup : Setup) (items : Item list) : BoundExperiment =
+            boundOf ((runOver setup).boundWith (crystalBenchContext items [ setup ]) layoutStudy observedAssignment None)
+
+        let plateRefusal (setup : Setup) : Result<RecordedReading, StudyForwardError> =
+            Error (ObservationPlateErr $"{setup.reference.describe}, which {(runOver setup).name.value} references")
+
+        // The glass plate is made of no opened material.
+        let glass = setupOf (SetupName "Glass") [ placing laser sourceSlot; placing plate sampleSlot; placing polarimeter detectorSlot ]
+        let glassBound = boundOver glass [ laser; plate; polarimeter ]
+        Assert.Equal<CrystalParameters option>(None, glassBound.observedCrystalOpt)
+        Assert.Equal<Result<RecordedReading, StudyForwardError>>(plateRefusal glass, glassBound.predictedReadingOf observation)
+
+        // QZ beside the glass plate: two object items.
+        let secondSampleSlot = emptySlot (Library.ElementId "plate2") Sample { x = 0.2<meter>; y = 0.0<meter> }
+
+        let pair =
+            setupOf (SetupName "Pair") [ placing laser sourceSlot; placing qz sampleSlot; placing plate secondSampleSlot; placing polarimeter detectorSlot ]
+
+        let pairBound = boundOver pair [ laser; qz; plate; polarimeter ]
+        Assert.Equal<CrystalParameters option>(None, pairBound.observedCrystalOpt)
+        Assert.Equal<Result<RecordedReading, StudyForwardError>>(plateRefusal pair, pairBound.predictedReadingOf observation)
+
+        // An object slot holding no item.
+        let unheld = setupOf (SetupName "Unheld") [ placing laser sourceSlot; sampleSlot; placing polarimeter detectorSlot ]
+        let unheldBound = boundOver unheld [ laser; polarimeter ]
+        Assert.Equal<Result<RecordedReading, StudyForwardError>>(plateRefusal unheld, unheldBound.predictedReadingOf observation)
+
+        // QZ under an intensity detector or an ellipsometer: its crystal is observed, but neither records a Mueller matrix.
+        for detectorItem, kind in [ camera, "an intensity detector"; ellipsometer, "an ellipsometer" ] do
+            let setup = setupOf (SetupName $"Crystal {detectorItem.label.value}") (crystalSlots detectorItem)
+            let detectorBound = boundOver setup [ laser; qz; detectorItem ]
+            Assert.Equal<CrystalParameters option>(Some (UniaxialCrystal observedParameters), detectorBound.observedCrystalOpt)
+
+            Assert.Equal<Result<RecordedReading, StudyForwardError>>(
+                Error (ReadingMismatchErr $"{(runOver setup).name.value} is read by {kind}, which records no Mueller matrix"),
+                detectorBound.predictedReadingOf observation)
