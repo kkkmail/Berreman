@@ -1,15 +1,20 @@
 namespace OpticalConstructor.Tests
 
+open System
+open OpticalConstructor.Domain.CrystalPhysics
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Studies
 open Xunit
+open CrystalMaterialFixtures
 
 /// Spec 0050 S11.1 — a study's shape: its name and file stem, its scope and fit-mode tags, its residual weights,
-/// CreateStudy's and AddExperimentsToStudy's pure halves over a kit's experiments, and the sessions and gain models a
-/// study reads from them.
+/// CreateStudy's and AddExperimentsToStudy's pure halves over a kit's experiments, the sessions and gain models a
+/// study reads from them, and its unknowns with their scopes and owners.
 module StudyTests =
 
     /// A run over `Bench` revision 1 turning one polarizer, as `StudySessionTests`' is; the study tests vary only its
@@ -171,3 +176,179 @@ module StudyTests =
         let withSetting = { study with sessionGains = [ { session = session1; model = anchored } ] }
         Assert.Equal(anchored, withSetting.gainModelOf session1)
         Assert.Equal(FreeSessionGain, withSetting.gainModelOf session2)
+
+    let private retardance : ParameterName = ParameterName "c2.retardance"
+    let private fastAxisOffset : ParameterName = ParameterName "c2.fastAxisOffset"
+    let private n1 : ParameterName = ParameterName "n1"
+    let private e11 : ParameterName = ParameterName "e11"
+
+    /// An unknown starting at `start` within [`lower`, `upper`], with no prior.
+    let private unknownFrom (start : ParameterValue) (lower : ParameterValue) (upper : ParameterValue) : UnknownParameterData =
+        {
+            start = start
+            bounds = { lower = lower; upper = upper }
+            priorOpt = None
+        }
+
+    let private cpl1RetardanceData : UnknownParameterData = unknownFrom (ParameterValue 1.55) (ParameterValue 1.40) (ParameterValue 1.75)
+    let private cpl2RetardanceData : UnknownParameterData = unknownFrom (ParameterValue 1.60) (ParameterValue 1.45) (ParameterValue 1.70)
+    let private fastAxisOffsetData : UnknownParameterData = unknownFrom (ParameterValue 0.0) (ParameterValue -0.1) (ParameterValue 0.1)
+    let private gainData : UnknownParameterData = unknownFrom (ParameterValue 1.0) (ParameterValue 0.5) (ParameterValue 2.0)
+    let private n1Data : UnknownParameterData = unknownFrom (ParameterValue 1.71) (ParameterValue 1.65) (ParameterValue 1.77)
+    let private e11Data : UnknownParameterData = unknownFrom (ParameterValue 2.0e-3) (ParameterValue 0.0) (ParameterValue 1.0e-2)
+
+    /// The draft's new item with each named parameter freed in order, failing with the refusal's text.
+    let private itemFreeing (draft : ItemDraft) (freed : (ParameterName * UnknownParameterData) list) : Item =
+        freed
+        |> List.fold (fun (item : Item) (name, unknown) ->
+            match item.withParameterState name (UnknownParameter unknown) with
+            | Ok changed -> changed
+            | Error error -> failwith $"'{draft.label.value}' refused {name.value}: {error.describe}") draft.toItem
+
+    let private circularPolarizer : ItemModelChoice = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+
+    let private cpl1 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "36200000-0000-4000-8000-000000000011")
+                label = ItemLabel "CPL1"
+                model = circularPolarizer
+                dial = DialMounted DialPositive
+            }
+        itemFreeing draft [ retardance, cpl1RetardanceData ]
+
+    let private cpl2 : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "36200000-0000-4000-8000-000000000012")
+                label = ItemLabel "CPL2"
+                model = circularPolarizer
+                dial = DialMounted DialPositive
+            }
+        itemFreeing draft [ retardance, cpl2RetardanceData; fastAxisOffset, fastAxisOffsetData ]
+
+    let private phone : Item =
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "36200000-0000-4000-8000-000000000013")
+                label = ItemLabel "Phone"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.intensityDetectorModelId)
+                dial = FixedMounting
+            }
+        itemFreeing draft [ ParameterName.gain, gainData ]
+
+    /// The test-local version of the absorbing crystal material the unknowns' study opens.
+    let private openedVersion : MaterialVersionId =
+        MaterialVersionId.firstOf (MaterialId (Guid.Parse "36200000-0000-4000-8000-000000000001"))
+
+    let private absorbingEntry : MaterialEntry =
+        {
+            id = openedVersion.materialId
+            name = EntryName "Probe absorbing crystal"
+            category = CategoryIds.crystal
+            description = None
+            physics = CrystalParameterPhysics (AbsorbingTriclinicCrystal absorbingTriclinicParameters)
+        }
+
+    /// QZ-LR over E1, E2 and E3 with the absorbing crystal opened, its `n1` and `e11` freed and every other component
+    /// known; nothing scoped or linked.
+    let private unknownsStudy : Study =
+        let created = studyOf (Study.create (StudyName "QZ-LR") [ e1; e2; e3 ] [] kitRuns)
+        let opened = studyOf (created.openMaterial openedVersion absorbingEntry)
+        let withN1 = studyOf (opened.withMaterialParameterState openedVersion n1 (UnknownParameter n1Data))
+        studyOf (withN1.withMaterialParameterState openedVersion e11 (UnknownParameter e11Data))
+
+    [<Fact>]
+    let ``the study's unknowns are its items' and opened materials' unknown parameters, with their scopes, leaving out link followers`` () : unit =
+        let cpl1Retardance = ItemParameterRef (cpl1.id, retardance)
+        let cpl2Retardance = ItemParameterRef (cpl2.id, retardance)
+        let phoneGain = ItemParameterRef (phone.id, ParameterName.gain)
+
+        let expected : StudyUnknown list =
+            [
+                { parameter = cpl1Retardance; scope = ItemScope; unknown = cpl1RetardanceData }
+                { parameter = cpl2Retardance; scope = ItemScope; unknown = cpl2RetardanceData }
+                { parameter = ItemParameterRef (cpl2.id, fastAxisOffset); scope = ItemScope; unknown = fastAxisOffsetData }
+                { parameter = phoneGain; scope = SessionBlockScope; unknown = gainData }
+                { parameter = MaterialParameterRef (openedVersion, n1); scope = MaterialScope; unknown = n1Data }
+                { parameter = MaterialParameterRef (openedVersion, e11); scope = MaterialScope; unknown = e11Data }
+            ]
+
+        Assert.Equal<StudyUnknown list>(expected, unknownsStudy.unknownsWith [ cpl1; cpl2; phone ])
+
+        // Only the used items' unknowns, in the order given; the opened material's stay.
+        Assert.Equal<StudyUnknown list>(expected.[3 ..], unknownsStudy.unknownsWith [ phone ])
+        Assert.Equal<StudyUnknown list>(expected.[3 .. 3] @ expected.[0 .. 0] @ expected.[4 ..], unknownsStudy.unknownsWith [ phone; cpl1 ])
+
+        // Only a detector's gain is per session by default; its other parameters are per item.
+        Assert.Equal(ItemScope, unknownsStudy.scopeOf (ItemParameterRef (phone.id, ParameterName.darkOffset)))
+
+        let scoped =
+            {
+                unknownsStudy with
+                    scopes =
+                        [
+                            ({ parameter = cpl1Retardance; scope = ExperimentScope } : ScopedParameter)
+                            ({ parameter = phoneGain; scope = ItemScope } : ScopedParameter)
+                        ]
+            }
+
+        Assert.Equal(ExperimentScope, scoped.scopeOf cpl1Retardance)
+        Assert.Equal(ItemScope, scoped.scopeOf phoneGain)
+
+        let rescoped =
+            expected
+            |> List.map (fun unknown ->
+                if unknown.parameter = cpl1Retardance then { unknown with scope = ExperimentScope }
+                elif unknown.parameter = phoneGain then { unknown with scope = ItemScope }
+                else unknown)
+
+        Assert.Equal<StudyUnknown list>(rescoped, scoped.unknownsWith [ cpl1; cpl2; phone ])
+
+        let link : ParameterLink =
+            {
+                follower = cpl2Retardance
+                leader = cpl1Retardance
+            }
+
+        let linked = { unknownsStudy with links = [ link ] }
+
+        Assert.Equal<StudyUnknown list>(
+            expected |> List.filter (fun unknown -> unknown.parameter <> cpl2Retardance),
+            linked.unknownsWith [ cpl1; cpl2; phone ])
+
+    [<Fact>]
+    let ``an unknown's owners are its item or material, one per session holding a user, or one per user`` () : unit =
+        let sessions : StudySession list =
+            [
+                ({ name = session1; experiments = [ e1; e2 ] } : StudySession)
+                ({ name = session2; experiments = [ e3 ] } : StudySession)
+            ]
+
+        let cpl1Retardance = ItemParameterRef (cpl1.id, retardance)
+        let perExperiment = { unknownsStudy with scopes = [ ({ parameter = cpl1Retardance; scope = ExperimentScope } : ScopedParameter) ] }
+
+        let unknownIn (study : Study) (parameter : StudyParameterRef) : StudyUnknown =
+            study.unknownsWith [ cpl1; cpl2; phone ] |> List.find (fun unknown -> unknown.parameter = parameter)
+
+        let cpl1Unknown = unknownIn unknownsStudy cpl1Retardance
+        let n1Unknown = unknownIn unknownsStudy (MaterialParameterRef (openedVersion, n1))
+        let gainUnknown = unknownIn unknownsStudy (ItemParameterRef (phone.id, ParameterName.gain))
+        let experimentUnknown = unknownIn perExperiment cpl1Retardance
+
+        // An item or material scope has its one owner, whoever uses it.
+        Assert.Equal<UnknownOwner list>([ ItemOwner cpl1.id ], cpl1Unknown.owners sessions [ e1; e3 ])
+        Assert.Equal<UnknownOwner list>([ ItemOwner cpl1.id ], cpl1Unknown.owners sessions [])
+        Assert.Equal<UnknownOwner list>([ MaterialOwner openedVersion ], n1Unknown.owners sessions [ e2 ])
+
+        // A session scope has one owner per session holding a user, in session order.
+        Assert.Equal<UnknownOwner list>([ SessionOwner session1; SessionOwner session2 ], gainUnknown.owners sessions [ e1; e3 ])
+        Assert.Equal<UnknownOwner list>([ SessionOwner session1; SessionOwner session2 ], gainUnknown.owners sessions [ e3; e1 ])
+        Assert.Equal<UnknownOwner list>([ SessionOwner session1 ], gainUnknown.owners sessions [ e2 ])
+        Assert.Equal<UnknownOwner list>([ SessionOwner session1 ], gainUnknown.owners sessions [ e1; e2 ])
+        Assert.Empty(gainUnknown.owners sessions [ e9 ])
+
+        // An experiment scope has one owner per user, in order, each once.
+        Assert.Equal<UnknownOwner list>([ ExperimentOwner e3; ExperimentOwner e1 ], experimentUnknown.owners sessions [ e3; e1 ])
+        Assert.Equal<UnknownOwner list>([ ExperimentOwner e3; ExperimentOwner e1 ], experimentUnknown.owners sessions [ e3; e1; e3 ])
+        Assert.Empty(experimentUnknown.owners sessions [])

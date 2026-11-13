@@ -621,3 +621,76 @@ module Studies =
         member this.openedMaterialsIn (study : Study) : OpenedMaterial list =
             let referenced = this.structure.referencedMaterialVersions
             study.materials |> List.filter (fun material -> referenced.Contains material.version)
+
+    /// What holds one value of an unknown: its item, its material version, a session block or an experiment. Derived,
+    /// never stored, so it carries no tag (spec 0050 S11.1; 001 §L).
+    type UnknownOwner =
+        | ItemOwner of ItemId
+        | MaterialOwner of MaterialVersionId
+        | SessionOwner of SessionName
+        | ExperimentOwner of ExperimentName
+
+    /// One unknown of a study: its parameter, the scope its values are shared by, and its start, bounds and prior
+    /// (spec 0050 S11.1; 001 §L).
+    type StudyUnknown =
+        {
+            parameter : StudyParameterRef
+            scope : ParameterScope
+            unknown : UnknownParameterData
+        }
+
+    type Study with
+
+        /// The study's scope for the parameter, else the default: a material component's is `MaterialScope`, a
+        /// detector's `gain` `SessionBlockScope`, any other item parameter's `ItemScope` (spec 0050 S11.1; 001 §I, §L).
+        member this.scopeOf (parameter : StudyParameterRef) : ParameterScope =
+            match this.scopes |> List.tryFind (fun scoped -> scoped.parameter = parameter) with
+            | Some scoped -> scoped.scope
+            | None ->
+                match parameter with
+                | MaterialParameterRef _ -> MaterialScope
+                | ItemParameterRef (_, name) when name = ParameterName.gain -> SessionBlockScope
+                | ItemParameterRef _ -> ItemScope
+
+        /// The unknown parameters of `used` (the items the study's experiments use), each item's in order, then each
+        /// opened material's, with their scopes; a link's follower takes its leader's value, so it is left out
+        /// (spec 0050 S11.1; 001 §L).
+        member this.unknownsWith (used : Item list) : StudyUnknown list =
+            let unknownOf (reference : StudyParameterRef) (parameter : Parameter) : StudyUnknown option =
+                match parameter.state with
+                | UnknownParameter unknown when not (this.links |> List.exists (fun link -> link.follower = reference)) ->
+                    Some ({ parameter = reference; scope = this.scopeOf reference; unknown = unknown } : StudyUnknown)
+                | UnknownParameter _
+                | KnownParameter _
+                | CalibratedParameter _ -> None
+
+            let itemUnknowns =
+                used
+                |> List.collect (fun item ->
+                    item.parameters |> List.choose (fun parameter -> unknownOf (ItemParameterRef (item.id, parameter.name)) parameter))
+
+            let materialUnknowns =
+                this.materials
+                |> List.collect (fun material ->
+                    material.parameters
+                    |> List.choose (fun parameter -> unknownOf (MaterialParameterRef (material.version, parameter.name)) parameter))
+
+            itemUnknowns @ materialUnknowns
+
+    type StudyUnknown with
+
+        /// One owner per value the fitter holds: an item or material scope's item or material; per session block each of
+        /// `sessions` holding one of `users`, in order; per experiment each of `users` once, in order. `users` are the
+        /// enabled experiments whose setups use the item or a sample of its material (spec 0050 S11.1, S11.2).
+        member this.owners (sessions : StudySession list) (users : ExperimentName list) : UnknownOwner list =
+            match this.scope with
+            | ItemScope
+            | MaterialScope ->
+                match this.parameter with
+                | ItemParameterRef (item, _) -> [ ItemOwner item ]
+                | MaterialParameterRef (material, _) -> [ MaterialOwner material ]
+            | SessionBlockScope ->
+                sessions
+                |> List.filter (fun session -> session.experiments |> List.exists (fun run -> List.contains run users))
+                |> List.map (fun session -> SessionOwner session.name)
+            | ExperimentScope -> users |> List.distinct |> List.map ExperimentOwner
