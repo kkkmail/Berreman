@@ -96,9 +96,9 @@ open BerremanTests.BiaxialSample            // the triclinic ground truth, share
 /// that fact — and it is the price of the crystal being biaxial.
 ///
 /// The fit driver, the residual, the scaling, the measurement-error model and the acceptance arithmetic
-/// are all shared with `MuellerInverseTests` through `InverseFitHarness`; nothing in this file
-/// re-implements any of it. That is only possible because `MuellerInverse` is generic in its parameter
-/// set — see `ParameterAxis`.
+/// are all shared with `MuellerInverseTests` through `MuellerFitting`, `BenchNoise`, `RecoveryEnsembles`
+/// and `FitUncertainty`; nothing in this file re-implements any of it. That is only possible because
+/// `MuellerInverse` is generic in its parameter set — see `ParameterAxis`.
 type BiaxialInverseTests() =
 
     /// Radians per degree, reached by its full module path. Bound here, ahead of the members (FS0960: in

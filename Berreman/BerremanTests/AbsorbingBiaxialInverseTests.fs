@@ -9,10 +9,12 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused, not re-declared
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTests.BiaxialSample                       // the transparent twin, for the geometry and the scale
@@ -109,19 +111,19 @@ type AbsorbingBiaxialInverseTests() =
     /// isotropic absorption while leaving every anisotropy untouched. This is the null direction the
     /// information count predicts for normalized data, and it is a COMBINATION of three parameters
     /// rather than any one of them, which is why a Jacobian column norm cannot see it.
-    let isotropicAbsorption (scaling : ParameterScaling<AbsorbingTriclinicParameters>) : float[] =
-        sumWeights scaling [ "e11"; "e22"; "e33" ]
+    let isotropicAbsorption (scaling : ParameterScaling<AbsorbingTriclinicParameters>) : ParameterWeights =
+        sumWeights scaling [ ParameterName "e11"; ParameterName "e22"; ParameterName "e33" ] |> expectOk
 
     /// A purely ANISOTROPIC absorption direction, for contrast: it raises ε''₁₁ and lowers ε''₂₂ by the
     /// same amount, so the isotropic level is unchanged and only the linear dichroism moves. Normalized
     /// data must see this one perfectly well, which is what makes the null-direction claim specific to
     /// the isotropic part rather than a general statement about absorption.
-    let anisotropicAbsorption (scaling : ParameterScaling<AbsorbingTriclinicParameters>) : float[] =
+    let anisotropicAbsorption (scaling : ParameterScaling<AbsorbingTriclinicParameters>) : ParameterWeights =
         let w = Array.zeroCreate scaling.dimension
         let index (name : string) = scaling.axes |> List.findIndex (fun a -> a.name.value = name)
         w.[index "e11"] <- 1.0
         w.[index "e22"] <- -1.0
-        w
+        ParameterWeights w
 
     // =================================================================================================
     // The forward-side facts.
@@ -348,15 +350,15 @@ type AbsorbingBiaxialInverseTests() =
         let absoluteIsotropic = directionalSensitivity absoluteJacobian isotropic
         let normalizedAnisotropic = directionalSensitivity normalizedJacobian anisotropic
         let report =
-            $"isotropic: normalized {normalizedIsotropic}, absolute {absoluteIsotropic} || "
-            + $"anisotropic under normalized data: {normalizedAnisotropic}"
+            $"isotropic: normalized {normalizedIsotropic.value}, absolute {absoluteIsotropic.value} || "
+            + $"anisotropic under normalized data: {normalizedAnisotropic.value}"
 
         // Bands pinned per the spec §9 protocol from the observed 0.0677 (normalized, isotropic), 0.2086
         // (absolute, isotropic) and 0.2051 (normalized, anisotropic).
-        Assert.True(normalizedIsotropic < 0.12, $"normalized data must be markedly blind to isotropic absorption: {report}")
-        Assert.True(absoluteIsotropic > 0.12, $"absolute data must see isotropic absorption: {report}")
+        Assert.True(normalizedIsotropic.value < 0.12, $"normalized data must be markedly blind to isotropic absorption: {report}")
+        Assert.True(absoluteIsotropic.value > 0.12, $"absolute data must see isotropic absorption: {report}")
         Assert.True(
-            absoluteIsotropic / normalizedIsotropic > 2.0,
+            absoluteIsotropic.value / normalizedIsotropic.value > 2.0,
             $"adding absolute throughput must materially improve the isotropic direction: {report}")
 
         // The contrast that makes the claim specific: an ANISOTROPIC absorption change of the same size
@@ -364,7 +366,7 @@ type AbsorbingBiaxialInverseTests() =
         // which is what the information count predicts even though the suppression is a factor of three
         // rather than the total loss the count implies for a single-pass sample.
         Assert.True(
-            normalizedAnisotropic / normalizedIsotropic > 2.0,
+            normalizedAnisotropic.value / normalizedIsotropic.value > 2.0,
             $"normalized data must see anisotropic absorption markedly better than isotropic: {report}")
 
     [<Fact>]

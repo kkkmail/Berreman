@@ -57,3 +57,35 @@ module FitUncertainty =
             |> Ok
         | None, _ -> Error (UnknownAxisErr plus)
         | Some _, None -> Error (UnknownAxisErr minus)
+
+    /// The weights of the equal-weighted sum of `names` in a scaling's axis order, or `UnknownAxisErr` for the first
+    /// name the scaling lacks.
+    let sumWeights
+        (scaling : ParameterScaling<'Parameters>)
+        (names : ParameterName list)
+        : Result<ParameterWeights, MuellerFitError> =
+        let axisNames = scaling.axes |> List.map (fun a -> a.name)
+        match names |> List.tryFind (fun name -> not (List.contains name axisNames)) with
+        | Some unknown -> Error (UnknownAxisErr unknown)
+        | None ->
+            let picked = names |> List.choose (fun name -> axisNames |> List.tryFindIndex ((=) name))
+            Array.init scaling.dimension (fun i -> if List.contains i picked then 1.0 else 0.0)
+            |> ParameterWeights
+            |> Ok
+
+    /// How hard the residual pushes back along one direction of parameter space, ‖J·v‖ for a unit v.
+    type DirectionalSensitivity =
+        | DirectionalSensitivity of double
+
+        member this.value = let (DirectionalSensitivity s) = this in s
+
+    /// The residual's sensitivity along `direction`, scaled to unit length first. It sees a combination of parameters
+    /// that can be invisible while every single Jacobian column is alive (the isotropic part of an absorption tensor).
+    let directionalSensitivity (jacobian : ResidualJacobian) (direction : ParameterWeights) : DirectionalSensitivity =
+        let weights = direction.value
+        let norm = sqrt (weights |> Array.sumBy (fun x -> x * x))
+        let unit = weights |> Array.map (fun x -> x / norm)
+        jacobian.value
+        |> Array.sumBy (fun row -> (Array.map2 (*) row unit |> Array.sum) ** 2.0)
+        |> sqrt
+        |> DirectionalSensitivity
