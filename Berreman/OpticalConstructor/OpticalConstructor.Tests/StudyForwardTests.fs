@@ -262,6 +262,8 @@ module StudyForwardTests =
         let counts : ObservationCounts = { measuredCount = ObservationCount 3; modelCount = ObservationCount 2 }
         let missingReason = "E9, which the study 'QZ' names"
         let kitError = KitIoErr "the test cannot hash 'data/E1.csv'"
+        let prefitError = MissingDataErr "no measured-data file is attached to this experiment"
+        let darkReason = "K1 records Ψ and Δ, not a signal"
 
         let cases : (StudyForwardError * string) list =
             [
@@ -277,12 +279,15 @@ module StudyForwardTests =
                 RowResidualErr (MismatchedObservationsErr counts), "the residual cannot be formed: 3 measured and 2 model observation(s) do not pair"
                 MissingStudyRunErr missingReason, $"the kit has no such experiment: {missingReason}"
                 StudyRunKitErr kitError, $"the kit cannot report the data's status: {kitError.describe}"
+                PrefitFailedErr (ExperimentName "E2", prefitError), $"the experiment is not ready for a fit: E2: {prefitError.describe}"
+                DarkReadingErr darkReason, $"a dark run does not record a signal: {darkReason}"
             ]
 
         // A wrapped error keeps its own payload in the text.
         Assert.Contains("'Missing' revision 1", (ForwardSetupErr setupError).describe)
         Assert.Contains("the kit holds no item LP3", (ForwardSlotErr slotError).describe)
         Assert.Contains("the test cannot hash 'data/E1.csv'", (StudyRunKitErr kitError).describe)
+        Assert.Contains("no measured-data file is attached to this experiment", (PrefitFailedErr (ExperimentName "E2", prefitError)).describe)
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
@@ -1402,16 +1407,17 @@ module StudyForwardTests =
     /// Step 374's Malus setup: the HeNe, LP1, LP2 and the camera.
     let private prefitSetup : Setup = setupOf (SetupName "Malus") (malusSlots analyzer camera)
 
+    /// LP2's R1 over 0…90° in 4 points.
+    let private lp2Turn : ScanAxis = { polarizerTurn with elementId = analyzerSlot.id; label = ElementLabel "LP2" }
+
     /// A run of that role over the Malus setup, turning LP2 over 0…90° in 4 points, with no data.
     let private prefitRun (id : ExperimentId) (name : ExperimentName) (role : ExperimentRole) : Experiment =
-        let turn : ScanAxis = { polarizerTurn with elementId = analyzerSlot.id; label = ElementLabel "LP2" }
-
         {
             e1Run with
                 id = id
                 name = name
                 setup = prefitSetup.reference
-                scan = ExperimentScan.oneAxis turn CaptureTransmitted None
+                scan = ExperimentScan.oneAxis lp2Turn CaptureTransmitted None
                 role = role
                 sessionOpt = None
         }
@@ -1461,11 +1467,16 @@ module StudyForwardTests =
                 e3File, Ok AttachedDataUnchanged
             ]
 
-    /// A data seam answering `readMapped` and `attachmentStatus` by the attachment's path; nothing is picked or attached.
-    let private prefitDataOver (statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>>) : ExperimentDataProxy =
-        let points : Map<KitRelativePath, MappedPoints> =
-            Map.ofList [ e1File, malusPoints; k1File, darkPoints; x1File, malusPoints; e3File, malusPoints ]
+    /// E1's, X1's and E3's files read as Malus's law, K1's as one dark reading.
+    let private prefitPoints : Map<KitRelativePath, MappedPoints> =
+        Map.ofList [ e1File, malusPoints; k1File, darkPoints; x1File, malusPoints; e3File, malusPoints ]
 
+    /// A data seam answering `readMapped` by the points and `attachmentStatus` by the statuses, each by the attachment's
+    /// path; nothing is picked or attached.
+    let private prefitDataOver
+        (statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>>)
+        (points : Map<KitRelativePath, MappedPoints>)
+        : ExperimentDataProxy =
         {
             readPickedFile = fun file -> Error (KitIoErr $"the test reads no picked file '{file.value}'")
             attachDataFile = fun file -> Error (KitIoErr $"the test attaches no file '{file.value}'")
@@ -1496,19 +1507,23 @@ module StudyForwardTests =
         let created = studyOf (Study.create (StudyName "Prefit") [ e1; k1; x1; e2; e3; p1 ] [] prefitRuns)
         studyOf (created.withExperimentEnablement e3 DisabledInStudy)
 
-    /// The bench's context over the Malus setup, a kit of these runs holding the study, and the statuses' data seam.
-    let private prefitContextOver
-        (study : Study)
-        (runs : Experiment list)
-        (statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>>)
-        : StudyForwardContext =
+    /// The bench's context over the Malus setup, a kit of these runs holding the study, and that data seam.
+    let private contextOverData (study : Study) (runs : Experiment list) (data : ExperimentDataProxy) : StudyForwardContext =
         let context = benchContext [ laser; prep; analyzer; camera ] [ prefitSetup ]
 
         {
             context with
                 kit = { context.kit with studies = [ study ]; experiments = runs }
-                experimentData = prefitDataOver statuses
+                experimentData = data
         }
+
+    /// The bench's context over these runs, the files read as `prefitPoints` with the statuses given.
+    let private prefitContextOver
+        (study : Study)
+        (runs : Experiment list)
+        (statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>>)
+        : StudyForwardContext =
+        contextOverData study runs (prefitDataOver statuses prefitPoints)
 
     let private namesOfPrefits (result : Result<ExperimentPrefit list, StudyForwardError>) : ExperimentName list =
         match result with
@@ -1575,3 +1590,165 @@ module StudyForwardTests =
         Assert.Equal<ExperimentName list>(
             [ e1; k1; e2 ],
             namesOfPrefits (prefitStudy.prefitWith (prefitContextOver prefitStudy prefitRuns (prefitStatuses |> Map.add x1File (Error unreadable))) []))
+
+    let private e4 : ExperimentName = ExperimentName "E4"
+    let private k2 : ExperimentName = ExperimentName "K2"
+    let private session3 : SessionName = SessionName "Session 3"
+
+    let private e2File : KitRelativePath = KitRelativePath "data/E2.csv"
+    let private e4File : KitRelativePath = KitRelativePath "data/E4.csv"
+    let private k2File : KitRelativePath = KitRelativePath "data/K2.csv"
+
+    /// The study's data from its pre-fit over a kit of these runs, each attached file read as `points` and unchanged.
+    let private studyDataOver (study : Study) (runs : Experiment list) (points : Map<KitRelativePath, MappedPoints>) : Result<StudyData, StudyForwardError> =
+        let statuses : Map<KitRelativePath, Result<DataAttachmentStatus, KitError>> = points |> Map.map (fun _ _ -> Ok AttachedDataUnchanged)
+        let context = contextOverData study runs (prefitDataOver statuses points)
+        study.prefitWith context [] |> Result.bind (study.dataWith context)
+
+    let private dataOf (result : Result<StudyData, StudyForwardError>) : StudyData =
+        match result with
+        | Ok data -> data
+        | Error error -> failwith $"expected the study's data, got {error.describe}"
+
+    /// An `Intensity series` point of LP2's turn as the Malus scan places it: its R1 setting and its signal.
+    let private malusRow (degrees : float) (signal : float) : MeasuredRow =
+        SettingsRow ([ settingOn lp2Turn (SweptValue degrees) ], None, RecordedSignal (MeasuredIntensity signal))
+
+    [<Fact>]
+    let ``a study's data holds each fitted run's kept rows in study order`` () : unit =
+        // E1 holds three points, the second excluded; E2 is attached too, so every check passes.
+        let threePoints =
+            seriesOver
+                [
+                    intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 1.0)
+                    intensityAt (MeasuredAbscissa 45.0) (MeasuredIntensity 0.5)
+                    intensityAt (MeasuredAbscissa 90.0) (MeasuredIntensity 0.0)
+                ]
+
+        let exclusion : PointExclusion = { point = MappedPointNumber 2; reason = ExclusionReason "the beam was blocked" }
+
+        let keptE1 : Experiment =
+            match prefitE1.dataOpt with
+            | Some data -> { prefitE1 with dataOpt = Some { data with exclusions = [ exclusion ] } }
+            | None -> failwith "step 377's E1 is attached"
+
+        let attachedE2 = prefitE2 |> attachingAt e2File
+        let runs = [ prefitP1; prefitE3; attachedE2; prefitX1; prefitK1; keptE1 ]
+        let points = prefitPoints |> Map.add e1File threePoints |> Map.add e2File malusPoints
+        let data = dataOf (studyDataOver prefitStudy runs points)
+
+        // E1's two kept rows, then E2's four, in study order though the kit holds E2 first.
+        let expected : StudyRun list =
+            [
+                { experiment = keptE1; rows = [ malusRow 0.0 1.0; malusRow 90.0 0.0 ] }
+                { experiment = attachedE2; rows = [ malusRow 0.0 1.0; malusRow 30.0 0.75; malusRow 60.0 0.25; malusRow 90.0 0.0 ] }
+            ]
+
+        Assert.Equal<StudyRun list>(expected, data.runs)
+
+        // The Dark K1 gives its session's dark level, never residual rows; the Diagnostic, disabled and Planned runs nothing.
+        Assert.Equal<ExperimentName list>([ e1; e2 ], data.runs |> List.map (fun run -> run.experiment.name))
+
+    /// K1's two dark readings, 0.2 and 0.4.
+    let private k1Signals : MappedPoints =
+        seriesOver [ intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 0.2); intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 0.4) ]
+
+    let private sessionE1 : Experiment = { prefitE1 with sessionOpt = Some session1 }
+    let private sessionK1 : Experiment = { prefitK1 with sessionOpt = Some session1 }
+
+    /// E4, a Science run of Malus data in `Session 2`, which holds no Dark run.
+    let private sessionE4 : Experiment = { prefitRun (ExperimentId 18) e4 ScienceRun with sessionOpt = Some session2 } |> attachingAt e4File
+
+    /// K2, a Dark run of one reading 0.9, alone in `Session 3`.
+    let private sessionK2 : Experiment =
+        { prefitRun (ExperimentId 19) k2 DarkRun with scan = darkLine; sessionOpt = Some session3 } |> attachingAt k2File
+
+    let private sessionPoints : Map<KitRelativePath, MappedPoints> =
+        Map.ofList
+            [
+                e1File, malusPoints
+                k1File, k1Signals
+                e4File, malusPoints
+                k2File, seriesOver [ intensityAt (MeasuredAbscissa 0.0) (MeasuredIntensity 0.9) ]
+            ]
+
+    let private assertDark (session : SessionName) (expected : float) (data : StudyData) : unit =
+        match data.darkOf session with
+        | Some dark -> Assert.Equal(expected, dark.value, 1e-12)
+        | None -> Assert.Fail($"expected a dark level for '{session.value}'")
+
+    let private darkSessionsOf (data : StudyData) : SessionName list = data.darks |> List.map (fun held -> held.session)
+
+    [<Fact>]
+    let ``a session's dark level is the mean signal of its own dark runs, else of every dark run, and none without a dark run`` () : unit =
+        let runs = [ sessionE1; sessionK1; sessionE4 ]
+        let darkStudy = studyOf (Study.create (StudyName "Darks") [ e1; k1; e4 ] [] runs)
+        let data = dataOf (studyDataOver darkStudy runs sessionPoints)
+
+        // Session 1 reads its own K1; Session 2 holds no Dark run and reads every one the fit reads, which is K1.
+        Assert.Equal<SessionName list>([ session1; session2 ], darkSessionsOf data)
+        assertDark session1 0.3 data
+        assertDark session2 0.3 data
+
+        // With K2 in Session 3, Session 1 still reads only its own K1, and Session 2 every Dark row alike:
+        // (0.2 + 0.4 + 0.9) / 3, not the mean of the runs' means. Session 3 lists no fitted run and takes no level.
+        let withK2 = runs @ [ sessionK2 ]
+        let twoDarkStudy = studyOf (Study.create (StudyName "Two darks") [ e1; k1; e4; k2 ] [] withK2)
+        let twoDark = dataOf (studyDataOver twoDarkStudy withK2 sessionPoints)
+
+        Assert.Equal<SessionName list>([ session1; session2 ], darkSessionsOf twoDark)
+        assertDark session1 0.3 twoDark
+        assertDark session2 0.5 twoDark
+        Assert.Equal<DarkMean option>(None, twoDark.darkOf session3)
+
+        // K1 disabled, the fit reads no Dark run: no session has a dark level, and E1 and E4 are still fitted.
+        let noDarkStudy = studyOf (darkStudy.withExperimentEnablement k1 DisabledInStudy)
+        let noDark = dataOf (studyDataOver noDarkStudy runs sessionPoints)
+
+        Assert.Equal<SessionDark list>([], noDark.darks)
+        Assert.Equal<DarkMean option>(None, noDark.darkOf session1)
+        Assert.Equal<DarkMean option>(None, noDark.darkOf session2)
+        Assert.Equal<ExperimentName list>([ e1; e4 ], noDark.runs |> List.map (fun run -> run.experiment.name))
+
+    [<Fact>]
+    let ``a failed pre-fit check or a dark run that records no signal is refused`` () : unit =
+        let context = prefitContextOver prefitStudy prefitRuns prefitStatuses
+        let missing = MissingDataErr "no measured-data file is attached to this experiment"
+
+        // Step 377's E2 has no data: its failed check answers, naming it.
+        Assert.Equal<Result<StudyData, StudyForwardError>>(
+            Error (PrefitFailedErr (e2, missing)),
+            prefitStudy.prefitWith context [] |> Result.bind (prefitStudy.dataWith context))
+
+        let readingK1As (points : MappedPoints) : ExperimentPrefit list =
+            [
+                { experiment = prefitE1; check = Ok malusPoints; changeOpt = Some DataUnchangedFlag }
+                { experiment = prefitK1; check = Ok points; changeOpt = Some DataUnchangedFlag }
+            ]
+
+        let refusalOf (points : MappedPoints) : Result<StudyData, StudyForwardError> = prefitStudy.dataWith context (readingK1As points)
+
+        let psiDelta : EllipsometricPoint = { waveLength = nanometres 632.8; psi = deg 30.0; delta = deg 90.0; aoiOpt = None }
+        let observation : KeyedObservation = { key = DataRowKey "K1"; observation = { configuration = xCutConfiguration; measured = identityMueller } }
+
+        // A Dark run of Ψ and Δ, of Mueller matrices or of Mueller observations records no signal, nor does one keeping no point.
+        Assert.Equal<Result<StudyData, StudyForwardError>>(
+            Error (DarkReadingErr "K1 records Ψ and Δ, not a signal"),
+            refusalOf (SeriesPoints (EllipsometricData { points = [ psiDelta ] })))
+
+        Assert.Equal<Result<StudyData, StudyForwardError>>(
+            Error (DarkReadingErr "K1 records a Mueller matrix, not a signal"),
+            refusalOf (ColumnPoints [ columnRow [] (MuellerReading identityMueller) ]))
+
+        Assert.Equal<Result<StudyData, StudyForwardError>>(
+            Error (DarkReadingErr "K1 records a Mueller observation, not a signal"),
+            refusalOf (ObservationPoints [ observation ]))
+
+        Assert.Equal<Result<StudyData, StudyForwardError>>(Error (DarkReadingErr "K1 keeps no point"), refusalOf (seriesOver []))
+
+        // A failed check answers before any data is read, even after a Dark run of no signal.
+        let e2Failed : ExperimentPrefit = { experiment = prefitE2; check = Error missing; changeOpt = None }
+
+        Assert.Equal<Result<StudyData, StudyForwardError>>(
+            Error (PrefitFailedErr (e2, missing)),
+            prefitStudy.dataWith context (readingK1As (SeriesPoints (EllipsometricData { points = [ psiDelta ] })) @ [ e2Failed ]))

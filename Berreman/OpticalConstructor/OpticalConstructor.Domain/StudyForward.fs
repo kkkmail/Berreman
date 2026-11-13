@@ -48,6 +48,10 @@ module StudyForward =
         | MissingStudyRunErr of reason : string
         /// The kit could not report the status of a run's attached data file (spec 0050 S11.2).
         | StudyRunKitErr of error : KitError
+        /// A run the fit reads whose pre-fit check failed (spec 0050 S11.2).
+        | PrefitFailedErr of experiment : ExperimentName * error : PrefitError
+        /// A Dark run whose kept rows are not all signals, or that keeps none (spec 0050 S11.2; 001 §L).
+        | DarkReadingErr of reason : string
 
         member this.describe : string =
             match this with
@@ -69,6 +73,8 @@ module StudyForward =
                 $"the residual cannot be formed: {cause}"
             | MissingStudyRunErr reason -> $"the kit has no such experiment: {reason}"
             | StudyRunKitErr error -> $"the kit cannot report the data's status: {error.describe}"
+            | PrefitFailedErr (experiment, error) -> $"the experiment is not ready for a fit: {experiment.value}: {error.describe}"
+            | DarkReadingErr reason -> $"a dark run does not record a signal: {reason}"
 
     /// What a detector records, predicted or measured: an intensity detector's signal, an ellipsometer's Ψ and Δ, or a
     /// polarimeter's absolute Mueller matrix, its m₀₀ the throughput as S9.2's readings hold it (spec 0050 S11.2).
@@ -76,6 +82,13 @@ module StudyForward =
         | RecordedSignal of MeasuredIntensity
         | RecordedPsiDelta of PsiDelta
         | RecordedMueller of MuellerMatrix
+
+        /// What the reading records, as a refusal names it (spec 0050 S11.2).
+        member this.kindText : string =
+            match this with
+            | RecordedSignal _ -> "a signal"
+            | RecordedPsiDelta _ -> "Ψ and Δ"
+            | RecordedMueller _ -> "a Mueller matrix"
 
     /// One measured point with what fixes its prediction: the scan settings it was taken at, at its own wavelength when it
     /// carries one, or an observation carrying its own configuration (spec 0050 S11.2).
@@ -705,12 +718,6 @@ module StudyForward =
         /// This prediction's residual against its row's measured reading: a signal's difference, Ψ's and Δ's, Δ's taken
         /// on the circle in radians, or a Mueller matrix's `observationResidual` and `throughputResidual` (spec 0050 S11.2).
         member this.residualAgainst (measured : RecordedReading) : Result<RowResidual, StudyForwardError> =
-            let kindOf (reading : RecordedReading) : string =
-                match reading with
-                | RecordedSignal _ -> "a signal"
-                | RecordedPsiDelta _ -> "Ψ and Δ"
-                | RecordedMueller _ -> "a Mueller matrix"
-
             match this, measured with
             | RecordedSignal predicted, RecordedSignal recorded ->
                 let elements : ResidualVector = ResidualVector [| predicted.value - recorded.value |]
@@ -734,7 +741,7 @@ module StudyForward =
             | RecordedSignal _, _
             | RecordedPsiDelta _, _
             | RecordedMueller _, _ ->
-                Error (ReadingMismatchErr $"the prediction is {kindOf this}, and the measured reading {kindOf measured}")
+                Error (ReadingMismatchErr $"the prediction is {this.kindText}, and the measured reading {measured.kindText}")
 
     /// One run a fit reads, checked before the fit: its kept, validated points or why it is not ready, and its data's
     /// change flag, `None` without data, which the check already answers (spec 0050 S11.2; 001 §E, §R).
@@ -781,3 +788,119 @@ module StudyForward =
                             Some prefit)
 
             this.enabledExperiments |> List.map prefitOf |> ItemEvaluation.sequenced |> Result.map (List.choose id)
+
+    /// One fitted run as a study's residual reads it: its kept, checked points placed on its scan (spec 0050 S11.2).
+    type StudyRun =
+        {
+            experiment : Experiment
+            rows : MeasuredRow list
+        }
+
+    /// A session's dark level, read from the Dark runs a fit reads (spec 0050 S11.2; 001 §L).
+    type SessionDark =
+        {
+            session : SessionName
+            dark : MuellerReconstruction.DarkMean
+        }
+
+    /// What a study's residual reads, gathered once from its pre-fit: each fitted run's rows in study order and each
+    /// session's dark level (spec 0050 S11.2; 001 §L).
+    type StudyData =
+        {
+            runs : StudyRun list
+            darks : SessionDark list
+        }
+
+        /// The session's dark level, `None` when the fit reads no Dark run for it (spec 0050 S11.2).
+        member this.darkOf (session : SessionName) : MuellerReconstruction.DarkMean option =
+            this.darks |> List.tryFind (fun held -> held.session = session) |> Option.map (fun held -> held.dark)
+
+    type Study with
+
+        /// The data of `prefits`: each fitted run's rows in order; per session listing one, the mean signal of every row of
+        /// its Dark runs, else of every Dark run. A failed check, then a Dark run of no signal, refuses (spec 0050 S11.2).
+        member this.dataWith (context : StudyForwardContext) (prefits : ExperimentPrefit list) : Result<StudyData, StudyForwardError> =
+            let checkedOf (prefit : ExperimentPrefit) : Result<ExperimentPrefit * MappedPoints, StudyForwardError> =
+                prefit.check
+                |> Result.map (fun points -> prefit, points)
+                |> Result.mapError (fun error -> PrefitFailedErr (prefit.experiment.name, error))
+
+            let runOf (prefit : ExperimentPrefit, points : MappedPoints) : Result<StudyRun option, StudyForwardError> =
+                match prefit.experiment.role.studyUse with
+                | ResidualRunUse ->
+                    points.measuredRowsFor prefit.experiment.scan
+                    |> Result.map (fun rows ->
+                        let run : StudyRun = { experiment = prefit.experiment; rows = rows }
+                        Some run)
+                | DarkLevelRunUse
+                | UnreadRunUse -> Ok None
+
+            let signalOf (name : ExperimentName) (row : MeasuredRow) : Result<MeasuredIntensity, StudyForwardError> =
+                match row with
+                | SettingsRow (_, _, RecordedSignal signal) -> Ok signal
+                | SettingsRow (_, _, (RecordedPsiDelta _ | RecordedMueller _ as measured)) ->
+                    Error (DarkReadingErr $"{name.value} records {measured.kindText}, not a signal")
+                | ObservationRow _ -> Error (DarkReadingErr $"{name.value} records a Mueller observation, not a signal")
+
+            // A Dark run keeping no point is refused: a session reading only it would average nothing (spec 0050 S11.2).
+            let darkSignalsOf (prefit : ExperimentPrefit, points : MappedPoints) : Result<(ExperimentName * MeasuredIntensity list) option, StudyForwardError> =
+                let experiment = prefit.experiment
+
+                match experiment.role.studyUse with
+                | DarkLevelRunUse ->
+                    points.measuredRowsFor experiment.scan
+                    |> Result.bind (fun rows ->
+                        match rows with
+                        | [] -> Error (DarkReadingErr $"{experiment.name.value} keeps no point")
+                        | _ :: _ -> rows |> List.map (signalOf experiment.name) |> ItemEvaluation.sequenced)
+                    |> Result.map (fun signals -> Some (experiment.name, signals))
+                | ResidualRunUse
+                | UnreadRunUse -> Ok None
+
+            let readRuns = prefits |> List.map (fun prefit -> prefit.experiment)
+
+            prefits
+            |> List.map checkedOf
+            |> ItemEvaluation.sequenced
+            |> Result.bind (fun checkedRuns ->
+                checkedRuns
+                |> List.map runOf
+                |> ItemEvaluation.sequenced
+                |> Result.bind (fun runOpts ->
+                    checkedRuns
+                    |> List.map darkSignalsOf
+                    |> ItemEvaluation.sequenced
+                    |> Result.map (fun darkOpts ->
+                        let runs = List.choose id runOpts
+                        let signals : Map<ExperimentName, MeasuredIntensity list> = darkOpts |> List.choose id |> Map.ofList
+
+                        let listsFitted (session : StudySession) : bool =
+                            session.experiments |> List.exists (fun name -> runs |> List.exists (fun run -> run.experiment.name = name))
+
+                        // Every row of every Dark run weighs alike, not each run's mean (spec 0050 S11.2; 001 §L).
+                        let sessionDarkOf (session : StudySession) : SessionDark option =
+                            let darkRows =
+                                session.darkRunsIn readRuns
+                                |> List.collect (fun run ->
+                                    match signals |> Map.tryFind run with
+                                    | Some held -> held
+                                    | None -> [])
+
+                            match darkRows with
+                            | [] -> None
+                            | _ :: _ ->
+                                let dark : SessionDark =
+                                    {
+                                        session = session.name
+                                        dark = darkRows |> List.averageBy (fun signal -> signal.value) |> MuellerReconstruction.DarkMean
+                                    }
+
+                                Some dark
+
+                        let data : StudyData =
+                            {
+                                runs = runs
+                                darks = this.sessionsIn context.kit.experiments |> List.filter listsFitted |> List.choose sessionDarkOf
+                            }
+
+                        data)))
