@@ -180,6 +180,7 @@
         <Compile Include="MuellerInverse.fs" />
         <Compile Include="ItemEvaluation.fs" />
         <Compile Include="ImportProfiles.fs" />
+        <Compile Include="Studies.fs" />
         <Compile Include="ExperimentDataProxy.fs" />
         <Compile Include="ExperimentDataLoad.fs" />
         <Compile Include="DataSplits.fs" />

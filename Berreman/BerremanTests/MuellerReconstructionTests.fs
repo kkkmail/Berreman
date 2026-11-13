@@ -5,6 +5,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.ItemModels
@@ -493,9 +494,9 @@ type MuellerReconstructionTests() =
                 $"""Stage-1 constants (tol {MuellerReference.stage1Tol}): {String.concat "; " [ for (n, a, e) in constants -> $"{n} {a} vs {e} (Δ {abs (a - e)})" ]}""")
 
     [<Fact>]
-    member _.``Stage-3 signal reduction pins darkSubtract, scalarGain, airIdentityPred, correctSignal and every per-family familyGain rule (always-run)`` () =
-        // Spec 0042 (009) acceptance (always-run, deterministic — fixed-literal timestamps, no ambient clock):
-        // pin the Stage-3 reduction primitives on known values, and familyGain firing each per-family rule.
+    member _.``Stage-3 signal reduction pins darkSubtract, scalarGain, airIdentityPred and correctSignal (always-run)`` () =
+        // Spec 0042 (009) acceptance (always-run, deterministic): pin the Stage-3 reduction primitives on known values.
+        // The per-family gain rules moved to the session gain models (spec 0050 S11.1, StudySessionTests).
 
         // scalarGain — a proportional pair signal = 2·model has best scalar gain exactly 2 …
         let modelValues = [| 1.0; 2.0; 3.0; 4.0 |]
@@ -522,40 +523,6 @@ type MuellerReconstructionTests() =
         let a = RealVector4.create [ 2.0; -1.0; 0.4; 0.8 ]
         let expectedDot = 2.0 * 1.0 + (-1.0) * 0.5 + 0.4 * (-0.3) + 0.8 * 0.2
         Assert.True(abs ((airIdentityPred s a).value - expectedDot) < allowedDiff, $"airIdentityPred = {(airIdentityPred s a).value}, expected {expectedDot}")
-
-        // familyGain — one calibration bundle, then assert each per-family rule fires (fixed-literal times).
-        let t0 = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero)
-        let cal =
-            {
-                lpLp = { gainA = AirGain 10.0; gainB = AirGain 20.0 }                            // mean → 15.0
-                lpCpl = { gainA = AirGain 4.0; gainB = AirGain 6.0 }                             // mean → 5.0
-                cplLp = { gainPre = AirGain 100.0; gainPost = AirGain 200.0; splitTime = t0 }    // split at t0
-                cplCpl = Day2Single (AirGain 42.0)                                               // single AIR block → 42.0
-            }
-
-        // LP-LP / LP-CPL — the mean of the two AIR repeats (time-independent).
-        Assert.True(abs ((familyGain LpLp cal t0).value - 15.0) < allowedDiff, $"familyGain LpLp = {(familyGain LpLp cal t0).value}")
-        Assert.True(abs ((familyGain LpCpl cal t0).value - 5.0) < allowedDiff, $"familyGain LpCpl = {(familyGain LpCpl cal t0).value}")
-
-        // CPL-LP — split at the BullshitCheck timestamp: strictly before → pre, at/after → post.
-        let before = t0.AddMinutes(-5.0)
-        let after = t0.AddMinutes(5.0)
-        Assert.True(abs ((familyGain CplLp cal before).value - 100.0) < allowedDiff, $"familyGain CplLp (before) = {(familyGain CplLp cal before).value}")
-        Assert.True(abs ((familyGain CplLp cal after).value - 200.0) < allowedDiff, $"familyGain CplLp (after) = {(familyGain CplLp cal after).value}")
-        Assert.True(abs ((familyGain CplLp cal t0).value - 200.0) < allowedDiff, $"familyGain CplLp (at split) = {(familyGain CplLp cal t0).value}")
-
-        // CPL-CPL day2 — the single AIR block's gain.
-        Assert.True(abs ((familyGain CplCpl cal t0).value - 42.0) < allowedDiff, $"familyGain CplCpl (day2) = {(familyGain CplCpl cal t0).value}")
-
-        // CPL-CPL day1 — time-interpolated between the two AIR blocks (10:00 → 14:00, gains 30 → 50).
-        let tStart = System.DateTimeOffset(2026, 7, 15, 10, 0, 0, System.TimeSpan.Zero)
-        let tEnd = System.DateTimeOffset(2026, 7, 15, 14, 0, 0, System.TimeSpan.Zero)
-        let calDay1 = { cal with cplCpl = Day1Interp { gainStart = AirGain 30.0; timeStart = tStart; gainEnd = AirGain 50.0; timeEnd = tEnd } }
-        Assert.True(abs ((familyGain CplCpl calDay1 t0).value - 40.0) < allowedDiff, $"familyGain CplCpl (day1 midpoint) = {(familyGain CplCpl calDay1 t0).value}")   // 12:00 → 0.5·30 + 0.5·50
-        Assert.True(abs ((familyGain CplCpl calDay1 tStart).value - 30.0) < allowedDiff, $"familyGain CplCpl (day1 start) = {(familyGain CplCpl calDay1 tStart).value}")
-        Assert.True(abs ((familyGain CplCpl calDay1 tEnd).value - 50.0) < allowedDiff, $"familyGain CplCpl (day1 end) = {(familyGain CplCpl calDay1 tEnd).value}")
-        Assert.True(abs ((familyGain CplCpl calDay1 (tStart.AddHours(-1.0))).value - 30.0) < allowedDiff, $"familyGain CplCpl (day1 clamp below) = {(familyGain CplCpl calDay1 (tStart.AddHours(-1.0))).value}")
-        Assert.True(abs ((familyGain CplCpl calDay1 (tEnd.AddHours(1.0))).value - 50.0) < allowedDiff, $"familyGain CplCpl (day1 clamp above) = {(familyGain CplCpl calDay1 (tEnd.AddHours(1.0))).value}")
 
     [<Fact>]
     member _.``reconstruct recovers a seeded MuellerMatrix from a synthetic full-rank design at rank 16 (always-run)`` () =
@@ -674,25 +641,25 @@ type MuellerReconstructionTests() =
             | Ok staged -> staged
             | Error e -> failwith $"the staged Mueller path failed: %A{e}"
 
-        // ---- The nine AIR gains reproduce `gain_summary` to `MuellerReference.dataMatrixTol`, all reported at once. ----
-        let describeGainDeviation (key : string) (expected : AirGain) (actual : AirGain) : float * string =
-            let deviation = abs (actual.value - expected.value)
-            deviation, $"{key} {deviation}"
+        // ---- The nine AIR gains reproduce `gain_summary` to `MuellerReference.dataMatrixTol`, all reported at once;
+        //      each is read from `airGains` by its run, and a run missing from it fails the fact (spec 0050 S11.1). ----
+        let describeGainDeviation (key : string) (expected : AirGain) (run : ExperimentName) : float * string =
+            match staged.airGains |> List.tryFind (fun anchor -> anchor.run = run) with
+            | Some anchor ->
+                let deviation = abs (anchor.gain.value - expected.value)
+                deviation, $"{key} {deviation}"
+            | None -> failwith $"the staged path answers no AIR gain for {run.value}"
 
-        let day2Gain =
-            match staged.gains.cplCpl with
-            | Day2Single gain -> gain
-            | Day1Interp _ -> failwith "the staged path's gain bundle carries the day-1 CPL-CPL interpolation, not the day-2 block's gain"
         let gainDeviations =
-            [ describeGainDeviation "lp_lp.gain_air2" MuellerReference.lpLpGainA staged.gains.lpLp.gainA
-              describeGainDeviation "lp_lp.gain_air2r" MuellerReference.lpLpGainB staged.gains.lpLp.gainB
-              describeGainDeviation "lp_cpl.gain_air2" MuellerReference.lpCplGainA staged.gains.lpCpl.gainA
-              describeGainDeviation "lp_cpl.gain_air2r" MuellerReference.lpCplGainB staged.gains.lpCpl.gainB
-              describeGainDeviation "cpl_lp.gain_pre_air2" MuellerReference.cplLpGainPre staged.gains.cplLp.gainPre
-              describeGainDeviation "cpl_lp.gain_post_air2r" MuellerReference.cplLpGainPost staged.gains.cplLp.gainPost
-              describeGainDeviation "cpl_cpl_day1.gain_start" MuellerReference.cplCplDay1GainStart staged.cplCplDay1Gain.gainStart
-              describeGainDeviation "cpl_cpl_day1.gain_end" MuellerReference.cplCplDay1GainEnd staged.cplCplDay1Gain.gainEnd
-              describeGainDeviation "cpl_cpl_day2.gain" MuellerReference.cplCplDay2Gain day2Gain ]
+            [ describeGainDeviation "lp_lp.gain_air2" MuellerReference.lpLpGainA (ExperimentName "LP-(AIR#0)-LP-2")
+              describeGainDeviation "lp_lp.gain_air2r" MuellerReference.lpLpGainB (ExperimentName "LP-(AIR#0)-LP-2R")
+              describeGainDeviation "lp_cpl.gain_air2" MuellerReference.lpCplGainA (ExperimentName "LP-(AIR#0)-CPL-2")
+              describeGainDeviation "lp_cpl.gain_air2r" MuellerReference.lpCplGainB (ExperimentName "LP-(AIR#0)-CPL-2R")
+              describeGainDeviation "cpl_lp.gain_pre_air2" MuellerReference.cplLpGainPre (ExperimentName "CPL-(AIR#0)-LP-2")
+              describeGainDeviation "cpl_lp.gain_post_air2r" MuellerReference.cplLpGainPost (ExperimentName "CPL-(AIR#0)-LP-2R")
+              describeGainDeviation "cpl_cpl_day1.gain_start" MuellerReference.cplCplDay1GainStart (ExperimentName "CPL-(AIR#0)-CPL")
+              describeGainDeviation "cpl_cpl_day1.gain_end" MuellerReference.cplCplDay1GainEnd (ExperimentName "CPL-(AIR#0)-CPL-BR")
+              describeGainDeviation "cpl_cpl_day2.gain" MuellerReference.cplCplDay2Gain (ExperimentName "CPL-(AIR#0)-CPL-2") ]
         let worstGainDeviation = gainDeviations |> List.map fst |> List.max
         Assert.True(
             worstGainDeviation < MuellerReference.dataMatrixTol,

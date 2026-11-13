@@ -6,6 +6,8 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.MuellerReconstruction
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Studies
 
 /// The optics-mueller reference pipeline (spec 0042 §7.2) as the study's staged Mueller path: a pure function of the lab
 /// files' capture rows and a `MuellerSolverProxy`, promoted from `MuellerReconstructionTests` by spec 0050 S10.3.
@@ -29,6 +31,8 @@ module StagedMuellerPath =
         | EmptyCaptureSetErr of reason : string
         | AirCalibrationFitErr of family : Family * error : SolverError
         | ObjectReconstructionErr of kind : MatrixKind * error : SolverError
+        /// A session's gain model the AIR gains cannot resolve (spec 0050 S11.1).
+        | SessionGainErr of error : StudyError
 
     /// The stage-1 constants of `matrix_step1_air_fit.py` `main`, with the stage-2 models `matrix_glue.py`
     /// `load_step1_models` builds from them as members.
@@ -165,20 +169,20 @@ module StagedMuellerPath =
             productRmse = combinedSystem.residualRmseAt cascade.vecColumnMajor
         }
 
-    /// The staged path's answer: the stage-1 constants, the AIR gain rules (`cplCpl` the day-2 block's `Day2Single`),
-    /// the day-1 CPL-CPL interpolation, M_QZ, M_LR and M_{QZ+LR} with their rank and residual, and the product check.
+    /// The staged path's answer: the stage-1 constants, the nine AIR runs' gains in the reference order (LP-LP, LP-CPL
+    /// and CPL-LP each `-2` then `-2R`, then `CPL-(AIR#0)-CPL`, `-CPL-BR` and `-CPL-2`, spec 0050 S11.1), M_QZ, M_LR and
+    /// M_{QZ+LR} with their rank and residual, and the product check.
     type StagedMuellerData =
         {
             stageOne : StageOneCalibrationData
-            gains : GainCalibration
-            cplCplDay1Gain : InterpolatedGain
+            airGains : AirAnchorGain list
             qz : ReconstructedMatrix
             lr : ReconstructedMatrix
             qzLr : ReconstructedMatrix
             productCheck : ProductCheckData
         }
 
-    /// An AIR block holding at least one capture row: the rows of its file whose experiment is its label.
+    /// An AIR block holding at least one capture row: the rows of its file whose experiment is its run.
     type private AirBlockRows =
         {
             firstRow : MuellerRawRow
@@ -194,11 +198,11 @@ module StagedMuellerPath =
             let meanDelta = this.rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
             System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
 
-    /// The AIR block `assign_gain_model` selects by label (`matrix_fit_linear.py:94-144`); none answers
-    /// `EmptyCaptureSetErr` naming the label.
-    let private airBlock (rows : MuellerRawRow list) (label : MuellerExperimentLabel) : Result<AirBlockRows, StagedMuellerError> =
-        match rows |> List.filter (fun r -> r.experiment = label) with
-        | [] -> Error (EmptyCaptureSetErr $"the AIR block {label.value} holds no capture row, so its gain has no fit")
+    /// The AIR block `assign_gain_model` selects (`matrix_fit_linear.py:94-144`): the rows whose experiment, read as a
+    /// name, is the run; none answers `EmptyCaptureSetErr` naming the run.
+    let private airBlock (rows : MuellerRawRow list) (run : ExperimentName) : Result<AirBlockRows, StagedMuellerError> =
+        match rows |> List.filter (fun r -> r.experiment.nameText.toExperimentName = Ok run) with
+        | [] -> Error (EmptyCaptureSetErr $"the AIR block {run.value} holds no capture row, so its gain has no fit")
         | firstRow :: laterRows -> Ok { firstRow = firstRow; laterRows = laterRows }
 
     /// The AIR scalar gain fitting `signal_dark_sub ~ gain * (a_eff . s_eff)` over one block (`fit_air_gain` +
@@ -209,103 +213,121 @@ module StagedMuellerPath =
         let signals = block.rows |> List.map (fun r -> darkSubtract darkMean r.avgTotal) |> List.toArray
         scalarGain signals preds
 
-    /// LP-LP and LP-CPL take the mean of two AIR repeats of their file.
-    let private repeatPairGain
+    // The reference procedure's nine AIR runs: in a kit they are experiments of these names, which a gain model anchors
+    // to (spec 0050 S11.1; 001 §L).
+    let private lpLpAir = ExperimentName "LP-(AIR#0)-LP-2"
+    let private lpLpAirRepeat = ExperimentName "LP-(AIR#0)-LP-2R"
+    let private lpCplAir = ExperimentName "LP-(AIR#0)-CPL-2"
+    let private lpCplAirRepeat = ExperimentName "LP-(AIR#0)-CPL-2R"
+    let private cplLpAir = ExperimentName "CPL-(AIR#0)-LP-2"
+    let private cplLpAirRepeat = ExperimentName "CPL-(AIR#0)-LP-2R"
+    let private cplCplDay1Opening = ExperimentName "CPL-(AIR#0)-CPL"
+    let private cplCplDay1Closing = ExperimentName "CPL-(AIR#0)-CPL-BR"
+    let private cplCplDay2Air = ExperimentName "CPL-(AIR#0)-CPL-2"
+
+    // The six sessions' gain models, `assign_gain_model`'s rules: the CPL-LP file is two sessions split at the bullshit
+    // check, and the CPL-CPL days are two files (spec 0050 S11.1).
+    let private lpLpGainModel = AnchoredSessionGain [ lpLpAir; lpLpAirRepeat ]
+    let private lpCplGainModel = AnchoredSessionGain [ lpCplAir; lpCplAirRepeat ]
+    let private cplLpPreCheckGainModel = AnchoredSessionGain [ cplLpAir ]
+    let private cplLpPostCheckGainModel = AnchoredSessionGain [ cplLpAirRepeat ]
+    let private cplCplDay1GainModel = InterpolatedSessionGain { opening = cplCplDay1Opening; closing = cplCplDay1Closing }
+    let private cplCplDay2GainModel = AnchoredSessionGain [ cplCplDay2Air ]
+
+    /// One AIR run's anchor: its block in `rows`, the gain `gainOf` fits over it and the block's mean capture time.
+    let private airAnchor
         (gainOf : AirBlockRows -> AirGain)
         (rows : MuellerRawRow list)
-        (labelA : MuellerExperimentLabel)
-        (labelB : MuellerExperimentLabel)
-        : Result<RepeatPairGain, StagedMuellerError> =
-        airBlock rows labelA
-        |> Result.bind (fun blockA ->
-            airBlock rows labelB |> Result.map (fun blockB -> { gainA = gainOf blockA; gainB = gainOf blockB }))
+        (run : ExperimentName)
+        : Result<AirAnchorGain, StagedMuellerError> =
+        airBlock rows run |> Result.map (fun block -> { run = run; gain = gainOf block; capturedAt = block.meanTime })
 
-    /// CPL-LP splits at the bullshit-check time.
-    let private splitAirGain
+    /// The anchors of an AIR run and its repeat in one file, in that order.
+    let private airAnchorPair
         (gainOf : AirBlockRows -> AirGain)
         (rows : MuellerRawRow list)
-        (labelPre : MuellerExperimentLabel)
-        (labelPost : MuellerExperimentLabel)
-        (splitTime : System.DateTimeOffset)
-        : Result<SplitGain, StagedMuellerError> =
-        airBlock rows labelPre
-        |> Result.bind (fun blockPre ->
-            airBlock rows labelPost
-            |> Result.map (fun blockPost -> { gainPre = gainOf blockPre; gainPost = gainOf blockPost; splitTime = splitTime }))
+        (run : ExperimentName)
+        (repeat : ExperimentName)
+        : Result<AirAnchorGain list, StagedMuellerError> =
+        airAnchor gainOf rows run
+        |> Result.bind (fun first -> airAnchor gainOf rows repeat |> Result.map (fun second -> [ first; second ]))
 
-    /// CPL-CPL day 1 time-interpolates from its opening AIR block to its closing one.
-    let private interpolatedAirGain
-        (gainOf : AirBlockRows -> AirGain)
-        (rows : MuellerRawRow list)
-        (labelStart : MuellerExperimentLabel)
-        (labelEnd : MuellerExperimentLabel)
-        : Result<InterpolatedGain, StagedMuellerError> =
-        airBlock rows labelStart
-        |> Result.bind (fun blockStart ->
-            airBlock rows labelEnd
-            |> Result.map (fun blockEnd ->
-                {
-                    gainStart = gainOf blockStart
-                    timeStart = blockStart.meanTime
-                    gainEnd = gainOf blockEnd
-                    timeEnd = blockEnd.meanTime
-                }))
-
-    /// The stage-2 AIR gain rules (`assign_gain_model`): the bundle whose `cplCpl` is the day-2 block's, and the day-1
-    /// CPL-CPL interpolation, each block in the reference's order. The nine labels are the reference procedure's own,
-    /// literals here until spec 0050 S11.1 turns them into session data.
-    let private airGainRules
+    /// The nine AIR runs' anchors in the reference order, each fitted with its file's source and analyzer.
+    let private airAnchors
         (stageOne : StageOneCalibrationData)
-        (splitTime : System.DateTimeOffset)
         (captures : StagedMuellerCaptureData)
-        : Result<GainCalibration * InterpolatedGain, StagedMuellerError> =
+        : Result<AirAnchorGain list, StagedMuellerError> =
         let lpGain = fitAirGain stageOne.darkMean LpSource
         let cplGain = fitAirGain stageOne.darkMean stageOne.cplSource
 
-        repeatPairGain (lpGain stageOne.lpAnalyzer) captures.lpLpRows
-            (MuellerExperimentLabel "LP-(AIR#0)-LP-2") (MuellerExperimentLabel "LP-(AIR#0)-LP-2R")
+        airAnchorPair (lpGain stageOne.lpAnalyzer) captures.lpLpRows lpLpAir lpLpAirRepeat
         |> Result.bind (fun lpLp ->
-            repeatPairGain (lpGain stageOne.cplAnalyzer) captures.lpCplRows
-                (MuellerExperimentLabel "LP-(AIR#0)-CPL-2") (MuellerExperimentLabel "LP-(AIR#0)-CPL-2R")
+            airAnchorPair (lpGain stageOne.cplAnalyzer) captures.lpCplRows lpCplAir lpCplAirRepeat
             |> Result.bind (fun lpCpl ->
-                splitAirGain (cplGain stageOne.lpAnalyzer) captures.cplLpRows
-                    (MuellerExperimentLabel "CPL-(AIR#0)-LP-2") (MuellerExperimentLabel "CPL-(AIR#0)-LP-2R") splitTime
+                airAnchorPair (cplGain stageOne.lpAnalyzer) captures.cplLpRows cplLpAir cplLpAirRepeat
                 |> Result.bind (fun cplLp ->
-                    interpolatedAirGain (cplGain stageOne.cplAnalyzer) captures.cplCplDay1Rows
-                        (MuellerExperimentLabel "CPL-(AIR#0)-CPL") (MuellerExperimentLabel "CPL-(AIR#0)-CPL-BR")
-                    |> Result.bind (fun cplCplDay1Gain ->
-                        airBlock captures.cplCplDay2Rows (MuellerExperimentLabel "CPL-(AIR#0)-CPL-2")
-                        |> Result.map (fun day2Block ->
-                            let gains : GainCalibration =
+                    airAnchorPair (cplGain stageOne.cplAnalyzer) captures.cplCplDay1Rows cplCplDay1Opening cplCplDay1Closing
+                    |> Result.bind (fun cplCplDay1 ->
+                        airAnchor (cplGain stageOne.cplAnalyzer) captures.cplCplDay2Rows cplCplDay2Air
+                        |> Result.map (fun cplCplDay2 -> lpLp @ lpCpl @ cplLp @ cplCplDay1 @ [ cplCplDay2 ])))))
+
+    /// The rules the six sessions' gain models resolve to.
+    type private StagedSessionRules =
+        {
+            lpLp : SessionGainRule
+            lpCpl : SessionGainRule
+            cplLpPreSplit : SessionGainRule
+            cplLpPostSplit : SessionGainRule
+            cplCplDay1 : SessionGainRule
+            cplCplDay2 : SessionGainRule
+        }
+
+    /// Each session's gain model through `ruleWith` over the AIR anchors; the first refused answers `SessionGainErr`.
+    let private sessionRules (anchors : AirAnchorGain list) : Result<StagedSessionRules, StagedMuellerError> =
+        let ruleOf (model : SessionGainModel) : Result<SessionGainRule, StagedMuellerError> =
+            model.ruleWith anchors |> Result.mapError SessionGainErr
+
+        ruleOf lpLpGainModel
+        |> Result.bind (fun lpLp ->
+            ruleOf lpCplGainModel
+            |> Result.bind (fun lpCpl ->
+                ruleOf cplLpPreCheckGainModel
+                |> Result.bind (fun cplLpPreSplit ->
+                    ruleOf cplLpPostCheckGainModel
+                    |> Result.bind (fun cplLpPostSplit ->
+                        ruleOf cplCplDay1GainModel
+                        |> Result.bind (fun cplCplDay1 ->
+                            ruleOf cplCplDay2GainModel
+                            |> Result.map (fun cplCplDay2 ->
                                 {
                                     lpLp = lpLp
                                     lpCpl = lpCpl
-                                    cplLp = cplLp
-                                    cplCpl = Day2Single (cplGain stageOne.cplAnalyzer day2Block)
-                                }
+                                    cplLpPreSplit = cplLpPreSplit
+                                    cplLpPostSplit = cplLpPostSplit
+                                    cplCplDay1 = cplCplDay1
+                                    cplCplDay2 = cplCplDay2
+                                }))))))
 
-                            gains, cplCplDay1Gain)))))
-
-    /// A science row's effective source, effective analyzer and corrected signal (`enrich_frame`). φ comes from the
-    /// reading `buildDesign` kept the row by, so the label is read once (spec 0050 S10.3).
+    /// A science row's effective source, effective analyzer and corrected signal (`enrich_frame`), divided by its
+    /// session's gain rule at its capture time (spec 0050 S11.1). φ comes from the reading `buildDesign` kept the row
+    /// by, so the label is read once (spec 0050 S10.3).
     let private prepareRow
         (darkMean : DarkMean)
         (source : SourceModel)
         (analyzer : AnalyzerModel)
-        (family : Family)
-        (gains : GainCalibration)
+        (ruleOf : MuellerRawRow -> SessionGainRule)
         (row : MuellerRawRow)
         (reading : NameReading)
         : StokesVector * RealVector4 * DetectorIntensity =
         let phi = reading.objectPhi
         let sEff = effectiveSource phi source.baseStokes
         let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer row.description)
-        let signal = correctSignal darkMean row.avgTotal (familyGain family gains row.capturedAt)
+        let signal = correctSignal darkMean row.avgTotal ((ruleOf row).gainAt row.capturedAt)
         sEff, aEff, signal
 
-    /// Stages 2 and 3 after `calibrateStageOne` (`matrix_fit_linear.py` `main`): the AIR gain rules, then M_QZ, M_LR
-    /// and M_{QZ+LR}, each the five families' designs over `excluded` solved by `reconstruct`, then the product check.
-    /// The first missing capture set or failed solve answers its typed error.
+    /// Stages 2 and 3 after `calibrateStageOne` (`matrix_fit_linear.py` `main`): the nine AIR gains and the sessions' gain
+    /// rules, then M_QZ, M_LR and M_{QZ+LR}, each the five files' designs over `excluded` solved by `reconstruct`, then
+    /// the product check. The first missing capture set, refused gain model or failed solve answers its typed error.
     let reconstructStaged
         (solver : MuellerSolverProxy)
         (excluded : ExcludedPoint list)
@@ -319,44 +341,47 @@ module StagedMuellerPath =
                 // `assign_gain_model` reads the first check; the earliest capture is that same check.
                 let splitTime = (checkRows |> List.minBy (fun r -> r.capturedAt)).capturedAt
 
-                airGainRules stageOne splitTime captures
-                |> Result.bind (fun (gains, cplCplDay1Gain) ->
-                    let darkMean = stageOne.darkMean
-                    let day1Gains = { gains with cplCpl = Day1Interp cplCplDay1Gain }
+                airAnchors stageOne captures
+                |> Result.bind (fun anchors ->
+                    sessionRules anchors
+                    |> Result.bind (fun rules ->
+                        let darkMean = stageOne.darkMean
 
-                    // Every science file is one family; the CPL-CPL days are two files with two gain rules.
-                    let families : (MuellerRawRow list * (MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity)) list =
-                        [ captures.lpLpRows,       prepareRow darkMean LpSource           stageOne.lpAnalyzer  LpLp   gains
-                          captures.lpCplRows,      prepareRow darkMean LpSource           stageOne.cplAnalyzer LpCpl  gains
-                          captures.cplLpRows,      prepareRow darkMean stageOne.cplSource stageOne.lpAnalyzer  CplLp  gains
-                          captures.cplCplDay1Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer CplCpl day1Gains
-                          captures.cplCplDay2Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer CplCpl gains ]
+                        // A CPL-LP row captured strictly before the split is the pre-split session's (`assign_gain_model`).
+                        let cplLpRuleOf (row : MuellerRawRow) : SessionGainRule =
+                            if row.capturedAt < splitTime then rules.cplLpPreSplit else rules.cplLpPostSplit
 
-                    let systemOf (kind : MatrixKind) : LeastSquaresSystem =
-                        let parts = families |> List.map (fun (rows, projection) -> buildDesign projection excluded rows kind)
-                        {
-                            design = parts |> List.map (fun p -> p.design) |> Array.concat
-                            rhs = parts |> List.map (fun p -> p.rhs) |> Array.concat
-                        }
+                        let families : (MuellerRawRow list * (MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity)) list =
+                            [ captures.lpLpRows,       prepareRow darkMean LpSource           stageOne.lpAnalyzer  (fun _ -> rules.lpLp)
+                              captures.lpCplRows,      prepareRow darkMean LpSource           stageOne.cplAnalyzer (fun _ -> rules.lpCpl)
+                              captures.cplLpRows,      prepareRow darkMean stageOne.cplSource stageOne.lpAnalyzer  cplLpRuleOf
+                              captures.cplCplDay1Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer (fun _ -> rules.cplCplDay1)
+                              captures.cplCplDay2Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer (fun _ -> rules.cplCplDay2) ]
 
-                    let reconstructObject (kind : MatrixKind) (system : LeastSquaresSystem) : Result<ReconstructedMatrix, StagedMuellerError> =
-                        reconstruct solver system |> Result.mapError (fun error -> ObjectReconstructionErr (kind, error))
+                        let systemOf (kind : MatrixKind) : LeastSquaresSystem =
+                            let parts = families |> List.map (fun (rows, projection) -> buildDesign projection excluded rows kind)
+                            {
+                                design = parts |> List.map (fun p -> p.design) |> Array.concat
+                                rhs = parts |> List.map (fun p -> p.rhs) |> Array.concat
+                            }
 
-                    reconstructObject Qz (systemOf Qz)
-                    |> Result.bind (fun qz ->
-                        reconstructObject Lr (systemOf Lr)
-                        |> Result.bind (fun lr ->
-                            // The product check reads the combined rows the M_{QZ+LR} solve fitted.
-                            let combinedSystem = systemOf QzLrProduct
+                        let reconstructObject (kind : MatrixKind) (system : LeastSquaresSystem) : Result<ReconstructedMatrix, StagedMuellerError> =
+                            reconstruct solver system |> Result.mapError (fun error -> ObjectReconstructionErr (kind, error))
 
-                            reconstructObject QzLrProduct combinedSystem
-                            |> Result.map (fun qzLr ->
-                                {
-                                    stageOne = stageOne
-                                    gains = gains
-                                    cplCplDay1Gain = cplCplDay1Gain
-                                    qz = qz
-                                    lr = lr
-                                    qzLr = qzLr
-                                    productCheck = productCheckOf lr.matrix qz.matrix qzLr combinedSystem
-                                })))))
+                        reconstructObject Qz (systemOf Qz)
+                        |> Result.bind (fun qz ->
+                            reconstructObject Lr (systemOf Lr)
+                            |> Result.bind (fun lr ->
+                                // The product check reads the combined rows the M_{QZ+LR} solve fitted.
+                                let combinedSystem = systemOf QzLrProduct
+
+                                reconstructObject QzLrProduct combinedSystem
+                                |> Result.map (fun qzLr ->
+                                    {
+                                        stageOne = stageOne
+                                        airGains = anchors
+                                        qz = qz
+                                        lr = lr
+                                        qzLr = qzLr
+                                        productCheck = productCheckOf lr.matrix qz.matrix qzLr combinedSystem
+                                    }))))))
