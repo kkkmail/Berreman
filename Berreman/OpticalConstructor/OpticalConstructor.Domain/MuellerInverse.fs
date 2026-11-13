@@ -450,6 +450,13 @@ module MuellerInverse =
                     observationResidual o.measured model |> Result.map (fun (ResidualVector r) -> r :: parts)))
             |> Result.map (List.rev >> Array.concat >> ResidualVector)
 
+    /// The one entry `ln m₀₀(model) − ln m₀₀(measured)`, the term that keeps isotropic absorption in the data
+    /// (`MuellerFitting.throughputResidualFor` says why); refused as `normalized` refuses (spec 0050 S11.2).
+    let throughputResidual (measured : MuellerMatrix) (model : MuellerMatrix) : Result<ResidualVector, InversionError> =
+        measured.normalized
+        |> Result.bind (fun _ -> model.normalized)
+        |> Result.map (fun _ -> ResidualVector [| log (model.element 0 0) - log (measured.element 0 0) |])
+
     // -----------------------------------------------------------------------------------------------------
     // Stage A — the closed-form analytic inversion of a single Mueller matrix.
     //

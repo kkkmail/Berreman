@@ -41,6 +41,8 @@ module StudyForward =
         /// A measured row the experiment's detector does not record, such as a Mueller observation under an intensity
         /// detector (spec 0050 S11.2).
         | ReadingMismatchErr of reason : string
+        /// A Mueller row whose residual cannot be formed, such as a matrix without positive throughput (spec 0050 S11.2).
+        | RowResidualErr of error : InversionError
 
         member this.describe : string =
             match this with
@@ -51,6 +53,15 @@ module StudyForward =
             | StudyDetectorErr reason -> $"the setup has no detector item: {reason}"
             | ObservationPlateErr reason -> $"the observation has no single plate of one opened crystal: {reason}"
             | ReadingMismatchErr reason -> $"the reading is not what the detector records: {reason}"
+            | RowResidualErr error ->
+                let cause =
+                    match error with
+                    | NonPositiveIntensityErr m00 -> $"m₀₀ is {m00}, not a positive finite throughput"
+                    | DegenerateRotationErr reason -> reason
+                    | MismatchedObservationsErr counts ->
+                        $"{counts.measuredCount.value} measured and {counts.modelCount.value} model observation(s) do not pair"
+
+                $"the residual cannot be formed: {cause}"
 
     /// What a detector records, predicted or measured: an intensity detector's signal, an ellipsometer's Ψ and Δ, or a
     /// polarimeter's absolute Mueller matrix, its m₀₀ the throughput as S9.2's readings hold it (spec 0050 S11.2).
@@ -673,3 +684,47 @@ module StudyForward =
                 | PolarimeterDetectorReadout, None -> Error (ObservationPlateErr $"{this.experiment.setup.describe}, which {name} references")
                 | IntensityDetectorReadout _, _ -> Error (ReadingMismatchErr $"{name} is read by an intensity detector, which records no Mueller matrix")
                 | EllipsometerDetectorReadout, _ -> Error (ReadingMismatchErr $"{name} is read by an ellipsometer, which records no Mueller matrix")
+
+    /// One measured row's residual entries, the prediction less the measurement, with a Mueller row's log-throughput
+    /// ratio kept apart from its 15 normalized differences (spec 0050 S11.2; 001 §K).
+    type RowResidual =
+        {
+            elements : ResidualVector
+            throughputOpt : ResidualVector option
+        }
+
+    type RecordedReading with
+
+        /// This prediction's residual against its row's measured reading: a signal's difference, Ψ's and Δ's, Δ's taken
+        /// on the circle in radians, or a Mueller matrix's `observationResidual` and `throughputResidual` (spec 0050 S11.2).
+        member this.residualAgainst (measured : RecordedReading) : Result<RowResidual, StudyForwardError> =
+            let kindOf (reading : RecordedReading) : string =
+                match reading with
+                | RecordedSignal _ -> "a signal"
+                | RecordedPsiDelta _ -> "Ψ and Δ"
+                | RecordedMueller _ -> "a Mueller matrix"
+
+            match this, measured with
+            | RecordedSignal predicted, RecordedSignal recorded ->
+                let elements : ResidualVector = ResidualVector [| predicted.value - recorded.value |]
+                Ok { elements = elements; throughputOpt = None }
+            | RecordedPsiDelta predicted, RecordedPsiDelta recorded ->
+                // A Δ near ±180° on both sides is a small difference, not a 2π jump.
+                let elements : ResidualVector =
+                    ResidualVector
+                        [|
+                            predicted.psi.value - recorded.psi.value
+                            System.Math.IEEERemainder (predicted.delta.value - recorded.delta.value, 2.0 * System.Math.PI)
+                        |]
+
+                Ok { elements = elements; throughputOpt = None }
+            | RecordedMueller predicted, RecordedMueller recorded ->
+                observationResidual recorded predicted
+                |> Result.bind (fun elements ->
+                    throughputResidual recorded predicted
+                    |> Result.map (fun throughput -> { elements = elements; throughputOpt = Some throughput }))
+                |> Result.mapError RowResidualErr
+            | RecordedSignal _, _
+            | RecordedPsiDelta _, _
+            | RecordedMueller _, _ ->
+                Error (ReadingMismatchErr $"the prediction is {kindOf this}, and the measured reading {kindOf measured}")

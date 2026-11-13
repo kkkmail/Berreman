@@ -257,6 +257,8 @@ module StudyForwardTests =
         let detectorReason = "'Bench' revision 1, which E1 references"
         let plateReason = "'Crystal' revision 1, which F1 references"
         let mismatchReason = "F1 is read by an intensity detector, which records no Mueller matrix"
+        let rotationReason = "the polarization block has trace 5, which no rotation can produce"
+        let counts : ObservationCounts = { measuredCount = ObservationCount 3; modelCount = ObservationCount 2 }
 
         let cases : (StudyForwardError * string) list =
             [
@@ -267,6 +269,9 @@ module StudyForwardTests =
                 StudyDetectorErr detectorReason, $"the setup has no detector item: {detectorReason}"
                 ObservationPlateErr plateReason, $"the observation has no single plate of one opened crystal: {plateReason}"
                 ReadingMismatchErr mismatchReason, $"the reading is not what the detector records: {mismatchReason}"
+                RowResidualErr (NonPositiveIntensityErr (-0.25)), $"the residual cannot be formed: m₀₀ is {-0.25}, not a positive finite throughput"
+                RowResidualErr (DegenerateRotationErr rotationReason), $"the residual cannot be formed: {rotationReason}"
+                RowResidualErr (MismatchedObservationsErr counts), "the residual cannot be formed: 3 measured and 2 model observation(s) do not pair"
             ]
 
         // A wrapped error keeps its own payload in the text.
@@ -1278,3 +1283,107 @@ module StudyForwardTests =
             Assert.Equal<Result<RecordedReading, StudyForwardError>>(
                 Error (ReadingMismatchErr $"{(runOver setup).name.value} is read by {kind}, which records no Mueller matrix"),
                 detectorBound.predictedReadingOf observation)
+
+    /// The matrix with every element times `factor`, as a throughput scales it.
+    let private scaledBy (factor : float) (matrix : MuellerMatrix) : MuellerMatrix =
+        RealMatrix4x4.create [ for i in 0 .. 3 -> [ for j in 0 .. 3 -> factor * matrix.element i j ] ] |> MuellerMatrix
+
+    /// The entries of a residual, failing on a refusal.
+    let private entriesOf (residual : Result<ResidualVector, InversionError>) : float list =
+        match residual with
+        | Ok entries -> List.ofArray entries.value
+        | Error error -> failwith $"the residual was refused: %A{error}"
+
+    /// A row's residual, failing on a refusal.
+    let private rowResidualOf (residual : Result<RowResidual, StudyForwardError>) : RowResidual =
+        match residual with
+        | Ok rowResidual -> rowResidual
+        | Error error -> failwith error.describe
+
+    [<Fact>]
+    let ``a signal row's entry is the predicted signal less the measured`` () : unit =
+        let residual = rowResidualOf ((RecordedSignal (MeasuredIntensity 2.5)).residualAgainst (RecordedSignal (MeasuredIntensity 2.0)))
+
+        Assert.Equal<float list>([ 0.5 ], List.ofArray residual.elements.value)
+        Assert.Equal<ResidualVector option>(None, residual.throughputOpt)
+
+    [<Fact>]
+    let ``a Psi and Delta row's entries are their differences, Delta's taken on the circle`` () : unit =
+        let psiDelta (psi : float<deg>) (delta : float<deg>) : RecordedReading =
+            RecordedPsiDelta { psi = Angle.degree psi; delta = Angle.degree delta }
+
+        // Δ 179° against −179° is 2° apart on the circle, not 358°.
+        let residual = rowResidualOf ((psiDelta 30.0<deg> 179.0<deg>).residualAgainst (psiDelta 28.0<deg> (-179.0<deg>)))
+        let twoDegrees = (Angle.degree 2.0<deg>).value
+
+        match List.ofArray residual.elements.value with
+        | [ psi; delta ] ->
+            Assert.Equal(twoDegrees, psi, 1e-12)
+            Assert.Equal(-twoDegrees, delta, 1e-12)
+        | entries -> Assert.Fail($"expected Ψ and Δ entries, got {entries.Length} entries")
+
+        Assert.Equal<ResidualVector option>(None, residual.throughputOpt)
+
+    [<Fact>]
+    let ``a Mueller row's entries are the normalized element differences and the log-throughput ratio`` () : unit =
+        let lp = analyzerMueller IdealLinear (Angle.degree 30.0<deg>)
+        let predicted = scaledBy 0.8 lp
+        let measured = scaledBy 0.5 lp
+
+        let throughputOf (residual : RowResidual) : float list =
+            match residual.throughputOpt with
+            | Some throughput -> List.ofArray throughput.value
+            | None -> failwith "a Mueller row's residual carries its log-throughput ratio"
+
+        // The same polarizer at two throughputs: its normalized elements agree, and only the throughput ratio is left.
+        let scaled = rowResidualOf ((RecordedMueller predicted).residualAgainst (RecordedMueller measured))
+        let scaledElements = List.ofArray scaled.elements.value
+        Assert.Equal<float list>(entriesOf (observationResidual measured predicted), scaledElements)
+        Assert.Equal(15, scaledElements.Length)
+
+        for entry in scaledElements do
+            Assert.Equal(0.0, entry, 1e-15)
+
+        match throughputOf scaled with
+        | [ ratio ] -> Assert.Equal(log 0.8 - log 0.5, ratio, 1e-15)
+        | entries -> Assert.Fail($"expected one throughput entry, got {entries.Length}")
+
+        Assert.Equal<float list>(entriesOf (throughputResidual measured predicted), throughputOf scaled)
+
+        // A measured retarder against the same prediction: the elements are `observationResidual`'s, and they differ.
+        let retarder = retarderMueller (Angle.degree 20.0<deg>) (Retardance.degree 70.0<deg>)
+        let crossed = rowResidualOf ((RecordedMueller predicted).residualAgainst (RecordedMueller retarder))
+        let crossedElements = List.ofArray crossed.elements.value
+        Assert.Equal<float list>(entriesOf (observationResidual retarder predicted), crossedElements)
+        Assert.Equal(15, crossedElements.Length)
+        Assert.True(crossedElements |> List.exists (fun entry -> abs entry > 0.1), "a retarder is not the polarizer")
+        Assert.Equal<float list>(entriesOf (throughputResidual retarder predicted), throughputOf crossed)
+
+    [<Fact>]
+    let ``a reading of another kind than the row's, or a Mueller matrix without positive throughput, is refused`` () : unit =
+        let signal = RecordedSignal (MeasuredIntensity 1.0)
+        let psiDelta = RecordedPsiDelta { psi = Angle.degree 45.0<deg>; delta = Angle.degree 90.0<deg> }
+        let lp = analyzerMueller IdealLinear (Angle.degree 0.0<deg>)
+        let mueller = RecordedMueller lp
+
+        let mismatch (predicted : string) (measured : string) : Result<RowResidual, StudyForwardError> =
+            Error (ReadingMismatchErr $"the prediction is {predicted}, and the measured reading {measured}")
+
+        // Every pair of different kinds names both.
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(mismatch "a signal" "a Mueller matrix", signal.residualAgainst mueller)
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(mismatch "a Mueller matrix" "a signal", mueller.residualAgainst signal)
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(mismatch "a signal" "Ψ and Δ", signal.residualAgainst psiDelta)
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(mismatch "Ψ and Δ" "a signal", psiDelta.residualAgainst signal)
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(mismatch "Ψ and Δ" "a Mueller matrix", psiDelta.residualAgainst mueller)
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(mismatch "a Mueller matrix" "Ψ and Δ", mueller.residualAgainst psiDelta)
+
+        // A measured matrix of m₀₀ 0 is refused, and so is a prediction of negative m₀₀; the measured one is named first.
+        let dark = scaledBy 0.0 lp
+        let negative = scaledBy (-1.0) lp
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(Error (RowResidualErr (NonPositiveIntensityErr 0.0)), mueller.residualAgainst (RecordedMueller dark))
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(Error (RowResidualErr (NonPositiveIntensityErr (-0.5))), (RecordedMueller negative).residualAgainst mueller)
+        Assert.Equal<Result<RowResidual, StudyForwardError>>(Error (RowResidualErr (NonPositiveIntensityErr 0.0)), (RecordedMueller negative).residualAgainst (RecordedMueller dark))
+
+        // The throughput term refuses alone as its normalization does, the measured matrix first.
+        Assert.Equal<Result<ResidualVector, InversionError>>(Error (NonPositiveIntensityErr 0.0), throughputResidual dark negative)
+        Assert.Equal<Result<ResidualVector, InversionError>>(Error (NonPositiveIntensityErr (-0.5)), throughputResidual lp negative)

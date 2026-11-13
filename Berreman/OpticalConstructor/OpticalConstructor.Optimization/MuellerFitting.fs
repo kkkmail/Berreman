@@ -72,17 +72,15 @@ module MuellerFitting =
                 | Error _ -> Array.create width 1.0e3 |> ResidualVector
 
     /// The residual closure for an ABSORBING sample: `residualFor`'s 15 per observation plus a 16th,
-    /// `ln(m₀₀ model) − ln(m₀₀ measured)`, total and of fixed length like it. The log term restores the isotropic
-    /// absorption that normalization discards (specs/0044/.manual/018-absorbing-biaxial-inverse.md).
+    /// `throughputResidual`'s `ln(m₀₀ model) − ln(m₀₀ measured)`, total and of fixed length like it. The log term restores
+    /// the isotropic absorption that normalization discards (specs/0044/.manual/018-absorbing-biaxial-inverse.md; spec
+    /// 0050 S11.2).
     let throughputResidualFor
         (forward : ForwardModelProxy<'Parameters>)
         (observations : MuellerObservation list)
         (scaling : ParameterScaling<'Parameters>)
         : ScaledVector -> ResidualVector =
         let width = 16 * List.length observations
-        let logThroughput (m : MuellerMatrix) =
-            let m00 = m.element 0 0
-            if m00 <= 0.0 || not (System.Double.IsFinite m00) then None else Some (log m00)
         fun (v : ScaledVector) ->
             match forwardModels forward (ofScaled scaling v) observations with
             | Error _ -> Array.create width 1.0e3 |> ResidualVector
@@ -93,10 +91,10 @@ module MuellerFitting =
                     let throughput =
                         List.zip observations models
                         |> List.map (fun (o, model) ->
-                            match logThroughput o.measured, logThroughput model with
-                            | Some measured, Some predicted -> predicted - measured
-                            | _ -> 1.0e3)
-                        |> Array.ofList
+                            match throughputResidual o.measured model with
+                            | Ok entry -> entry.value
+                            | Error _ -> [| 1.0e3 |])
+                        |> Array.concat
                     Array.append normalized throughput |> ResidualVector
 
     /// The residual Jacobian of a typed residual closure at a scaled point, by FitQuality's finite differences.
