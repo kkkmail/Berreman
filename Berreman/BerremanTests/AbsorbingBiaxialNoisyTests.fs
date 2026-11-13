@@ -16,7 +16,7 @@ open OpticalConstructor.Optimization.RecoveryEnsembles
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTestSupport.BiaxialSample
-open BerremanTests.AbsorbingBiaxialSample              // the fifteen-parameter sample, shared with the noiseless suite
+open BerremanTestSupport.AbsorbingBiaxialSample        // the fifteen-parameter sample, shared with the noiseless suite
 
 /// Spec 0044, manual task 016 part 3 — what a decent-but-ordinary optical bench actually recovers from
 /// an ABSORBING, gyrotropic, TRICLINIC crystal, and with what error bar.

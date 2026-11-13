@@ -1,4 +1,4 @@
-namespace BerremanTests
+namespace BerremanTestSupport
 
 open Berreman.Constants
 open Berreman.Geometry
@@ -7,11 +7,12 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
-open BerremanTests.InverseFitHarness
 open BerremanTestSupport.BiaxialSample
 
 /// Spec 0044 — the ABSORBING triclinic sample both absorbing suites share: its ground-truth constants,
 /// the builder that turns fifteen numbers into engine tensors, its fit scaling, and the measurement set.
+/// Spec 0050 S10.2 (001 §Q AT-2): the sample and its design live in `BerremanTestSupport`, so one compiled
+/// copy serves `BerremanTests` and `OpticalConstructor.Ui.Tests`.
 ///
 /// It lives in its own module for the same reason `BiaxialSample` does: `AbsorbingBiaxialInverseTests`
 /// and `AbsorbingBiaxialNoisyTests` measure the SAME crystal with the same experiment and differ only in

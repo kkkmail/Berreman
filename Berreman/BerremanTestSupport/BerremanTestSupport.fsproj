@@ -15,6 +15,7 @@
     <ItemGroup>
         <Compile Include="CommittedKits.fs" />
         <Compile Include="BiaxialSample.fs" />
+        <Compile Include="AbsorbingBiaxialSample.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -2,8 +2,8 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0050\\.manifest",
   "branch": "0050",
   "started_utc": "2026-11-05T11:30:30Z",
-  "last_updated_utc": "2026-11-13T01:26:16Z",
-  "cumulative_wall_seconds": 474372.456387199,
+  "last_updated_utc": "2026-11-13T02:30:51Z",
+  "cumulative_wall_seconds": 478247.891581499,
   "completed_slices": [
     {
       "index": 0,
@@ -2412,11 +2412,18 @@
       "commit": "6548a068ef0e72fea028b49fc2b533b343a143ce",
       "manual": false,
       "utc": "2026-11-13T01:26:16Z"
+    },
+    {
+      "index": 344,
+      "path": "specs\\0050\\.slices\\0345.slice-md",
+      "commit": "f178062022cc668a291e6b63895a7f8fe31a4a10",
+      "manual": false,
+      "utc": "2026-11-13T02:30:51Z"
     }
   ],
   "current_slice": {
-    "index": 344,
-    "path": "specs\\0050\\.slices\\0345.slice-md",
+    "index": 345,
+    "path": "specs\\0050\\.slices\\0346.slice-md",
     "status": "running",
     "reason": "",
     "worker_logs": "",
@@ -2437,23 +2444,23 @@
       }
     ],
     "phase": "finalize",
-    "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+    "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
     "review_epoch": 1,
     "review_cycle": 1,
     "review_attestation": {
-      "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
-      "slice_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0345.slice-md",
-      "slice_sha256": "f55cd1cbc494a803c678b70de4481feeb3740ab8a7d8e68f80660658e10db9db",
-      "gate_snapshot_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0345.gates",
-      "gate_snapshot_sha256": "c33fdfdab5584a3573bba297a29d0614eafe3577af24ce90c796be2fb3e5e165",
+      "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+      "slice_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0346.slice-md",
+      "slice_sha256": "d6828ecf889316a811e7b762d9ef9f427f6d06298cc98b829ad5a8834304d2be",
+      "gate_snapshot_path": "C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0346.gates",
+      "gate_snapshot_sha256": "b6d5c31818e49a090321a3de320177a212d6505a34ef6146fa4ecc7b7b41c13d",
       "review_epoch": 1,
       "review_cycle": 1,
       "critic_artifacts": [],
-      "judge_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0345-01-code-judge.md",
-      "judge_sha256": "0bb15629e7a25b83b5310d57a67b1bc8424cb633062e2bdac40647160c71200b",
+      "judge_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0346-01-code-judge.md",
+      "judge_sha256": "b7293304c721dcbee92fc2423025adce46e369d237e4cb4289f3716dcf2d3c35",
       "verdict": "review-green",
       "mode": "full",
-      "timestamp_utc": "2026-11-13T01:59:37.723984+00:00",
+      "timestamp_utc": "2026-11-13T02:40:35.654656+00:00",
       "resolved_agents": [
         "code_judge"
       ]
@@ -2466,11 +2473,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 4.03091139998287,
+        "elapsed_sec": 3.699607899878174,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "0be88f915c0087a8f42cdf883121271749fcf20b8fbadb87104215977ac94190",
         "contract": {
           "command": "dotnet build Berreman.slnx -c Release -nologo -v:m",
@@ -2481,7 +2488,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T01:59:43.392562+00:00"
+        "timestamp_utc": "2026-11-13T02:40:40.932209+00:00"
       }
     ],
     "build_repair_attempts": 0,
@@ -2494,11 +2501,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 225.7145393998362,
+        "elapsed_sec": 220.11686450010166,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "2a49709324ea912aa29a65e426507048f55e318f814079fb9517342ea0e55a06",
         "contract": {
           "command": "powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004",
@@ -2509,7 +2516,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794196+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993064+00:00"
       },
       {
         "gate": "unit-tests",
@@ -2517,42 +2524,33 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 1613.405511799734,
+        "elapsed_sec": 177.620736700017,
         "detail": "passed",
-        "counting_stdout": "Running tests from C:\\GitHub\\Berreman\\Berreman\\BerremanTests\\bin\\x64\\Release\\net10.0\\BerremanTests.dll (net10.0|x64)\nC:\\GitHub\\Berreman\\Berreman\\BerremanTests\\bin\\x64\\Release\\net10.0\\BerremanTests.dll (net10.0|x64) passed (26m 52s 285ms)\n\n  In process file artifacts produced:\n    - C:\\GitHub\\Berreman\\Berreman\\BerremanTests\\TestResults\\unit-tests.trx\n\nTest run summary: Passed!\n  total: 16\n  failed: 0\n  succeeded: 16\n  skipped: 0\n  duration: 26m 52s 799ms\n\n\n",
+        "counting_stdout": "Running tests from C:\\GitHub\\Berreman\\Berreman\\BerremanTests\\bin\\x64\\Release\\net10.0\\BerremanTests.dll (net10.0|x64)\nC:\\GitHub\\Berreman\\Berreman\\BerremanTests\\bin\\x64\\Release\\net10.0\\BerremanTests.dll (net10.0|x64) passed (2m 56s 500ms)\n\n  In process file artifacts produced:\n    - C:\\GitHub\\Berreman\\Berreman\\BerremanTests\\TestResults\\unit-tests.trx\n\nTest run summary: Passed!\n  total: 7\n  failed: 0\n  succeeded: 7\n  skipped: 0\n  duration: 2m 57s 010ms\n\n\n",
         "case_observation": {
-          "slice": "specs/0050/.slices/0345.slice-md",
-          "slice_sha256": "f55cd1cbc494a803c678b70de4481feeb3740ab8a7d8e68f80660658e10db9db",
-          "descriptor_sha256": "23cfcc011c8dfd2223679dd77989374e962fc5bf59b56ab187865919fc2fdb58",
+          "slice": "specs/0050/.slices/0346.slice-md",
+          "slice_sha256": "d6828ecf889316a811e7b762d9ef9f427f6d06298cc98b829ad5a8834304d2be",
+          "descriptor_sha256": "1df9dcaa64344a4ecfccf264c078bca71efe7f223e54de7f9098d831733cc20e",
           "report": "Berreman/BerremanTests/TestResults/unit-tests.trx",
-          "report_sha256": "b41cd4e48b73f961e4c09fe7766e100428448cf006d80cc045701a4480174dda",
-          "captured_utc": "2026-11-13T02:30:25.538833+00:00",
-          "report_mtime_ns": 1794537024101385500,
+          "report_sha256": "6f50efa4847950b8df73f1da91e6b1e55f2fc5085f0b8d8b9e3db6d4bcf2ee84",
+          "captured_utc": "2026-11-13T02:47:21.660911+00:00",
+          "report_mtime_ns": 1794538040266031700,
           "outcomes": {
-            "BerremanTests.FeasibleBiaxialInverseTests.the feasible design constrains the gyration tensor FAR better than the idealized thin-plate one": "passed",
-            "BerremanTests.FeasibleBiaxialInverseTests.every plate in this design is one a vendor will actually sell": "passed",
-            "BerremanTests.BiaxialInverseTests.a blind isotropic n = 1.5 start still recovers all nine constants from noiseless data": "passed",
-            "BerremanTests.BiaxialInverseTests.every configuration produces a physically realizable, essentially non-depolarizing Mueller matrix": "passed",
-            "BerremanTests.BiaxialInverseTests.orientForCut carries each of the three principal axes onto the surface normal, gyration tensor and all": "passed",
-            "BerremanTests.BiaxialInverseTests.the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL": "passed",
-            "BerremanTests.BiaxialInverseTests.an optic axis is reachable from the x-cut and unreachable from the z-cut, which is what the steep configurations are for": "passed",
-            "BerremanTests.BiaxialInverseTests.the triclinic parameter set is a strict generalization of the uniaxial one": "passed",
-            "BerremanTests.BiaxialInverseTests.the scaled parameter space round-trips all nine coordinates and a unit step moves exactly one": "passed",
-            "BerremanTests.BiaxialInverseTests.the full biaxial measurement set recovers all NINE material constants from a perturbed start": "passed",
-            "BerremanTests.FeasibleBiaxialInverseTests.the feasible measurement set recovers all NINE constants from a perturbed start": "passed",
-            "BerremanTests.FeasibleBiaxialInverseTests.the order ambiguity is real on the principal cuts and is broken by the optic-axis cuts": "passed",
-            "BerremanTests.FeasibleBiaxialInverseTests.a plate cut perpendicular to an optic axis is a pure circular retarder, and that is what buys the signal": "passed",
-            "BerremanTests.BiaxialInverseTests.an ensemble of noisy experiments recovers all nine constants, and the birefringences survive far better": "passed",
-            "BerremanTests.BiaxialInverseTests.the triclinic builder produces a biaxial permittivity and a FULL symmetric gyration tensor": "passed",
-            "BerremanTests.BiaxialInverseTests.the full biaxial measurement set is well conditioned and every one of the nine parameters is observable": "passed"
+            "BerremanTests.AbsorbingBiaxialInverseTests.normalized data is markedly blind to isotropic absorption, and absolute throughput restores it": "passed",
+            "BerremanTests.AbsorbingBiaxialInverseTests.absorption and refraction do NOT share principal axes, which is what makes this crystal triclinic-absorbing": "passed",
+            "BerremanTests.AbsorbingBiaxialInverseTests.the scaled parameter space round-trips all fifteen coordinates and a unit step moves exactly one": "passed",
+            "BerremanTests.AbsorbingBiaxialInverseTests.all fifteen parameters are observable and the problem is conditioned well enough to solve": "passed",
+            "BerremanTests.AbsorbingBiaxialInverseTests.the absorbing sample attenuates, and every configuration stays physically realizable": "passed",
+            "BerremanTests.AbsorbingBiaxialInverseTests.the absorbing measurement set recovers all FIFTEEN material constants from a perturbed start": "passed",
+            "BerremanTests.AbsorbingBiaxialInverseTests.the REAL part of rho has no first-order effect, so circular dichroism is not expressible through it": "passed"
           },
           "granularity": "row",
-          "total": 16,
+          "total": 7,
           "failed": 0,
           "skipped": 0
         },
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
-        "descriptor_sha256": "23cfcc011c8dfd2223679dd77989374e962fc5bf59b56ab187865919fc2fdb58",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
+        "descriptor_sha256": "1df9dcaa64344a4ecfccf264c078bca71efe7f223e54de7f9098d831733cc20e",
         "contract": {
           "command": "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename unit-tests.trx {selector}",
           "cwd": "Berreman/BerremanTests",
@@ -2562,7 +2560,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794362+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993211+00:00"
       },
       {
         "gate": "invariant-s34-elev-list-empty",
@@ -2570,11 +2568,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1770321996882558,
+        "elapsed_sec": 0.1806296999566257,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "6e260c1cc9826f17efb0f885160b9480570dbd738fab69462b462dad6f9ca439",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVMRVYwIiAtLSBFbGV2YXRpb24vZWxldmF0aW9uLWtub3duLWZpbmRpbmdzLmpzb24=",
@@ -2585,7 +2583,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794406+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993253+00:00"
       },
       {
         "gate": "invariant-s34-no-vstest",
@@ -2593,11 +2591,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17098539974540472,
+        "elapsed_sec": 0.17053529992699623,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "a6cbfbe46acc7e576530349e96d99b8b260469199ac37481d4df53d9c2a204a2",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIk1pY3Jvc29mdC5ORVQuVGVzdC5TZGt8eHVuaXQucnVubmVyLnZpc3VhbHN0dWRpb3xYdW5pdC5Ta2lwcGFibGVGYWN0fElzVGVzdGluZ1BsYXRmb3JtQXBwbGljYXRpb24iIC0tICIqLmZzcHJvaiIgIioucHJvcHMiICIqLnRhcmdldHMi",
@@ -2608,7 +2606,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794451+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993298+00:00"
       },
       {
         "gate": "invariant-s34-no-kit-kit-json",
@@ -2616,11 +2614,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1794898002408445,
+        "elapsed_sec": 0.17868970008566976,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "2cf545137477e49258e694c87f6a9ec5494924abeceebc618be948a373ebe401",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImtpdC5raXQtanNvbiIgLS0gQmVycmVtYW4v",
@@ -2631,7 +2629,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794490+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993334+00:00"
       },
       {
         "gate": "invariant-s34-no-eps-axis-evaluated",
@@ -2639,11 +2637,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18027860019356012,
+        "elapsed_sec": 0.18810860021039844,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "ab1065e22dc128e10a37f4dbada73d02cd685d38e4360e7552e8f3cc2bbfdf48",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVwc0F4aXNFdmFsdWF0ZWQiIC0tIEJlcnJlbWFuLw==",
@@ -2654,7 +2652,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794528+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993372+00:00"
       },
       {
         "gate": "invariant-s34-complexity-mandatory",
@@ -2662,11 +2660,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1832808000035584,
+        "elapsed_sec": 0.18261530017480254,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "029fccdeca243d5850640651e80e878dbbfc160599515ddf440c44f4047053c6",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImNvbXBsZXhpdHkgPSAoTm9uZXxTb21lKSIgLS0gQmVycmVtYW4v",
@@ -2677,7 +2675,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794566+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993407+00:00"
       },
       {
         "gate": "invariant-s34-no-seeded-string-preset-ids",
@@ -2685,11 +2683,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18522929958999157,
+        "elapsed_sec": 0.18760750023648143,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "1569080b6d9759bb358bac57bae6264ef8526988dd6ab66a9b55c256fe02f24d",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIihzcmMtKDYwMHxoZW5lLXxhci00fGFyLTV8aGVjZC18ZGlvZGUtfHJ1YnktfHRpc2EtfG5keWFnLXxlci0xNTUwfGNvMi18aGctfGtyZi18YXJmLXxmMi0xfGV1di18YmV1di18eGUtbW9ub3xzdXBlcmNvbnRpbnV1bSl8ZGV0LShpbnRlbnNpdHl8ZWxsaXBzb21ldGVyKXxwb2wtKGxwfGNwLWxlZnR8Y3AtcmlnaHQpKSIgLS0gIkJlcnJlbWFuLyouZnMi",
@@ -2700,7 +2698,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794615+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993454+00:00"
       },
       {
         "gate": "invariant-s34-no-seeding-seam",
@@ -2708,11 +2706,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18682639999315143,
+        "elapsed_sec": 0.18642779998481274,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "cba5bf748752a60aa25f2c2e232649e12084c1ae71cf913e209bef63c29ffffd",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNlZWRpbmdQcm94eXxzZWVkQWxsfE9wdGljYWxDb25zdHJ1Y3Rvci5TZWVkaW5nIiAtLSBCZXJyZW1hbi8=",
@@ -2723,7 +2721,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794654+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993492+00:00"
       },
       {
         "gate": "invariant-s34-t1-no-code-seeds",
@@ -2731,11 +2729,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1843049000017345,
+        "elapsed_sec": 0.18480039993301034,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "a56993c6d386bed0ee24301a11351ab6db1dfc6bd71220b0470cac1ef3245f3b",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImxldCAoYnVpbHRJbkVudHJpZXN8c2VlZEVudHJpZXN8c3RhbmRhcmRDYXRlZ29yaWVzKSAiIC0tIEJlcnJlbWFuL09wdGljYWxDb25zdHJ1Y3Rvci8=",
@@ -2746,7 +2744,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794693+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993531+00:00"
       },
       {
         "gate": "invariant-s34-no-seed-modules",
@@ -2754,11 +2752,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18081289995461702,
+        "elapsed_sec": 0.18785730004310608,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "fe631443c3f7fec48bc0088570bbc1261d86529c31b34d002902f2edc448763e",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNlZWRTYW1wbGVzfFNlZWRTb3VyY2VzfFNlZWRFbnRyeUlkcyIgLS0gQmVycmVtYW4v",
@@ -2769,7 +2767,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794730+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993566+00:00"
       },
       {
         "gate": "invariant-s34-no-test-db",
@@ -2777,11 +2775,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.1870834999717772,
+        "elapsed_sec": 0.18516119988635182,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "64a25bfde61b7854ef7d66389379681a6a3b94912600a0cacceb80c2f19f9eb4",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLXcgLUUgIlRlc3REYkNvbnRleHR8RGF0YWJhc2VQcm92aWRlcnxkYXRhYmFzZVByb3ZpZGVyfE9wdGljYWxDb25zdHJ1Y3Rvck1zc3FsIiAtLSBCZXJyZW1hbi8=",
@@ -2792,7 +2790,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794769+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993603+00:00"
       },
       {
         "gate": "invariant-s34-no-versions-in-use",
@@ -2800,11 +2798,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18207289976999164,
+        "elapsed_sec": 0.18164000008255243,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "fd8e488d4d1802fe1be7dcd3f0ff42e4468a5b790e704ec13b2b37d53534ab01",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlZlcnNpb25zSW5Vc2V8dmVyc2lvbnNJblVzZVNlYW0iIC0tIEJlcnJlbWFuLw==",
@@ -2815,7 +2813,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794804+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993638+00:00"
       },
       {
         "gate": "invariant-s34-no-scene-collection-seams",
@@ -2823,11 +2821,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18189660040661693,
+        "elapsed_sec": 0.18450070032849908,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "ff284637550dab7070881bb24101f442b220b727d827e749af3a8190e80a7e8f",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIlNjZW5lUHJveHl8RXhwZXJpbWVudENvbGxlY3Rpb25Qcm94eSIgLS0gQmVycmVtYW4v",
@@ -2838,7 +2836,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794840+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993673+00:00"
       },
       {
         "gate": "invariant-s34-t4-no-ocproj",
@@ -2846,11 +2844,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17813679995015264,
+        "elapsed_sec": 0.18092320021241903,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "028faf6cfa7f7358f7a3224a63baa9ce26b9f82dbdb2b4404099b12704570414",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLWkgLUYgIm9jcHJvaiIgLS0gQmVycmVtYW4vT3B0aWNhbENvbnN0cnVjdG9yLw==",
@@ -2861,7 +2859,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794875+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993708+00:00"
       },
       {
         "gate": "invariant-s34-no-recent-json",
@@ -2869,11 +2867,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17911629984155297,
+        "elapsed_sec": 0.17888890020549297,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "ac265f0b5f13244302090bcfc3f191db1f95c3a8bcb433b1f9f10732993565cd",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgInJlY2VudC5qc29uIiAtLSBCZXJyZW1hbi8=",
@@ -2884,7 +2882,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794909+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993741+00:00"
       },
       {
         "gate": "invariant-s34-no-measured-element-of",
@@ -2892,11 +2890,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17979149986058474,
+        "elapsed_sec": 0.18383400002494454,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "4902fe9e625c988617ab17132cbd4f6ef44eb2df3f80b185965903ebe5c259a3",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIm1lYXN1cmVkRWxlbWVudE9mIiAtLSBCZXJyZW1hbi8=",
@@ -2907,7 +2905,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794945+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993774+00:00"
       },
       {
         "gate": "invariant-s34-t8-no-experiment-regex",
@@ -2915,11 +2913,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18133490020409226,
+        "elapsed_sec": 0.1798216998577118,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "661a03050ea91ecc997361f8e88ef7f7e3dbffc28e73546ee038c9d13ef2b124",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImV4cGVyaW1lbnRSZWdleCIgLS0gQmVycmVtYW4v",
@@ -2930,7 +2928,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.794978+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993807+00:00"
       },
       {
         "gate": "invariant-s34-t9-no-mueller-data-set",
@@ -2938,11 +2936,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.17968620033934712,
+        "elapsed_sec": 0.18390640011057258,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "977ffeb19a32cb70410bb6b867db0575b29013edf0bd188b4d334e796c76b96a",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIk11ZWxsZXJEYXRhU2V0IiAtLSBCZXJyZW1hbi8=",
@@ -2953,7 +2951,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.795013+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993840+00:00"
       },
       {
         "gate": "invariant-s34-t9-no-data-mueller-matrix",
@@ -2961,11 +2959,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18467560037970543,
+        "elapsed_sec": 0.18080150010064244,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "9f602508ca18c99f9511a2a4114ff79b5fbde7f8c06e25237b5fdad58e75a1e4",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkRhdGEvTXVlbGxlck1hdHJpeCIgLS0gQmVycmVtYW4v",
@@ -2976,7 +2974,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.795049+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993873+00:00"
       },
       {
         "gate": "invariant-s34-no-archive-data-proxy",
@@ -2984,11 +2982,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.18167700013145804,
+        "elapsed_sec": 0.18565959995612502,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "936cfe300c0101b59cb7b7ad62acfc3a66f0478784e78bc1390cff05062e15c5",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIk11ZWxsZXJEYXRhUHJveHl8Y3JlYXRlQXJjaGl2ZUJhY2tlZCIgLS0gQmVycmVtYW4v",
@@ -2999,7 +2997,7 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.795085+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993908+00:00"
       },
       {
         "gate": "invariant-s34-t10-no-harness-noise",
@@ -3007,11 +3005,11 @@
         "status": "pass",
         "outcome": "PASS",
         "exit_code": 0,
-        "elapsed_sec": 0.16934579983353615,
+        "elapsed_sec": 0.1703435000963509,
         "detail": "passed",
         "counting_stdout": "",
         "case_observation": null,
-        "tree_fingerprint": "9ee182523c4572d9870d487d7a362e6c645f063fad036e1772f5e6fe090e7a1a",
+        "tree_fingerprint": "0694deb534107896d141c93be659d454f9e4e43f8b84bdbf077129aba463266a",
         "descriptor_sha256": "5c2d7cbc57ecb31e303d57e717a487deb4e6a38161a2ef26f29bdf8a2e693063",
         "contract": {
           "command": "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImxldCBub2lzeU9ic2VydmVBYnNvbHV0ZVdpdGgiIC0tIEJlcnJlbWFuL0JlcnJlbWFuVGVzdHMv",
@@ -3022,13 +3020,12 @@
           "total_timeout_seconds": null,
           "platform": "Windows-11-10.0.22631-SP0"
         },
-        "timestamp_utc": "2026-11-13T02:30:47.795120+00:00"
+        "timestamp_utc": "2026-11-13T02:47:43.993943+00:00"
       }
     ],
     "post_repair_route": null
   },
   "remaining_slices": [
-    "specs\\0050\\.slices\\0346.slice-md",
     "specs\\0050\\.slices\\0347.slice-md",
     "specs\\0050\\.slices\\0348.slice-md",
     "specs\\0050\\.slices\\0349.slice-md",

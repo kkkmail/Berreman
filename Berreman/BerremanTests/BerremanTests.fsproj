@@ -37,7 +37,6 @@
         <Compile Include="MuellerInverseTests.fs" />
         <Compile Include="BiaxialInverseTests.fs" />
         <Compile Include="FeasibleBiaxialInverseTests.fs" />
-        <Compile Include="AbsorbingBiaxialSample.fs" />
         <Compile Include="AbsorbingBiaxialInverseTests.fs" />
         <Compile Include="AbsorbingBiaxialNoisyTests.fs" />
         <Compile Include="LangasiteInverseTests.fs" />
