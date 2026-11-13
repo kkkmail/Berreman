@@ -8,6 +8,7 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.StudyForward
 
 /// The record of one study fit and the stage it fits (spec 0050 S11.3).
 module FitRuns =
@@ -200,3 +201,166 @@ module FitRuns =
             match this with
             | DidNotConvergeErr reason -> FitMemberFailure $"the solver did not converge: {reason}"
             | InvalidNonlinearRequestErr reason -> FitMemberFailure $"the solve request is not valid: {reason}"
+
+    /// Why a study cannot be staged for one fit (spec 0050 S11.3).
+    type FitRunError =
+        /// Stage 2 meets an instrument parameter that stage 1 has not published (spec 0050 S11.3; 001 §L).
+        | InstrumentNotCalibratedErr of reason : string
+        /// The stage has no run to fit (spec 0050 S11.3).
+        | NoStageRunErr of reason : string
+        /// The stage has nothing to fit (spec 0050 S11.3).
+        | NoStageUnknownErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | InstrumentNotCalibratedErr reason -> $"an instrument parameter is not calibrated yet: {reason}"
+            | NoStageRunErr reason -> $"the stage has no run to fit: {reason}"
+            | NoStageUnknownErr reason -> $"the stage has nothing to fit: {reason}"
+
+    /// The study as one stage reads it, the kit's items as the stage holds them, and the runs whose residual rows it
+    /// fits; never stored, as the fit run records its stage (spec 0050 S11.3).
+    type StagedStudy =
+        {
+            study : Study
+            items : Item list
+            stage : FitStage
+            calibrationUse : CalibrationUse
+            fittedRuns : ExperimentName list
+        }
+
+    type Study with
+
+        /// The study staged for one fit through its own levers: runs outside the stage disabled, unknowns outside it held
+        /// at their start, calibrations freed as priors within fifty sigma when asked. Refused: no run fitted, then an
+        /// instrument's item-scoped unknown under stage 2, then nothing left to fit (spec 0050 S11.3; 001 §L).
+        member this.stageWith (context : StudyContext) (stage : FitStage) (calibrationUse : CalibrationUse) : Result<StagedStudy, FitRunError> =
+            let residualRuns = this.fittedRunsIn context.experiments
+
+            let fitted =
+                residualRuns
+                |> List.filter (fun experiment ->
+                    match stage, experiment.role with
+                    | JointStage, _
+                    | CalibrationStage, CalibrationRun
+                    | ObjectStage, ScienceRun
+                    | ObjectStage, DriftCheckRun -> true
+                    | CalibrationStage, _
+                    | ObjectStage, _ -> false)
+
+            let fittedRuns = fitted |> List.map (fun experiment -> experiment.name)
+
+            // Step 362's lookup of the items a study's experiments use, over the study narrowed to `runs`.
+            let itemsUsedIn (runs : Experiment list) : Item list =
+                context.itemsUsedBy ({ this with experiments = runs |> List.map (fun experiment -> experiment.name) } : Study)
+
+            let isAmong (items : Item list) (item : Item) : bool = items |> List.exists (fun held -> held.id = item.id)
+            let instruments = itemsUsedIn (residualRuns |> List.filter (fun experiment -> experiment.role = CalibrationRun))
+
+            let uncalibratedOpt : FitRunError option =
+                instruments
+                |> List.tryPick (fun item ->
+                    item.parameters
+                    |> List.tryPick (fun parameter ->
+                        match parameter.state, this.scopeOf (ItemParameterRef (item.id, parameter.name)) with
+                        | UnknownParameter _, ItemScope ->
+                            let named = $"'{item.label.value}' {parameter.name.value}"
+                            Some (InstrumentNotCalibratedErr $"{named} is unknown per item, and {CalibrationStage.text} publishes it first")
+                        | _ -> None))
+
+            match fitted, stage, uncalibratedOpt with
+            | [], _, _ -> Error (NoStageRunErr $"'{this.name.value}' has no enabled run that {stage.text} fits")
+            | _, ObjectStage, Some uncalibrated -> Error uncalibrated
+            | _ ->
+                let airRuns =
+                    this.sessionsIn context.experiments
+                    |> List.filter (fun session -> session.experiments |> List.exists (fun run -> List.contains run fittedRuns))
+                    |> List.collect (fun session ->
+                        match this.gainModelOf session.name with
+                        | FreeSessionGain -> []
+                        | AnchoredSessionGain anchors -> anchors
+                        | InterpolatedSessionGain repeats -> [ repeats.opening; repeats.closing ])
+
+                // A Dark run gives no residual rows, so it is never disabled; each run disabled is the study's own, which
+                // `withExperimentEnablement` never refuses.
+                let runsStaged =
+                    residualRuns
+                    |> List.map (fun experiment -> experiment.name)
+                    |> List.filter (fun run -> not (List.contains run fittedRuns || List.contains run airRuns))
+                    |> List.fold (fun (study : Study) run -> study.withExperimentEnablement run DisabledInStudy |> Result.defaultValue study) this
+
+                // Each component held is the opened copy's own, at its own validated start, which is never refused.
+                let staged =
+                    match stage with
+                    | CalibrationStage ->
+                        this.materials
+                        |> List.fold (fun (study : Study) material ->
+                            material.parameters
+                            |> List.fold (fun (held : Study) parameter ->
+                                match parameter.state with
+                                | UnknownParameter unknown ->
+                                    held.withMaterialParameterState material.version parameter.name (KnownParameter unknown.start)
+                                    |> Result.defaultValue held
+                                | KnownParameter _
+                                | CalibratedParameter _ -> held) study) runsStaged
+                    | JointStage
+                    | ObjectStage -> runsStaged
+
+                let withStates (stateOf : ParameterState -> ParameterState) (item : Item) : Item =
+                    { item with parameters = item.parameters |> List.map (fun (parameter : Parameter) -> { parameter with state = stateOf parameter.state }) }
+
+                let heldAtStart (state : ParameterState) : ParameterState =
+                    match state with
+                    | UnknownParameter unknown -> KnownParameter unknown.start
+                    | KnownParameter _
+                    | CalibratedParameter _ -> state
+
+                // The inverse suites search `SearchBox 50.0` in scaled units; a calibration's scale is its sigma (step 387).
+                let boxSigmas = 50.0
+
+                let freedAsPrior (state : ParameterState) : ParameterState =
+                    match state with
+                    | CalibratedParameter calibrated ->
+                        let halfWidth = boxSigmas * calibrated.sigma.value
+
+                        UnknownParameter
+                            ({
+                                start = calibrated.value
+                                bounds =
+                                    ({
+                                        lower = ParameterValue (calibrated.value.value - halfWidth)
+                                        upper = ParameterValue (calibrated.value.value + halfWidth)
+                                    } : ParameterInterval)
+                                priorOpt = Some ({ centre = calibrated.value; sigma = calibrated.sigma } : ParameterPrior)
+                            } : UnknownParameterData)
+                    | KnownParameter _
+                    | UnknownParameter _ -> state
+
+                let usedByFitted = itemsUsedIn fitted
+
+                let items =
+                    context.items
+                    |> List.map (fun item ->
+                        match stage with
+                        | CalibrationStage when not (isAmong instruments item) -> withStates heldAtStart item
+                        | CalibrationStage
+                        | ObjectStage
+                        | JointStage -> item)
+                    |> List.map (fun item ->
+                        match calibrationUse with
+                        | CalibrationAsPrior when isAmong usedByFitted item -> withStates freedAsPrior item
+                        | CalibrationAsPrior
+                        | CalibrationHeldFixed -> item)
+
+                let stagedContext = { context with items = items }
+
+                match staged.unknownsWith (stagedContext.itemsUsedBy staged) with
+                | [] -> Error (NoStageUnknownErr $"'{this.name.value}' holds no unknown that {stage.text} fits")
+                | _ ->
+                    Ok
+                        ({
+                            study = staged
+                            items = items
+                            stage = stage
+                            calibrationUse = calibrationUse
+                            fittedRuns = fittedRuns
+                        } : StagedStudy)
