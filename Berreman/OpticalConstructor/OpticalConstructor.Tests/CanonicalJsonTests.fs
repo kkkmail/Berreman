@@ -76,6 +76,7 @@ module CanonicalJsonTests =
         let complexity =
             match (BuiltinCatalogue.material MaterialIds.euvMolybdenum).physics with
             | ComplexityPhysics complexity -> complexity
+            | CrystalParameterPhysics crystal -> failwith $"expected a complexity physics, got %A{crystal}"
         Assert.Equal<MaterialComplexity>(complexity, toJson complexity |> ofJson<MaterialComplexity>)
 
     let private okOf (result : Result<'Value, StorageError>) : 'Value =

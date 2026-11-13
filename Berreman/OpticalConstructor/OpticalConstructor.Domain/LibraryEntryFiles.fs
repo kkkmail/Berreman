@@ -5,6 +5,7 @@ open System.Security.Cryptography
 open Berreman.Fields
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
@@ -331,6 +332,8 @@ module LibraryEntryFiles =
     /// Facets derive from it (`LibraryFacets`) and are never stored.
     type LibraryEntryPayload =
         | MaterialPayload of MaterialComplexity
+        /// A crystal-parameter material's record; a material file like `MaterialPayload` (spec 0050 S11.1).
+        | CrystalMaterialPayload of CrystalParameters
         | SamplePayload of SamplePayloadData
         | SourcePayload of SourcePayloadData
         | PolarizerPayload of PolarizerPayloadData
@@ -341,7 +344,8 @@ module LibraryEntryFiles =
 
         member this.kind : LibraryEntryKind =
             match this with
-            | MaterialPayload _ -> MaterialEntryKind
+            | MaterialPayload _
+            | CrystalMaterialPayload _ -> MaterialEntryKind
             | SamplePayload _ -> SampleEntryKind
             | SourcePayload _ -> SourceEntryKind
             | PolarizerPayload _ -> PolarizerEntryKind
@@ -438,7 +442,8 @@ module LibraryEntryFiles =
         /// An item model's components are inline forms, not entries, so it references none (S7.1).
         member this.references : EntryReference list =
             match this.payload with
-            | MaterialPayload _ ->
+            | MaterialPayload _
+            | CrystalMaterialPayload _ ->
                 this.categoryOpt
                 |> Option.toList
                 |> List.map (fun category -> EntryLatestReference category.toLibraryEntryId)
@@ -476,11 +481,13 @@ module LibraryEntryFiles =
             | Some id when protection = provenance.protection -> Ok id
             | Some _ -> Error (ProvenanceMismatchErr $"preset '{name.value}' ({presetId.value}): its protection disagrees with the provenance it is filed under")
 
-        /// A complexity physics is filed as its complexity, so the file keeps its bytes (spec 0050 S11.1).
+        /// A complexity physics is filed as its complexity, so the file keeps its bytes, and a crystal as its
+        /// record (spec 0050 S11.1).
         static member ofMaterialEntry (version : VersionNumber) (provenance : EntryProvenance) (entry : MaterialEntry) : LibraryEntryContent =
             let payload =
                 match entry.physics with
                 | ComplexityPhysics complexity -> MaterialPayload complexity
+                | CrystalParameterPhysics crystal -> CrystalMaterialPayload crystal
             { LibraryEntryContent.ofPayload version provenance entry.id.toLibraryEntryId entry.name payload with
                 categoryOpt = Some entry.category
                 descriptionOpt = entry.description }
@@ -530,19 +537,24 @@ module LibraryEntryFiles =
 
         [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.StorageBoundary, "the library-entry file contract (001 §B): the file's kind-neutral entry GUID becomes the kind's own id")>]
         member this.toMaterialEntry : Result<MaterialEntry, LibraryEntryError> =
-            match this.payload, this.categoryOpt with
-            | MaterialPayload complexity, Some category ->
+            let physicsOpt =
+                match this.payload with
+                | MaterialPayload complexity -> Some (ComplexityPhysics complexity)
+                | CrystalMaterialPayload crystal -> Some (CrystalParameterPhysics crystal)
+                | SamplePayload _ | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _ | ItemModelPayload _ -> None
+            match physicsOpt, this.categoryOpt with
+            | Some physics, Some category ->
                 let entry : MaterialEntry =
                     {
                         id = MaterialId this.id.value
                         name = this.name
                         category = category
                         description = this.descriptionOpt
-                        physics = ComplexityPhysics complexity
+                        physics = physics
                     }
                 Ok entry
-            | MaterialPayload _, None -> Error (MissingEntryFieldErr $"material '{this.name.value}' ({this.id.value}) has no category")
-            | _ -> Error (this.kindMismatchErr MaterialEntryKind)
+            | Some _, None -> Error (MissingEntryFieldErr $"material '{this.name.value}' ({this.id.value}) has no category")
+            | None, _ -> Error (this.kindMismatchErr MaterialEntryKind)
 
         [<Softellect.Sys.ElevationBoundary(nameof Softellect.Sys.StorageBoundary, "the library-entry file contract (001 §B): the file's kind-neutral entry GUID becomes the kind's own id")>]
         member this.toSample : Result<Sample, LibraryEntryError> =
@@ -628,7 +640,7 @@ module LibraryEntryFiles =
                     }
                 Ok entry
             | ItemModelPayload _, None -> Error (MissingEntryFieldErr $"item model '{this.name.value}' ({this.id.value}) has no description")
-            | (MaterialPayload _ | SamplePayload _ | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _), _ ->
+            | (MaterialPayload _ | CrystalMaterialPayload _ | SamplePayload _ | SourcePayload _ | PolarizerPayload _ | DetectorPayload _ | CategoryPayload _), _ ->
                 Error (this.kindMismatchErr ItemModelEntryKind)
 
     /// One entry of a `.catalogue-json`: the entry's kind, identity, file and hash (spec 0050 001 §A).

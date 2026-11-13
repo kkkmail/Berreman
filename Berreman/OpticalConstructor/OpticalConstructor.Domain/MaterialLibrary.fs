@@ -6,6 +6,7 @@ open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalProperties.Active
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.CrystalPhysics
 
 /// Material identities, editable physics, pure search and store contracts (§D.8; spec 0050 §3.3).
 /// Built-in entries are loaded from Catalogue/Builtin through CatalogueImportProxy.
@@ -193,14 +194,17 @@ module MaterialLibrary =
                 | None -> defaults.rhoWithDisp
             { defaults with muWithDisp = muWithDisp; rhoWithDisp = rhoWithDisp }
 
-    /// The forms a material's physics can take; today only the complexity tree (spec 0050 S11.1).
+    /// The forms a material's physics can take: the complexity tree or a crystal-parameter record
+    /// (spec 0050 S11.1).
     type MaterialPhysics =
         | ComplexityPhysics of complexity : MaterialComplexity
+        | CrystalParameterPhysics of crystal : CrystalParameters
 
         /// The physics' engine composition (spec 0050 S11.1).
         member this.toProperties : OpticalPropertiesWithDisp =
             match this with
             | ComplexityPhysics complexity -> complexity.toProperties
+            | CrystalParameterPhysics crystal -> crystal.toProperties
 
     /// A library entry: a stable id (the `materialEntry` id, §A.7), a display name,
     /// a category, an optional description (mirroring the engine's `description`

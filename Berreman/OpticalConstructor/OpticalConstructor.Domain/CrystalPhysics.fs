@@ -2,6 +2,7 @@ namespace OpticalConstructor.Domain
 
 open System.Numerics
 open Berreman.MaterialProperties
+open Berreman.Dispersion
 open OpticalProperties.Active
 
 /// The crystal-parameter records a material version can hold as its physics, each with its engine builder
@@ -153,3 +154,20 @@ module CrystalPhysics =
                       [ e 0.0 this.g13.value; e 0.0 this.g23.value; e 0.0 this.g33.value ] ]
                     |> Rho.create
             }
+
+    /// A crystal-parameter record a material version holds as its physics; stored in the serializer's case
+    /// form, so it adds no int tag (spec 0050 S11.1).
+    type CrystalParameters =
+        | UniaxialCrystal of UniaxialParameters
+        | TriclinicCrystal of TriclinicParameters
+        | AbsorbingTriclinicCrystal of AbsorbingTriclinicParameters
+
+        /// The engine's optical properties of the crystal, through its record's builder (spec 0050 S11.1).
+        member this.opticalProperties : OpticalProperties =
+            match this with
+            | UniaxialCrystal parameters -> parameters.opticalProperties
+            | TriclinicCrystal parameters -> parameters.opticalProperties
+            | AbsorbingTriclinicCrystal parameters -> parameters.opticalProperties
+
+        /// The crystal's engine composition: the same tensors at every wavelength (spec 0050 S11.1).
+        member this.toProperties : OpticalPropertiesWithDisp = this.opticalProperties.dispersive

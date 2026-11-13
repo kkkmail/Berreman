@@ -117,6 +117,7 @@ module MaterialImportTests =
             let c =
                 match entry.physics with
                 | ComplexityPhysics complexity -> complexity
+                | CrystalParameterPhysics crystal -> failwith $"expected a complexity physics, got %A{crystal}"
             match c.eps with
             | EpsWithDispValue (IsotropicDispersive [ segment ]) ->
                 let lower = segment.wavelengthInterval.lower.value
@@ -193,7 +194,8 @@ module MaterialImportTests =
     let private assertEditableDispersive (entry : MaterialEntry) =
         match entry.physics with
         | ComplexityPhysics { eps = EpsWithDispValue _ } -> ()
-        | ComplexityPhysics { eps = EpsWithoutDispValue _ } -> Assert.Fail "expected a dispersive EpsWithDispValue-backed complexity"
+        | ComplexityPhysics { eps = EpsWithoutDispValue _ }
+        | CrystalParameterPhysics _ -> Assert.Fail "expected a dispersive EpsWithDispValue-backed complexity"
 
     /// Import a formula fixture and pin the evaluated index (via the entry's
     /// engine `getEps` path) against the published-formula reference `expectedN`

@@ -80,13 +80,15 @@ module OutOfBandDiagnostic =
         /// its display name and its defined dispersion segments. An entry with coded
         /// dispersion (a single spectrum-spanning segment — silicon / langasite) declares
         /// an unbounded band, so no request leaves it and it never flags — the diagnostic
-        /// only warns where a material declares a finite band.
+        /// only warns where a material declares a finite band. A crystal's tensors hold at every
+        /// wavelength, so it defines no segment and never flags, as a constant complexity (spec 0050 S11.1).
         static member ofEntry (entry : MaterialEntry) : ReachableMaterial =
             {
                 materialName = entry.name
                 definedSegments =
                     match entry.physics with
                     | ComplexityPhysics complexity -> ReachableMaterial.definedSegmentsOf complexity
+                    | CrystalParameterPhysics _ -> []
             }
 
     /// One material flagged out-of-band (spec 0038 step 031): its name and both

@@ -16,6 +16,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 
 /// Facets over BuiltinCatalogue.materials/samples/presets and synthetic entries
 /// for missing shapes (spec 0038 Part D step 011; spec 0050 S1.7).
@@ -97,14 +98,17 @@ module LibraryFacetsTests =
 
     // ---- synthetic material entries (beyond BuiltinCatalogue.materials) ----
 
-    let private materialEntryWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+    let private physicsEntryWith (idText : string) (name : string) (physics : MaterialPhysics) : MaterialEntry =
         {
             id = Guid.Parse idText |> MaterialId
             name = EntryName name
             category = CategoryIds.crystal
             description = None
-            physics = ComplexityPhysics complexity
+            physics = physics
         }
+
+    let private materialEntryWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+        physicsEntryWith idText name (ComplexityPhysics complexity)
 
     let private modelOfKind (kindCode : string) : DispersionModel =
         defaultModelChoices |> List.find (fun m -> m.kindCode = kindCode)
@@ -285,6 +289,7 @@ module LibraryFacetsTests =
         let anisotropyOf (entry : MaterialEntry) : Anisotropy =
             match entry.physics with
             | ComplexityPhysics complexity -> complexity.anisotropy
+            | CrystalParameterPhysics crystal -> crystal.anisotropy
         Assert.Equal(Isotropic, anisotropyOf siliconEntry)
         Assert.Equal(Uniaxial, anisotropyOf langasiteEntry)
         Assert.Equal(Isotropic, anisotropyOf vacuumEntry)
@@ -324,6 +329,28 @@ module LibraryFacetsTests =
         Assert.Equal<string list>([ "Absorbing" ], extractedKeys def siliconEntry)
         Assert.Equal<string list>([ "Absorbing" ], extractedKeys def langasiteEntry)
         Assert.Equal<string list>([ "Transparent" ], extractedKeys def vacuumEntry)
+
+    [<Fact>]
+    let ``a crystal-parameter material classifies its anisotropy and transparency from its crystal, and the ladder's facets do not apply`` () =
+        // Spec 0050 S11.1: a crystal classifies by its record; the ladder's facets classify value trees it does not carry.
+        let expected =
+            [
+                Uniaxial, Transparent
+                Biaxial, Transparent
+                Biaxial, Absorbing
+            ]
+        List.zip crystals expected
+        |> List.iteri (fun i (crystal, (anisotropy, transparency)) ->
+            let entry = physicsEntryWith $"7c1e9a3b-5d2f-4b8e-a6c0-{i + 1:D12}" $"Crystal {i + 1}" (CrystalParameterPhysics crystal)
+            Assert.Equal(anisotropy, crystal.anisotropy)
+            Assert.Equal(transparency, crystal.transparency)
+            Assert.Equal(anisotropy, entry.physics.anisotropy)
+            Assert.Equal<string list>([ anisotropy.facetKey.value ], extractedKeys (materialDef materialAnisotropyKey) entry)
+            Assert.Equal<string list>([ transparency.facetKey.value ], extractedKeys (materialDef materialTransparencyKey) entry)
+            Assert.Equal<string list>([ ConstantMaterial.facetKey.value ], extractedKeys (materialDef materialDispersionKey) entry)
+            for key in [ materialDispersionModelKey; materialGyrationClassKey; materialHandednessKey; materialMagneticKey ] do
+                Assert.False(applies (materialDef key) entry, $"{key.value} must not apply to crystal {i + 1}")
+                Assert.Empty(extractedKeys (materialDef key) entry))
 
     [<Fact>]
     let ``the transparency facet classifies transparent vs absorbing constant eps`` () =

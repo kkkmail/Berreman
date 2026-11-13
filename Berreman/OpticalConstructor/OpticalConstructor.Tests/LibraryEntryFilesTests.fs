@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 
 /// The kinds, provenance, ids, name rule and content of the library-entry files, with the builders
 /// and decoders that join the content to the domain values (spec 0050 001 §A, §B; .spec-md §3.11, §5).
@@ -415,6 +416,20 @@ module LibraryEntryFilesTests =
 
         let notMaterials = [ sampleContent; sourceContent; detectorContent; polarizerContent; categoryContent ]
         Assert.Equal<CategoryId option list>(notMaterials |> List.map (fun _ -> None), notMaterials |> List.map (fun c -> c.categoryOpt))
+
+    [<Fact>]
+    let ``a crystal-parameter material's builder and decoder are inverse`` () =
+        // Spec 0050 S11.1: a crystal is filed as its record, references its category, and decodes only as a material.
+        for crystal in crystals do
+            let entry = { langasite with physics = CrystalParameterPhysics crystal }
+            let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue entry
+            Assert.Equal<EntrySchema>(schemaOf MaterialEntryKind, content.schema)
+            Assert.Equal<LibraryEntryPayload>(CrystalMaterialPayload crystal, content.payload)
+            Assert.Equal<EntryReference list>([ EntryLatestReference CategoryIds.crystal.toLibraryEntryId ], content.references)
+            Assert.Equal<Result<MaterialEntry, LibraryEntryError>>(Ok entry, content.toMaterialEntry)
+            match content.toSample with
+            | Error (EntryKindMismatchErr _) -> ()
+            | other -> Assert.Fail($"a crystal material decoded as a sample: expected EntryKindMismatchErr, got %A{other}")
 
     [<Fact>]
     let ``an item-model builder and decoder are inverse, and a protection its provenance disagrees with is refused`` () =

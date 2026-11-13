@@ -7,6 +7,7 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialComplexityEditor
 
 /// Spec 0038 Part D (step 011): the two CONCRETE facet catalogues as data —
@@ -170,12 +171,29 @@ module LibraryFacets =
                 | UniaxialDispersive _ -> Uniaxial
                 | BiaxialDispersive _ -> Biaxial
 
+    type CrystalParameters with
+
+        /// The crystal's anisotropy: a triclinic crystal, absorbing or not, is biaxial (spec 0050 S11.1).
+        member this.anisotropy : Anisotropy =
+            match this with
+            | UniaxialCrystal _ -> Uniaxial
+            | TriclinicCrystal _
+            | AbsorbingTriclinicCrystal _ -> Biaxial
+
+        /// The crystal's transparency: only the absorbing triclinic record carries an ε″ (spec 0050 S11.1).
+        member this.transparency : Transparency =
+            match this with
+            | UniaxialCrystal _
+            | TriclinicCrystal _ -> Transparent
+            | AbsorbingTriclinicCrystal _ -> Absorbing
+
     type MaterialPhysics with
 
         /// The anisotropy the physics denotes (spec 0050 S11.1).
         member this.anisotropy : Anisotropy =
             match this with
             | ComplexityPhysics complexity -> complexity.anisotropy
+            | CrystalParameterPhysics crystal -> crystal.anisotropy
 
     type ConstantEpsValue with
 
@@ -186,6 +204,8 @@ module LibraryFacets =
             | IsotropicTransparent _ | UniaxialTransparent _ | BiaxialTransparent _ -> Transparent
             | IsotropicAbsorbing _ | UniaxialAbsorbing _ | BiaxialAbsorbing _ -> Absorbing
 
+    /// A crystal's physics is parameters, not the ladder's value trees, so every reader below answers
+    /// `None` for it (spec 0050 S11.1).
     type MaterialEntry with
 
         /// The constant eps value tree of the entry, when it carries one.
@@ -195,6 +215,7 @@ module LibraryFacets =
                 match complexity.eps with
                 | EpsWithoutDispValue constant -> Some constant
                 | EpsWithDispValue _ -> None
+            | CrystalParameterPhysics _ -> None
 
         /// The dispersive eps segment tree of the entry, when it carries one.
         member private entry.dispersiveEpsOpt : EpsDispersiveValue option =
@@ -203,16 +224,19 @@ module LibraryFacets =
                 match complexity.eps with
                 | EpsWithDispValue dispersive -> Some dispersive
                 | EpsWithoutDispValue _ -> None
+            | CrystalParameterPhysics _ -> None
 
         /// The optical-activity value tree of the entry, when it carries one.
         member private entry.activeOpt : RhoWithDispValue option =
             match entry.physics with
             | ComplexityPhysics complexity -> complexity.active
+            | CrystalParameterPhysics _ -> None
 
         /// The magnetic (Polder μ) value tree of the entry, when it carries one.
         member private entry.magneticOpt : MuWithDispValue option =
             match entry.physics with
             | ComplexityPhysics complexity -> complexity.magnetic
+            | CrystalParameterPhysics _ -> None
 
     // =======================================================================
     // The MATERIAL facet catalogue (over MaterialEntry).
@@ -260,7 +284,8 @@ module LibraryFacets =
     /// material lands under Absorbing (its wavelength-dependent eps is a segment
     /// tree, not a single value, so it cannot be a constant transparent). The
     /// defensive constant-without-value-tree case also folds to Absorbing, so
-    /// the facet yields exactly one branch value for every entry.
+    /// the facet yields exactly one branch value for every entry. A crystal reads
+    /// its own transparency (spec 0050 S11.1).
     let private materialTransparencyDef : AttributeDef<MaterialEntry> =
         {
             key = materialTransparencyKey
@@ -275,6 +300,7 @@ module LibraryFacets =
                         | ConstantMaterial, Some constant -> [ DiscreteValue constant.transparency.facetKey ]
                         | ConstantMaterial, None
                         | DispersiveMaterial, _ -> [ DiscreteValue Absorbing.facetKey ]
+                    | CrystalParameterPhysics crystal -> [ DiscreteValue crystal.transparency.facetKey ]
         }
 
     /// Dispersion model — MULTI-VALUED per axis/segment (a dispersive

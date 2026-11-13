@@ -14,6 +14,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 open Xunit
 
 /// Spec 0033 step 013 (AC-B7) — the `MaterialComplexity` edit-model option tree.
@@ -121,6 +122,7 @@ module MaterialComplexityTests =
             let rebuilt =
                 match entry.physics with
                 | ComplexityPhysics complexity -> complexity.toProperties
+                | CrystalParameterPhysics crystal -> failwith $"{label}: expected a complexity physics, got %A{crystal}"
             for w in grid do
                 let expected = original.getProperties w
                 Assert.True(propertiesClose 1e-12 (rebuilt.getProperties w) expected, $"{label}: toProperties must reproduce the preset at λ={w}")
@@ -334,43 +336,9 @@ module MaterialComplexityTests =
     [<Fact>]
     let ``each crystal record's builder composes its permittivity from its own fields`` () =
         // Spec 0050 S11.1: the records ahead of the material library keep steps 332-334's builders.
-        let uniaxial : UniaxialParameters =
-            {
-                ordinaryIndex = RefractionIndex 1.544
-                extraordinaryIndex = RefractionIndex 1.553
-                g11 = RhoValue 5.8e-5
-                g33 = RhoValue -1.0e-4
-            }
-        let triclinic : TriclinicParameters =
-            {
-                index1 = RefractionIndex 1.52
-                index2 = RefractionIndex 1.56
-                index3 = RefractionIndex 1.61
-                g11 = RhoValue 3.0e-5
-                g22 = RhoValue 4.0e-5
-                g33 = RhoValue 5.0e-5
-                g23 = RhoValue 1.0e-5
-                g13 = RhoValue 2.0e-5
-                g12 = RhoValue 6.0e-6
-            }
-        let absorbing : AbsorbingTriclinicParameters =
-            {
-                index1 = RefractionIndex 1.71
-                index2 = RefractionIndex 1.74
-                index3 = RefractionIndex 1.78
-                epsIm11 = EpsValue 2.0e-3
-                epsIm22 = EpsValue 3.0e-3
-                epsIm33 = EpsValue 4.0e-3
-                epsIm23 = EpsValue 5.0e-4
-                epsIm13 = EpsValue 6.0e-4
-                epsIm12 = EpsValue 7.0e-4
-                g11 = RhoValue 3.0e-5
-                g22 = RhoValue 4.0e-5
-                g33 = RhoValue 5.0e-5
-                g23 = RhoValue 1.0e-5
-                g13 = RhoValue 2.0e-5
-                g12 = RhoValue 6.0e-6
-            }
+        let uniaxial = uniaxialParameters
+        let triclinic = triclinicParameters
+        let absorbing = absorbingTriclinicParameters
         let squared (n : RefractionIndex) : float = n.value * n.value
         let assertDiagonal (label : string) (eps : Eps) (diagonal : float list) : unit =
             for i in 0..2 do
@@ -412,3 +380,27 @@ module MaterialComplexityTests =
             Assert.Equal<MaterialComplexity option>(Some complexity, physics.editableComplexityOpt)
         let publishedGyration = { constantIsotropic with active = Some (PublishedLawRho LangasiteGyrationLaw) }
         Assert.Equal<MaterialComplexity option>(None, (ComplexityPhysics publishedGyration).editableComplexityOpt)
+
+    [<Fact>]
+    let ``a crystal-parameter material composes its record's engine properties at every wavelength`` () =
+        // Spec 0050 S11.1: a crystal physics is its record's builder, the same tensors at every wavelength.
+        for crystal in crystals do
+            let entry = { entryOf MaterialIds.glass152 with physics = CrystalParameterPhysics crystal }
+            for w in visibleGrid do
+                Assert.True(
+                    propertiesClose 1e-15 crystal.opticalProperties (entry.properties.getProperties w),
+                    $"%A{crystal}: the entry must compose its record's properties at λ={w}")
+            Assert.Equal(ConstantMaterial, entry.dispersion)
+
+    [<Fact>]
+    let ``a crystal-parameter physics offers no editable complexity, so its entry opens view-only`` () =
+        // Spec 0050 S11.1: the ladder edits complexity trees, so a crystal offers it nothing to seed.
+        for crystal in crystals do
+            Assert.Equal<MaterialComplexity option>(None, (CrystalParameterPhysics crystal).editableComplexityOpt)
+        let constantIsotropic =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = None
+            }
+        Assert.Equal<MaterialComplexity option>(Some constantIsotropic, (ComplexityPhysics constantIsotropic).editableComplexityOpt)

@@ -8,6 +8,7 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.OutOfBandDiagnostic
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 open Xunit
 
 /// Spec 0038 Part I (step 031) — the pure OUT-OF-BAND dispersion diagnostic. A fixed 600 nm request
@@ -46,15 +47,19 @@ module OutOfBandDiagnosticTests =
             active = None
         }
 
-    /// A library material entry wrapping a complexity.
-    let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
+    /// A library material entry holding a physics.
+    let private physicsEntryOf (name : string) (physics : MaterialPhysics) : MaterialEntry =
         {
             id = newMaterialId ()
             name = EntryName name
             category = CategoryIds.glass
             description = None
-            physics = ComplexityPhysics c
+            physics = physics
         }
+
+    /// A library material entry wrapping a complexity.
+    let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
+        physicsEntryOf name (ComplexityPhysics c)
 
     // ============================ the acceptance cases ============================
 
@@ -102,6 +107,14 @@ module OutOfBandDiagnosticTests =
         let entry = entryOf "Glass" constantComplexity
         Assert.Empty((ReachableMaterial.ofEntry entry).definedSegments)
         Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 100.0 2000.0)))
+
+    [<Fact>]
+    let ``a crystal-parameter material never flags out of band`` () =
+        // Spec 0050 S11.1: a crystal's tensors hold at every wavelength, so it defines no segment to leave.
+        for crystal in crystals do
+            let entry = physicsEntryOf "Crystal" (CrystalParameterPhysics crystal)
+            Assert.Empty((ReachableMaterial.ofEntry entry).definedSegments)
+            Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 300.0 900.0)))
 
     [<Fact>]
     let ``a coded-preset material (spectrum-spanning band) never flags`` () =

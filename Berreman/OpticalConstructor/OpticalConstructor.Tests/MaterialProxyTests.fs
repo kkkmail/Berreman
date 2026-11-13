@@ -4,6 +4,8 @@ open System
 open Xunit
 open Berreman.Constants
 open Berreman.Media
+open Berreman.MaterialProperties
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
@@ -14,6 +16,61 @@ open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
+
+/// One crystal of each record, shared by this project's crystal-parameter material facts (spec 0050 S11.1).
+/// They live here because this file compiles first among those facts.
+module CrystalMaterialFixtures =
+
+    let uniaxialParameters : UniaxialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.544
+            extraordinaryIndex = RefractionIndex 1.553
+            g11 = RhoValue 3.0e-5
+            g33 = RhoValue (-1.0e-5)
+        }
+
+    let triclinicParameters : TriclinicParameters =
+        {
+            index1 = RefractionIndex 1.52
+            index2 = RefractionIndex 1.56
+            index3 = RefractionIndex 1.61
+            g11 = RhoValue 3.0e-5
+            g22 = RhoValue 4.0e-5
+            g33 = RhoValue 5.0e-5
+            g23 = RhoValue 1.0e-5
+            g13 = RhoValue 2.0e-5
+            g12 = RhoValue 6.0e-6
+        }
+
+    /// Fifteen distinct values, so a field read from the wrong slot shows.
+    let absorbingTriclinicParameters : AbsorbingTriclinicParameters =
+        {
+            index1 = RefractionIndex 1.71
+            index2 = RefractionIndex 1.74
+            index3 = RefractionIndex 1.78
+            epsIm11 = EpsValue 2.0e-3
+            epsIm22 = EpsValue 3.0e-3
+            epsIm33 = EpsValue 4.0e-3
+            epsIm23 = EpsValue 5.0e-4
+            epsIm13 = EpsValue 6.0e-4
+            epsIm12 = EpsValue 7.0e-4
+            g11 = RhoValue 3.0e-5
+            g22 = RhoValue 4.0e-5
+            g33 = RhoValue 5.0e-5
+            g23 = RhoValue 1.0e-5
+            g13 = RhoValue 2.0e-5
+            g12 = RhoValue 6.0e-6
+        }
+
+    /// The three crystals in case order: uniaxial, triclinic, absorbing triclinic.
+    let crystals : CrystalParameters list =
+        [
+            UniaxialCrystal uniaxialParameters
+            TriclinicCrystal triclinicParameters
+            AbsorbingTriclinicCrystal absorbingTriclinicParameters
+        ]
+
+open CrystalMaterialFixtures
 
 module private MaterialProxyTestData =
 
@@ -374,6 +431,19 @@ type MaterialProxyContract () =
             Assert.Contains(string glass.id.value, reason)
             Assert.Contains("2 version(s) pinned: v1, v2", reason)
         | other -> Assert.Fail($"expected both pinned versions to block removal, got %A{other}")
+
+    [<Fact>]
+    member this.``a crystal-parameter material is stored and resolved at its version by its physics`` () : unit =
+        // Spec 0050 S11.1: a crystal physics is a material version's physics like any complexity.
+        let proxy = this.freshProxy ()
+        let crystal = { minted () with physics = CrystalParameterPhysics (AbsorbingTriclinicCrystal absorbingTriclinicParameters) }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial crystal)
+        match proxy.resolveVersion (v1Id crystal.id) with
+        | Ok (Some entry) -> Assert.Equal<MaterialEntry>(crystal, entry)
+        | other -> Assert.Fail($"expected version 1 of the crystal material, got %A{other}")
+        match proxy.listMaterials ActiveOnly with
+        | Ok entries -> Assert.Contains(crystal, entries)
+        | Error err -> Assert.Fail($"%A{err}")
 
 type MaterialProxyTests () =
     inherit MaterialProxyContract ()

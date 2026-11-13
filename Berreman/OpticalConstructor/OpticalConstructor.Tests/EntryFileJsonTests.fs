@@ -23,6 +23,7 @@ open OpticalConstructor.Domain.EntryTextDiff
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 
 /// One library entry per file: every kind is written, read back through its schema, version and hash checks
 /// and decoded to the value it was built from; each failure is its typed error (spec 0050 001 §B). The catalogue
@@ -57,14 +58,17 @@ module EntryFileJsonTests =
         Assert.Equal<MaterialEntry>(entry, readBack.content.toMaterialEntry |> decodedOf)
         Assert.Equal<EntryProvenance>(provenance, readBack.content.provenance)
 
-    let private materialWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+    let private physicsMaterialWith (idText : string) (name : string) (physics : MaterialPhysics) : MaterialEntry =
         {
             id = Guid.Parse idText |> MaterialId
             name = EntryName name
             category = CategoryIds.crystal
             description = Some (EntryDescription $"{name}, a test material")
-            physics = ComplexityPhysics complexity
+            physics = physics
         }
+
+    let private materialWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+        physicsMaterialWith idText name (ComplexityPhysics complexity)
 
     let private epsOnly (eps : EpsWithDispValue) : MaterialComplexity = { eps = eps; magnetic = None; active = None }
 
@@ -392,6 +396,24 @@ module EntryFileJsonTests =
     /// The file of `content` with its JSON changed by `edit`.
     let private editedFileOf (content : LibraryEntryContent) (edit : JsonObject -> unit) : LibraryFileText =
         editedText (fileOf content) edit
+
+    [<Fact>]
+    let ``a crystal-parameter material entry file round-trips each crystal record`` () =
+        // Spec 0050 S11.1: the file names the crystal payload's case; the schema leaves the record to the serializer.
+        crystals
+        |> List.iteri (fun i crystal ->
+            let entry = physicsMaterialWith $"3e7a1c5b-9d2f-4a6e-b8c0-{i + 1:D12}" $"Crystal {i + 1}" (CrystalParameterPhysics crystal)
+            let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue entry
+            let envelope = content.``sealed`` |> okOf
+            let text = envelope.fileText |> okOf
+            Assert.Contains(nameof CrystalMaterialPayload, text.value)
+            let readBack = text.parseEntry MaterialEntryKind |> okOf
+            Assert.Equal<LibraryEntryEnvelope>(envelope, readBack)
+            Assert.Equal<MaterialEntry>(entry, readBack.content.toMaterialEntry |> decodedOf)
+            let malformed = editedText text (fun root -> root.["payload"].["Fields"].[0].["Case"] <- JsonValue.Create "NoSuchCrystal")
+            match malformed.parseEntry MaterialEntryKind with
+            | Error (MalformedJsonErr _) -> ()
+            | other -> Assert.Fail($"crystal {i + 1}: a malformed crystal record: expected MalformedJsonErr, got %A{other}"))
 
     [<Fact>]
     let ``an entry file of another schema version is UnsupportedSchemaVersionErr`` () =

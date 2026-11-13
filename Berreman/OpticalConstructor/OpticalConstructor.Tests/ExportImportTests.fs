@@ -239,5 +239,6 @@ module ExportImportTests =
                     for e in imported do
                         match e.physics with
                         | ComplexityPhysics complexity -> Assert.Equal(vacuumPlaceholderComplexity, complexity)
+                        | CrystalParameterPhysics crystal -> Assert.Fail($"expected a complexity physics, got %A{crystal}")
         finally
             if File.Exists path.value then File.Delete path.value
