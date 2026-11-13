@@ -28,7 +28,7 @@ module Studies =
         | InvalidStudyNameErr of reason : string
         /// A study name whose file another study of the kit already holds, ignoring case.
         | DuplicateStudyNameErr of reason : string
-        /// A study names an experiment the kit does not hold.
+        /// A study names an experiment the kit does not hold, or a setting one the study does not.
         | UnknownStudyExperimentErr of reason : string
         /// A residual weight that is not finite or not above zero.
         | InvalidResidualWeightErr of reason : string
@@ -46,6 +46,12 @@ module Studies =
         | ScopeNotAllowedErr of reason : string
         /// A link to itself, a chain, a second link of one follower, or two parameters of differing scopes.
         | InvalidParameterLinkErr of reason : string
+        /// A gain model set for a session the study's experiments do not form.
+        | UnknownStudySessionErr of reason : string
+        /// A gain model's AIR run that is no experiment of its session.
+        | GainAnchorOutsideSessionErr of reason : string
+        /// A detector weight for an item the study's experiments do not use.
+        | UnknownStudyItemErr of reason : string
 
         member this.describe : string =
             match this with
@@ -63,6 +69,9 @@ module Studies =
             | InvalidStudyParameterErr reason -> $"the parameter state is not valid: {reason}"
             | ScopeNotAllowedErr reason -> $"the parameter cannot take that scope: {reason}"
             | InvalidParameterLinkErr reason -> $"the link is not valid: {reason}"
+            | UnknownStudySessionErr reason -> $"the study has no such session: {reason}"
+            | GainAnchorOutsideSessionErr reason -> $"the AIR run is not in that session: {reason}"
+            | UnknownStudyItemErr reason -> $"the study uses no such item: {reason}"
 
     /// The AIR runs that open and close a drifting session (spec 0050 S11.1).
     type AirRepeatPair =
@@ -371,6 +380,12 @@ module Studies =
                 disabled = []
             }
 
+    /// Whether a study fits an experiment or leaves it out (ablation). Not stored: the study keeps its `disabled` list
+    /// (spec 0050 S11.1; 001 §L).
+    type ExperimentEnablement =
+        | EnabledInStudy
+        | DisabledInStudy
+
     type ParameterAxis<'Parameters> with
 
         /// The axis's read of `p` as a parameter's number: the one conversion from an axis read (spec 0050 S11.1).
@@ -546,6 +561,24 @@ module Studies =
             |> List.tryFind (fun run -> not (kitExperiments |> List.exists (fun experiment -> experiment.name = run)))
             |> Option.map (fun missing -> UnknownStudyExperimentErr $"'{missing.value}' is not among the kit's {kitExperiments.Length} experiments")
 
+        /// `entry` in place of the entry of its key, else appended: how a study sets a scope or a setting
+        /// (spec 0050 S11.1).
+        static member private replacedOrAppended<'Entry, 'Key when 'Key : equality>
+            (keyOf : 'Entry -> 'Key)
+            (entry : 'Entry)
+            (entries : 'Entry list)
+            : 'Entry list =
+            match entries |> List.tryFindIndex (fun held -> keyOf held = keyOf entry) with
+            | Some index -> entries |> List.updateAt index entry
+            | None -> entries @ [ entry ]
+
+        /// The refusal of a setting for an experiment the study does not hold, else `None` (spec 0050 S11.1).
+        member private this.unheldExperimentOpt (experiment : ExperimentName) : StudyError option =
+            if List.contains experiment this.experiments then
+                None
+            else
+                Some (UnknownStudyExperimentErr $"'{experiment.value}' is not among the study's {this.experiments.Length} experiments")
+
         /// AddExperimentsToStudy's pure half: the study's experiments in place, then each of `names` it lacks, in order and
         /// once, every other field kept; refused, with nothing changed, at the first name `kitExperiments` lacks
         /// (spec 0050 S11.1; 001 §P).
@@ -592,6 +625,98 @@ module Studies =
             match this.sessionGains |> List.tryFind (fun setting -> setting.session = session) with
             | Some setting -> setting.model
             | None -> FreeSessionGain
+
+        /// The study with that session's gain model replaced in place, else appended. Refused, nothing changed: a session
+        /// `sessionsIn kitExperiments` lacks, then the first AIR run of the model (an anchor, or the opening then the
+        /// closing repeat) that is no experiment of the session (spec 0050 S11.1; 001 §L).
+        member this.withSessionGainModel
+            (session : SessionName)
+            (model : SessionGainModel)
+            (kitExperiments : Experiment list)
+            : Result<Study, StudyError> =
+            let sessions = this.sessionsIn kitExperiments
+
+            match sessions |> List.tryFind (fun held -> held.name = session) with
+            | None -> Error (UnknownStudySessionErr $"'{session.value}' is not among the study's {sessions.Length} sessions")
+            | Some held ->
+                let runs : ExperimentName list =
+                    match model with
+                    | FreeSessionGain -> []
+                    | AnchoredSessionGain anchors -> anchors
+                    | InterpolatedSessionGain repeats -> [ repeats.opening; repeats.closing ]
+
+                match runs |> List.tryFind (fun run -> not (List.contains run held.experiments)) with
+                | Some outside ->
+                    Error (GainAnchorOutsideSessionErr $"'{outside.value}' is not among the {held.experiments.Length} experiments of '{session.value}'")
+                | None ->
+                    let setting : SessionGainSetting = { session = session; model = model }
+                    let gains = this.sessionGains |> Study.replacedOrAppended (fun (entry : SessionGainSetting) -> entry.session) setting
+                    Ok { this with sessionGains = gains }
+
+        /// The study fitted jointly or in stages (spec 0050 S11.1, S11.3).
+        member this.withFitMode (mode : FitMode) : Study = { this with settings = { this.settings with mode = mode } }
+
+        /// The study with the experiment's residual weight replaced in place, else appended; refused, nothing changed,
+        /// for an experiment the study does not hold (spec 0050 S11.1; 001 §L).
+        member this.withExperimentWeight (experiment : ExperimentName) (weight : ResidualWeight) : Result<Study, StudyError> =
+            match this.unheldExperimentOpt experiment with
+            | Some unheld -> Error unheld
+            | None ->
+                let setting : ExperimentWeightSetting = { experiment = experiment; weight = weight }
+                let weights =
+                    this.settings.experimentWeights
+                    |> Study.replacedOrAppended (fun (entry : ExperimentWeightSetting) -> entry.experiment) setting
+
+                Ok { this with settings = { this.settings with experimentWeights = weights } }
+
+        /// The study with the experiment left out (listed in `disabled` once) or fitted again (no longer listed); refused,
+        /// nothing changed, for an experiment the study does not hold (spec 0050 S11.1; 001 §L).
+        member this.withExperimentEnablement (experiment : ExperimentName) (enablement : ExperimentEnablement) : Result<Study, StudyError> =
+            match this.unheldExperimentOpt experiment with
+            | Some unheld -> Error unheld
+            | None ->
+                let disabled =
+                    match enablement with
+                    | DisabledInStudy when List.contains experiment this.settings.disabled -> this.settings.disabled
+                    | DisabledInStudy -> this.settings.disabled @ [ experiment ]
+                    | EnabledInStudy -> this.settings.disabled |> List.filter (fun run -> run <> experiment)
+
+                Ok { this with settings = { this.settings with disabled = disabled } }
+
+        /// The study with the detector's residual weight replaced in place, else appended; refused, nothing changed, for
+        /// an item outside `used`, the items the study's experiments use (spec 0050 S11.1; 001 §L).
+        member this.withDetectorWeight (detector : ItemId) (weight : ResidualWeight) (used : Item list) : Result<Study, StudyError> =
+            if used |> List.exists (fun item -> item.id = detector) then
+                let setting : DetectorWeightSetting = { detector = detector; weight = weight }
+                let weights =
+                    this.settings.detectorWeights
+                    |> Study.replacedOrAppended (fun (entry : DetectorWeightSetting) -> entry.detector) setting
+
+                Ok { this with settings = { this.settings with detectorWeights = weights } }
+            else
+                Error (UnknownStudyItemErr $"item {detector.value}: no item of the {used.Length} the study uses has that id")
+
+        /// The study with the reviewer's notes in place of its own (spec 0050 S11.1; 001 §E).
+        member this.withNotes (notes : StudyNotes) : Study = { this with notes = notes }
+
+        /// The study's experiments without the disabled ones, in study order (spec 0050 S11.1; 001 §L).
+        member this.enabledExperiments : ExperimentName list =
+            this.experiments |> List.filter (fun run -> not (List.contains run this.settings.disabled))
+
+        /// The weight the residual rows of the experiment read by the detector take: the experiment's weight times the
+        /// detector's, each `ResidualWeight.unit` when unset (spec 0050 S11.1, S11.2).
+        member this.residualWeightOf (experiment : ExperimentName) (detector : ItemId) : ResidualWeight =
+            let experimentWeight =
+                match this.settings.experimentWeights |> List.tryFind (fun setting -> setting.experiment = experiment) with
+                | Some setting -> setting.weight
+                | None -> ResidualWeight.unit
+
+            let detectorWeight =
+                match this.settings.detectorWeights |> List.tryFind (fun setting -> setting.detector = detector) with
+                | Some setting -> setting.weight
+                | None -> ResidualWeight.unit
+
+            ResidualWeight (experimentWeight.value * detectorWeight.value)
 
         /// What the kit snapshots and pins when it records the study: each opened material's exact version, in study
         /// order (spec 0050 S11.1; 001 §E).
@@ -703,11 +828,7 @@ module Studies =
             | None, Some link ->
                 Error (ScopeNotAllowedErr $"{reference.describe} is linked, {link.describe}, and a link joins parameters of one scope")
             | None, None ->
-                let scopes =
-                    match this.scopes |> List.tryFindIndex (fun entry -> entry.parameter = reference) with
-                    | Some index -> this.scopes |> List.updateAt index scoped
-                    | None -> this.scopes @ [ scoped ]
-
+                let scopes = this.scopes |> Study.replacedOrAppended (fun (entry : ScopedParameter) -> entry.parameter) scoped
                 Ok { this with scopes = scopes }
 
         /// LinkParameters' pure half: the study with `link` appended. Refused, nothing changed: a parameter it lacks, then a

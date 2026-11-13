@@ -14,8 +14,8 @@ open CrystalMaterialFixtures
 
 /// Spec 0050 S11.1 — a study's shape: its name and file stem, its scope and fit-mode tags, its residual weights,
 /// CreateStudy's and AddExperimentsToStudy's pure halves over a kit's experiments, the sessions and gain models a
-/// study reads from them, its unknowns with their scopes and owners, and SetParameterScope's and LinkParameters' pure
-/// halves.
+/// study reads from them, its unknowns with their scopes and owners, SetParameterScope's and LinkParameters' pure
+/// halves, and its settings: session gain models, fit mode, weights, enablement and notes.
 module StudyTests =
 
     /// A run over `Bench` revision 1 turning one polarizer, as `StudySessionTests`' is; the study tests vary only its
@@ -515,3 +515,124 @@ module StudyTests =
         // Every refusal leaves the study as it was: only the first link is held.
         Assert.Equal<ParameterLink list>([ first ], linked.links)
         Assert.Equal({ unknownsStudy with links = [ first ] }, linked)
+
+    /// E1, E2, D1 (Diagnostic) and E3, in kit and study order: `Session 1` holds E1 and E2, `Session 2` E3.
+    let private settingsKit : Experiment list = [ run e1 ScienceRun; run e2 ScienceRun; run d1 DiagnosticRun; run e3 ScienceRun ]
+
+    let private settingsStudy : Study = studyOf (Study.create (StudyName "QZ-LR") [ e1; e2; d1; e3 ] [] settingsKit)
+
+    let private gainSettingOf (session : SessionName) (model : SessionGainModel) : SessionGainSetting =
+        { session = session; model = model }
+
+    [<Fact>]
+    let ``a session's gain model is set for a session of the study, anchored within it`` () : unit =
+        Assert.Equal<StudySession list>(
+            [ ({ name = session1; experiments = [ e1; e2 ] } : StudySession); ({ name = session2; experiments = [ e3 ] } : StudySession) ],
+            settingsStudy.sessionsIn settingsKit)
+
+        let anchored = AnchoredSessionGain [ e2 ]
+        let interpolated = InterpolatedSessionGain { opening = e1; closing = e2 }
+
+        let first = studyOf (settingsStudy.withSessionGainModel session1 anchored settingsKit)
+        Assert.Equal({ settingsStudy with sessionGains = [ gainSettingOf session1 anchored ] }, first)
+
+        let second = studyOf (first.withSessionGainModel session1 interpolated settingsKit)
+        Assert.Equal<SessionGainSetting list>([ gainSettingOf session1 interpolated ], second.sessionGains)
+        Assert.Equal({ settingsStudy with sessionGains = [ gainSettingOf session1 interpolated ] }, second)
+        Assert.Equal(interpolated, second.gainModelOf session1)
+        Assert.Equal(FreeSessionGain, second.gainModelOf session2)
+
+        // Another session's setting is appended, and a replaced one keeps its place before it.
+        let anchoredE3 = AnchoredSessionGain [ e3 ]
+        let both = studyOf (second.withSessionGainModel session2 anchoredE3 settingsKit)
+        let replaced = studyOf (both.withSessionGainModel session1 FreeSessionGain settingsKit)
+
+        Assert.Equal<SessionGainSetting list>([ gainSettingOf session1 interpolated; gainSettingOf session2 anchoredE3 ], both.sessionGains)
+        Assert.Equal<SessionGainSetting list>([ gainSettingOf session1 FreeSessionGain; gainSettingOf session2 anchoredE3 ], replaced.sessionGains)
+        Assert.Equal(anchoredE3, replaced.gainModelOf session2)
+
+    [<Fact>]
+    let ``fit mode, weights, enablement and notes are set in place, and an unset weight reads one`` () : unit =
+        let used = [ cpl1; cpl2; phone ]
+        let notes = StudyNotes "CPL2 re-seated before E3"
+
+        let staged = settingsStudy.withFitMode StagedFit
+        let weighted = studyOf (staged.withExperimentWeight e1 (ResidualWeight 2.0))
+        Assert.Equal<ExperimentWeightSetting list>([ { experiment = e1; weight = ResidualWeight 2.0 } ], weighted.settings.experimentWeights)
+
+        let reweighted = studyOf (weighted.withExperimentWeight e1 (ResidualWeight 4.0))
+        let detectorWeighted = studyOf (reweighted.withDetectorWeight phone.id (ResidualWeight 0.5) used)
+
+        // A run is listed as disabled once, however often it is disabled, and enabling it removes it.
+        let disabledOnce = studyOf (detectorWeighted.withExperimentEnablement e2 DisabledInStudy)
+        let disabledTwice = studyOf (disabledOnce.withExperimentEnablement e2 DisabledInStudy)
+        Assert.Equal(disabledOnce, disabledTwice)
+        Assert.Equal<ExperimentName list>([ e2 ], disabledTwice.settings.disabled)
+        Assert.Equal<ExperimentName list>([ e1; d1; e3 ], disabledTwice.enabledExperiments)
+
+        let enabled = studyOf (disabledTwice.withExperimentEnablement e2 EnabledInStudy)
+        Assert.Empty(enabled.settings.disabled)
+
+        let noted = (studyOf (enabled.withExperimentEnablement e3 DisabledInStudy)).withNotes notes
+
+        let expectedSettings : StudyFitSettings =
+            {
+                mode = StagedFit
+                experimentWeights = [ { experiment = e1; weight = ResidualWeight 4.0 } ]
+                detectorWeights = [ { detector = phone.id; weight = ResidualWeight 0.5 } ]
+                disabled = [ e3 ]
+            }
+
+        Assert.Equal({ settingsStudy with settings = expectedSettings; notes = notes }, noted)
+        Assert.Equal<ExperimentName list>([ e1; e2; d1 ], noted.enabledExperiments)
+
+        // The experiment's weight times the detector's, each one when unset; a disabled run keeps its weights.
+        Assert.Equal(ResidualWeight 2.0, noted.residualWeightOf e1 phone.id)
+        Assert.Equal(ResidualWeight 1.0, noted.residualWeightOf e3 cpl1.id)
+        Assert.Equal(ResidualWeight 4.0, noted.residualWeightOf e1 cpl1.id)
+        Assert.Equal(ResidualWeight 0.5, noted.residualWeightOf e2 phone.id)
+        Assert.Equal(ResidualWeight.unit, settingsStudy.residualWeightOf e1 phone.id)
+
+    [<Fact>]
+    let ``a setting naming an experiment, item or session the study lacks is refused`` () : unit =
+        let study = studyOf (settingsStudy.withSessionGainModel session1 (AnchoredSessionGain [ e2 ]) settingsKit)
+        let day9 = SessionName "Day 9"
+
+        match study.withSessionGainModel day9 FreeSessionGain settingsKit with
+        | Error (UnknownStudySessionErr reason) -> Assert.StartsWith($"'{day9.value}'", reason)
+        | other -> Assert.Fail($"expected Error (UnknownStudySessionErr _) naming {day9.value}, got %A{other}")
+
+        // E3 is `Session 2`'s, and D1, a Diagnostic run the study holds, is in no session.
+        let outsideModels : (SessionGainModel * ExperimentName) list =
+            [
+                AnchoredSessionGain [ e3 ], e3
+                AnchoredSessionGain [ e1; d1; e3 ], d1
+                InterpolatedSessionGain { opening = e3; closing = e2 }, e3
+                InterpolatedSessionGain { opening = e1; closing = e3 }, e3
+            ]
+
+        for model, outside in outsideModels do
+            match study.withSessionGainModel session1 model settingsKit with
+            | Error (GainAnchorOutsideSessionErr reason) ->
+                Assert.StartsWith($"'{outside.value}'", reason)
+                Assert.EndsWith($"'{session1.value}'", reason)
+            | other -> Assert.Fail($"expected Error (GainAnchorOutsideSessionErr _) naming {outside.value} for %A{model}, got %A{other}")
+
+        let experimentRefusals =
+            [
+                study.withExperimentWeight e9 (ResidualWeight 2.0)
+                study.withExperimentEnablement e9 DisabledInStudy
+                study.withExperimentEnablement e9 EnabledInStudy
+            ]
+
+        for refused in experimentRefusals do
+            match refused with
+            | Error (UnknownStudyExperimentErr reason) -> Assert.StartsWith($"'{e9.value}' is not among the study's 4 experiments", reason)
+            | other -> Assert.Fail($"expected Error (UnknownStudyExperimentErr _) naming {e9.value}, got %A{other}")
+
+        match study.withDetectorWeight phone.id (ResidualWeight 0.5) [ cpl1; cpl2 ] with
+        | Error (UnknownStudyItemErr reason) -> Assert.StartsWith($"item {phone.id.value}", reason)
+        | other -> Assert.Fail($"expected Error (UnknownStudyItemErr _) naming {phone.id.value}, got %A{other}")
+
+        // Every refusal leaves the study as it was: only `Session 1`'s setting is held.
+        Assert.Equal({ settingsStudy with sessionGains = [ gainSettingOf session1 (AnchoredSessionGain [ e2 ]) ] }, study)
