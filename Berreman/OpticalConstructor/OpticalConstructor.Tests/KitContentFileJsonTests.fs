@@ -20,6 +20,79 @@ open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.KitContentFiles
 open StudyFileFixtures
 
+/// QZ-LR@20261101T120000Z, the test-local fit run this project's fit-run-file facts share (spec 0050 S11.3). It lives
+/// here because this file compiles first among those facts.
+module FitRunFileFixtures =
+
+    open OpticalConstructor.Domain.MuellerReconstruction
+    open OpticalConstructor.Domain.FitRuns
+
+    let private qz : ItemId = ItemId (Guid.Parse "38400000-0000-4000-8000-000000000021")
+
+    let private cpl1 : ItemId = ItemId (Guid.Parse "38400000-0000-4000-8000-000000000011")
+
+    /// 2026-11-01 12:00:00 UTC, the instant QZ-LR's first fit run is stamped with.
+    let firstFitRunStamp : ClockTime = ClockTime (DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc))
+
+    /// A joint, object-stage, linear fit run of `study` named by it and `at`: E1 read from `data/raw/e1.csv`, CPL1's
+    /// calibrated retardance held fixed, QZ's `m00` fitted from 1 to 0.98 by one member, and QZ's matrix solved.
+    let fitRunOf (study : StudyName) (at : ClockTime) : FitRun =
+        let data : DataAttachment =
+            {
+                path = KitRelativePath "data/raw/e1.csv"
+                contentHash = ContentHash (String.replicate 32 "e1")
+            }
+        let calibration : CalibratedParameterData =
+            {
+                value = ParameterValue 1.57
+                sigma = ParameterSigma 0.01
+                fitRun = FitRunName "CPL1@20261020T090000Z"
+            }
+        let parameter : FitRunParameter =
+            {
+                parameter = ItemParameterRef (cpl1, ParameterName "c2.retardance")
+                state = CalibratedParameter calibration
+            }
+        let entry : FitRunEntry =
+            {
+                parameter = ItemParameterRef (qz, ParameterName "m00")
+                owner = ItemOwner qz
+                start = ParameterValue 1.0
+                fitted = ParameterValue 0.98
+            }
+        let firstMember : FitRunMember =
+            {
+                start = [ ParameterValue 1.0 ]
+                outcome = MemberConverged ([ ParameterValue 0.98 ], Some (FitChiSquared 0.5))
+            }
+        let qzMatrix : ObjectMatrixFit =
+            {
+                items = [ qz ]
+                elements = List.init 16 (fun index -> if index % 5 = 0 then ParameterValue 0.98 else ParameterValue 0.0)
+                rank = MatrixRank 16
+                rmse = ResidualRmse 0.01
+            }
+        {
+            schemaVersion = FitRun.currentSchemaVersion
+            name = study.fitRunNameAt at
+            study = study
+            stamp = at
+            mode = JointFit
+            stage = ObjectStage
+            calibrationUse = CalibrationHeldFixed
+            engine = LinearStudyEngine
+            runs = [ ExperimentName "E1" ]
+            dataRead = [ data ]
+            parameters = [ parameter ]
+            entries = [ entry ]
+            members = [ firstMember ]
+            objectMatrices = [ qzMatrix ]
+            notes = FitRunNotes "QZ alone behind CPL1's published calibration.\nE2 waits for its dark run."
+        }
+
+    /// QZ-LR's first fit run, `QZ-LR@20261101T120000Z`.
+    let qzLrFitRun : FitRun = fitRunOf (StudyName "QZ-LR") firstFitRunStamp
+
 module KitContentFileJsonTests =
 
     let private kitContentJsonValue (result : Result<'Value, StorageError>) : 'Value =
@@ -1001,3 +1074,84 @@ module KitContentFileJsonTests =
             | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
             | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
             | Ok _ -> Assert.Fail($"accepted malformed study file text: {text.value}")
+
+    open OpticalConstructor.Domain.FitRuns
+    open FitRunFileFixtures
+
+    let private editedFitRunFile (edit : JsonObject -> unit) : KitFileText = editedRendering qzLrFitRun.fileText edit
+
+    [<Fact>]
+    let ``a fit run is stored under its name`` () : unit =
+        let expectedName = FileName "QZ-LR@20261101T120000Z.fitrun-json"
+
+        Assert.Equal<FitRunName>(FitRunName "QZ-LR@20261101T120000Z", qzLrFitRun.name)
+        Assert.Equal<FileName>(expectedName, FitRunKitFile.fileNameOf qzLrFitRun.name.fileStem)
+
+    [<Fact>]
+    let ``a fit run file round-trips through its canonical text`` () : unit =
+        let text = qzLrFitRun.fileText |> kitContentJsonValue
+        let readBack = text.parseFitRun |> kitContentJsonValue
+
+        Assert.Equal<FitRun>(qzLrFitRun, readBack)
+        Assert.DoesNotContain("\r", text.value)
+        Assert.EndsWith("}\n", text.value)
+        Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
+
+        let node = (JsonNode.Parse text.value).AsObject()
+        let keys = [ for KeyValue (key, _) in node -> key ]
+        let expectedKeys =
+            [
+                "calibrationUse"; "dataRead"; "engine"; "entries"; "members"; "mode"; "name"; "notes"; "objectMatrices"
+                "parameters"; "runs"; "schemaVersion"; "stage"; "stamp"; "study"
+            ]
+        Assert.Equal<string list>(expectedKeys, keys)
+        Assert.Equal<string list>(keys |> List.sortWith (fun first second -> String.CompareOrdinal(first, second)), keys)
+
+        // The mode, stage, calibration use and engine are written as their int tags, not their case names.
+        let tags =
+            [
+                JointFit.value, "mode"
+                ObjectStage.value, "stage"
+                CalibrationHeldFixed.value, "calibrationUse"
+                LinearStudyEngine.value, "engine"
+            ]
+        for tag, key in tags do
+            let written = node.[key]
+            Assert.Equal(System.Text.Json.JsonValueKind.Number, written.GetValueKind())
+            Assert.Equal(tag, written.GetValue<int>())
+
+        Assert.Equal<KitFileText>(text, readBack.fileText |> kitContentJsonValue)
+
+    [<Fact>]
+    let ``a fit run file of another schema version, a schema-invalid one or a malformed one is refused`` () : unit =
+        let otherVersion = editedFitRunFile (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
+
+        match otherVersion.parseFitRun with
+        | Error (UnsupportedSchemaVersionErr info) ->
+            Assert.Equal(FitRunKitFile.extension, info.fileExtension)
+            Assert.Equal<FileSchemaVersion>(FileSchemaVersion 2, info.found)
+            Assert.Equal<FileSchemaVersion>(FileSchemaVersion 1, info.expected)
+        | Error error -> Assert.Fail($"expected UnsupportedSchemaVersionErr: {error.describe}")
+        | Ok _ -> Assert.Fail "accepted a fit run file of another schema version"
+
+        let invalidEdits : (JsonObject -> unit) list =
+            [
+                (fun node -> node.Remove "entries" |> ignore)
+                (fun node -> node["unexpected"] <- JsonValue.Create "unexpected")
+                (fun node -> node["stage"] <- JsonValue.Create 4)
+            ]
+
+        for edit in invalidEdits do
+            let text = editedFitRunFile edit
+            match text.parseFitRun with
+            | Error (SchemaValidationErr messages) ->
+                Assert.NotEmpty messages
+                for message in messages do
+                    Assert.False(String.IsNullOrWhiteSpace message)
+            | Error error -> Assert.Fail($"expected SchemaValidationErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"accepted a schema-invalid fit run file: {text.value}")
+
+        match (KitFileText "{").parseFitRun with
+        | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | Error error -> Assert.Fail($"expected MalformedJsonErr: {error.describe}")
+        | Ok _ -> Assert.Fail "accepted malformed fit run file text"

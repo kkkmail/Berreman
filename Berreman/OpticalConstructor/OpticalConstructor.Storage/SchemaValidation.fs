@@ -155,6 +155,13 @@ module SchemaValidation =
     /// Validates a study file before its version is compared and its study binds (spec 0050 S11.1).
     let validateStudyFile (element : JsonElement) : Result<unit, StorageError> = validateWith studyFileSchema element
 
+    let private fitRunFileSchemaFile : FileName = FileName (Path.Combine("schema", "fitrun.schema.json"))
+
+    let private fitRunFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (fitRunFileSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates a fit run file before its version is compared and its run binds (spec 0050 S11.3).
+    let validateFitRunFile (element : JsonElement) : Result<unit, StorageError> = validateWith fitRunFileSchema element
+
     let private kitHistorySchemaFile : FileName = FileName (Path.Combine("schema", "kit-history.schema.json"))
 
     let private kitHistorySchema : Result<JsonSchema, StorageError> Lazy = lazy (kitHistorySchemaFile.tryLoadLibrarySchema ())

@@ -234,13 +234,14 @@ module KitTests =
                 KitLockedErr exampleLockHolder, "the kit is open elsewhere: lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC"
                 KitReadOnlyErr "writeKitFile", "the kit is open read-only: writeKitFile"
                 SnapshotExistsErr "library/entry@v1.material-json", "the kit already holds this library snapshot: library/entry@v1.material-json"
+                FitRunExistsErr "QZ-LR@20261101T120000Z.fitrun-json", "the kit already holds that fit run: QZ-LR@20261101T120000Z.fitrun-json"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(10, descriptions |> List.distinct |> List.length)
+        Assert.Equal(11, descriptions |> List.distinct |> List.length)
 
     [<Fact>]
     let ``a data folder is the kit's data folder or a folder inside it`` () : unit =

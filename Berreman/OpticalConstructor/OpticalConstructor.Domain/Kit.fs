@@ -70,6 +70,8 @@ module Kit =
         | KitLockedErr of holder : KitLockHolder
         | KitReadOnlyErr of reason : string
         | SnapshotExistsErr of reason : string
+        /// The kit already holds a fit run of that name; a fit run is written once (spec 0050 S11.3).
+        | FitRunExistsErr of reason : string
 
         member this.describe : string =
             match this with
@@ -83,6 +85,7 @@ module Kit =
             | KitLockedErr holder -> $"the kit is open elsewhere: {holder.describe}"
             | KitReadOnlyErr reason -> $"the kit is open read-only: {reason}"
             | SnapshotExistsErr reason -> $"the kit already holds this library snapshot: {reason}"
+            | FitRunExistsErr reason -> $"the kit already holds that fit run: {reason}"
 
     /// The display name, preserved as given; its file stem follows the shared name rule (spec 0050 S4.1).
     type KitName =

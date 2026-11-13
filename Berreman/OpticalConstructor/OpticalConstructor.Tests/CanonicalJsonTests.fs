@@ -239,6 +239,9 @@ module CanonicalJsonTests =
         assertWrittenAsTag<ScanReading> (fun reading -> reading.value)
         assertWrittenAsTag<ParameterScope> (fun scope -> scope.value)
         assertWrittenAsTag<FitMode> (fun mode -> mode.value)
+        assertWrittenAsTag<FitRuns.FitStage> (fun stage -> stage.value)
+        assertWrittenAsTag<FitRuns.CalibrationUse> (fun calibrationUse -> calibrationUse.value)
+        assertWrittenAsTag<FitRuns.StudyEngineKind> (fun engine -> engine.value)
 
         for star, tag in [ StarredKit, 1; UnstarredKit, 2 ] do
             let json = toJson star
@@ -263,6 +266,12 @@ module CanonicalJsonTests =
         Assert.Equal<ParameterScope>(SessionBlockScope, ofJson<ParameterScope> "3")
         Assert.Equal<string>("2", toJson StagedFit)
         Assert.Equal<FitMode>(StagedFit, ofJson<FitMode> "2")
+        Assert.Equal<string>("3", toJson FitRuns.ObjectStage)
+        Assert.Equal<FitRuns.FitStage>(FitRuns.ObjectStage, ofJson<FitRuns.FitStage> "3")
+        Assert.Equal<string>("2", toJson FitRuns.CalibrationAsPrior)
+        Assert.Equal<FitRuns.CalibrationUse>(FitRuns.CalibrationAsPrior, ofJson<FitRuns.CalibrationUse> "2")
+        Assert.Equal<string>("2", toJson FitRuns.NonlinearStudyEngine)
+        Assert.Equal<FitRuns.StudyEngineKind>(FitRuns.NonlinearStudyEngine, ofJson<FitRuns.StudyEngineKind> "2")
 
         let schema : EntrySchema = { kind = SourceEntryKind; version = FileSchemaVersion 1 }
         let json = toJson schema
@@ -282,6 +291,9 @@ module CanonicalJsonTests =
         Assert.Throws<JsonException>(fun () -> ofJson<ScanColumnUnit> "7" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<ParameterScope> "5" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<FitMode> "3" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.FitStage> "4" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.CalibrationUse> "3" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.StudyEngineKind> "3" |> ignore) |> ignore
 
         // No file holds a role before step 288, so the role rides an anonymous record through the readers' seam.
         let roleText = JsonText "{ \"schemaVersion\": 1, \"role\": 8 }"
@@ -300,3 +312,17 @@ module CanonicalJsonTests =
         match parseVersionedText<{| schemaVersion : FileSchemaVersion; scope : ParameterScope; mode : FitMode |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) modeText with
         | Error (MalformedJsonErr reason) -> Assert.Contains(nameof FitMode, reason)
         | other -> Assert.Fail($"the mode tag 3: expected MalformedJsonErr, got %A{other}")
+
+        // The fit run schema refuses these tags before binding too, so the converters' refusals ride the seam
+        // unvalidated (spec 0050 S11.3).
+        let fitRunTagTexts : (JsonText * string) list =
+            [
+                JsonText "{ \"schemaVersion\": 1, \"stage\": 4, \"calibrationUse\": 1, \"engine\": 1 }", nameof FitRuns.FitStage
+                JsonText "{ \"schemaVersion\": 1, \"stage\": 1, \"calibrationUse\": 3, \"engine\": 1 }", nameof FitRuns.CalibrationUse
+                JsonText "{ \"schemaVersion\": 1, \"stage\": 1, \"calibrationUse\": 1, \"engine\": 3 }", nameof FitRuns.StudyEngineKind
+            ]
+
+        for text, refusedType in fitRunTagTexts do
+            match parseVersionedText<{| schemaVersion : FileSchemaVersion; stage : FitRuns.FitStage; calibrationUse : FitRuns.CalibrationUse; engine : FitRuns.StudyEngineKind |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) text with
+            | Error (MalformedJsonErr reason) -> Assert.Contains(refusedType, reason)
+            | other -> Assert.Fail($"{text.value}: expected MalformedJsonErr, got %A{other}")

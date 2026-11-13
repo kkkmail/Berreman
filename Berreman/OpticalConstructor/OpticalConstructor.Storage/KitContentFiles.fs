@@ -11,6 +11,7 @@ open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 
@@ -41,6 +42,12 @@ module KitContentFiles =
         member this.fileText : Result<KitFileText, StorageError> =
             nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
 
+    type FitRun with
+
+        /// Canonical fit run JSON with LF line ends and one final newline (spec 0050 S11.3).
+        member this.fileText : Result<KitFileText, StorageError> =
+            nodeOf this |> Result.map (fun node -> node.canonicalFileText |> KitFileText)
+
     type KitFileText with
 
         member private this.toContentJsonText : JsonText = JsonText this.value
@@ -63,6 +70,11 @@ module KitContentFiles =
         /// 0050 S11.1).
         member this.parseStudyFile : Result<StudyFile, StorageError> =
             parseVersionedText SchemaValidation.validateStudyFile StudyKitFile.extension StudyFile.currentSchemaVersion this.toContentJsonText
+
+        /// Validates the fit run schema and rejects unsupported versions before binding; no older version is read (spec
+        /// 0050 S11.3).
+        member this.parseFitRun : Result<FitRun, StorageError> =
+            parseVersionedText SchemaValidation.validateFitRunFile FitRunKitFile.extension FitRun.currentSchemaVersion this.toContentJsonText
 
     let private contentStorageRejectedErr (file : FileName) (error : StorageError) : KitError =
         KitFileRejectedErr $"the file '{file.value}': {error.describe}"
@@ -182,6 +194,33 @@ module KitContentFiles =
 
             readEveryKindFile this StudyKitFile (fun text -> text.parseStudyFile) accept
             |> Result.map (List.sortWith (fun first second -> String.CompareOrdinal(first.name.value, second.name.value)))
+
+        /// Writes the run's `<name>.fitrun-json` once: a kit already holding that name, ignoring case, answers
+        /// `FitRunExistsErr` naming its file and writes nothing, since fit runs are append-only (spec 0050 S11.3; 001 §E).
+        member this.writeFitRun (run : FitRun) : Result<unit, KitError> =
+            let stem = run.name.fileStem
+            this.listKindFiles FitRunKitFile
+            |> Result.bind (fun stems ->
+                match stems |> List.tryFind (fun held -> String.Equals(held.value, stem.value, StringComparison.OrdinalIgnoreCase)) with
+                | Some held -> Error (FitRunExistsErr $"the file '{(FitRunKitFile.fileNameOf held).value}'")
+                | None -> writeRenderedKindFile this FitRunKitFile stem run.fileText)
+
+        /// Reads the study's fit runs in stamp order, then by name. A file that does not read, or holds a run of another
+        /// name, refuses the whole read, so no run of the kit is left out (spec 0050 S11.3).
+        member this.readFitRuns (study : StudyName) : Result<FitRun list, KitError> =
+            let accept (file : FileName) (stem : FileStem) (_ : FitRun list) (run : FitRun) : Result<FitRun, KitError> =
+                if String.Equals(run.name.fileStem.value, stem.value, StringComparison.OrdinalIgnoreCase) then
+                    Ok run
+                else
+                    Error (KitFileRejectedErr $"the file '{file.value}' holds fit run '{run.name.value}' instead of '{stem.value}'")
+
+            let byStampThenName (first : FitRun) (second : FitRun) : int =
+                match compare first.stamp second.stamp with
+                | 0 -> String.CompareOrdinal(first.name.value, second.name.value)
+                | order -> order
+
+            readEveryKindFile this FitRunKitFile (fun text -> text.parseFitRun) accept
+            |> Result.map (List.filter (fun run -> run.study = study) >> List.sortWith byStampThenName)
 
     type ItemModelInstance with
 
