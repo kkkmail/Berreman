@@ -82,6 +82,15 @@ type StudyFitJobHost =
         : StudyFitJobHost =
         StudyFitJobHost.posting (fun action -> Dispatcher.UIThread.Post(fun () -> action ())) progressed ended
 
+    /// Runs nothing and answers an inactive handle for scenes that run no fit (spec 0050 S11.5).
+    static member inert : StudyFitJobHost =
+        {
+            startStudyFit = fun _ ->
+                {
+                    cancelStudyFit = ignore
+                }
+        }
+
 /// The one fit a surface runs: the runner's model, whose committed result is the last fit run written, the running
 /// fit's handle and the last fit's refusal (spec 0050 S11.3).
 type StudyFitJobState =

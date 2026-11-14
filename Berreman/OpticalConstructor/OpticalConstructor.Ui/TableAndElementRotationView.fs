@@ -23,10 +23,12 @@ open Berreman.Constants
 open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
+open Berreman.Solvers
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
@@ -41,6 +43,7 @@ open OpticalConstructor.Storage.LabFileImport
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Domain.KitArchive
 open Softellect.Sys.Primitives
@@ -242,6 +245,8 @@ type KitWindowShell =
         archive : KitArchiveProxy
         /// Runs the send off the UI thread, with its progress and its end as messages (spec 0050 S6, step 200).
         archiveJobs : KitArchiveJob.KitArchiveJobHost
+        /// Runs a study fit off the UI thread, reporting progress and completion as messages (spec 0050 S11.5).
+        studyFits : StudyFitJobHost
         /// The folder dialog that chooses the kit to copy experiments from (spec 0050 S6, step 145).
         kitPicker : KitFolderPicker
         /// Opens the column-mapping wizard over the request (spec 0050 S9.2, step 311).
@@ -249,7 +254,7 @@ type KitWindowShell =
     }
 
     /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip or kit and runs no job; its
-    /// archive is an in-memory disk of its own (spec 0050 S5.3, S6).
+    /// archive is an in-memory disk of its own (spec 0050 S5.3, S6, S11.5).
     static member inert : KitWindowShell =
         {
             explorer = ExplorerProxy.createInMemory ignore
@@ -257,6 +262,7 @@ type KitWindowShell =
             zipPicker = KitZipPicker.none
             archive = KitArchiveProxy.createInMemory (InMemoryArchiveDisk.create ())
             archiveJobs = KitArchiveJob.KitArchiveJobHost.inert
+            studyFits = StudyFitJobHost.inert
             kitPicker =
                 {
                     pickKitFolder = fun () -> async { return None }
@@ -680,10 +686,12 @@ type TableAndElementRotationModel =
         flowStep : ConstructorFlowStep
         /// The kit's studies in name order, as last read or recorded (spec 0050 S11.5).
         kitStudies : Study list
-        /// The kit's fit runs, in study order and then stamp order (spec 0050 S11.5).
+        /// The kit's fit runs as last read, with newly completed runs appended (spec 0050 S11.5).
         kitFitRuns : FitRun list
         /// The study selections and New study form held by this window (spec 0050 S11.5).
         studySurface : StudySurfaceState
+        /// The window's fit job, its last committed run and any refusal (spec 0050 S11.5).
+        studyFit : StudyFitJobState
         /// The item-model store the add form offers (spec 0050 S7.2, step 209).
         itemModels : ItemModels.ItemModelProxy
         /// Mints the id of the item the add form opens for (spec 0050 S7.2).
@@ -865,6 +873,7 @@ let initWith
         kitStudies = []
         kitFitRuns = []
         studySurface = StudySurfaceState.initial
+        studyFit = StudyFitJobState.idle
         itemModels = ItemModels.ItemModelProxy.createInMemory ()
         itemIds = ItemIdProvider.system
         selectedItemOpt = None
@@ -1016,6 +1025,8 @@ let initMain () : Result<TableAndElementRotationModel, KitError> =
 type TableAndElementRotationMsg =
     /// Applies and records a study verb, shared by the surfaces and their tests (spec 0050 S11.5).
     | StudyCommand of StudyMsg
+    /// The Fit step's verbs and the running fit's progress and completion (spec 0050 S11.5).
+    | StudyFit of StudyFitMsg
     /// Shows a held study and its latest fit run without writing (spec 0050 S11.5).
     | SelectStudy of StudyName
     /// Sets the New study form's typed name without writing (spec 0050 S11.5).
@@ -2132,6 +2143,17 @@ type TableAndElementRotationModel with
                 | Error error -> Error (MaterialUnavailableErr error.caption.value)
         }
 
+    /// The study fit's forward model over this window's kit, stores and stored item-model versions (spec 0050 S11.5).
+    member model.studyForwardContext : StudyForwardContext =
+        {
+            kit = model.studyContext
+            library = model.library
+            materials = model.materials
+            experimentData = model.experimentData
+            choiceOf = model.tryItemModelChoice
+            solverParameters = SolverParameters.defaultValue
+        }
+
     /// The held study named by the surface selection, or none (spec 0050 S11.5).
     member model.selectedStudyOpt : Study option =
         model.studySurface.studyOpt
@@ -2733,6 +2755,28 @@ let private withGridDraftEdited
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     match msg with
+    | StudyFit message ->
+        let updateFit () : TableAndElementRotationModel =
+            let environment = StudyFitEnvironment.create model.kitShell.studyFits model.kit.proxy model.studyForwardContext model.kit.clock
+            let state = message.updateWith environment model.studyFit
+            let updated =
+                {
+                    model with studyFit = state
+                }
+            match message, state.job.status, state.errorOpt with
+            | StudyFitEnded (Ok run), JobRunner.Completed, None when state.job.committedResults = Some run.name ->
+                {
+                    updated with
+                        kitFitRuns = model.kitFitRuns @ [ run ]
+                        studySurface =
+                            {
+                                model.studySurface with fitRunOpt = Some run.name
+                            }
+                }
+            | _ -> updated
+        match message with
+        | RunFit _ -> guardKitWrite model updateFit
+        | _ -> updateFit ()
     | StudyCommand message ->
         guardKitWrite model (fun () ->
             match message.applyTo model.studyContext with

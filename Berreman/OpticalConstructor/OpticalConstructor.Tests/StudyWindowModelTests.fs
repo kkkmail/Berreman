@@ -1,10 +1,13 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Collections.Concurrent
 open System.IO
+open System.Threading
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open Berreman.Solvers
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
@@ -25,7 +28,11 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.StudyEngine
+open OpticalConstructor.Ui.JobRunner
 open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// The window's study commands over real kit files and one shared catalogue store set (spec 0050 S11.5).
@@ -161,6 +168,25 @@ module StudyWindowModelTests =
     let private studyOf (name : StudyName) : Study = Study.create name [ e1; e2 ] [] experiments |> studyValue
 
     let private qzRun : FitRun = FitRunFileFixtures.fitRunOf qzLr FitRunFileFixtures.firstFitRunStamp
+
+    let private jointRequest : StudyFitRequest =
+        {
+            study = qzLr
+            stage = JointStage
+            calibrationUse = CalibrationHeldFixed
+        }
+
+    let private recordingFitHost
+        (jobs : ResizeArray<IterationWatch -> Result<FitRun, StudyFitError>>)
+        (cancel : unit -> unit)
+        : StudyFitJobHost =
+        {
+            startStudyFit = fun job ->
+                jobs.Add job
+                {
+                    cancelStudyFit = cancel
+                }
+        }
 
     let private folderBytes (folder : KitFolder) : Map<FileName, FileByteContent> =
         Directory.GetFiles(folder.value.value, "*", SearchOption.AllDirectories)
@@ -538,6 +564,196 @@ module StudyWindowModelTests =
                 Assert.Equal<TableAndElementRotationModel>(model, unchanged)
             Assert.Equal<ParameterEditDraft>(itemDraft, draftOf itemReference noStudy)
             Assert.Equal<Map<FileName, FileByteContent>>(beforeMissing, folderBytes folder))
+
+    [<Fact>]
+    let ``RunFit starts one fit through the shell's host, Cancel cancels it, and a read-only kit starts none`` () : unit =
+        let inert = StudyFitJobHost.inert.startStudyFit (fun _ -> failwith "the inert host must run no fit")
+        inert.cancelStudyFit ()
+        let jobs = ResizeArray<IterationWatch -> Result<FitRun, StudyFitError>> ()
+        let cancels = ResizeArray<unit> ()
+        let host = recordingFitHost jobs cancels.Add
+        withWindow ReadWriteKitAccess [ studyOf qzLr ] [] (fun folder loaded ->
+            Assert.Equal<StudyFitJobState>(StudyFitJobState.idle, loaded.studyFit)
+            let forward = loaded.studyForwardContext
+            Assert.Equal<Study list>(loaded.kitStudies, forward.kit.studies)
+            Assert.Equal<Experiment list>(loaded.experimentCollection.experiments, forward.kit.experiments)
+            Assert.Equal<Setup list>(loaded.kitSetups, forward.kit.setups)
+            Assert.Equal<Item list>(loaded.kitItems, forward.kit.items)
+            Assert.Same(loaded.library, forward.library)
+            Assert.Same(loaded.materials, forward.materials)
+            Assert.Same(loaded.experimentData, forward.experimentData)
+            Assert.Equal<SolverParameters>(SolverParameters.defaultValue, forward.solverParameters)
+            for item in loaded.kitItems do
+                match forward.choiceOf item, loaded.tryItemModelChoice item with
+                | Some actual, Some expected -> Assert.Equal<ItemModelChoice>(expected, actual)
+                | _ -> Assert.Fail "the forward context must resolve the stored item model version"
+
+            let ready =
+                {
+                    loaded with
+                        kitShell =
+                            {
+                                loaded.kitShell with studyFits = host
+                            }
+                }
+            let before = folderBytes folder
+            let running = ready |> updateTableAndElementRotation (StudyFit (RunFit jointRequest))
+            Assert.True running.studyFit.job.isRunning
+            Assert.Single jobs |> ignore
+            Assert.Empty cancels
+            let still = running |> updateTableAndElementRotation (StudyFit (RunFit jointRequest))
+            Assert.Equal<TableAndElementRotationModel>(running, still)
+            Assert.Single jobs |> ignore
+
+            let progress : JobProgress =
+                {
+                    completed = JobStepCount 3
+                    total = None
+                    elapsed = JobElapsed (TimeSpan.FromMilliseconds 25.0)
+                }
+            let progressed = still |> updateTableAndElementRotation (StudyFit (StudyFitProgressed progress))
+            Assert.Equal<JobProgress option>(Some progress, progressed.studyFit.job.progress)
+            let cancelling = progressed |> updateTableAndElementRotation (StudyFit CancelStudyFit)
+            Assert.Single cancels |> ignore
+            Assert.True cancelling.studyFit.job.isRunning
+            let cancelled = cancelling |> updateTableAndElementRotation (StudyFit (StudyFitEnded (Error (FitCancelledErr "cancelled by the recording host"))))
+            Assert.Equal<JobStatus>(Cancelled, cancelled.studyFit.job.status)
+            Assert.Equal<StudyFitJobHandle option>(None, cancelled.studyFit.handleOpt)
+            Assert.Equal<StudyFitError option>(None, cancelled.studyFit.errorOpt)
+            Assert.Empty cancelled.kitFitRuns
+            Assert.Equal<FitRunName option>(None, cancelled.studySurface.fitRunOpt)
+            Assert.Empty(cancelled.kit.proxy.listKindFiles FitRunKitFile |> kitValue)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+        jobs.Clear ()
+        cancels.Clear ()
+        withWindow ReadOnlyKitAccess [ studyOf qzLr ] [] (fun folder loaded ->
+            let ready =
+                {
+                    loaded with
+                        kitShell =
+                            {
+                                loaded.kitShell with studyFits = host
+                            }
+                }
+            let before = folderBytes folder
+            let refused = ready |> updateTableAndElementRotation (StudyFit (RunFit jointRequest))
+            let expected =
+                {
+                    ready with kitStatus = refused.kitStatus
+                }
+            Assert.Equal<TableAndElementRotationModel>(expected, refused)
+            Assert.False refused.studyFit.job.isRunning
+            Assert.Empty jobs
+            Assert.Empty cancels
+            match refused.kitStatus with
+            | Some caption -> Assert.Contains("read-only", caption.value)
+            | None -> Assert.Fail "the kit guard must refuse a read-only fit start"
+            Assert.Empty(refused.kit.proxy.listKindFiles FitRunKitFile |> kitValue)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+    [<Fact>]
+    let ``a fit's end writes its fit run into the kit and shows it in the history at once`` () : unit =
+        let stamp = ClockTime (qzRun.stamp.value.AddHours 1.0)
+        let run = FitRunFileFixtures.fitRunOf qzLr stamp
+        withWindow ReadWriteKitAccess [ studyOf qzLr ] [ qzRun ] (fun folder loaded ->
+            let jobs = ResizeArray<IterationWatch -> Result<FitRun, StudyFitError>> ()
+            let host = recordingFitHost jobs ignore
+            let ready =
+                {
+                    loaded with
+                        kitShell =
+                            {
+                                loaded.kitShell with studyFits = host
+                            }
+                }
+            let running = ready |> updateTableAndElementRotation (StudyFit (RunFit jointRequest))
+            Assert.True running.studyFit.job.isRunning
+            Assert.Single jobs |> ignore
+            Assert.Equal<FitRun list>([ qzRun ], running.kit.proxy.readFitRuns qzLr |> kitValue)
+            let completed = running |> updateTableAndElementRotation (StudyFit (StudyFitEnded (Ok run)))
+            Assert.Equal<JobStatus>(Completed, completed.studyFit.job.status)
+            Assert.Equal<FitRunName option>(Some run.name, completed.studyFit.job.committedResults)
+            Assert.Equal<StudyFitJobHandle option>(None, completed.studyFit.handleOpt)
+            Assert.Equal<StudyFitError option>(None, completed.studyFit.errorOpt)
+            Assert.Equal<FitRun list>([ qzRun; run ], completed.kit.proxy.readFitRuns qzLr |> kitValue)
+            Assert.Equal<FitRun list>(loaded.kitFitRuns @ [ run ], completed.kitFitRuns)
+            Assert.Equal<FitRun list>([ qzRun; run ], completed.studyFitRuns)
+            Assert.Equal<FitRunName option>(Some run.name, completed.studySurface.fitRunOpt)
+
+            let before = folderBytes folder
+            let duplicate : FitRun =
+                {
+                    run with
+                        entries =
+                            run.entries
+                            |> List.map (fun entry ->
+                                {
+                                    entry with fitted = ParameterValue 0.5
+                                })
+                }
+            let restarted = completed |> updateTableAndElementRotation (StudyFit (RunFit jointRequest))
+            Assert.True restarted.studyFit.job.isRunning
+            Assert.Equal(2, jobs.Count)
+            let refused = restarted |> updateTableAndElementRotation (StudyFit (StudyFitEnded (Ok duplicate)))
+            match refused.studyFit.errorOpt with
+            | Some (FitRunKitErr (FitRunExistsErr reason)) -> Assert.Contains(run.name.fileStem.value, reason)
+            | Some error -> Assert.Fail($"expected the duplicate fit-run refusal, got {error.describe}")
+            | None -> Assert.Fail "a fit run with an existing name must be refused"
+            Assert.Equal<JobStatus>(Idle, refused.studyFit.job.status)
+            Assert.Equal<FitRunName option>(Some run.name, refused.studyFit.job.committedResults)
+            Assert.Equal<FitRun list>(completed.kitFitRuns, refused.kitFitRuns)
+            Assert.Equal<StudySurfaceState>(completed.studySurface, refused.studySurface)
+            Assert.Equal<FitRun list>([ qzRun; run ], refused.kit.proxy.readFitRuns qzLr |> kitValue)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+    [<Fact>]
+    let ``a fit that cannot run tells why and writes nothing`` () : unit =
+        withWindow ReadWriteKitAccess [] [] (fun folder loaded ->
+            use ended = new ManualResetEventSlim (false)
+            let messages = ConcurrentQueue<TableAndElementRotationMsg> ()
+            let host =
+                StudyFitJobHost.posting
+                    (fun action -> action ())
+                    (fun progress -> messages.Enqueue (StudyFit (StudyFitProgressed progress)))
+                    (fun result ->
+                        messages.Enqueue (StudyFit (StudyFitEnded result))
+                        ended.Set ())
+            let empty = StudyName "Empty"
+            let ready =
+                {
+                    loaded with
+                        kitShell =
+                            {
+                                loaded.kitShell with studyFits = host
+                            }
+                }
+                |> updateTableAndElementRotation (StudyCommand (CreateStudy (empty, [])))
+            Assert.Equal<StudyName option>(Some empty, ready.studySurface.studyOpt)
+            Assert.Equal<ControlCaption option>(None, ready.kitStatus)
+            let before = folderBytes folder
+            let request =
+                {
+                    jointRequest with study = empty
+                }
+            let running = ready |> updateTableAndElementRotation (StudyFit (RunFit request))
+            Assert.True running.studyFit.job.isRunning
+            Assert.True(ended.Wait(TimeSpan.FromSeconds 10.0), "the empty study's fit did not end within ten seconds")
+            let finished =
+                messages.ToArray ()
+                |> Array.fold (fun model message -> updateTableAndElementRotation message model) running
+            match finished.studyFit.errorOpt with
+            | Some (FitStageErr (NoStageRunErr reason)) -> Assert.Contains(empty.value, reason)
+            | Some error -> Assert.Fail($"expected the empty stage refusal, got {error.describe}")
+            | None -> Assert.Fail "a study with no experiment must report why it cannot fit"
+            Assert.False finished.studyFit.job.isRunning
+            Assert.Equal<StudyFitJobHandle option>(None, finished.studyFit.handleOpt)
+            Assert.Equal<FitRunName option>(None, finished.studyFit.job.committedResults)
+            Assert.Empty finished.kitFitRuns
+            Assert.Equal<FitRunName option>(None, finished.studySurface.fitRunOpt)
+            Assert.Empty(finished.kit.proxy.readFitRuns empty |> kitValue)
+            Assert.Empty(finished.kit.proxy.listKindFiles FitRunKitFile |> kitValue)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
 
     [<Fact>]
     let ``selecting a study shows its own fit runs, oldest first`` () : unit =
