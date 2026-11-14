@@ -46,6 +46,13 @@ module LibraryEntryFilesTests =
         Assert.Equal<string>("Licence CC-BY-4.0 — cite: PTB optical constants, 2026", (ccBy.attributionWith citation).text)
         Assert.Equal<string>("Licence CC0-1.0", (cc0.attributionWith citation).text)
 
+    let private fittedInKit : EntryFitInfo =
+        {
+            kit = KitId (Guid.Parse "8c4e2a6f-3b1d-4f7e-a9c5-2d6b8e0f4a13")
+            studyStem = FileStem "QZ-LR"
+            fitRunStem = FileStem "QZ-LR@20261101T120000Z"
+        }
+
     [<Fact>]
     let ``a pulled entry and its forks carry its licence's attribution, and every other provenance none`` () : unit =
         let materialId = MaterialId (Guid.Parse "c31a053b-bce8-40b9-852d-bd3d1c6e542f")
@@ -77,7 +84,7 @@ module LibraryEntryFilesTests =
 
         let userContent = BuiltinCatalogue.userMaterialContent materialId entryName
         let kitId = KitId (Guid.Parse "f36ee953-dce4-4779-a448-dc0a4cfb286f")
-        let unlicensed = [ BuiltInProvenance CatalogueIds.builtInCatalogue; userContent.provenance; KitImportProvenance kitId ]
+        let unlicensed = [ BuiltInProvenance CatalogueIds.builtInCatalogue; userContent.provenance; KitImportProvenance kitId; FitProvenance fittedInKit ]
 
         for provenance in unlicensed do
             Assert.Equal<EntryAttribution option>(None, provenance.attributionOpt)
@@ -331,10 +338,11 @@ module LibraryEntryFilesTests =
                 KitImportProvenance (KitId (Guid.Parse "b2e4f6a8-1c3d-4e5f-8a9b-c0d1e2f3a4b5"))
                 SourcePullProvenance pulled
                 ForkProvenance forkInfo
+                FitProvenance fittedInKit
             ]
 
-        Assert.Equal<EntryProtection list>([ ProtectedBuiltIn; UserManaged; UserManaged; UserManaged; UserManaged ], provenances |> List.map (fun p -> p.protection))
-        Assert.Equal<CategoryOrigin list>([ BuiltInCategory; UserCategory; UserCategory; UserCategory; UserCategory ], provenances |> List.map (fun p -> p.categoryOrigin))
+        Assert.Equal<EntryProtection list>([ ProtectedBuiltIn; UserManaged; UserManaged; UserManaged; UserManaged; UserManaged ], provenances |> List.map (fun p -> p.protection))
+        Assert.Equal<CategoryOrigin list>([ BuiltInCategory; UserCategory; UserCategory; UserCategory; UserCategory; UserCategory ], provenances |> List.map (fun p -> p.categoryOrigin))
 
     [<Fact>]
     let ``a library entry id keeps the GUID of the kind's own id`` () =

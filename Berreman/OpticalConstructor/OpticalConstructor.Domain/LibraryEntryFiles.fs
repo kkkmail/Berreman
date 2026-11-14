@@ -189,14 +189,33 @@ module LibraryEntryFiles =
             citation : EntryCitation
         }
 
+    /// A file name without its kind extension (spec 0050 001 §A; .spec-md §3.11).
+    type FileStem =
+        | FileStem of string
+
+        member this.value : string = let (FileStem s) = this in s
+
+        /// The text with only the characters Windows forbids in a file name, separators included,
+        /// replaced by `_` (spec 0050 .spec-md §3.11).
+        static member ofText (text : string) : FileStem =
+            text
+            |> String.map (fun c ->
+                match c with
+                | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '/' | '\\' -> '_'
+                | other -> other)
+            |> FileStem
+
+        member this.withExtension (extension : FileExtension) : FileName = FileName $"{this.value}{extension.value}"
+
     /// An entry file's `provenance` (spec 0050 001 §B); a built-in's protection derives from it.
-    /// A fork preserves its ancestry but belongs to the user (spec 0050 S3.1).
+    /// A fork preserves its ancestry but belongs to the user (spec 0050 S3.1); so does a fitted entry (S11.5).
     type EntryProvenance =
         | BuiltInProvenance of CatalogueId
         | UserProvenance
         | KitImportProvenance of KitId
         | SourcePullProvenance of SourcePullInfo
         | ForkProvenance of EntryForkInfo
+        | FitProvenance of EntryFitInfo
 
         member this.protection : EntryProtection =
             match this with
@@ -204,7 +223,8 @@ module LibraryEntryFiles =
             | UserProvenance
             | KitImportProvenance _
             | SourcePullProvenance _
-            | ForkProvenance _ -> UserManaged
+            | ForkProvenance _
+            | FitProvenance _ -> UserManaged
 
         member this.categoryOrigin : CategoryOrigin =
             match this with
@@ -212,7 +232,8 @@ module LibraryEntryFiles =
             | UserProvenance
             | KitImportProvenance _
             | SourcePullProvenance _
-            | ForkProvenance _ -> UserCategory
+            | ForkProvenance _
+            | FitProvenance _ -> UserCategory
 
     /// The entry version a fork came from, retaining its provenance, licence and citation (spec 0050 S3.1).
     and EntryForkInfo =
@@ -220,6 +241,15 @@ module LibraryEntryFiles =
             originalId : LibraryEntryId
             originalVersion : VersionNumber
             originalProvenance : EntryProvenance
+        }
+
+    /// Where a promoted entry was fitted: the kit, and the stems of the study's `.study-json` and of the
+    /// fit run's `.fitrun-json` that reproduce its values (spec 0050 S11.5; 001 §I).
+    and EntryFitInfo =
+        {
+            kit : KitId
+            studyStem : FileStem
+            fitRunStem : FileStem
         }
 
     /// The licence credit shown for an entry, including its citation when required (spec 0050 S3.3).
@@ -243,12 +273,13 @@ module LibraryEntryFiles =
 
     type EntryProvenance with
 
-        /// Pulled entries retain their licence credit through every fork (spec 0050 S3.3).
+        /// Pulled entries retain their licence credit through every fork (spec 0050 S3.3); a fit carries no
+        /// licence (S11.5).
         member this.attributionOpt : EntryAttribution option =
             match this with
             | SourcePullProvenance info -> Some (info.licence.attributionWith info.citation)
             | ForkProvenance fork -> fork.originalProvenance.attributionOpt
-            | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ -> None
+            | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | FitProvenance _ -> None
 
     /// One named entry's licence credit in a surface's attribution list (spec 0050 S3.3).
     type EntryAttributionLine =
@@ -282,24 +313,6 @@ module LibraryEntryFiles =
         /// The app's one SHA-256 body, used for an entry's canonical content and a kit's files (spec 0050 001 §B, §E).
         static member ofBytes (bytes : FileByteContent) : ContentHash =
             Convert.ToHexStringLower(SHA256.HashData bytes.value) |> ContentHash
-
-    /// A file name without its kind extension (spec 0050 001 §A; .spec-md §3.11).
-    type FileStem =
-        | FileStem of string
-
-        member this.value : string = let (FileStem s) = this in s
-
-        /// The text with only the characters Windows forbids in a file name, separators included,
-        /// replaced by `_` (spec 0050 .spec-md §3.11).
-        static member ofText (text : string) : FileStem =
-            text
-            |> String.map (fun c ->
-                match c with
-                | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '/' | '\\' -> '_'
-                | other -> other)
-            |> FileStem
-
-        member this.withExtension (extension : FileExtension) : FileName = FileName $"{this.value}{extension.value}"
 
     type EntryName with
 

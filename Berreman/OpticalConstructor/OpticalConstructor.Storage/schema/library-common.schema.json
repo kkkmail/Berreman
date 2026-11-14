@@ -107,15 +107,42 @@
         }
       }
     },
+    "fitProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "FitProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": ["kit", "studyStem", "fitRunStem"],
+              "additionalProperties": false,
+              "properties": {
+                "kit": { "$ref": "#/$defs/guid" },
+                "studyStem": { "type": "string", "minLength": 1 },
+                "fitRunStem": { "type": "string", "minLength": 1 }
+              }
+            }
+          ],
+          "minItems": 1,
+          "items": false,
+          "description": "The kit a promoted entry was fitted in, and the file stems of its study and fit run (spec 0050 S11.5)."
+        }
+      }
+    },
     "provenance": {
       "oneOf": [
         { "$ref": "#/$defs/builtInProvenance" },
         { "$ref": "#/$defs/userProvenance" },
         { "$ref": "#/$defs/kitImportProvenance" },
         { "$ref": "#/$defs/sourcePullProvenance" },
-        { "$ref": "#/$defs/forkProvenance" }
+        { "$ref": "#/$defs/forkProvenance" },
+        { "$ref": "#/$defs/fitProvenance" }
       ],
-      "description": "Where the entry comes from: built-in, user, imported from a kit, pulled from an online source, or forked from another entry."
+      "description": "Where the entry comes from: built-in, user, imported from a kit, pulled from an online source, forked from another entry, or fitted in a kit."
     }
   }
 }

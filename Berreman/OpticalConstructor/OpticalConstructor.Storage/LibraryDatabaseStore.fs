@@ -43,14 +43,17 @@ module LibraryDatabaseStore =
             | KitImportProvenance _ -> 3
             | SourcePullProvenance _ -> 4
             | ForkProvenance _ -> 5
+            | FitProvenance _ -> 6
 
+        /// The catalogue that ships the entry: a built-in's alone, never a fitted entry's (spec 0050 S11.5).
         member this.catalogueIdOpt : CatalogueId option =
             match this with
             | BuiltInProvenance catalogueId -> Some catalogueId
             | UserProvenance
             | KitImportProvenance _
             | SourcePullProvenance _
-            | ForkProvenance _ -> None
+            | ForkProvenance _
+            | FitProvenance _ -> None
 
     type StoredEntryVersion with
 

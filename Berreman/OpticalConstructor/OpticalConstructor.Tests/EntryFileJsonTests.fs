@@ -300,6 +300,21 @@ module EntryFileJsonTests =
 
         assertMaterialRoundTrips nestedForkProvenance nestedForkedSilica
 
+        let fitProvenance =
+            FitProvenance
+                {
+                    kit = KitId (Guid.Parse "2a7d5c9e-6f14-4b83-b0e2-9c3f1a5d7e68")
+                    studyStem = FileStem "QZ-LR"
+                    fitRunStem = FileStem "QZ-LR@20261101T120000Z"
+                }
+        let fittedSilica : MaterialEntry =
+            {
+                silica with
+                    id = MaterialId (Guid.Parse "5e9b3d7a-1c48-4f26-8d0a-6b2e4f8c1a39")
+            }
+
+        assertMaterialRoundTrips fitProvenance fittedSilica
+
     /// A constant material with one distinctive number, the one a tampering test changes.
     let private tamperable : MaterialEntry =
         materialWith "7e2c4a9b-5d13-4f68-9a0e-3c1f7d2b8e64" "Transparent test glass" (epsOnly (EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.5234))))
