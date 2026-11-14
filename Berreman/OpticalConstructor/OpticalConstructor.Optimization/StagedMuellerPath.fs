@@ -6,6 +6,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.MuellerReconstruction
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Studies
 
@@ -63,10 +64,10 @@ module StagedMuellerPath =
         /// `load_step1_models`' `source_cpl`.
         member this.cplSource : SourceModel = CplSource (this.cplSourceModel.thetaRel, this.cplSourceModel.retardance)
 
-    /// A family's AIR#0 normalized trace over its AIR rows, the reference `load_air_traces` + `prepare_normalized_traces`
-    /// (`matrix_step1_air_fit.py:78`, `:85`): per experiment, the dark-subtracted mean per dial reading over that
-    /// experiment's mean signal.
-    let private reduceAirTraces (darkMean : DarkMean) (rows : MuellerRawRow list) : AirTrace =
+    /// The AIR trace of capture rows (`load_air_traces` + `prepare_normalized_traces`, `matrix_step1_air_fit.py`
+    /// `:78`, `:85`): per experiment label, the dark-subtracted mean per dial reading over that experiment's mean signal,
+    /// which stage one fits and the per-run residuals read (spec 0050 S11.4).
+    let reduceAirTraces (darkMean : DarkMean) (rows : MuellerRawRow list) : AirTrace =
         let reduced =
             rows
             |> List.groupBy (fun r -> r.experiment)
@@ -82,6 +83,37 @@ module StagedMuellerPath =
             anglesDeg = reduced |> List.map fst |> List.toArray
             norm = reduced |> List.map snd |> List.toArray
         }
+
+    type AirTrace with
+
+        /// `freeCosineFit`'s residual at the zero z and visibility V it reports: its p · cos 2α + q · sin 2α
+        /// − (norm − 1) at p = V cos 2z and q = V sin 2z, entry i V · cos 2(αᵢ − z) − (normᵢ − 1) (spec 0050 S11.4).
+        member this.fringeResidualAt (zero : Angle) (visibility : FringeVisibility) : ResidualVector =
+            let zeroDeg = zero.degrees
+            Array.map2
+                (fun a n -> visibility.value * cos (2.0 * (a - zeroDeg) * Angle.radiansPerDegree) - (n - 1.0))
+                this.anglesDeg
+                this.norm
+            |> ResidualVector
+
+    type SourceCplModel with
+
+        /// The LP-frame fit's residual in this model, phased on `lpZero`: entry i q · cos 2(αᵢ − z) + u · sin 2(αᵢ − z)
+        /// − (normᵢ − 1), 1 − q = (1 − cos δ) sin² 2θ and u = (1 − cos δ) sin 2θ cos 2θ, which `sourceCplFromLpFrame`
+        /// reads back as this model on its physical branch 0° < θ < 90° (spec 0050 S11.4).
+        member this.lpFrameResidualOn (trace : AirTrace) (lpZero : Angle) : ResidualVector =
+            let twoTheta = 2.0 * this.thetaRel.value
+            let oneLessCosDelta = 1.0 - cos this.retardance.value
+            let qLp = 1.0 - oneLessCosDelta * sin twoTheta * sin twoTheta
+            let uLp = oneLessCosDelta * sin twoTheta * cos twoTheta
+            let zeroDeg = lpZero.degrees
+            Array.map2
+                (fun a n ->
+                    let twoAlpha = 2.0 * (a - zeroDeg) * Angle.radiansPerDegree
+                    qLp * cos twoAlpha + uLp * sin twoAlpha - (n - 1.0))
+                trace.anglesDeg
+                trace.norm
+            |> ResidualVector
 
     /// The CPL source model from the reference `fit_lp_frame_coeffs` (`matrix_step1_air_fit.py:132`), the 2-column
     /// solve phased on the LP zero, and `derive_source_cpl_from_lp_frame` (`sourceCplFromLpFrame`).

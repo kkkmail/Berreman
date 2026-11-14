@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Tests
 
+open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
@@ -10,7 +11,8 @@ open Xunit
 
 /// Spec 0050 S10.3 — the staged Mueller path answers a typed error, never a throw, over fixed-literal capture rows and
 /// the real MathNet SVD solver, and its product check reads a fixed two-row system. Spec 0050 S11.3 — the pieces a study
-/// calls alone (stage one over given AIR rows, an AIR anchor, a row's projection) are the reference path's own.
+/// calls alone (stage one over given AIR rows, an AIR anchor, a row's projection) are the reference path's own. Spec 0050
+/// S11.4 — the AIR trace is per experiment, and stage one's cosine fits keep their residuals in the instruments' constants.
 module StagedMuellerPathTests =
 
     let private noCaptures : StagedMuellerCaptureData =
@@ -290,6 +292,97 @@ module StagedMuellerPathTests =
         assertSameAnalyzer loadedLinear linear
         assertSameAnalyzer loadedCircular circular
         Assert.Equal<SourceModel>(CplSource (stageOne.cplSourceModel.thetaRel, stageOne.cplSourceModel.retardance), stageOne.cplSource)
+
+    /// The dial angles of the test-local AIR traces, 0° to 160° by 20°, in degrees.
+    let private traceAnglesDeg : float[] = [| for reading in 0 .. 8 -> 20.0 * float reading |]
+
+    /// A test-local AIR trace whose normalized intensity less one is `fringe` of the reading's index and its dial angle in
+    /// radians.
+    let private airTraceOf (fringe : int -> float -> float) : AirTrace =
+        {
+            anglesDeg = traceAnglesDeg
+            norm = traceAnglesDeg |> Array.mapi (fun i a -> 1.0 + fringe i (a * Angle.radiansPerDegree))
+        }
+
+    [<Fact>]
+    let ``an AIR trace's fringe residual at its cosine fit's zero and visibility is that fit's residual`` () =
+        let alternating (i : int) : float = if i % 2 = 0 then 1.0 else -1.0
+        let trace = airTraceOf (fun i alpha -> 0.54 * cos (2.0 * alpha) - 0.62 * sin (2.0 * alpha) + 0.01 * alternating i)
+
+        match freeCosineFit (createMathNetSvd ()) trace with
+        | Ok fit ->
+            // The fit's own design and right-hand side, at the coefficients its zero and visibility stand for.
+            let twoZero = 2.0 * fit.zeroAzimuth.value
+            let coefficients = RealVector.create [| fit.visibility.value * cos twoZero; fit.visibility.value * sin twoZero |]
+            let system : LeastSquaresSystem =
+                {
+                    design =
+                        trace.anglesDeg
+                        |> Array.map (fun a ->
+                            let twoAlpha = 2.0 * a * Angle.radiansPerDegree
+                            DesignRow [| cos twoAlpha; sin twoAlpha |])
+                    rhs = trace.norm |> Array.map (fun n -> n - 1.0)
+                }
+            let expected = system.residualsAt coefficients
+            let residuals = (trace.fringeResidualAt fit.zeroAzimuth fit.visibility).value
+
+            // The alternating term leaves a residual the two cosines cannot absorb.
+            Assert.True(fit.rmse.value > 0.005, $"expected a non-trivial fit residual, got an RMSE of {fit.rmse.value}")
+            Assert.Equal(trace.anglesDeg.Length, residuals.Length)
+            residuals |> Array.iteri (fun i r -> Assert.Equal(expected.[i], r, 1e-12))
+            Assert.Equal(fit.rmse.value, sqrt (residuals |> Array.averageBy (fun r -> r * r)), 1e-12)
+        | Error error -> Assert.Fail($"expected the free cosine fit, got {error.describe}")
+
+    [<Fact>]
+    let ``an LP-frame residual vanishes on the trace of the source model sourceCplFromLpFrame reads`` () =
+        let lpZero = Angle.degree 155.0<Berreman.Constants.deg>
+        let trace =
+            airTraceOf (fun _ alpha ->
+                let twoPhase = 2.0 * (alpha - lpZero.value)
+                0.16 * cos twoPhase + 0.17 * sin twoPhase)
+        let model = sourceCplFromLpFrame (CosineCoefficient 0.16) (CosineCoefficient 0.17)
+
+        let residuals = (model.lpFrameResidualOn trace lpZero).value
+
+        // The read-back model lies on the physical branch the reparameterisation is one-to-one on.
+        Assert.InRange(model.thetaRel.degrees, 0.0, 90.0)
+        Assert.Equal(trace.anglesDeg.Length, residuals.Length)
+        for r in residuals do
+            Assert.Equal(0.0, r, 1e-12)
+
+    [<Fact>]
+    let ``the AIR trace of two experiments' rows is each experiment's trace in turn`` () =
+        let dark = DarkMean 5.0
+
+        // Each experiment reads every dial twice, out of dial order, so its own trace averages, sorts and normalises.
+        let rowsOf (label : MuellerExperimentLabel) (signal : int -> Angle -> float) : MuellerRawRow list =
+            [ for repeat in 0 .. 1 do
+                for reading in [ 4; 0; 8; 2; 6; 1; 7; 3; 5 ] ->
+                    let dial = Angle.degree (20.0<Berreman.Constants.deg> * float reading)
+                    let row : MuellerRawRow =
+                        {
+                            experiment = label
+                            captureIndex = CaptureIndex (9 * repeat + reading)
+                            capturedAt = System.DateTimeOffset(2026, 7, 15, 13, 0, 0, System.TimeSpan.Zero)
+                            description = dial
+                            avgTotal = MeasuredIntensity (signal repeat dial)
+                        }
+                    row ]
+        let first =
+            rowsOf (MuellerExperimentLabel "LP-(AIR#0)-LP-2") (fun repeat dial ->
+                900.0 + 300.0 * cos (2.0 * dial.value) + float repeat)
+        let second =
+            rowsOf (MuellerExperimentLabel "LP-(AIR#0)-LP-2R") (fun repeat dial ->
+                1200.0 + 250.0 * sin (2.0 * dial.value) - float repeat)
+
+        let firstTrace = reduceAirTraces dark first
+        let secondTrace = reduceAirTraces dark second
+        let both = reduceAirTraces dark (first @ second)
+
+        Assert.Equal<float[]>(traceAnglesDeg, firstTrace.anglesDeg |> Array.map round)
+        Assert.NotEqual<float[]>(firstTrace.norm, secondTrace.norm)
+        Assert.Equal<float[]>(Array.append firstTrace.anglesDeg secondTrace.anglesDeg, both.anglesDeg)
+        Assert.Equal<float[]>(Array.append firstTrace.norm secondTrace.norm, both.norm)
 
     [<Fact>]
     let ``every staged path error renders its condition and its payload`` () =
