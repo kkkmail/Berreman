@@ -17,12 +17,60 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Domain.Studies
 
 /// The Controls values derived from a Domain value: the automation ids (spec 0048 R1) and a control's
 /// keys, counts and captions. Controls references no Domain type, so they are extension members here,
 /// the lowest project that sees both.
 [<AutoOpen>]
 module ConstructorUiIdOfDomain =
+
+    type StudyName with
+
+        /// The name shown by the study selector (spec 0050 S11.5).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type ExperimentName with
+
+        /// The name shown by the new study's experiment choices (spec 0050 S11.5).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type StudyParameterRef with
+
+        member private this.studyParameterUiKey : ConstructorUiKey =
+            match this with
+            | ItemParameterRef (item, name) -> ConstructorUiKey $"{item.value}_{name.value}"
+            | MaterialParameterRef (version, name) ->
+                ConstructorUiKey $"{version.materialId.value}_v{version.version.value}_{name.value}"
+
+    type ConstructorUiId with
+
+        /// Chooses the study by its file stem (spec 0050 S11.5).
+        static member studyChoice (name : StudyName) : ConstructorUiId = ConstructorUiId $"StudyChoice_{name.fileStem.value}"
+
+        /// Toggles an experiment in the new study (spec 0050 S11.5).
+        static member newStudyExperimentToggle (name : ExperimentName) : ConstructorUiId =
+            ConstructorUiId $"NewStudyExperiment_{name.fileStem.value}"
+
+        /// Adds an experiment to the selected study (spec 0050 S11.5).
+        static member addExperimentToStudyButton (name : ExperimentName) : ConstructorUiId =
+            ConstructorUiId $"AddExperimentToStudy_{name.fileStem.value}"
+
+        /// Opens a referenced material version in the study (spec 0050 S11.5).
+        static member openMaterialButton (version : MaterialVersionId) : ConstructorUiId =
+            ConstructorUiId $"OpenMaterial_{version.materialId.value}_v{version.version.value}"
+
+        /// Opens the parameter editor for this owner and parameter (spec 0050 S11.5).
+        static member studyParameterRow (parameter : StudyParameterRef) : ConstructorUiId =
+            ConstructorUiId $"StudyParameterRow_{parameter.studyParameterUiKey.value}"
+
+        /// Chooses the unknown's sharing scope (spec 0050 S11.5).
+        static member studyParameterScopeChoice (parameter : StudyParameterRef) : ConstructorUiId =
+            ConstructorUiId $"StudyParameterScope_{parameter.studyParameterUiKey.value}"
+
+        /// Chooses another unknown as the parameter's leader (spec 0050 S11.5).
+        static member studyParameterLinkChoice (parameter : StudyParameterRef) : ConstructorUiId =
+            ConstructorUiId $"StudyParameterLink_{parameter.studyParameterUiKey.value}"
 
     type LibraryEntryId with
 

@@ -245,6 +245,7 @@
         <Compile Include="SlotBarTests.fs" />
         <Compile Include="SetupGridPanelTests.fs" />
         <Compile Include="DataStepTests.fs" />
+        <Compile Include="StudyViewTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

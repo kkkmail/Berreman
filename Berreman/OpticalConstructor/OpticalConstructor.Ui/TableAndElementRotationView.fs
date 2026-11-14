@@ -351,32 +351,37 @@ type ConstructorFlowStep =
     | ExperimentsFlowStep
     /// The experiments' data files: the Inverse constructor's alone, as spec 0046 kept them (spec 0050 S9.3).
     | DataFlowStep
+    /// The study's parameters, scopes and links, in the Inverse constructor alone (spec 0050 S11.5).
+    | UnknownsFlowStep
 
-    /// The steps in 001 §O's order; S11 and S14 insert Unknowns, Plan, Fit, Results and Publish when each works (spec
-    /// 0050 S7.2, S9.3, .spec-md §3.22).
-    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep ]
+    /// The working steps in 001 §O's order (spec 0050 S7.2, S9.3, S11.5; .spec-md §3.22).
+    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep ]
 
-    /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3).
+    /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3, S11.5).
     static member stepsOf (mode : ConstructorMode) : ConstructorFlowStep list =
         match mode with
         | InverseConstructor -> ConstructorFlowStep.all
-        | ForwardConstructor -> ConstructorFlowStep.all |> List.filter (fun step -> step <> DataFlowStep)
+        | ForwardConstructor ->
+            ConstructorFlowStep.all
+            |> List.filter (function DataFlowStep | UnknownsFlowStep -> false | _ -> true)
 
-    /// The strip's caption of the step (spec 0050 S7.2).
+    /// The strip's caption of the step (spec 0050 S7.2, S11.5).
     member this.caption : ControlCaption =
         match this with
         | ItemsFlowStep -> ControlCaption "Items"
         | SetupsFlowStep -> ControlCaption "Setups"
         | ExperimentsFlowStep -> ControlCaption "Experiments"
         | DataFlowStep -> ControlCaption "Data"
+        | UnknownsFlowStep -> ControlCaption "Unknowns"
 
-    /// The id of the step's box in the flow strip (spec 0050 S7.2).
+    /// The id of the step's box in the flow strip (spec 0050 S7.2, S11.5).
     member this.flowUiId : ConstructorUiId =
         match this with
         | ItemsFlowStep -> ConstructorUiId.flowItemsStep
         | SetupsFlowStep -> ConstructorUiId.flowSetupsStep
         | ExperimentsFlowStep -> ConstructorUiId.flowExperimentsStep
         | DataFlowStep -> ConstructorUiId.flowDataStep
+        | UnknownsFlowStep -> ConstructorUiId.flowUnknownsStep
 
 /// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
 /// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
@@ -2148,6 +2153,17 @@ type TableAndElementRotationModel with
                 | Error error -> Error (MaterialUnavailableErr error.caption.value)
         }
 
+    /// The parameter's item label or resolved material name and version, then its name (spec 0050 S11.5).
+    member model.studyParameterCaption (parameter : StudyParameterRef) : ControlCaption =
+        match parameter with
+        | ItemParameterRef (item, name) -> ControlCaption $"{(item.labelAmong model.kitItems).value} {name.value}"
+        | MaterialParameterRef (version, name) ->
+            let owner =
+                match model.materials.resolveVersion version with
+                | Ok (Some entry) -> entry.name.value
+                | Ok None | Error _ -> string version.materialId.value
+            ControlCaption $"{owner} v{version.version.value} {name.value}"
+
     /// The study fit's forward model over this window's kit, stores and stored item-model versions (spec 0050 S11.5).
     member model.studyForwardContext : StudyForwardContext =
         {
@@ -2987,17 +3003,18 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         // Spec 0050 S7.2: the strip names the surface the ribbon shows.
         let flowStep = if name = BayNames.experiments then ExperimentsFlowStep else SetupsFlowStep
         { model with ribbon = name; flowStep = flowStep }
+    | ShowFlowStep step when not (List.contains step (ConstructorFlowStep.stepsOf model.constructorMode)) -> model
     | ShowFlowStep ItemsFlowStep -> { model with flowStep = ItemsFlowStep }
     | ShowFlowStep SetupsFlowStep ->
         // Spec 0050 S7.2: Setups leaves the Experiments bay for the table's first bay; any other open bay stays.
         let bay = if model.ribbon = BayNames.experiments then BayNames.add else model.ribbon
         { model with flowStep = SetupsFlowStep; ribbon = bay }
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
-    // Spec 0050 S9.3: the Data step is the Inverse constructor's alone; the open bay waits for the workbench's return.
-    | ShowFlowStep DataFlowStep ->
-        match model.constructorMode with
-        | InverseConstructor -> { model with flowStep = DataFlowStep }
-        | ForwardConstructor -> model
+    // Spec 0050 S9.3, S11.5: the Inverse surfaces keep the open bay for the workbench's return.
+    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep) as step) ->
+        {
+            model with flowStep = step
+        }
     | SelectKitItem id ->
         match model.kitItems |> List.exists (fun item -> item.id = id) with
         | true -> { model with selectedItemOpt = Some id; parameterEditOpt = None }
@@ -3819,9 +3836,8 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | AddSetupGridAngle (slotId, degrees) -> model |> withGridDraftEdited (fun draft -> draft.withGridAngle slotId degrees.wrappedAngle)
     | RemoveSetupGridAngle (slotId, angle) -> model |> withGridDraftEdited (fun draft -> draft.withoutGridAngle slotId angle)
     | ToggleSetupGridCombination combination -> model |> withGridDraftEdited (fun draft -> draft.withCombinationToggled combination)
-    // Spec 0050 S5.3: the chart gating already follows `constructorMode`. S9.3: the Main constructor has no Data step,
-    // so leaving the Inverse constructor from it lands on Experiments.
-    | SwitchConstructorMode ForwardConstructor when model.flowStep = DataFlowStep ->
+    // Spec 0050 S5.3, S9.3, S11.5: leaving an Inverse-only surface lands on Main's Experiments.
+    | SwitchConstructorMode ForwardConstructor when not (List.contains model.flowStep (ConstructorFlowStep.stepsOf ForwardConstructor)) ->
         {
             model with
                 constructorMode = ForwardConstructor

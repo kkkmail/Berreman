@@ -874,6 +874,24 @@ type ConstructorUiId =
     /// The Data step's experiment matrix: rows source × objects × φ, columns analyzer, a badge per experiment (spec 0050 S9.3).
     static member experimentMatrix : ConstructorUiId = ConstructorUiId "ExperimentMatrix"
 
+    // --- The study's Unknowns step (StudyUnknownsView). ---
+    /// Opens the Inverse constructor's Unknowns step (spec 0050 S11.5).
+    static member flowUnknownsStep : ConstructorUiId = ConstructorUiId "FlowUnknownsStep"
+    /// The study's Unknowns surface (spec 0050 S11.5).
+    static member studyUnknownsPanel : ConstructorUiId = ConstructorUiId "StudyUnknownsPanel"
+    /// The kit's study choices (spec 0050 S11.5).
+    static member studyList : ConstructorUiId = ConstructorUiId "StudyList"
+    /// The last study command's status (spec 0050 S11.5).
+    static member studyStatusLine : ConstructorUiId = ConstructorUiId "StudyStatusLine"
+    /// The new study's name as typed (spec 0050 S11.5).
+    static member newStudyNameField : ConstructorUiId = ConstructorUiId "NewStudyNameField"
+    /// Creates the named study over the chosen experiments (spec 0050 S11.5).
+    static member createStudyButton : ConstructorUiId = ConstructorUiId "CreateStudyButton"
+    /// The selected study's experiments (spec 0050 S11.5).
+    static member studyExperimentsText : ConstructorUiId = ConstructorUiId "StudyExperimentsText"
+    /// The study's parameter owners, states, scopes and links (spec 0050 S11.5).
+    static member studyUnknownsGrid : ConstructorUiId = ConstructorUiId "StudyUnknownsGrid"
+
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).
     static member slotBar : ConstructorUiId = ConstructorUiId "SlotBar"

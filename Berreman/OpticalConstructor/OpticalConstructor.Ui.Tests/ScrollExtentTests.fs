@@ -25,6 +25,7 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -465,6 +466,28 @@ module ScrollExtentTests =
     [<Fact>]
     let ``the kit window's Items step leaves everything reachable`` () : unit =
         assertReachable "KitWindowItems" itemsStepKitWindow
+
+    /// The study grid and its open editor remain reachable at both small screen sizes (spec 0050 S11.5).
+    [<Fact>]
+    let ``the kit window's Unknowns step leaves everything reachable`` () : unit =
+        let makeWindow () : Window =
+            let owner = FolderName "ScrollExtentUnknowns"
+            let model = TestAppScope.studyKitIn owner |> TestAppScope.withStudyMaterial
+            let first = model.kitItems |> List.find (fun item -> item.label = ItemLabel "CPL1")
+            let name = ItemModels.ParameterName "c2.retardance"
+            let reference = ItemParameterRef (first.id, name)
+            let edited =
+                model
+                |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep)
+                |> updateTableAndElementRotation (EditStudyParameter reference)
+            match edited.parameterEditOpt with
+            | Some draft -> Assert.Equal<StudyParameterRef>(reference, draft.parameter)
+            | None -> Assert.Fail "The study parameter editor must be open"
+            Assert.Equal(15, (List.exactlyOne (List.exactlyOne edited.kitStudies).materials).parameters.Length)
+            let window = viewWindow KitWindowView.kitWindowView edited
+            window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
+            window
+        assertReachable "KitWindowUnknowns" makeWindow
 
     /// Spec 0050 S9.3: the Inverse kit window on its Data step over the matrix of three experiments, copies of the collected
     /// one of `filledExperiments` over its setup: the first reviewed, three points with one excluded and one setup

@@ -347,6 +347,10 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
             Border.create [ Border.child (DataStepView.dataStepView model dispatch) ]
             |> Avalonia.FuncUI.DSL.View.withKey "data"
             :> IView
+        | UnknownsFlowStep ->
+            Border.create [ Border.child (StudyUnknownsView.studyUnknownsView model dispatch) ]
+            |> Avalonia.FuncUI.DSL.View.withKey "unknowns"
+            :> IView
     DockPanel.create [
         DockPanel.children [
             StackPanel.create [
