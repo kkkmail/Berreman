@@ -1,23 +1,35 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Text
+open Softellect.Sys.Primitives
 open Berreman.Geometry
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.StudyPublishing
+open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
 open Xunit
 
-/// Spec 0050 S11.5 — calibration revisions and library promotion values, preserving the fit's snapshot,
-/// identity and provenance and refusing values without one fitted result.
+/// Spec 0050 S11.5 — calibration revisions and library promotion, preserving fit snapshots, identity,
+/// provenance and pinned versions, and refusing read-only writes or values without one fitted result.
 module StudyPublishingTests =
 
     let private retardance : ParameterName = ParameterName "c2.retardance"
@@ -238,6 +250,9 @@ module StudyPublishingTests =
                 NotBlackBoxErr "CPL1", "CPL1"
                 PromotionStudyErr (UnknownStudyParameterErr "missing n1"), "missing n1"
                 PromotionEvaluationErr (MissingParameterValueErr "missing m00"), "missing m00"
+                PromotionImportErr (ImportStoreUnavailableErr "closed library"), "closed library"
+                PromotionEntryErr (EntryIdNotGuidErr "invalid preset identity"), "invalid preset identity"
+                PromotionKitErr (KitLibraryKitErr (KitReadOnlyErr "promoteToLibrary")), "promoteToLibrary"
             ]
 
         let texts = cases |> List.map (fun (error, _) -> error.describe)
@@ -255,6 +270,9 @@ module StudyPublishingTests =
                 "the item is not a black-box Mueller matrix: CPL1"
                 "the study refused the promoted value: the study has no such parameter: missing n1"
                 "the fitted matrix could not be evaluated: the values hold no number for the parameter: missing m00"
+                "the library refused the promoted version: the import store is unavailable: closed library"
+                "the promoted entry could not be built: the entry id is not a canonical GUID: invalid preset identity"
+                "the kit could not snapshot the promoted version: the kit refused the library snapshot: the kit is open read-only: promoteToLibrary"
             ],
             texts)
 
@@ -506,8 +524,8 @@ module StudyPublishingTests =
             Assert.Equal(CustomMueller, preset.category)
             Assert.Equal(UserManaged, preset.protection)
             match preset.behavior with
-            | ConstantMueller [ component ] ->
-                Assert.Equal(Angle.zero, component.offset)
+            | ConstantMueller [ muellerComponent ] ->
+                Assert.Equal(Angle.zero, muellerComponent.offset)
                 for row in 0 .. 3 do
                     for column in 0 .. 3 do
                         let expected =
@@ -516,7 +534,7 @@ module StudyPublishingTests =
                             | 0, 1 -> ParameterValue 0.25
                             | _ when row = column -> ParameterValue 1.0
                             | _ -> ParameterValue 0.0
-                        Assert.Equal(expected.value, component.matrix.element row column, 1.0e-15)
+                        Assert.Equal(expected.value, muellerComponent.matrix.element row column, 1.0e-15)
             | _ -> Assert.Fail "expected one constant Mueller component"
         | Error error -> Assert.Fail error.describe
 
@@ -680,3 +698,259 @@ module StudyPublishingTests =
         Assert.Equal<PromotionSubject list>(
             [ MaterialPromotion secondVersion; MaterialPromotion promotionVersion ],
             bothRun.promotionSubjectsWith bothStudy [ secondItem; qz ] (fun _ -> None))
+
+    type private PromotionKitFixture =
+        {
+            folder : InMemoryKitFolder
+            library : KitLibraryContext
+            materials : MaterialProxy
+        }
+
+    let private promotionKit (database : LibraryDatabase) : PromotionKitFixture =
+        let folder = InMemoryKitFolder.create ()
+        let proxy = KitProxy.createInMemory folder
+        let mutable next = ClockTime (DateTime(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc))
+        let clock : ClockProvider =
+            {
+                now = fun () ->
+                    let current = next
+                    next <- ClockTime (current.value.AddSeconds 1.0)
+                    current
+            }
+        let kitId = KitId (Guid.Parse "40800000-0000-4000-8000-000000000001")
+        let kitName = KitName "Promotion kit"
+        let author = KitAuthor "Study publishing tests"
+        let kitFile = KitFile.create kitId kitName author (clock.now ())
+        proxy.initialiseKit kitFile |> Result.defaultWith (fun error -> failwith error.describe)
+
+        let library : KitLibraryContext =
+            {
+                kit = KitContext.openKit proxy ReadWriteKitAccess clock |> Result.defaultWith (fun error -> failwith error.describe)
+                imports = CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database)
+            }
+        let materials = MaterialProxy.createInDatabase database
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), materials.saveMaterial promotionEntry)
+        library.recordStudy materialStudy |> Result.defaultWith (fun error -> failwith error.describe)
+        {
+            folder = folder
+            library = library
+            materials = materials
+        }
+
+    let private promotedVersionOf (result : Result<LibraryVersionRef, PublishError>) : LibraryVersionRef =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    let private promotionEnvelope (library : KitLibraryContext) (version : LibraryVersionRef) : LibraryEntryEnvelope =
+        match library.imports.proxy.tryHeldEnvelope version.entryId version.version with
+        | Ok (Some envelope) -> envelope
+        | Ok None -> failwith $"the library lost {version.describe}"
+        | Error error -> failwith error.describe
+
+    let private assertPromotionPins (database : LibraryDatabase) (versions : LibraryVersionRef list) : unit =
+        database.run (fun context ->
+            for version in versions do
+                match context.tryStoredVersion version.entryId version.version with
+                | Ok (Some stored) -> Assert.Equal(VersionPinned, stored.state.pin)
+                | Ok None -> Assert.Fail($"the library lost {version.describe}")
+                | Error error -> Assert.Fail(error.describe))
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+    // In-memory snapshots are envelopes, while the other files retain their bytes (spec 0050 S11.5).
+    let private promotionKitBytes (fixture : PromotionKitFixture) : Map<KitRelativePath, FileByteContent> =
+        let snapshots =
+            fixture.library.kit.proxy.listSnapshots ()
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> List.map (fun envelope -> envelope.snapshotPath, envelope)
+            |> Map.ofList
+        let folders = [ KitRelativePath "data"; KitRelativePath "library"; KitRelativePath.appCacheFolder ]
+        fixture.folder.paths ()
+        |> List.except folders
+        |> List.map (fun path ->
+            let bytes =
+                match Map.tryFind path snapshots with
+                | Some envelope ->
+                    let text = envelope.fileText |> Result.defaultWith (fun error -> failwith error.describe)
+                    FileByteContent (Encoding.UTF8.GetBytes text.value)
+                | None ->
+                    let source = fixture.library.kit.proxy.readLabFile path |> Result.defaultWith (fun error -> failwith error.describe)
+                    source.content
+            path, bytes)
+        |> Map.ofList
+
+    [<Fact>]
+    let ``promoting a fitted material mints its next library version under the fit's provenance and snapshots it into the kit`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = promotionKit database
+        let library = fixture.library
+        let original : LibraryVersionRef =
+            {
+                entryId = promotionVersion.materialId.toLibraryEntryId
+                version = promotionVersion.version
+            }
+        let originalEnvelope = promotionEnvelope library original
+        let before = promotionKitBytes fixture
+        assertPromotionPins database [ original ]
+
+        let promoted = library.promoteMaterial materialStudy materialRun promotionVersion promotionEntry |> promotedVersionOf
+        let expectedVersion =
+            {
+                original with
+                    version = VersionNumber 2
+            }
+        Assert.Equal(expectedVersion, promoted)
+        let promotedMaterialVersion =
+            {
+                promotionVersion with
+                    version = promoted.version
+            }
+        let expected =
+            materialStudy.promotedMaterialWith materialRun promotionVersion promotionEntry
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), fixture.materials.resolveVersion promotedMaterialVersion)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some promotionEntry), fixture.materials.resolveVersion promotionVersion)
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), fixture.materials.tryGetMaterial promotionVersion.materialId)
+
+        let envelope = promotionEnvelope library promoted
+        let provenance =
+            FitProvenance
+                {
+                    kit = library.kit.kitFile.id
+                    studyStem = FileStem "QZ-LR"
+                    fitRunStem = materialRun.name.fileStem
+                }
+        Assert.Equal(provenance, envelope.content.provenance)
+        match envelope.content.payload, expected.physics with
+        | CrystalMaterialPayload crystal, CrystalParameterPhysics expectedCrystal -> Assert.Equal(expectedCrystal, crystal)
+        | _ -> Assert.Fail "the promoted material must retain its crystal payload"
+        Assert.NotEqual(originalEnvelope.contentHash, envelope.contentHash)
+        Assert.Equal(originalEnvelope, promotionEnvelope library original)
+        let firstPath = KitRelativePath $"library/{promotionVersion.materialId.value:D}@v1.material-json"
+        let secondPath = KitRelativePath $"library/{promotionVersion.materialId.value:D}@v2.material-json"
+        Assert.Contains(firstPath, fixture.folder.paths ())
+        Assert.Contains(secondPath, fixture.folder.paths ())
+        let snapshots = library.kit.proxy.listSnapshots () |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Contains<LibraryEntryEnvelope>(envelope, snapshots)
+        Assert.Contains<LibraryEntryEnvelope>(originalEnvelope, snapshots)
+        assertPromotionPins database [ original; promoted ]
+        let storedStudy = library.kit.proxy.readStudies () |> Result.defaultWith (fun error -> failwith error.describe) |> Assert.Single
+        Assert.Equal(materialStudy, storedStudy)
+        let after = promotionKitBytes fixture
+        for KeyValue(path, bytes) in before do
+            Assert.Equal(bytes, Map.find path after)
+
+    [<Fact>]
+    let ``promoting a black box adds a custom-Mueller preset at version 1, and promoting it again mints version 2`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = promotionKit database
+        let library = fixture.library
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, library.imports.proxy.tryHeldEntry qz.id.toLibraryEntryId)
+        let first = library.promoteBlackBox blackBoxRun qz blackBoxChoice |> promotedVersionOf
+        Assert.Equal(qz.id.toLibraryEntryId, first.entryId)
+        Assert.Equal(VersionNumber.first, first.version)
+        let firstEnvelope = promotionEnvelope library first
+        let firstPath = KitRelativePath $"library/{qz.id.value:D}@v1.polarizer-json"
+        Assert.Contains(firstPath, fixture.folder.paths ())
+        assertPromotionPins database [ first ]
+        let before = promotionKitBytes fixture
+
+        let secondM00 =
+            {
+                m00Entry with
+                    fitted = ParameterValue 0.8
+            }
+        let secondRun =
+            {
+                blackBoxRun with
+                    name = FitRunName "QZ-LR@20261101T120100Z"
+                    stamp = ClockTime (DateTime(2026, 11, 1, 12, 1, 0, DateTimeKind.Utc))
+                    entries = [ secondM00; m01Entry ]
+            }
+        let second = library.promoteBlackBox secondRun qz blackBoxChoice |> promotedVersionOf
+        let expectedSecond =
+            {
+                first with
+                    version = VersionNumber 2
+            }
+        Assert.Equal(expectedSecond, second)
+        let secondPath = KitRelativePath $"library/{qz.id.value:D}@v2.polarizer-json"
+        Assert.Contains(firstPath, fixture.folder.paths ())
+        Assert.Contains(secondPath, fixture.folder.paths ())
+        let snapshots = library.kit.proxy.listSnapshots () |> Result.defaultWith (fun error -> failwith error.describe)
+        for version, run in [ first, blackBoxRun; second, secondRun ] do
+            let envelope = promotionEnvelope library version
+            Assert.Equal(run.provenanceIn library.kit.kitFile.id, envelope.content.provenance)
+            let preset = envelope.content.toPolarizerPreset |> Result.defaultWith (fun error -> failwith error.describe)
+            let expected = run.promotedBlackBoxWith qz blackBoxChoice |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal(expected, preset)
+            Assert.Equal(CustomMueller, preset.category)
+            Assert.Equal(qz.id.toElementValueId, preset.id)
+            Assert.Contains<LibraryEntryEnvelope>(envelope, snapshots)
+        Assert.Equal(firstEnvelope, promotionEnvelope library first)
+        Assert.NotEqual(firstEnvelope.contentHash, (promotionEnvelope library second).contentHash)
+        match library.imports.proxy.tryHeldEntry first.entryId with
+        | Ok (Some held) ->
+            Assert.Equal(second.version, held.latest)
+            Assert.Equal<VersionNumber list>([ first.version; second.version ], held.versions |> List.map _.version)
+        | Ok None -> Assert.Fail "the promoted black box is absent"
+        | Error error -> Assert.Fail error.describe
+        assertPromotionPins database [ first; second ]
+        let after = promotionKitBytes fixture
+        for KeyValue(path, bytes) in before do
+            Assert.Equal(bytes, Map.find path after)
+
+    [<Fact>]
+    let ``a read-only kit promotes nothing`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = promotionKit database
+        let writable = fixture.library
+        let readOnlyKit =
+            KitContext.openKit (KitProxy.createInMemory fixture.folder) ReadOnlyKitAccess writable.kit.clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let library =
+            {
+                writable with
+                    kit = readOnlyKit
+            }
+        let entryIds = [ promotionVersion.materialId.toLibraryEntryId; qz.id.toLibraryEntryId ]
+        let heldBefore = entryIds |> List.map writable.imports.proxy.tryHeldEntry
+        let pathsBefore = fixture.folder.paths ()
+        let bytesBefore = promotionKitBytes fixture
+        let expected : Result<LibraryVersionRef, PublishError> = Error (PromotionKitErr (KitLibraryKitErr (KitReadOnlyErr "promoteToLibrary")))
+        Assert.Equal<Result<LibraryVersionRef, PublishError>>(expected, library.promoteMaterial materialStudy materialRun promotionVersion promotionEntry)
+        Assert.Equal<Result<LibraryVersionRef, PublishError>>(expected, library.promoteBlackBox blackBoxRun qz blackBoxChoice)
+
+        // A refusal must precede even reads and sealing, not merely rely on the kit's write guard (spec 0050 S11.5).
+        let unexpectedIo () : 'Value = failwith "read-only promotion performed IO"
+        let guardedImports =
+            {
+                library.imports with
+                    sealEntry = fun _ -> unexpectedIo ()
+                    proxy =
+                        {
+                            library.imports.proxy with
+                                tryHeldEntry = fun _ -> unexpectedIo ()
+                                tryHeldEnvelope = fun _ _ -> unexpectedIo ()
+                                putEntryVersion = fun _ -> unexpectedIo ()
+                                pinEntryVersion = fun _ _ -> unexpectedIo ()
+                        }
+            }
+        let guarded =
+            {
+                library with
+                    imports = guardedImports
+                    kit =
+                        {
+                            readOnlyKit with
+                                proxy =
+                                    {
+                                        readOnlyKit.proxy with
+                                            listSnapshots = fun () -> unexpectedIo ()
+                                            writeSnapshot = fun _ -> unexpectedIo ()
+                                    }
+                        }
+            }
+        Assert.Equal<Result<LibraryVersionRef, PublishError>>(expected, guarded.promoteMaterial materialStudy materialRun promotionVersion promotionEntry)
+        Assert.Equal<Result<LibraryVersionRef, PublishError>>(expected, guarded.promoteBlackBox blackBoxRun qz blackBoxChoice)
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError> list>(heldBefore, entryIds |> List.map writable.imports.proxy.tryHeldEntry)
+        Assert.Equal<KitRelativePath list>(pathsBefore, fixture.folder.paths ())
+        Assert.Equal<Map<KitRelativePath, FileByteContent>>(bytesBefore, promotionKitBytes fixture)

@@ -5,14 +5,16 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.ExperimentRun
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.FitRuns
 
-/// A fit run's calibration revisions and library promotion values, without writing either store (spec 0050 S11.5).
+/// A fit run's calibration revisions and promotion of fitted values into the library and kit (spec 0050 S11.5).
 module StudyPublishing =
 
     /// Why a fit run's calibration or library promotion is refused (spec 0050 S11.5).
@@ -39,6 +41,12 @@ module StudyPublishing =
         | PromotionStudyErr of error : StudyError
         /// The fitted black-box matrix could not be evaluated (spec 0050 S11.5).
         | PromotionEvaluationErr of error : ItemEvaluationError
+        /// The library refused a promoted version's read, seal or write (spec 0050 S11.5).
+        | PromotionImportErr of error : CatalogueImportError
+        /// The promoted value could not form a library entry (spec 0050 S11.5).
+        | PromotionEntryErr of error : LibraryEntryError
+        /// The kit refused the promoted version's snapshot (spec 0050 S11.5).
+        | PromotionKitErr of error : KitLibraryError
 
         member this.describe : string =
             match this with
@@ -53,6 +61,9 @@ module StudyPublishing =
             | NotBlackBoxErr reason -> $"the item is not a black-box Mueller matrix: {reason}"
             | PromotionStudyErr error -> $"the study refused the promoted value: {error.describe}"
             | PromotionEvaluationErr error -> $"the fitted matrix could not be evaluated: {error.describe}"
+            | PromotionImportErr error -> $"the library refused the promoted version: {error.describe}"
+            | PromotionEntryErr error -> $"the promoted entry could not be built: {error.describe}"
+            | PromotionKitErr error -> $"the kit could not snapshot the promoted version: {error.describe}"
 
     type Study with
 
@@ -305,3 +316,60 @@ module StudyPublishing =
                     | _ -> None)
 
             materials @ blackBoxes
+
+    let private mintPromotionVersion
+        (context : KitLibraryContext)
+        (entryId : LibraryEntryId)
+        (contentOf : VersionNumber -> Result<LibraryEntryContent, LibraryEntryError>)
+        : Result<LibraryVersionRef, PublishError> =
+        context.imports.proxy.tryHeldEntry entryId
+        |> Result.mapError PromotionImportErr
+        |> Result.bind (fun heldOpt ->
+            let version =
+                match heldOpt with
+                | None -> VersionNumber.first
+                | Some held -> held.latest.next
+            let reference : LibraryVersionRef =
+                {
+                    entryId = entryId
+                    version = version
+                }
+            contentOf version
+            |> Result.mapError PromotionEntryErr
+            |> Result.bind (fun content -> context.imports.sealEntry content |> Result.mapError PromotionImportErr)
+            |> Result.bind (fun envelope ->
+                let put : EntryVersionPut =
+                    {
+                        envelope = envelope
+                        latest = MoveLatestVersion
+                    }
+                context.imports.proxy.putEntryVersion put |> Result.mapError PromotionImportErr)
+            |> Result.bind (fun () ->
+                context.snapshotReferences [ EntryVersionReference reference ] |> Result.mapError PromotionKitErr)
+            |> Result.map (fun _ -> reference))
+
+    type KitLibraryContext with
+
+        /// Mints the fitted material's next library version with fit provenance, then pins and snapshots it;
+        /// read-only access performs no IO and the study's opened version stays unchanged (spec 0050 S11.5).
+        member this.promoteMaterial (study : Study) (run : FitRun) (version : MaterialVersionId) (entry : MaterialEntry) : Result<LibraryVersionRef, PublishError> =
+            match this.kit.access with
+            | ReadOnlyKitAccess -> Error (PromotionKitErr (KitLibraryKitErr (KitReadOnlyErr "promoteToLibrary")))
+            | ReadWriteKitAccess ->
+                study.promotedMaterialWith run version entry
+                |> Result.bind (fun promoted ->
+                    let provenance = run.provenanceIn this.kit.kitFile.id
+                    mintPromotionVersion this version.materialId.toLibraryEntryId (fun next ->
+                        Ok (LibraryEntryContent.ofMaterialEntry next provenance promoted)))
+
+        /// Mints the item's fitted Mueller preset under its GUID with fit provenance, then pins and snapshots it;
+        /// a new entry starts at version one and read-only access performs no IO (spec 0050 S11.5).
+        member this.promoteBlackBox (run : FitRun) (item : Item) (choice : ItemModelChoice) : Result<LibraryVersionRef, PublishError> =
+            match this.kit.access with
+            | ReadOnlyKitAccess -> Error (PromotionKitErr (KitLibraryKitErr (KitReadOnlyErr "promoteToLibrary")))
+            | ReadWriteKitAccess ->
+                run.promotedBlackBoxWith item choice
+                |> Result.bind (fun promoted ->
+                    let provenance = run.provenanceIn this.kit.kitFile.id
+                    mintPromotionVersion this item.id.toLibraryEntryId (fun next ->
+                        LibraryEntryContent.ofPolarizerPreset next provenance promoted))
