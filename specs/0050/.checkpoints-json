@@ -1109,6 +1109,9 @@
   "404": {
     "constructor_unit_tests": 1726
   },
+  "405": {
+    "constructor_unit_tests": 1730
+  },
   "41": {
     "constructor_unit_tests": 799,
     "ui_smoke_tests": 208

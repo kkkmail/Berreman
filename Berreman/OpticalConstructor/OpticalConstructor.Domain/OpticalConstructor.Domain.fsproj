@@ -188,6 +188,7 @@
         <Compile Include="PrefitChecks.fs" />
         <Compile Include="StudyForward.fs" />
         <Compile Include="FitRuns.fs" />
+        <Compile Include="StudyPublishing.fs" />
     </ItemGroup>
 
     <ItemGroup>
