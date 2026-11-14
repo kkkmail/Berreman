@@ -1,10 +1,12 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Threading
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
 open Berreman.Media
+open Berreman.MaterialProperties
 open Berreman.Solvers
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CrystalPhysics
@@ -25,11 +27,12 @@ open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.StudyEngine
 open Xunit
 
-/// The study engine's facts: the scaled search, and the engine's automatic choice by the shape of a staged study
-/// (spec 0050 S11.3).
+/// The study engine's facts: the scaled search, the engine's automatic choice by the shape of a staged study, and the
+/// nonlinear engine (spec 0050 S11.3).
 module StudyEngineTests =
 
     /// r(v) = [v0 − 5], whose unbounded minimum is v0 = 5. Every point it is evaluated at is recorded, in order.
@@ -148,6 +151,46 @@ module StudyEngineTests =
     let private crystalPlateChoice : ItemModelChoice =
         StackSampleChoice (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId, SampleVersionId.firstOf crystalPlate.id, crystalPlate)
 
+    /// The index probe the nonlinear fit recovers, step 379's observed crystal: n_o 1.544, n_e 1.553 and no gyration.
+    let private indexTruth : UniaxialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.544
+            extraordinaryIndex = RefractionIndex 1.553
+            g11 = RhoValue 0.0
+            g33 = RhoValue 0.0
+        }
+
+    /// The test-local uniaxial version of the index probe, and its 100 µm plate.
+    let private indexVersion : MaterialVersionId =
+        MaterialVersionId.firstOf (MaterialId (Guid.Parse "38700000-0000-4000-8000-000000000201"))
+
+    let private indexEntry : MaterialEntry =
+        {
+            id = indexVersion.materialId
+            name = EntryName "Index probe crystal"
+            category = CategoryIds.crystal
+            description = None
+            physics = CrystalParameterPhysics (UniaxialCrystal indexTruth)
+        }
+
+    let private indexPlate : Sample =
+        {
+            id = SampleId (Guid.Parse "38700000-0000-4000-8000-000000000202")
+            name = EntryName "Index probe plate"
+            structure =
+                {
+                    films = []
+                    substrate = Some { materialId = indexVersion; thickness = Thickness.mkm 100.0<mkm>; orientation = PrimaryAxes }
+                    lower = None
+                }
+            substrate = ThickPlate
+            description = EntryDescription "A 100 µm plate of the index probe crystal"
+            supportedEmission = ThickPlate.defaultSupportedEmission
+        }
+
+    let private indexPlateChoice : ItemModelChoice =
+        StackSampleChoice (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId, SampleVersionId.firstOf indexPlate.id, indexPlate)
+
     let private draftOf (number : int) (label : string) (model : ItemModelChoice) (dial : ItemDial) : ItemDraft =
         {
             id = ItemId (Guid.Parse $"38600000-0000-4000-8000-%012d{number}")
@@ -172,11 +215,12 @@ module StudyEngineTests =
     let private plateDraft : ItemDraft = draftOf 13 "WP" retarderChoice FixedMounting
     let private polarimeterDraft : ItemDraft = draftOf 14 "Polarimeter" polarimeterChoice FixedMounting
     let private crystalPlateDraft : ItemDraft = draftOf 15 "Crystal" crystalPlateChoice FixedMounting
+    let private indexPlateDraft : ItemDraft = draftOf 16 "Index plate" indexPlateChoice FixedMounting
 
     let private drafts : ItemDraft list =
         [
             laserDraft; lp1Draft; lp2Draft; cpl1Draft; cpl2Draft; phoneDraft; qzDraft; lrDraft; qz2Draft
-            cpLeftDraft; cpRightDraft; constantDraft; plateDraft; polarimeterDraft; crystalPlateDraft
+            cpLeftDraft; cpRightDraft; constantDraft; plateDraft; polarimeterDraft; crystalPlateDraft; indexPlateDraft
         ]
 
     /// Each item's model as its draft chose it.
@@ -266,6 +310,7 @@ module StudyEngineTests =
 
     let private polarimeter : Item = itemOf polarimeterDraft
     let private crystalItem : Item = itemOf crystalPlateDraft
+    let private indexItem : Item = itemOf indexPlateDraft
 
     // The synthetic truths the observations are made of (step 390's QZ and LR), QZ2 sharing QZ's retardance, and the plate.
     let private qzTruth : MuellerMatrix = retarderMueller (Angle.degree 30.0<deg>) (Retardance.degree 40.0<deg>)
@@ -382,10 +427,20 @@ module StudyEngineTests =
                 emptySlot "det" Detector RayModel.defaultDetectorPoint |> holding polarimeter
             ]
 
+    /// The HeNe, the index probe's plate as the lone object, and the polarimeter.
+    let private indexBench : Setup =
+        setupOf
+            "Index plate"
+            [
+                emptySlot "src" LightSource RayModel.defaultSourcePoint |> holding laser
+                emptySlot "object1" Sample (alongBeam 0.0<meter>) |> holding indexItem
+                emptySlot "det" Detector RayModel.defaultDetectorPoint |> holding polarimeter
+            ]
+
     let private benches : Setup list =
         [
             lpLpAir; lpCplAir; cplLpAir; qzBehindCpl; qzBehindLp; qzBehindCpLeft; qzBehindCpRight; qzBehindConstant; qzSurrounded
-            qz2BehindCpl; qz2BehindLp; seriesBehindCpl; seriesBehindLp; qzThenQz2; qzTwice; crystalBench
+            qz2BehindCpl; qz2BehindLp; seriesBehindCpl; seriesBehindLp; qzThenQz2; qzTwice; crystalBench; indexBench
         ]
 
     // The reference projection the rows are made of: a source's state, the analyzer's row at each dial reading.
@@ -720,15 +775,311 @@ module StudyEngineTests =
 
         Assert.Equal(NonlinearStudyEngine, engineOf (contextOver [ laser; crystalItem; polarimeter ] [ m1 ] study) study JointStage)
 
+    // ============================ spec 0050 S11.3: the nonlinear engine ============================
+
+    /// The truth's four observations of the 100 µm X-cut plate at azimuth 30° and 600 nm, through the spec 0044 forward:
+    /// transmitted at incidence 0° and 30°, reflected at 30° and 50°.
+    let private indexObservations : KeyedObservation list =
+        let forward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) SolverParameters.defaultValue
+
+        let plateAt (incidence : float<deg>) (observable : Observable) : MeasurementConfiguration =
+            configurationOf XCut (Thickness.mkm 100.0<mkm>) incidence 30.0<deg> observable (WaveLength.nm 600.0<nm>)
+
+        let configurations =
+            [ plateAt 0.0<deg> TransmittedMueller; plateAt 30.0<deg> TransmittedMueller; plateAt 30.0<deg> ReflectedMueller; plateAt 50.0<deg> ReflectedMueller ]
+
+        match observeWith forward indexTruth configurations with
+        | Ok observations ->
+            observations |> List.mapi (fun k observation -> ({ key = DataRowKey $"P{k + 1}"; observation = observation } : KeyedObservation))
+        | Error error -> failwith $"the truth's observations were refused: %A{error}"
+
+    /// P1, the plate run whose Mueller-observations file holds the four observations.
+    let private plateRun : AttachedRun =
+        attachedOver indexBench "P1" ScienceRun ImportProfileName.muellerObservations (ObservationPoints indexObservations)
+
+    let private ordinaryIndex : ParameterName = ParameterName "n_o"
+    let private extraordinaryIndex : ParameterName = ParameterName "n_e"
+
+    // The starts, 1.0002 and 1.0001 times the truth (a retardance error well inside half a fringe), each searched within
+    // ± 0.05: a scaled unit of 1e-3, the harness's.
+    let private ordinaryStart : float = 1.0002 * indexTruth.ordinaryIndex.value
+    let private extraordinaryStart : float = 1.0001 * indexTruth.extraordinaryIndex.value
+    let private indexHalfWidth : float = 0.05
+
+    /// P1's study: the index probe opened, n_o and n_e unknown from their starts, n_o with the prior when one is given.
+    let private plateStudyWith (ordinaryPriorOpt : ParameterPrior option) : Study =
+        let freed (start : float) (priorOpt : ParameterPrior option) : ParameterState =
+            UnknownParameter
+                {
+                    start = ParameterValue start
+                    bounds = { lower = ParameterValue (start - indexHalfWidth); upper = ParameterValue (start + indexHalfWidth) }
+                    priorOpt = priorOpt
+                }
+
+        let opened = studyOf ((studyOver "Index plate" [ plateRun ]).openMaterial indexVersion indexEntry)
+
+        opened.withMaterialParameterState indexVersion ordinaryIndex (freed ordinaryStart ordinaryPriorOpt)
+        |> Result.bind (fun study -> study.withMaterialParameterState indexVersion extraordinaryIndex (freed extraordinaryStart None))
+        |> studyOf
+
+    /// The study fitting that many starts.
+    let private startingFrom (starts : int) (study : Study) : Study =
+        match FitStartCount.tryCreate starts with
+        | Ok count -> study.withFitStarts count
+        | Error error -> failwith error.describe
+
+    /// The context over P1's kit, its material store also holding the index probe P1's plate pins.
+    let private plateContextOf (study : Study) : StudyForwardContext =
+        let context = contextOver [ laser; indexItem; polarimeter ] [ plateRun ] study
+
+        match context.materials.saveMaterial indexEntry with
+        | Ok () -> context
+        | Error error -> failwith $"the index probe was refused: %A{error}"
+
+    /// The study staged jointly with its calibrations held, the context over its staged items, and its data made from its
+    /// own pre-fit, as `StudyForwardTests` makes them.
+    let private stagedOver (context : StudyForwardContext) (study : Study) : StagedStudy * StudyForwardContext * StudyData =
+        let staged =
+            match study.stageWith context.kit JointStage CalibrationHeldFixed with
+            | Ok staged -> staged
+            | Error error -> failwith $"'{study.name.value}' was not staged: {error.describe}"
+
+        let stagedContext = { context with kit = { context.kit with items = staged.items } }
+
+        match staged.study.prefitWith stagedContext [] |> Result.bind (staged.study.dataWith stagedContext) with
+        | Ok data -> staged, stagedContext, data
+        | Error error -> failwith $"'{study.name.value}' has no data: {error.describe}"
+
+    /// A provider answering these deviates in turn, recording each draw; a draw past them fails the fact.
+    let private deviatesOf (values : float list) (drawn : ResizeArray<UniformDeviate>) : UniformDeviateProvider =
+        {
+            nextDeviate =
+                fun () ->
+                    match List.tryItem drawn.Count values with
+                    | Some value ->
+                        let deviate = UniformDeviate value
+                        drawn.Add deviate
+                        deviate
+                    | None -> failwith $"only {values.Length} deviate(s) were expected"
+        }
+
+    let private solutionOf (result : Result<StudyFitSolution, StudyFitError>) : StudyFitSolution =
+        match result with
+        | Ok solution -> solution
+        | Error error -> failwith $"expected a fit, got {error.describe}"
+
+    let private problemOf (result : Result<ScaledStudyProblem, StudyFitError>) : ScaledStudyProblem =
+        match result with
+        | Ok problem -> problem
+        | Error error -> failwith $"expected the scaled problem, got {error.describe}"
+
+    let private assertValuesWithin (tolerance : float) (expected : float list) (actual : ParameterValue list) : unit =
+        Assert.Equal(expected.Length, actual.Length)
+        List.iter2 (fun (e : float) (a : ParameterValue) -> Assert.Equal(e, a.value, tolerance)) expected actual
+
+    [<Fact>]
+    let ``a polarimeter study recovers an opened uniaxial material's two indices from a perturbed start`` () : unit =
+        let study = plateStudyWith None
+        let context = plateContextOf study
+        let staged, _, data = stagedOver context study
+        let drawn = ResizeArray<UniformDeviate>()
+        let solution = solutionOf (staged.fitNonlinear context data (deviatesOf [] drawn) UnwatchedIterations)
+
+        // n_o's then n_e's entry, each the opened version's; one start, which draws no deviate.
+        Assert.Equal(NonlinearStudyEngine, solution.engine)
+        Assert.Empty(solution.objectMatrices)
+        Assert.Empty(drawn)
+
+        Assert.Equal<StudyParameterRef list>(
+            [ MaterialParameterRef (indexVersion, ordinaryIndex); MaterialParameterRef (indexVersion, extraordinaryIndex) ],
+            solution.layout.entries |> List.map (fun entry -> entry.unknown.parameter))
+
+        match solution.members with
+        | [ { start = start; outcome = MemberConverged (fitted, Some chiSquared) } ] ->
+            assertValuesWithin 1e-12 [ ordinaryStart; extraordinaryStart ] start
+            assertValuesWithin 0.0 (List.ofArray solution.fitted.value) fitted
+            // The observations are exact at the truth, so the fit drives the residual from about 0.5 to nothing.
+            Assert.True(chiSquared.value < 1e-8, $"the converged χ² is {chiSquared.value:R}")
+        | members -> Assert.Fail($"expected one converged member, got %A{members}")
+
+        Assert.Equal(indexTruth.ordinaryIndex.value, solution.fitted.value.[0], 1e-9)
+        Assert.Equal(indexTruth.extraordinaryIndex.value, solution.fitted.value.[1], 1e-9)
+
+    [<Fact>]
+    let ``the first member starts at the parameters' starts and each further member where the deviates place it within the bounds`` () : unit =
+        let study = plateStudyWith None |> startingFrom 3
+        let context = plateContextOf study
+        let staged, _, data = stagedOver context study
+        let drawn = ResizeArray<UniformDeviate>()
+        let reports = ResizeArray<IterationCount>()
+        let watch = WatchedIterations { reportIteration = reports.Add; cancellation = CancellationToken.None }
+        let solution = solutionOf (staged.fitNonlinear context data (deviatesOf [ -1.0; 1.0; 0.0; 0.5 ] drawn) watch)
+
+        // Two deviates per further member, drawn entry after entry: n_o's then n_e's.
+        Assert.Equal<float list>([ -1.0; 1.0; 0.0; 0.5 ], drawn |> Seq.map (fun deviate -> deviate.value) |> List.ofSeq)
+
+        match solution.members |> List.map (fun fitMember -> fitMember.start) with
+        | [ first; second; third ] ->
+            assertValuesWithin 1e-12 [ ordinaryStart; extraordinaryStart ] first
+            assertValuesWithin 1e-12 [ ordinaryStart - indexHalfWidth; extraordinaryStart + indexHalfWidth ] second
+            assertValuesWithin 1e-12 [ ordinaryStart; extraordinaryStart + 0.025 ] third
+        | starts -> Assert.Fail($"expected three members, got {starts.Length}")
+
+        // The fit is the converged member of least χ², the earliest on a tie.
+        let converged =
+            solution.members
+            |> List.choose (fun fitMember ->
+                match fitMember.outcome with
+                | MemberConverged (fitted, Some chiSquared) -> Some (fitted, chiSquared.value)
+                | MemberConverged (_, None)
+                | MemberFailed _ -> None)
+
+        Assert.NotEmpty(converged)
+        let least = converged |> List.map snd |> List.min
+        let best = converged |> List.find (fun (_, chiSquared) -> chiSquared = least) |> fst
+        assertValuesWithin 0.0 (List.ofArray solution.fitted.value) best
+
+        // One watch counts every member's iterations on from the earlier ones': 1, 2, … over the whole fit.
+        Assert.True(reports.Count >= 3, $"{reports.Count} iteration(s) were reported over three members")
+        Assert.Equal<IterationCount list>([ for k in 1 .. reports.Count -> IterationCount k ], List.ofSeq reports)
+
+    [<Fact>]
+    let ``a prior adds one residual row, its scaled offset from its centre over its sigma`` () : unit =
+        let prior : ParameterPrior = { centre = ParameterValue 1.545; sigma = ParameterSigma 0.001 }
+        let origin = ScaledVector [| 0.0; 0.0 |]
+
+        // The study residual at the parameters' starts, read directly.
+        let dataEntriesOf (stagedContext : StudyForwardContext) (staged : StagedStudy) (data : StudyData) (problem : ScaledStudyProblem) : float list =
+            match staged.study.residualWith stagedContext problem.layout data problem.layout.startVector with
+            | Ok residual -> List.ofArray residual.value
+            | Error error -> failwith $"the study residual was refused: {error.describe}"
+
+        let withPrior = plateStudyWith (Some prior)
+        let context = plateContextOf withPrior
+        let staged, stagedContext, data = stagedOver context withPrior
+        let problem = problemOf (staged.scaledProblemWith context data)
+
+        // Each entry scaled about its start by a unit of its span over 100, its box ± 50 about the zero start.
+        Assert.Equal<float[]>([| ordinaryStart; extraordinaryStart |], problem.centre.value)
+        Array.iter (fun (unit : float) -> Assert.Equal(1e-3, unit, 1e-15)) problem.unit.value
+        Assert.Equal<float[]>([| 0.0; 0.0 |], problem.search.start.value)
+        Array.iter (fun (bound : float) -> Assert.Equal(-50.0, bound, 1e-9)) problem.search.lowerBounds.value
+        Array.iter (fun (bound : float) -> Assert.Equal(50.0, bound, 1e-9)) problem.search.upperBounds.value
+
+        // Sixteen entries per observation, then n_o's prior row.
+        let dataEntries = dataEntriesOf stagedContext staged data problem
+        let residual = List.ofArray (problem.residual origin).value
+        Assert.Equal(16 * indexObservations.Length, dataEntries.Length)
+        Assert.Equal(dataEntries.Length + 1, residual.Length)
+        List.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) dataEntries (List.take dataEntries.Length residual)
+        Assert.Equal((ordinaryStart - 1.545) / 0.001, List.last residual, 1e-12)
+
+        // Without the prior, no extra row.
+        let plain = plateStudyWith None
+        let plainContext = plateContextOf plain
+        let plainStaged, plainStagedContext, plainData = stagedOver plainContext plain
+        let plainProblem = problemOf (plainStaged.scaledProblemWith plainContext plainData)
+        let plainEntries = dataEntriesOf plainStagedContext plainStaged plainData plainProblem
+        let plainResidual = List.ofArray (plainProblem.residual origin).value
+        Assert.Equal(plainEntries.Length, plainResidual.Length)
+        List.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) plainEntries plainResidual
+
+    [<Fact>]
+    let ``a session whose gain is anchored or interpolated is refused by the nonlinear engine`` () : unit =
+        let identity = Propagation.identityMueller
+        let a1 = capturedOver lpLpAir "A1" CalibrationRun (capturesOf "LP-(AIR#0)-LP" LpSource lpAnalyzer identity)
+        let e2 = capturedOver qzBehindLp "E2" ScienceRun (capturesOf "LP-(QZ#0)-LP" LpSource lpAnalyzer qzTruth)
+        let a4 = capturedOver lpLpAir "A4" CalibrationRun (capturesOf "LP-(AIR#1)-LP" LpSource lpAnalyzer identity)
+        let k1 = darkOver lpLpAir
+        let runs = [ a1; e2; a4; k1 ]
+        let kitRuns = runs |> List.map (fun attached -> attached.attachedRun)
+        let items = [ laser; lp1; lp2; phone; qzM00Free ]
+        let session = SessionName "Session 1"
+
+        // One session holds every run; with its gain free, the problem is made.
+        let free = studyOver "Gain" runs
+        Assert.Equal<SessionName list>([ session ], free.sessionsIn kitRuns |> List.map (fun held -> held.name))
+        let freeContext = contextOver items runs free
+        let freeStaged, _, freeData = stagedOver freeContext free
+        Assert.NotEmpty((problemOf (freeStaged.scaledProblemWith freeContext freeData)).layout.entries)
+
+        let models : SessionGainModel list =
+            [ AnchoredSessionGain [ a1.attachedRun.name ]; InterpolatedSessionGain { opening = a1.attachedRun.name; closing = a4.attachedRun.name } ]
+
+        for model in models do
+            let study = studyOf (free.withSessionGainModel session model kitRuns)
+            let context = contextOver items runs study
+            let staged, _, data = stagedOver context study
+            let drawn = ResizeArray<UniformDeviate>()
+
+            match staged.scaledProblemWith context data with
+            | Error (SessionGainNeedsLinearEngineErr reason) -> Assert.Contains("'Session 1'", reason)
+            | Error error -> Assert.Fail($"expected SessionGainNeedsLinearEngineErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("a session whose gain comes from AIR runs was fitted nonlinearly")
+
+            match staged.fitNonlinear context data (deviatesOf [] drawn) UnwatchedIterations with
+            | Error (SessionGainNeedsLinearEngineErr reason) -> Assert.Contains("'Session 1'", reason)
+            | Error error -> Assert.Fail($"expected SessionGainNeedsLinearEngineErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("a session whose gain comes from AIR runs was fitted nonlinearly")
+
+    [<Fact>]
+    let ``a cancelled fit stops before its next member and answers FitCancelledErr`` () : unit =
+        let study = plateStudyWith None |> startingFrom 3
+        let context = plateContextOf study
+        let staged, _, data = stagedOver context study
+
+        // Cancelled at the first member's first report: its result is dropped and no further member starts.
+        use source = new CancellationTokenSource()
+        let reports = ResizeArray<IterationCount>()
+
+        let cancelling : OptimizerIterationObserver =
+            {
+                reportIteration =
+                    fun count ->
+                        reports.Add count
+                        source.Cancel()
+                cancellation = source.Token
+            }
+
+        let drawn = ResizeArray<UniformDeviate>()
+
+        match staged.fitNonlinear context data (deviatesOf [ 0.0; 0.0; 0.0; 0.0 ] drawn) (WatchedIterations cancelling) with
+        | Error (FitCancelledErr reason) -> Assert.Contains("1 of 3", reason)
+        | Error error -> Assert.Fail($"expected FitCancelledErr, got {error.describe}")
+        | Ok solution -> Assert.Fail($"expected FitCancelledErr, got {solution.members.Length} member(s)")
+
+        Assert.Empty(drawn)
+        Assert.InRange(reports.Count, 1, 2)
+
+        // Cancelled before the fit: no member runs.
+        use cancelled = new CancellationTokenSource()
+        cancelled.Cancel()
+        let silent = ResizeArray<IterationCount>()
+        let beforeAny : OptimizerIterationObserver = { reportIteration = silent.Add; cancellation = cancelled.Token }
+
+        match staged.fitNonlinear context data (deviatesOf [] drawn) (WatchedIterations beforeAny) with
+        | Error (FitCancelledErr reason) -> Assert.Contains("0 of 3", reason)
+        | Error error -> Assert.Fail($"expected FitCancelledErr, got {error.describe}")
+        | Ok solution -> Assert.Fail($"expected FitCancelledErr, got {solution.members.Length} member(s)")
+
+        Assert.Empty(silent)
+        Assert.Empty(drawn)
+
     [<Fact>]
     let ``every study-fit error renders its condition and its payload`` () : unit =
         let forwardError = MissingStudyRunErr "E9, which the study 'QZ' names"
         let stageError = NoStageRunErr "'QZ' has no enabled run that Stage 2 (objects) fits"
+        let gainReason = "'Session 1' anchors its gain to A1"
+        let failuresReason = "member 1: the solver did not converge: BackendFailed"
+        let cancelReason = "1 of 3 member(s) ran, the last one's result dropped"
 
         let cases : (StudyFitError * string) list =
             [
                 StudyForwardFitErr forwardError, $"the study's model or data refused the fit: {forwardError.describe}"
                 FitStageErr stageError, $"the stage refused the fit: {stageError.describe}"
+                SessionGainNeedsLinearEngineErr gainReason, $"the nonlinear engine fits a session's gain as its detector's parameter: {gainReason}"
+                NoConvergedMemberErr failuresReason, $"no start of the fit converged: {failuresReason}"
+                FitCancelledErr cancelReason, $"the fit was cancelled: {cancelReason}"
             ]
 
         for error, expected in cases do
@@ -736,4 +1087,7 @@ module StudyEngineTests =
 
         Assert.Contains("E9, which the study 'QZ' names", (StudyForwardFitErr forwardError).describe)
         Assert.Contains("'QZ' has no enabled run that Stage 2 (objects) fits", (FitStageErr stageError).describe)
+        Assert.Contains(gainReason, (SessionGainNeedsLinearEngineErr gainReason).describe)
+        Assert.Contains(failuresReason, (NoConvergedMemberErr failuresReason).describe)
+        Assert.Contains(cancelReason, (FitCancelledErr cancelReason).describe)
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
