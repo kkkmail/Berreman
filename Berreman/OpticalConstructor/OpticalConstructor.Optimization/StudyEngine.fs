@@ -11,6 +11,7 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Domain.PrefitChecks
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
@@ -43,6 +44,8 @@ module StudyEngine =
         | SessionGainFitErr of error : StudyError
         /// The least-squares solve of these black-box objects refused (spec 0050 S11.3).
         | ObjectSolveFitErr of items : ItemId list * error : SolverError
+        /// The fit names a study the kit does not hold (spec 0050 S11.3).
+        | UnknownFitStudyErr of reason : string
 
         member this.describe : string =
             match this with
@@ -56,6 +59,7 @@ module StudyEngine =
             | ObjectSolveFitErr (items, error) ->
                 let named = items |> List.map (fun item -> $"{item.value}") |> String.concat ", "
                 $"the objects could not be reconstructed: {named} — {error.describe}"
+            | UnknownFitStudyErr reason -> $"the kit has no such study: {reason}"
 
     /// The reference families' two polarizers, linear or LP-then-retarder circular; derived, never stored, so it carries
     /// no tag (spec 0050 S11.3; `MuellerReconstruction.Family`).
@@ -1085,3 +1089,130 @@ module StudyEngine =
                                 fitted = StudyParameterVector.ofParameterValues fittedValues
                                 objectMatrices = solves |> List.map (fun solve -> solve.matrixFit)
                             }))))
+
+    /// What `RunFit` asks: the study, the stage (Run joint is `JointStage`, Run stage `CalibrationStage` or `ObjectStage`)
+    /// and how its calibrations are used (spec 0050 S11.3, S11.5).
+    type StudyFitRequest =
+        {
+            study : StudyName
+            stage : FitStage
+            calibrationUse : CalibrationUse
+        }
+
+    /// What one fit reads: the kit as the study sees it, the clock stamping its run, the SVD proxy, the deviates placing
+    /// further starts, and the study's fit runs as the kit last read them (spec 0050 S11.3).
+    [<ReferenceEquality>]
+    type StudyFitParam =
+        {
+            forward : StudyForwardContext
+            clock : ClockProvider
+            linearSolver : MuellerSolverProxy
+            deviates : UniformDeviateProvider
+            fitRuns : FitRun list
+        }
+
+    type StudyFitParam with
+
+        /// One fit: the study staged, its data checked and read, the engine `engineWith` chooses run, and the fit run
+        /// stamped by the clock, read once, holding the runs, the data hashes, every parameter read and the vector used and
+        /// produced; nothing is written (spec 0050 S11.3; 001 §E, §P).
+        member this.runFit (request : StudyFitRequest) (watch : IterationWatch) : Result<FitRun, StudyFitError> =
+            let kit = this.forward.kit
+
+            match kit.studies |> List.tryFind (fun study -> study.name = request.study) with
+            | None -> Error (UnknownFitStudyErr $"'{request.study.value}', which the fit names, is not among the kit's {kit.studies.Length} studies")
+            | Some study ->
+                study.stageWith kit request.stage request.calibrationUse
+                |> Result.mapError FitStageErr
+                |> Result.bind (fun staged ->
+                    let stagedContext = { this.forward with kit = { kit with items = staged.items } }
+
+                    // What the study's latest fit run read, which a changed hash is flagged against (step 370).
+                    let lastRead : DataAttachment list =
+                        match this.fitRuns |> List.filter (fun run -> run.study = study.name) with
+                        | [] -> []
+                        | runs -> (runs |> List.maxBy (fun run -> run.stamp)).dataRead
+
+                    // A missing file is refused rather than recorded at a hash nobody read.
+                    let readOf (prefit : ExperimentPrefit) : Result<DataAttachment option, StudyFitError> =
+                        match prefit.experiment.dataOpt, prefit.changeOpt with
+                        | None, _ -> Ok None
+                        | Some data, Some DataUnchangedFlag -> Ok (Some data.attachment)
+                        | Some data, Some (ChangedSinceAttachFlag current | ChangedSinceFitFlag current) ->
+                            Ok (Some { data.attachment with contentHash = current })
+                        | Some data, (Some MissingDataFileFlag | None) ->
+                            let reason = $"{data.attachment.path.value} is missing, so the fit records no hash of it"
+                            Error (StudyForwardFitErr (PrefitFailedErr (prefit.experiment.name, MissingDataErr reason)))
+
+                    let fittedExperiments =
+                        staged.fittedRuns |> List.choose (fun run -> kit.experiments |> List.tryFind (fun experiment -> experiment.name = run))
+
+                    let parametersRead : Result<FitRunParameter list, StudyFitError> =
+                        Experiment.itemsUsedBy fittedExperiments kit.setups staged.items
+                        |> Result.mapError (fun error -> StudyForwardFitErr (ForwardSetupErr error))
+                        |> Result.map (fun used ->
+                            let ofItems =
+                                used
+                                |> List.collect (fun item ->
+                                    item.parameters
+                                    |> List.map (fun parameter -> ({ parameter = ItemParameterRef (item.id, parameter.name); state = parameter.state } : FitRunParameter)))
+
+                            let ofMaterials =
+                                staged.study.materials
+                                |> List.collect (fun material ->
+                                    material.parameters
+                                    |> List.map (fun parameter ->
+                                        ({ parameter = MaterialParameterRef (material.version, parameter.name); state = parameter.state } : FitRunParameter)))
+
+                            ofItems @ ofMaterials)
+
+                    // Every part read from the kit is settled before an engine runs, so a refusal never costs a fit.
+                    staged.study.prefitWith stagedContext lastRead
+                    |> Result.bind (fun prefits -> staged.study.dataWith stagedContext prefits |> Result.map (fun data -> prefits, data))
+                    |> Result.mapError StudyForwardFitErr
+                    |> Result.bind (fun (prefits, data) ->
+                        prefits
+                        |> List.map readOf
+                        |> ItemEvaluation.sequenced
+                        |> Result.bind (fun reads -> parametersRead |> Result.map (fun parameters -> List.choose id reads, parameters))
+                        |> Result.bind (fun (dataRead, parameters) ->
+                            let solved =
+                                match staged.engineWith this.forward prefits, staged.stage with
+                                | LinearStudyEngine, CalibrationStage -> staged.calibrateLinear this.forward prefits this.linearSolver
+                                | LinearStudyEngine, (ObjectStage | JointStage) -> staged.reconstructLinear this.forward prefits data this.linearSolver
+                                | NonlinearStudyEngine, _ -> staged.fitNonlinear this.forward data this.deviates watch
+
+                            solved
+                            |> Result.map (fun solution ->
+                                let at = this.clock.now ()
+                                let starts = solution.layout.startVector
+
+                                let entries =
+                                    solution.layout.entries
+                                    |> List.mapi (fun k entry ->
+                                        let index = StudyVectorIndex k
+
+                                        ({
+                                            parameter = entry.unknown.parameter
+                                            owner = entry.owner
+                                            start = starts.valueAt index
+                                            fitted = solution.fitted.valueAt index
+                                        } : FitRunEntry))
+
+                                ({
+                                    schemaVersion = FitRun.currentSchemaVersion
+                                    name = study.name.fitRunNameAt at
+                                    study = study.name
+                                    stamp = at
+                                    mode = study.settings.mode
+                                    stage = request.stage
+                                    calibrationUse = request.calibrationUse
+                                    engine = solution.engine
+                                    runs = staged.fittedRuns
+                                    dataRead = dataRead
+                                    parameters = parameters
+                                    entries = entries
+                                    members = solution.members
+                                    objectMatrices = solution.objectMatrices
+                                    notes = FitRunNotes.none
+                                } : FitRun)))))

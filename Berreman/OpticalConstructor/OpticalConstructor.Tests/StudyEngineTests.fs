@@ -1813,6 +1813,426 @@ module StudyEngineTests =
             Assert.Equal(1, recorded.Count)
             Assert.All(recorded.[0].design, fun row -> Assert.Equal(columns, row.value.Length))
 
+    // ============================ spec 0050 S11.3: one fit, one fit run ============================
+
+    /// 2026-11-04 09:30:00 UTC, the instant the test clock answers.
+    let private fitInstant : ClockTime = ClockTime (DateTime(2026, 11, 4, 9, 30, 0, DateTimeKind.Utc))
+
+    /// The fit's inputs over the context: a clock answering the fit instant and recording each read, the linear proxy,
+    /// deviates failing the fact on any draw, and no earlier fit run.
+    let private fitParamOver
+        (context : StudyForwardContext)
+        (reads : ResizeArray<ClockTime>)
+        (solver : MuellerSolverProxy)
+        (drawn : ResizeArray<UniformDeviate>)
+        : StudyFitParam =
+        let clock : ClockProvider =
+            {
+                now =
+                    fun () ->
+                        reads.Add fitInstant
+                        fitInstant
+            }
+
+        {
+            forward = context
+            clock = clock
+            linearSolver = solver
+            deviates = deviatesOf [] drawn
+            fitRuns = []
+        }
+
+    /// The study's fit at the stage with its calibrations held.
+    let private heldRequest (study : Study) (stage : FitStage) : StudyFitRequest =
+        { study = study.name; stage = stage; calibrationUse = CalibrationHeldFixed }
+
+    let private fitRunOf (result : Result<FitRun, StudyFitError>) : FitRun =
+        match result with
+        | Ok run -> run
+        | Error error -> failwith $"expected a fit run, got {error.describe}"
+
+    /// Each item's parameters as a fit run records them, item by item, each with its state.
+    let private snapshotOf (items : Item list) : FitRunParameter list =
+        items
+        |> List.collect (fun item ->
+            item.parameters |> List.map (fun parameter -> ({ parameter = ItemParameterRef (item.id, parameter.name); state = parameter.state } : FitRunParameter)))
+
+    /// The fitted values of the item's coefficients at these places, failing the fact when the run fits one not.
+    let private fittedInRun (run : FitRun) (item : Item) (places : (int * int) list) : ParameterValue list =
+        places
+        |> List.map (fun (row, column) ->
+            match run.entries |> List.tryFind (fun entry -> entry.parameter = ItemParameterRef (item.id, coefficient row column)) with
+            | Some entry -> entry.fitted
+            | None -> failwith $"no entry fits {item.label.value}'s m{row}{column}")
+
+    /// The study's linear fit run at the stage, its calibrations held, over a kit of the items within these setups,
+    /// through the recording SVD: read once by the clock, no iteration told to its watch and no deviate drawn, so a
+    /// nonlinear solve or an earlier refusal fails the fact. It fits the stage's runs, records every run's attachment
+    /// in study order and every parameter of the items the fitted runs use, `used` in the kit's order.
+    let private linearFitRunOf
+        (setups : Setup list)
+        (items : Item list)
+        (used : Item list)
+        (runs : AttachedRun list)
+        (study : Study)
+        (stage : FitStage)
+        (recorded : ResizeArray<LeastSquaresSystem>)
+        : FitRun =
+        let reads = ResizeArray<ClockTime>()
+        let drawn = ResizeArray<UniformDeviate>()
+        let reports = ResizeArray<IterationCount>()
+        let watch = WatchedIterations { reportIteration = reports.Add; cancellation = CancellationToken.None }
+        let fit = fitParamOver (contextWithin setups items runs study) reads (recordingSvd recorded) drawn
+        let run = fitRunOf (fit.runFit (heldRequest study stage) watch)
+
+        Assert.Empty(reports)
+        Assert.Empty(drawn)
+        Assert.Equal(1, reads.Count)
+        Assert.NotEmpty(recorded)
+        Assert.Equal(LinearStudyEngine, run.engine)
+        Assert.Equal(study.name.fitRunNameAt fitInstant, run.name)
+        Assert.Equal(fitInstant, run.stamp)
+        Assert.Equal(JointFit, run.mode)
+        Assert.Equal(stage, run.stage)
+        Assert.Equal(CalibrationHeldFixed, run.calibrationUse)
+        Assert.Equal(FitRunNotes.none, run.notes)
+
+        let fittedRuns =
+            runs
+            |> List.map (fun attached -> attached.attachedRun)
+            |> List.filter (fun experiment ->
+                match stage, experiment.role with
+                | ObjectStage, ScienceRun
+                | JointStage, (ScienceRun | CalibrationRun) -> true
+                | _ -> false)
+            |> List.map (fun experiment -> experiment.name)
+
+        Assert.Equal<ExperimentName list>(fittedRuns, run.runs)
+
+        Assert.Equal<DataAttachment list>(
+            runs |> List.choose (fun attached -> attached.attachedRun.dataOpt |> Option.map (fun data -> data.attachment)),
+            run.dataRead)
+
+        Assert.Equal<FitRunParameter list>(snapshotOf used, run.parameters)
+        run
+
+    /// A lone black box's fit run: its free places in row-major order its only entries, each from the identity's start to
+    /// within 1e-9 of the truth; one complete object solve of it of rank `free.Length`, exact at each fixed place; and one
+    /// converged member from the entries' starts to their fitted values.
+    let private assertLoneFitRun (item : Item) (truth : MuellerMatrix) (free : (int * int) list) (run : FitRun) : unit =
+        Assert.Equal<StudyParameterRef list>(
+            free |> List.map (fun (row, column) -> ItemParameterRef (item.id, coefficient row column)),
+            run.entries |> List.map (fun entry -> entry.parameter))
+
+        assertValuesWithin 0.0 (free |> List.map (fun (row, column) -> if row = column then 1.0 else 0.0)) (run.entries |> List.map (fun entry -> entry.start))
+        assertValuesWithin 1e-9 (elementsAt truth free) (run.entries |> List.map (fun entry -> entry.fitted))
+
+        match run.objectMatrices with
+        | [ fit ] ->
+            Assert.Equal<ItemId list>([ item.id ], fit.items)
+            Assert.Equal(MatrixRank free.Length, fit.rank)
+            assertValuesWithin 1e-9 (truth.rowMajorValues |> List.map (fun value -> value.value)) fit.elements
+
+            for row, column in placesBut free do
+                Assert.Equal<float>(truth.element row column, (List.item (placeOf row column) fit.elements).value)
+        | fits -> Assert.Fail($"expected one object solve, got {fits.Length}")
+
+        match run.members with
+        | [ { start = start; outcome = MemberConverged (fitted, Some _) } ] ->
+            Assert.Equal<ParameterValue list>(run.entries |> List.map (fun entry -> entry.start), start)
+            Assert.Equal<ParameterValue list>(run.entries |> List.map (fun entry -> entry.fitted), fitted)
+        | members -> Assert.Fail($"expected one converged member with a χ², got %A{members}")
+
+    [<Fact>]
+    let ``a fit run records its name, stamp, stage, engine, fitted runs, the data it read and the vector it used and produced`` () : unit =
+        // Step 387's polarimeter study jointly, its calibrations held and unwatched, against `fitNonlinear` itself.
+        let study = plateStudyWith None
+        let context = plateContextOf study
+        let staged, _, data = stagedOver context study
+        let expected = solutionOf (staged.fitNonlinear context data (deviatesOf [] (ResizeArray<UniformDeviate>())) UnwatchedIterations)
+        let reads = ResizeArray<ClockTime>()
+        let drawn = ResizeArray<UniformDeviate>()
+        let recorded = ResizeArray<LeastSquaresSystem>()
+        let fit = fitParamOver context reads (recordingSvd recorded) drawn
+        let run = fitRunOf (fit.runFit { study = study.name; stage = JointStage; calibrationUse = CalibrationHeldFixed } UnwatchedIterations)
+
+        Assert.Equal(FitRun.currentSchemaVersion, run.schemaVersion)
+        Assert.Equal(FitRunName $"{study.name.fileStem.value}@20261104T093000Z", run.name)
+        Assert.Equal(study.name, run.study)
+        Assert.Equal(fitInstant, run.stamp)
+        Assert.Equal(1, reads.Count)
+        Assert.Equal(JointFit, run.mode)
+        Assert.Equal(JointStage, run.stage)
+        Assert.Equal(CalibrationHeldFixed, run.calibrationUse)
+        Assert.Equal(NonlinearStudyEngine, run.engine)
+        Assert.Empty(recorded)
+        Assert.Empty(drawn)
+        Assert.Equal<ExperimentName list>([ plateRun.attachedRun.name ], run.runs)
+
+        let plateAttachment : DataAttachment = { path = KitRelativePath "data/P1.csv"; contentHash = LibraryEntryFiles.ContentHash "0386" }
+        Assert.Equal<DataAttachment list>([ plateAttachment ], run.dataRead)
+
+        // The items' parameters, then the opened material's four components with their states: n_o and n_e unknown.
+        let components =
+            match study.materials with
+            | [ material ] ->
+                material.parameters
+                |> List.map (fun parameter -> ({ parameter = MaterialParameterRef (indexVersion, parameter.name); state = parameter.state } : FitRunParameter))
+            | materials -> failwith $"expected one opened material, got {materials.Length}"
+
+        Assert.Equal(4, components.Length)
+        Assert.Equal<FitRunParameter list>(snapshotOf [ laser; indexItem; polarimeter ] @ components, run.parameters)
+
+        // n_o's and n_e's entries from their starts to `fitNonlinear`'s values, and its one member.
+        Assert.Equal<StudyParameterRef list>(
+            [ MaterialParameterRef (indexVersion, ordinaryIndex); MaterialParameterRef (indexVersion, extraordinaryIndex) ],
+            run.entries |> List.map (fun entry -> entry.parameter))
+
+        assertValuesWithin 1e-12 [ ordinaryStart; extraordinaryStart ] (run.entries |> List.map (fun entry -> entry.start))
+
+        let expectedEntries =
+            expected.layout.entries
+            |> List.mapi (fun k entry ->
+                ({
+                    parameter = entry.unknown.parameter
+                    owner = entry.owner
+                    start = entry.unknown.unknown.start
+                    fitted = expected.fitted.valueAt (StudyVectorIndex k)
+                } : FitRunEntry))
+
+        Assert.Equal<FitRunEntry list>(expectedEntries, run.entries)
+        Assert.Equal(1, run.members.Length)
+        Assert.Equal<FitRunMember list>(expected.members, run.members)
+        Assert.Empty(run.objectMatrices)
+        Assert.Equal(FitRunNotes.none, run.notes)
+
+        // Step 390's fixtures through automatic dispatch, at stage 2 and jointly: each a real SVD solve answering a linear
+        // fit run. QZ every coefficient free, m33 known (15 free), m23 known with m32 calibrated, and m00 alone free.
+        let setups, runs, sessionStudy, _ = sessionFixture ()
+        let m33Known = knownIn qzTruth 3 3
+        let qzM33 = qzHolding [ 3, 3, m33Known ]
+        let m00Free = placesBut [ 0, 0 ] |> List.map (fun (row, column) -> row, column, knownIn qzTruth row column)
+
+        let sessionVariants : (Item * (int * int) list) list =
+            [
+                qzAllFree, coefficientPlaces
+                qzHolding [ 2, 3, knownIn qzTruth 2 3; 3, 2, calibratedAt (qzTruth.element 3 2) ], placesBut [ 2, 3; 3, 2 ]
+                qzHolding m00Free, [ 0, 0 ]
+            ]
+
+        for stage in objectStages do
+            for qz, free in sessionVariants do
+                let solves = ResizeArray<LeastSquaresSystem>()
+                let fitted = linearFitRunOf setups (objectInstruments @ [ qz ]) (objectInstruments @ [ qz ]) runs sessionStudy stage solves
+                Assert.Equal(1, solves.Count)
+                assertLoneFitRun qz qzTruth free fitted
+
+            // Only m33 fixed: fifteen entries, m33 kept exactly with its known state among the parameters, never an entry.
+            let m33Solves = ResizeArray<LeastSquaresSystem>()
+            let m33Run = linearFitRunOf setups (objectInstruments @ [ qzM33 ]) (objectInstruments @ [ qzM33 ]) runs sessionStudy stage m33Solves
+            let m33 = ItemParameterRef (qzM33.id, coefficient 3 3)
+            Assert.Equal(1, m33Solves.Count)
+            assertLoneFitRun qzM33 qzTruth (placesBut [ 3, 3 ]) m33Run
+            Assert.Equal(15, m33Run.entries.Length)
+            Assert.DoesNotContain(m33, m33Run.entries |> List.map (fun entry -> entry.parameter))
+            Assert.Contains(({ parameter = m33; state = m33Known } : FitRunParameter), m33Run.parameters)
+            Assert.Equal(MatrixRank 15, (List.exactlyOne m33Run.objectMatrices).rank)
+            Assert.Equal<float>(qzTruth.element 3 3, (List.item (placeOf 3 3) (List.exactlyOne m33Run.objectMatrices).elements).value)
+
+        // (a) m00 alone free behind a fixed ideal CP of either handedness: rank 1, one entry.
+        let qzM00 = qzHolding m00Free
+
+        for prep, prefix in [ cpLeft, "L"; cpRight, "R" ] do
+            let bench = turnedBench $"CP {prefix}-QZ-LP" prep [ qzM00, Angle.zero ] calibratedLp2
+            let planned = freelyPlanned (sweptRunOver bench $"{prefix}1" ScienceRun None) [ qzM00 ] qzTruth
+            let observed = observedOver [ bench ] (objectInstruments @ [ prep; qzM00 ]) [ planned ]
+            let kitSetups, kitRuns, kitStudy = freeStudyOf $"CP {prefix}" [ bench ] observed
+
+            for stage in objectStages do
+                let solves = ResizeArray<LeastSquaresSystem>()
+                let used = [ laser; calibratedLp2; phone; prep; qzM00 ]
+                let fitted = linearFitRunOf kitSetups (objectInstruments @ [ prep; qzM00 ]) used kitRuns kitStudy stage solves
+                Assert.Equal(1, solves.Count)
+                Assert.Equal(1, fitted.entries.Length)
+                assertLoneFitRun qzM00 qzTruth [ 0, 0 ] fitted
+
+            // The Science run's file changed since attach: it is recorded at the hash the fit read, its current one, and the
+            // unchanged Dark run's at its own.
+            let changedHash = LibraryEntryFiles.ContentHash "0391"
+
+            let attachments =
+                kitRuns |> List.choose (fun attached -> attached.attachedRun.dataOpt |> Option.map (fun data -> data.attachment))
+
+            let changed, unchanged =
+                match attachments with
+                | [ science; dark ] -> science, dark
+                | held -> failwith $"expected the Science and the Dark run's files, got {held.Length}"
+
+            let kitContext = contextWithin kitSetups (objectInstruments @ [ prep; qzM00 ]) kitRuns kitStudy
+
+            let changedData : ExperimentDataProxy =
+                {
+                    kitContext.experimentData with
+                        attachmentStatus = fun attachment -> Ok (if attachment.path = changed.path then AttachedDataChanged changedHash else AttachedDataUnchanged)
+                }
+
+            let changedFit = fitParamOver { kitContext with experimentData = changedData } (ResizeArray<ClockTime>()) (createMathNetSvd ()) (ResizeArray<UniformDeviate>())
+            let changedRun = fitRunOf (changedFit.runFit (heldRequest kitStudy ObjectStage) UnwatchedIterations)
+            Assert.NotEqual(changed.contentHash, changedHash)
+            Assert.Equal<DataAttachment list>([ { changed with contentHash = changedHash }; unchanged ], changedRun.dataRead)
+
+        // (b) QZ's first column behind the fixed constant-Mueller preparation.
+        let firstColumn = [ 0, 0; 1, 0; 2, 0 ]
+        let qzFirstColumn = qzHolding (placesBut firstColumn |> List.map (fun (row, column) -> row, column, knownIn qzTruth row column))
+        let constantBenches = [ 0.0<deg>; 30.0<deg> ] |> List.map (fun phi -> turnedBench $"CMP-QZ-LP {phi}" constantPrep [ qzFirstColumn, Angle.degree phi ] calibratedLp2)
+        let constantPlanned = constantBenches |> List.mapi (fun k bench -> freelyPlanned (sweptRunOver bench $"C{k + 1}" ScienceRun None) [ qzFirstColumn ] qzTruth)
+        let constantObserved = observedOver constantBenches (objectInstruments @ [ constantPrep; qzFirstColumn ]) constantPlanned
+        let constantSetups, constantRuns, constantStudy = freeStudyOf "CMP" constantBenches constantObserved
+
+        // (c) QZ's upper 3 × 3 between the fixed plate at 30° and the known LR.
+        let block = [ for row in 0 .. 2 do for column in 0 .. 2 -> row, column ]
+        let qzBlock = qzHolding (placesBut block |> List.map (fun (row, column) -> row, column, knownIn qzTruth row column))
+
+        let betweenBenches =
+            phis
+            |> List.map (fun phi ->
+                turnedBench $"LP-WP-QZ-LR-LP {phi}" lp1 [ plate, Angle.degree 30.0<deg>; qzBlock, Angle.degree phi; lrKnown, Angle.zero ] calibratedLp2)
+
+        let betweenPlanned = betweenBenches |> List.mapi (fun k bench -> freelyPlanned (sweptRunOver bench $"S{k + 1}" ScienceRun None) [ qzBlock ] qzTruth)
+        let betweenObserved = observedOver betweenBenches (objectInstruments @ [ lrKnown; qzBlock ]) betweenPlanned
+        let betweenSetups, betweenRuns, betweenStudy = freeStudyOf "Between" betweenBenches betweenObserved
+
+        for stage in objectStages do
+            let constantSolves = ResizeArray<LeastSquaresSystem>()
+            let constantUsed = [ laser; calibratedLp2; phone; constantPrep; qzFirstColumn ]
+            let constantItems = objectInstruments @ [ constantPrep; qzFirstColumn ]
+            let constantRun = linearFitRunOf constantSetups constantItems constantUsed constantRuns constantStudy stage constantSolves
+            Assert.Equal(1, constantSolves.Count)
+            assertLoneFitRun qzFirstColumn qzTruth firstColumn constantRun
+
+            let betweenSolves = ResizeArray<LeastSquaresSystem>()
+            let betweenUsed = [ laser; lp1; calibratedLp2; phone; plate; lrKnown; qzBlock ]
+            let betweenItems = objectInstruments @ [ lrKnown; qzBlock ]
+            let betweenRun = linearFitRunOf betweenSetups betweenItems betweenUsed betweenRuns betweenStudy stage betweenSolves
+            Assert.Equal(1, betweenSolves.Count)
+            assertLoneFitRun qzBlock qzTruth block betweenRun
+
+        // (d) Equality links: QZ's m21 follows its m12, QZ2's m00 follows QZ's free m00, and QZ2's m33 QZ's known m33.
+        let qzLinked = qzHolding [ 3, 3, m33Known ]
+        let qzBenches, qzPlanned = freeFamilyRuns "Q" [ qzLinked ] qzTruth
+        let qz2Benches, qz2Planned = freeFamilyRuns "W" [ qz2Free ] qz2Truth
+        let linkedItems = objectInstruments @ [ qzLinked; qz2Free ]
+        let linkedObserved = observedOver (qzBenches @ qz2Benches) linkedItems (qzPlanned @ qz2Planned)
+        let linkedSetups, linkedRuns, unlinked = freeStudyOf "Linked" (qzBenches @ qz2Benches) linkedObserved
+
+        let linked =
+            let used = (contextWithin linkedSetups linkedItems linkedRuns unlinked).kit.itemsUsedBy unlinked
+
+            let links : ParameterLink list =
+                [
+                    { follower = ItemParameterRef (qzLinked.id, coefficient 2 1); leader = ItemParameterRef (qzLinked.id, coefficient 1 2) }
+                    { follower = ItemParameterRef (qz2Free.id, coefficient 0 0); leader = ItemParameterRef (qzLinked.id, coefficient 0 0) }
+                    { follower = ItemParameterRef (qz2Free.id, coefficient 3 3); leader = ItemParameterRef (qzLinked.id, coefficient 3 3) }
+                ]
+
+            links |> List.fold (fun (held : Study) link -> studyOf (held.withLink link used)) unlinked
+
+        let qzFree = placesBut [ 2, 1; 3, 3 ]
+        let qz2Own = placesBut [ 0, 0; 3, 3 ]
+
+        for stage in objectStages do
+            let solves = ResizeArray<LeastSquaresSystem>()
+
+            // Every parameter of both objects stays in the record with its own state, the followers' included.
+            let linkedRun = linearFitRunOf linkedSetups linkedItems linkedItems linkedRuns linked stage solves
+            Assert.Equal(1, solves.Count)
+
+            // One entry per independent coefficient: QZ's fourteen, then QZ2's fourteen; no follower is an entry.
+            Assert.Equal<StudyParameterRef list>(
+                (qzFree |> List.map (fun (row, column) -> ItemParameterRef (qzLinked.id, coefficient row column)))
+                @ (qz2Own |> List.map (fun (row, column) -> ItemParameterRef (qz2Free.id, coefficient row column))),
+                linkedRun.entries |> List.map (fun entry -> entry.parameter))
+
+            assertValuesWithin 1e-9 (elementsAt qzTruth qzFree) (fittedInRun linkedRun qzLinked qzFree)
+            assertValuesWithin 1e-9 (elementsAt qz2Truth qz2Own) (fittedInRun linkedRun qz2Free qz2Own)
+
+            // Two complete matrices of the reduced rank, each follower its leader's value exactly.
+            match linkedRun.objectMatrices with
+            | [ qzFit; qz2Fit ] ->
+                let elementOf (fit : ObjectMatrixFit) (row : int) (column : int) : float = (List.item (placeOf row column) fit.elements).value
+
+                for fit, truth, item in [ qzFit, qzTruth, qzLinked; qz2Fit, qz2Truth, qz2Free ] do
+                    Assert.Equal<ItemId list>([ item.id ], fit.items)
+                    Assert.Equal(MatrixRank 28, fit.rank)
+                    assertValuesWithin 1e-9 (truth.rowMajorValues |> List.map (fun value -> value.value)) fit.elements
+
+                Assert.Equal<float>(elementOf qzFit 1 2, elementOf qzFit 2 1)
+                Assert.Equal<float>((List.exactlyOne (fittedInRun linkedRun qzLinked [ 0, 0 ])).value, elementOf qz2Fit 0 0)
+                Assert.Equal<float>(qzTruth.element 3 3, elementOf qzFit 3 3)
+                Assert.Equal<float>(qzTruth.element 3 3, elementOf qz2Fit 3 3)
+            | fits -> Assert.Fail($"expected QZ's and QZ2's object solves, got {fits.Length}")
+
+        // A rank-deficient design reaches the solver and answers its refusal: no fit run, so the clock is never read.
+        let deficientBench = turnedBench "QZ LP-LP 0" lp1 [ qzM33, Angle.zero ] calibratedLp2
+        let deficientPlanned = freelyPlanned (sweptRunOver deficientBench "E1" ScienceRun None) [ qzM33 ] qzTruth
+        let deficientObserved = observedOver [ deficientBench ] (objectInstruments @ [ qzM33 ]) [ deficientPlanned ]
+        let deficientSetups, deficientRuns, deficientStudy = freeStudyOf "QZ alone" [ deficientBench ] deficientObserved
+
+        for stage in objectStages do
+            let solves = ResizeArray<LeastSquaresSystem>()
+            let deficientReads = ResizeArray<ClockTime>()
+            let deficientContext = contextWithin deficientSetups (objectInstruments @ [ qzM33 ]) deficientRuns deficientStudy
+            let deficientFit = fitParamOver deficientContext deficientReads (recordingSvd solves) (ResizeArray<UniformDeviate>())
+
+            match deficientFit.runFit (heldRequest deficientStudy stage) UnwatchedIterations with
+            | Error (ObjectSolveFitErr (items, RankDeficientErr rank)) ->
+                Assert.Equal<ItemId list>([ qzM33.id ], items)
+                Assert.InRange(rank.value, 1, 14)
+            | Error error -> Assert.Fail($"expected ObjectSolveFitErr naming QZ, got {error.describe}")
+            | Ok deficientRun -> Assert.Fail($"a rank-deficient design was recorded as {deficientRun.name.value}")
+
+            Assert.Equal(1, solves.Count)
+            Assert.Empty(deficientReads)
+
+    [<Fact>]
+    let ``a fit naming no study of the kit, or refused by its stage, records nothing`` () : unit =
+        // Step 385's study: A1 and A2 over CPL1 -> AIR -> LP1, E1 over CPL1 -> QZ -> LP1, and K1; CPL1's retardance
+        // unknown from 1.5 within [1, 2] and QZ's m00 from 1 within [0, 2].
+        let cpl1Retardance = itemOf cpl1Draft |> stating retardance (unknownWithin 1.5 1.0 2.0)
+        let qzM00 = itemOf qzDraft |> stating (coefficient 0 0) (unknownWithin 1.0 0.0 2.0)
+        let setupA = benchOf "A" cpl1Retardance [ None ] lp1 phone
+        let setupQ = benchOf "Q" cpl1Retardance [ Some qzM00 ] lp1 phone
+
+        let runs =
+            [
+                capturedOver setupA "A1" CalibrationRun []
+                capturedOver setupA "A2" CalibrationRun []
+                capturedOver setupQ "E1" ScienceRun []
+                darkOver setupA
+            ]
+
+        let study = studyOver "S" runs
+        let context = contextWithin [ setupA; setupQ ] [ laser; lp1; cpl1Retardance; qzM00; phone ] runs study
+        let reads = ResizeArray<ClockTime>()
+        let drawn = ResizeArray<UniformDeviate>()
+        let solves = ResizeArray<LeastSquaresSystem>()
+        let fit = fitParamOver context reads (recordingSvd solves) drawn
+
+        match fit.runFit { study = StudyName "LR"; stage = JointStage; calibrationUse = CalibrationHeldFixed } UnwatchedIterations with
+        | Error (UnknownFitStudyErr reason) -> Assert.Contains("'LR'", reason)
+        | Error error -> Assert.Fail($"expected UnknownFitStudyErr, got {error.describe}")
+        | Ok run -> Assert.Fail($"a fit of a study the kit lacks was recorded as {run.name.value}")
+
+        match fit.runFit (heldRequest study ObjectStage) UnwatchedIterations with
+        | Error (FitStageErr (InstrumentNotCalibratedErr reason)) -> Assert.Contains("'CPL1' c2.retardance", reason)
+        | Error error -> Assert.Fail($"expected FitStageErr (InstrumentNotCalibratedErr _), got {error.describe}")
+        | Ok run -> Assert.Fail($"a stage refusing an uncalibrated instrument was recorded as {run.name.value}")
+
+        // Neither request read the clock, solved or drew a start.
+        Assert.Empty(reads)
+        Assert.Empty(solves)
+        Assert.Empty(drawn)
+
     [<Fact>]
     let ``every study-fit error renders its condition and its payload`` () : unit =
         let forwardError = MissingStudyRunErr "E9, which the study 'QZ' names"
@@ -1824,6 +2244,7 @@ module StudyEngineTests =
         let gainModelError = MissingAnchorGainErr "'A9' is not among the 2 AIR gains given"
         let solverError = RankDeficientErr (MatrixRank 3)
         let objects = [ qzAllFree.id; lrFree.id ]
+        let studyReason = "'LR', which the fit names, is not among the kit's 1 studies"
 
         let cases : (StudyFitError * string) list =
             [
@@ -1836,6 +2257,7 @@ module StudyEngineTests =
                 SessionGainFitErr gainModelError, $"a session gain model was refused: {gainModelError.describe}"
                 ObjectSolveFitErr (objects, solverError),
                 $"the objects could not be reconstructed: {qzAllFree.id.value}, {lrFree.id.value} — {solverError.describe}"
+                UnknownFitStudyErr studyReason, $"the kit has no such study: {studyReason}"
             ]
 
         for error, expected in cases do
@@ -1850,4 +2272,5 @@ module StudyEngineTests =
         Assert.Contains("'A9' is not among the 2 AIR gains given", (SessionGainFitErr gainModelError).describe)
         Assert.Contains($"{lrFree.id.value}", (ObjectSolveFitErr (objects, solverError)).describe)
         Assert.Contains("rank 3", (ObjectSolveFitErr (objects, solverError)).describe)
+        Assert.Contains("'LR', which the fit names", (UnknownFitStudyErr studyReason).describe)
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
