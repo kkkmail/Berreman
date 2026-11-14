@@ -46,6 +46,10 @@ module StudyEngine =
         | ObjectSolveFitErr of items : ItemId list * error : SolverError
         /// The fit names a study the kit does not hold (spec 0050 S11.3).
         | UnknownFitStudyErr of reason : string
+        /// The kit refused to read the study's fit runs or to write the new one (spec 0050 S11.3).
+        | FitRunKitErr of error : KitError
+        /// The fit job raised, or answered no single result, on its worker (spec 0050 S11.3).
+        | FitRunRaisedErr of reason : string
 
         member this.describe : string =
             match this with
@@ -60,6 +64,8 @@ module StudyEngine =
                 let named = items |> List.map (fun item -> $"{item.value}") |> String.concat ", "
                 $"the objects could not be reconstructed: {named} — {error.describe}"
             | UnknownFitStudyErr reason -> $"the kit has no such study: {reason}"
+            | FitRunKitErr error -> $"the kit refused the fit run: {error.describe}"
+            | FitRunRaisedErr reason -> $"the fit raised: {reason}"
 
     /// The reference families' two polarizers, linear or LP-then-retarder circular; derived, never stored, so it carries
     /// no tag (spec 0050 S11.3; `MuellerReconstruction.Family`).

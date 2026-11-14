@@ -2257,6 +2257,8 @@ module StudyEngineTests =
         let solverError = RankDeficientErr (MatrixRank 3)
         let objects = [ qzAllFree.id; lrFree.id ]
         let studyReason = "'LR', which the fit names, is not among the kit's 1 studies"
+        let kitError = FitRunExistsErr "the file 'QZ@20261101T120000Z.fitrun-json'"
+        let raisedReason = "solver gone"
 
         let cases : (StudyFitError * string) list =
             [
@@ -2270,6 +2272,8 @@ module StudyEngineTests =
                 ObjectSolveFitErr (objects, solverError),
                 $"the objects could not be reconstructed: {qzAllFree.id.value}, {lrFree.id.value} — {solverError.describe}"
                 UnknownFitStudyErr studyReason, $"the kit has no such study: {studyReason}"
+                FitRunKitErr kitError, $"the kit refused the fit run: {kitError.describe}"
+                FitRunRaisedErr raisedReason, $"the fit raised: {raisedReason}"
             ]
 
         for error, expected in cases do
@@ -2285,6 +2289,9 @@ module StudyEngineTests =
         Assert.Contains($"{lrFree.id.value}", (ObjectSolveFitErr (objects, solverError)).describe)
         Assert.Contains("rank 3", (ObjectSolveFitErr (objects, solverError)).describe)
         Assert.Contains("'LR', which the fit names", (UnknownFitStudyErr studyReason).describe)
+        Assert.Contains("QZ@20261101T120000Z.fitrun-json", (FitRunKitErr kitError).describe)
+        Assert.Contains("the kit already holds that fit run", (FitRunKitErr kitError).describe)
+        Assert.Contains(raisedReason, (FitRunRaisedErr raisedReason).describe)
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
 
     // ============================ spec 0050 S11.3: the staged hand-off ============================
