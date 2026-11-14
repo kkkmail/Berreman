@@ -1648,10 +1648,10 @@ module StudyEngineTests =
     /// Day 2's gain, from 1000 at 10:00 to 1200 at 12:00.
     let private day2GainAt (at : DateTimeOffset) : float = 1000.0 + 200.0 * (at - tenOClock).TotalSeconds / 7200.0
 
-    /// QZ's object stage over two sessions: Day 1 anchored to the LP-LP AIR run A1 of gain 1000; Day 2 interpolated between
-    /// the AIR runs A2 of gain 1000 at 10:00 and A3 of 1200 at 12:00, its Science runs read at the gain then; and the Dark
-    /// run K1 of 5. The setups, the runs and the study, and QZ's sixteen observed Science runs.
-    let private sessionFixture () : Setup list * AttachedRun list * Study * ObservedRun list =
+    /// QZ's object stage over two sessions, its Science rows made of `truth`: Day 1 anchored to the LP-LP AIR run A1 of gain
+    /// 1000; Day 2 interpolated between the AIR runs A2 of gain 1000 at 10:00 and A3 of 1200 at 12:00, its Science runs read
+    /// at the gain then; and the Dark run K1 of 5. The setups, the runs and the study, and QZ's sixteen observed Science runs.
+    let private sessionFixture (truth : MuellerMatrix) : Setup list * AttachedRun list * Study * ObservedRun list =
         let benchesAt = phis |> List.map (fun phi -> phi, familyBenches "QZ" [ qzAllFree ] phi)
         let setups = airBench :: (benchesAt |> List.collect snd)
 
@@ -1665,7 +1665,7 @@ module StudyEngineTests =
                 {
                     plannedRun = run
                     segment = [ qzAllFree.id ]
-                    segmentTruth = qzTruth
+                    segmentTruth = truth
                     timeOf =
                         if onDay1 then fun reading -> DateTimeOffset(2026, 11, 13, 8, 10, 0, TimeSpan.Zero).AddMinutes(float (5 * k)).AddSeconds(float (10 * reading))
                         else fun reading -> tenOClock.AddMinutes(float (10 + 12 * (k - 8))).AddSeconds(float (30 * reading))
@@ -1720,7 +1720,7 @@ module StudyEngineTests =
 
     [<Fact>]
     let ``the object stage reconstructs a black-box matrix behind calibrated instruments, each row divided by its session's gain at its time`` () : unit =
-        let setups, runs, study, scienceRuns = sessionFixture ()
+        let setups, runs, study, scienceRuns = sessionFixture qzTruth
 
         // Every coefficient free: one `reconstruct` of the sixteen, its rows the run law's designs and corrected signals.
         let allFree = ResizeArray<LeastSquaresSystem>()
@@ -1967,7 +1967,7 @@ module StudyEngineTests =
 
     [<Fact>]
     let ``an object solve's problem is its design over the matrix's elements, each coordinate an entry of the object`` () : unit =
-        let setups, runs, study, scienceRuns = sessionFixture ()
+        let setups, runs, study, scienceRuns = sessionFixture qzTruth
         let solution, engineProblems, system = qzProblemsOver setups study runs
 
         match engineProblems.problems with
@@ -2043,7 +2043,7 @@ module StudyEngineTests =
     [<Fact>]
     let ``each run of an object stage has its own rows' residual at its object's solve`` () : unit =
         // Off the exact solve, so each residual entry stands far above round-off.
-        let setups, runs, study, scienceRuns = sessionFixture ()
+        let setups, runs, study, scienceRuns = sessionFixture qzTruth
         let solution, engineProblems, system = qzProblemsOver setups study (jittered 0.01 runs)
         let readings = dialReadings.Length
         let solved = vecValuesOf (objectFitOf [ qzAllFree ] solution) |> Array.ofList
@@ -2291,6 +2291,257 @@ module StudyEngineTests =
                 List.head lpLp.coordinates)
         | [] -> Assert.Fail("the calibration has no fringe")
 
+    // ============================ spec 0050 S11.4: sigmas, realizability and suspects ============================
+
+    /// Step 397's full-rank rows [1; 0], [0; 1], [1; 1] against [0.1; 2.1; 1.9], solved at [0; 2]: each σ √0.02, ρ₀₁ −0.5.
+    let private independentRows : LeastSquaresSystem =
+        {
+            design = [| DesignRow [| 1.0; 0.0 |]; DesignRow [| 0.0; 1.0 |]; DesignRow [| 1.0; 1.0 |] |]
+            rhs = [| 0.1; 2.1; 1.9 |]
+        }
+
+    /// Step 397's rank-deficient rows [1; 1], [2; 2], [3; 3] against [1; 2; 3.1]: only x₀ + x₁ = 14.3 / 14 is determined.
+    let private proportionalRows : LeastSquaresSystem =
+        {
+            design = [| DesignRow [| 1.0; 1.0 |]; DesignRow [| 2.0; 2.0 |]; DesignRow [| 3.0; 3.0 |] |]
+            rhs = [| 1.0; 2.0; 3.1 |]
+        }
+
+    let private suspectItem : ItemId = ItemId (Guid.Parse "40200000-0000-4000-8000-000000000001")
+
+    /// The test-local entry of that name, owned by its item.
+    let private suspectEntryNamed (name : string) : FitEntryRef =
+        { parameter = ItemParameterRef (suspectItem, ParameterName name); owner = ItemOwner suspectItem }
+
+    /// Step 397's solve of the rows reached at `solution`: coordinate k the entry of the k-th name, centre zero, unit one
+    /// and unbounded.
+    let private solvedOver (system : LeastSquaresSystem) (names : string list) (solution : float list) : FittedProblem =
+        let dimension = solution.Length
+
+        let search : ScaledSearch =
+            {
+                start = ScaledVector (Array.ofList solution)
+                lowerBounds = ScaledVector (Array.create dimension -infinity)
+                upperBounds = ScaledVector (Array.create dimension infinity)
+            }
+
+        {
+            subject = StudyEntriesProblem
+            coordinates = names |> List.map (fun name -> EntryCoordinate [ suspectEntryNamed name ])
+            residual = fun (ScaledVector s) -> let (RealVector r) = system.residualsAt (RealVector.create s) in ResidualVector (r.ToArray())
+            search = search
+            centre = StudyParameterVector (Array.zeroCreate dimension)
+            unit = StudyParameterVector (Array.create dimension 1.0)
+        }
+
+    /// A test-local layout of these entries, each unknown from zero within [lower, upper].
+    let private layoutWithin (lower : float) (upper : float) (entries : FitEntryRef list) : StudyParameterLayout =
+        let unknownOf (entry : FitEntryRef) : StudyUnknown =
+            {
+                parameter = entry.parameter
+                scope = ItemScope
+                unknown = { start = ParameterValue 0.0; bounds = { lower = ParameterValue lower; upper = ParameterValue upper }; priorOpt = None }
+            }
+
+        {
+            entries = entries |> List.map (fun entry -> ({ unknown = unknownOf entry; owner = entry.owner } : StudyVectorEntry))
+            sessions = []
+        }
+
+    /// The suspect is coordinate k of that problem holding that entry, for these reasons in order, each fraction and
+    /// correlation within 1e-6.
+    let private assertSuspect (problem : FittedProblem) (k : int) (entry : FitEntryRef) (expected : SuspectReason list) (suspect : SuspectCoordinate) : unit =
+        Assert.True(obj.ReferenceEquals(problem, suspect.problem), $"{entry.parameter.describe} is suspect in another problem")
+        Assert.Equal(FitCoordinateIndex k, suspect.coordinate)
+        Assert.Equal(entry, suspect.entry)
+        Assert.Equal(expected.Length, suspect.reasons.Length)
+
+        List.iter2
+            (fun (reason : SuspectReason) (found : SuspectReason) ->
+                match reason, found with
+                | UndeterminedSigmaReason, UndeterminedSigmaReason -> ()
+                | WideSigmaReason fraction, WideSigmaReason foundFraction -> Assert.Equal(fraction.value, foundFraction.value, 1e-6)
+                | CorrelatedEntryReason (partner, correlation), CorrelatedEntryReason (foundPartner, foundCorrelation) ->
+                    Assert.Equal(partner, foundPartner)
+                    Assert.Equal(correlation.value, foundCorrelation.value, 1e-6)
+                | _ -> Assert.Fail($"{entry.parameter.describe}: expected %A{reason}, got %A{found}"))
+            expected
+            suspect.reasons
+
+    [<Fact>]
+    let ``an entry is suspect when its sigma is undetermined, wide against its bounds, or correlated past the threshold`` () : unit =
+        let x0 = suspectEntryNamed "x0"
+        let x1 = suspectEntryNamed "x1"
+        let y0 = suspectEntryNamed "y0"
+        let y1 = suspectEntryNamed "y1"
+        let fullRank = solvedOver independentRows [ "x0"; "x1" ] [ 0.0; 2.0 ]
+        let rankDeficient = solvedOver proportionalRows [ "y0"; "y1" ] [ 14.3 / 28.0; 14.3 / 28.0 ]
+        let engineProblems : EngineProblems = { problems = [ fullRank; rankDeficient ]; runResiduals = []; productChecks = [] }
+        let wide = layoutWithin -2.0 2.0 [ x0; x1; y0; y1 ]
+        let narrow = layoutWithin -0.5 0.5 [ x0; x1; y0; y1 ]
+
+        let tight =
+            match SuspectThresholds.tryCreate 0.4 0.1 with
+            | Ok thresholds -> thresholds
+            | Error error -> failwith error.describe
+
+        let correlatedWith (partner : FitEntryRef) : SuspectReason = CorrelatedEntryReason (partner, FitCorrelation -0.5)
+        let sigma = sqrt 0.02
+
+        // Under the initial thresholds the full-rank entries are not suspect: σ / 4 ≈ 0.035 and |ρ| 0.5 are within them.
+        match engineProblems.suspectsWith SuspectThresholds.initial wide with
+        | [ first; second ] ->
+            assertSuspect rankDeficient 0 y0 [ UndeterminedSigmaReason ] first
+            assertSuspect rankDeficient 1 y1 [ UndeterminedSigmaReason ] second
+        | suspects -> Assert.Fail($"expected the rank-deficient problem's two entries, got {suspects.Length} suspect(s)")
+
+        // A correlation threshold of 0.4 makes each full-rank entry correlated with the other at −0.5.
+        match engineProblems.suspectsWith tight wide with
+        | [ first; second; third; fourth ] ->
+            assertSuspect fullRank 0 x0 [ correlatedWith x1 ] first
+            assertSuspect fullRank 1 x1 [ correlatedWith x0 ] second
+            assertSuspect rankDeficient 0 y0 [ UndeterminedSigmaReason ] third
+            assertSuspect rankDeficient 1 y1 [ UndeterminedSigmaReason ] fourth
+        | suspects -> Assert.Fail($"expected four suspects, got {suspects.Length}")
+
+        // Within [−0.5, 0.5] each full-rank σ is √0.02 of a unit span, past the tenth.
+        match engineProblems.suspectsWith tight narrow with
+        | [ first; second; third; fourth ] ->
+            assertSuspect fullRank 0 x0 [ WideSigmaReason (SigmaFraction sigma); correlatedWith x1 ] first
+            assertSuspect fullRank 1 x1 [ WideSigmaReason (SigmaFraction sigma); correlatedWith x0 ] second
+            assertSuspect rankDeficient 0 y0 [ UndeterminedSigmaReason ] third
+            assertSuspect rankDeficient 1 y1 [ UndeterminedSigmaReason ] fourth
+        | suspects -> Assert.Fail($"expected four suspects, got {suspects.Length}")
+
+    [<Fact>]
+    let ``every entry takes the sigma of the coordinate that holds it`` () : unit =
+        let setups, runs, study, _ = sessionFixture qzTruth
+        let solution, engineProblems, _ = qzProblemsOver setups study (jittered 0.01 runs)
+
+        let qzEntry (row : int) (column : int) : FitEntryRef =
+            { parameter = ItemParameterRef (qzAllFree.id, coefficient row column); owner = ItemOwner qzAllFree.id }
+
+        match engineProblems.problems with
+        | [ problem ] ->
+            // The layout's entries are row-major and the solve's coordinates vec-ordered, so m01 and m10 swap places.
+            Assert.NotEqual<ParameterSigma option>(problem.sigmaAt (FitCoordinateIndex 1), problem.sigmaAt (FitCoordinateIndex 4))
+
+            let sigmas = engineProblems.sigmasFor solution.layout
+
+            Assert.Equal<FitEntryRef list>(
+                coefficientPlaces |> List.map (fun (row, column) -> qzEntry row column),
+                sigmas |> List.map (fun sigma -> sigma.entry))
+
+            List.iter2
+                (fun (row : int, column : int) (sigma : FitEntrySigma) ->
+                    match problem.sigmaAt (FitCoordinateIndex (4 * column + row)) with
+                    | Some expected ->
+                        Assert.True(expected.value > 0.0, $"m{row}{column}'s σ is {expected.value:R}")
+                        Assert.Equal<ParameterSigma option>(Some expected, sigma.sigmaOpt)
+                    | None -> Assert.Fail($"m{row}{column} of a full-rank object solve has no σ"))
+                coefficientPlaces
+                sigmas
+
+            // The Phone's gain, and QZ's m00 owned by a session, are entries no problem holds.
+            let m00 = List.head solution.layout.entries
+            let gain = { m00 with unknown = { m00.unknown with parameter = ItemParameterRef (phone.id, ParameterName.gain) }; owner = ItemOwner phone.id }
+            let sessionM00 = { m00 with owner = SessionOwner day1 }
+            let widened = { solution.layout with entries = solution.layout.entries @ [ gain; sessionM00 ] }
+
+            match engineProblems.sigmasFor widened |> List.skip 16 with
+            | [ gainSigma; sessionSigma ] ->
+                Assert.Equal(({ parameter = ItemParameterRef (phone.id, ParameterName.gain); owner = ItemOwner phone.id } : FitEntryRef), gainSigma.entry)
+                Assert.Equal(None, gainSigma.sigmaOpt)
+                Assert.Equal(({ parameter = (qzEntry 0 0).parameter; owner = SessionOwner day1 } : FitEntryRef), sessionSigma.entry)
+                Assert.Equal(None, sessionSigma.sigmaOpt)
+            | others -> Assert.Fail($"expected two further entries, got {others.Length}")
+        | problems -> Assert.Fail($"expected one object solve, got {problems.Length}")
+
+    /// QZ's object stage over step 390's sessions, its Science rows made of `truth`: the staged study, the unstaged context
+    /// and `reconstructLinear`'s solution.
+    let private qzObjectStageOf (truth : MuellerMatrix) : StagedStudy * StudyForwardContext * StudyFitSolution =
+        let setups, runs, study, _ = sessionFixture truth
+        let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qzAllFree ]) runs study
+        staged, context, solutionOf (staged.reconstructLinear context prefits data (createMathNetSvd ()))
+
+    [<Fact>]
+    let ``every black-box object of a fit is checked for realizability at its fitted values`` () : unit =
+        let realizabilityOf (truth : MuellerMatrix) : ObjectRealizability =
+            let staged, context, solution = qzObjectStageOf truth
+
+            match staged.realizabilityWith context solution.layout solution.fitted with
+            | Ok [ realizability ] -> realizability
+            | Ok found -> failwith $"expected QZ's realizability alone, got {found.Length}"
+            | Error error -> failwith $"the realizability was refused: {error.describe}"
+
+        let assertEigenvaluesOf (truth : MuellerMatrix) (realizability : ObjectRealizability) : unit =
+            Assert.Equal(qzAllFree.id, realizability.item)
+            Assert.Equal(4, realizability.eigenvalues.Length)
+
+            List.iter2
+                (fun (expected : CoherencyEigenvalue) (found : CoherencyEigenvalue) -> Assert.Equal(expected.value, found.value, 1e-9))
+                truth.cloudeEigenvalues
+                realizability.eigenvalues
+
+        // The retarder QZ is fitted as, its eigenvalues (1, 0, 0, 0).
+        let retarder = realizabilityOf qzTruth
+        assertEigenvaluesOf qzTruth retarder
+        Assert.Equal(RealizableMueller, retarder.realizability)
+
+        // diag(1, 1.5, 0, 0), which no element produces: two of its eigenvalues are −1/8, where QZ's start is realizable.
+        let diagonal =
+            RealMatrix4x4.create
+                [ [ 1.0; 0.0; 0.0; 0.0 ]
+                  [ 0.0; 1.5; 0.0; 0.0 ]
+                  [ 0.0; 0.0; 0.0; 0.0 ]
+                  [ 0.0; 0.0; 0.0; 0.0 ] ]
+            |> MuellerMatrix
+
+        let unrealizable = realizabilityOf diagonal
+        assertEigenvaluesOf diagonal unrealizable
+        Assert.Equal(UnrealizableMueller, unrealizable.realizability)
+
+    [<Fact>]
+    let ``each engine's results are read off the solves it made`` () : unit =
+        let solver = createMathNetSvd ()
+
+        let subjectsOf (result : Result<EngineProblems, StudyFitError>) : FitProblemSubject list =
+            (engineProblemsOf result).problems |> List.map (fun problem -> problem.subject)
+
+        // Step 389's calibration: stage one's three AIR fringes.
+        let calibration, calibrationPrefits, calibrationContext = stageOneOver stageOneRuns
+        let calibrationSolution = solutionOf (calibration.calibrateLinear calibrationContext calibrationPrefits solver)
+
+        let calibrationData =
+            let stagedContext = { calibrationContext with kit = { calibrationContext.kit with items = calibration.items } }
+
+            match calibration.study.dataWith stagedContext calibrationPrefits with
+            | Ok data -> data
+            | Error error -> failwith $"the calibration has no data: {error.describe}"
+
+        Assert.Equal<FitProblemSubject list>(
+            [ AirFringeProblem [ ExperimentName "S1" ]; AirFringeProblem [ ExperimentName "S2" ]; AirFringeProblem [ ExperimentName "S3" ] ],
+            subjectsOf (calibration.engineProblemsWith calibrationContext calibrationPrefits calibrationData solver calibrationSolution))
+
+        // Step 390's object stage: one object solve per group, QZ's alone.
+        let setups, runs, study, _ = sessionFixture qzTruth
+        let objects, objectContext, objectPrefits, objectData = objectStageOf setups (objectInstruments @ [ qzAllFree ]) runs study
+        let objectSolution = solutionOf (objects.reconstructLinear objectContext objectPrefits objectData solver)
+
+        Assert.Equal<FitProblemSubject list>(
+            [ ObjectSolveProblem [ qzAllFree.id ] ],
+            subjectsOf (objects.engineProblemsWith objectContext objectPrefits objectData solver objectSolution))
+
+        // Step 387's nonlinear fit, which reads no pre-fit: the study residual's one problem.
+        let plateStudy = plateStudyWith None
+        let plateContext = plateContextOf plateStudy
+        let plateStaged, _, plateData = stagedOver plateContext plateStudy
+        let plateSolution = solutionOf (plateStaged.fitNonlinear plateContext plateData (deviatesOf [] (ResizeArray<UniformDeviate>())) UnwatchedIterations)
+
+        Assert.Equal<FitProblemSubject list>(
+            [ StudyEntriesProblem ],
+            subjectsOf (plateStaged.engineProblemsWith plateContext [] plateData solver plateSolution))
+
     // ============================ spec 0050 S11.3: one fit, one fit run ============================
 
     /// 2026-11-04 09:30:00 UTC, the instant the test clock answers.
@@ -2486,7 +2737,7 @@ module StudyEngineTests =
 
         // Step 390's fixtures through automatic dispatch, at stage 2 and jointly: each a real SVD solve answering a linear
         // fit run. QZ every coefficient free, m33 known (15 free), m23 known with m32 calibrated, and m00 alone free.
-        let setups, runs, sessionStudy, _ = sessionFixture ()
+        let setups, runs, sessionStudy, _ = sessionFixture qzTruth
         let m33Known = knownIn qzTruth 3 3
         let qzM33 = qzHolding [ 3, 3, m33Known ]
         let m00Free = placesBut [ 0, 0 ] |> List.map (fun (row, column) -> row, column, knownIn qzTruth row column)

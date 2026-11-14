@@ -1488,6 +1488,172 @@ module StudyEngine =
                                         productChecks = []
                                     } : EngineProblems)))))))
 
+    type StagedStudy with
+
+        /// The problems of a solution, read off the solves its engine made: the nonlinear fit's, stage one's AIR fringes
+        /// under the calibration stage, else the object solves (spec 0050 S11.4).
+        member this.engineProblemsWith
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (data : StudyData)
+            (solver : MuellerSolverProxy)
+            (solution : StudyFitSolution)
+            : Result<EngineProblems, StudyFitError> =
+            match solution.engine, this.stage with
+            | NonlinearStudyEngine, _ -> this.nonlinearProblemsWith context data solution
+            | LinearStudyEngine, CalibrationStage -> this.calibrationProblemsWith context prefits solver
+            | LinearStudyEngine, (ObjectStage | JointStage) -> this.objectProblemsWith context prefits data solver
+
+    type EngineProblems with
+
+        /// Each entry of the layout, in order, with the σ of the first problem whose coordinates hold it; `None` when no
+        /// problem does (spec 0050 S11.4; 001 §L).
+        member this.sigmasFor (layout : StudyParameterLayout) : FitEntrySigma list =
+            let held = this.problems |> List.map (fun problem -> problem.entrySigmas)
+
+            layout.entries
+            |> List.map (fun entry ->
+                let named : FitEntryRef = { parameter = entry.unknown.parameter; owner = entry.owner }
+
+                let sigmaOpt =
+                    held
+                    |> List.tryPick (List.tryFind (fun (sigma : FitEntrySigma) -> sigma.entry = named))
+                    |> Option.bind (fun (sigma : FitEntrySigma) -> sigma.sigmaOpt)
+
+                ({ entry = named; sigmaOpt = sigmaOpt } : FitEntrySigma))
+
+    /// An entry of one solve's coordinate that is suspect, and so profiled, with why (spec 0050 S11.4; 001 §L).
+    [<ReferenceEquality>]
+    type SuspectCoordinate =
+        {
+            problem : FittedProblem
+            coordinate : FitCoordinateIndex
+            entry : FitEntryRef
+            reasons : SuspectReason list
+        }
+
+    type EngineProblems with
+
+        /// Each entry of each problem's entry coordinates, in order, whose σ is undetermined, wider than the thresholds'
+        /// fraction of its layout bounds' span, or correlated past the threshold with another entry coordinate, named by
+        /// that one's first entry (spec 0050 S11.4; 001 §L).
+        member this.suspectsWith (thresholds : SuspectThresholds) (layout : StudyParameterLayout) : SuspectCoordinate list =
+            let boundsOf (entry : FitEntryRef) : ParameterInterval option =
+                layout.entries
+                |> List.tryFind (fun held -> held.unknown.parameter = entry.parameter && held.owner = entry.owner)
+                |> Option.map (fun held -> held.unknown.unknown.bounds)
+
+            this.problems
+            |> List.collect (fun problem ->
+                let correlationOpt = problem.quality.correlationOpt
+
+                let partners : (FitCoordinateIndex * FitEntryRef) list =
+                    problem.coordinates
+                    |> List.mapi (fun l coordinate ->
+                        match coordinate with
+                        | EntryCoordinate (first :: _) -> Some (FitCoordinateIndex l, first)
+                        | EntryCoordinate []
+                        | ElementCoordinate _
+                        | FringeVisibilityCoordinate -> None)
+                    |> List.choose id
+
+                problem.coordinates
+                |> List.mapi (fun k coordinate -> FitCoordinateIndex k, coordinate)
+                |> List.collect (fun (index, coordinate) ->
+                    match coordinate with
+                    | EntryCoordinate entries ->
+                        let sigmaOpt = problem.sigmaAt index
+
+                        let correlated : SuspectReason list =
+                            match correlationOpt with
+                            | Some correlation ->
+                                partners
+                                |> List.filter (fun (other, _) -> other <> index)
+                                |> List.choose (fun (other, partner) ->
+                                    let rho = FitCorrelation correlation.value.[index.value].[other.value]
+
+                                    if abs rho.value > thresholds.correlation.value then Some (CorrelatedEntryReason (partner, rho))
+                                    else None)
+                            | None -> []
+
+                        entries
+                        |> List.choose (fun entry ->
+                            let sigmaReasons : SuspectReason list =
+                                match sigmaOpt, boundsOf entry with
+                                | None, _ -> [ UndeterminedSigmaReason ]
+                                | Some sigma, Some bounds ->
+                                    let fraction = SigmaFraction (sigma.value / (bounds.upper.value - bounds.lower.value))
+                                    if fraction.value > thresholds.sigmaFraction.value then [ WideSigmaReason fraction ] else []
+                                | Some _, None -> []
+
+                            match sigmaReasons @ correlated with
+                            | [] -> None
+                            | reasons -> Some ({ problem = problem; coordinate = index; entry = entry; reasons = reasons } : SuspectCoordinate))
+                    | ElementCoordinate _
+                    | FringeVisibilityCoordinate -> []))
+
+    type StagedStudy with
+
+        /// Each black-box object the fitted runs use, in the items' order, at its values in the first fitted run using it:
+        /// the coherency eigenvalues of its matrix at its reference orientation and that run's operating wavelength (spec
+        /// 0050 S11.4; 001 §L).
+        member this.realizabilityWith
+            (context : StudyForwardContext)
+            (layout : StudyParameterLayout)
+            (fitted : StudyParameterVector)
+            : Result<ObjectRealizability list, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+            let kit = staged.kit
+
+            let fittedExperiments =
+                this.fittedRuns |> List.choose (fun run -> kit.experiments |> List.tryFind (fun experiment -> experiment.name = run))
+
+            let usedBy (experiments : Experiment list) : Result<Item list, StudyFitError> =
+                Experiment.itemsUsedBy experiments kit.setups this.items |> Result.mapError (fun error -> StudyForwardFitErr (ForwardSetupErr error))
+
+            let blackBoxFormOpt (item : Item) : OpticalForm option =
+                match staged.choiceOf item with
+                | Some (LibraryModelChoice model) ->
+                    match model.entry.model with
+                    | OpticalElementModel (BlackBoxMuellerModel _ as form) -> Some form
+                    | OpticalElementModel (RealPolarizerModel _ | RetarderPlateModel _ | CompoundModel _)
+                    | SourcePresetItemModel
+                    | IdealPolarizerItemModel
+                    | StackSampleItemModel
+                    | EmptySlotModel
+                    | IntensityDetectorModel _
+                    | MuellerPolarimeterModel _
+                    | EllipsometerModel _ -> None
+                | Some (SourcePresetChoice _ | PolarizerPresetChoice _ | StackSampleChoice _)
+                | None -> None
+
+            // Rotation zero, normal incidence and the transmitted branch (step 248).
+            let reference = ElementOrientation.transmittingAt Angle.zero
+
+            let checkedAt (run : Experiment) (item : Item) (form : OpticalForm) : Result<ObjectRealizability, StudyFitError> =
+                layout.assignmentFor this.study this.items run.name fitted
+                |> Result.bind (fun assignment -> run.boundWith staged this.study assignment None |> Result.map (fun bound -> assignment, bound))
+                |> Result.mapError StudyForwardFitErr
+                |> Result.bind (fun (assignment, bound) ->
+                    let element : BoundOpticalElement = BoundOpticalForm (form, assignment.valuesOf item)
+                    element.muellerAt reference bound.operatingWaveLength |> evaluatedForFit)
+                |> Result.map (fun matrix -> ({ item = item.id; eigenvalues = matrix.cloudeEigenvalues } : ObjectRealizability))
+
+            fittedExperiments
+            |> List.map (fun run -> usedBy [ run ] |> Result.map (fun used -> run, used))
+            |> ItemEvaluation.sequenced
+            |> Result.bind (fun runUses ->
+                usedBy fittedExperiments
+                |> Result.bind (fun used ->
+                    used
+                    |> List.choose (fun item ->
+                        blackBoxFormOpt item
+                        |> Option.bind (fun form ->
+                            runUses
+                            |> List.tryFind (fun (_, held) -> held |> List.exists (fun other -> other.id = item.id))
+                            |> Option.map (fun (run, _) -> checkedAt run item form)))
+                    |> ItemEvaluation.sequenced))
+
     /// What `RunFit` asks: the study, the stage (Run joint is `JointStage`, Run stage `CalibrationStage` or `ObjectStage`)
     /// and how its calibrations are used (spec 0050 S11.3, S11.5).
     type StudyFitRequest =
