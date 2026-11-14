@@ -28,6 +28,7 @@ open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.StagedMuellerPath
 open OpticalConstructor.Optimization.StudyEngine
 open Xunit
 
@@ -217,10 +218,14 @@ module StudyEngineTests =
     let private crystalPlateDraft : ItemDraft = draftOf 15 "Crystal" crystalPlateChoice FixedMounting
     let private indexPlateDraft : ItemDraft = draftOf 16 "Index plate" indexPlateChoice FixedMounting
 
+    /// LP2 as the reference's stage one reads it: the real linear polarizer on a negative dial.
+    let private realLp2Draft : ItemDraft = draftOf 17 "LP2" realLinearChoice (DialMounted DialNegative)
+
     let private drafts : ItemDraft list =
         [
             laserDraft; lp1Draft; lp2Draft; cpl1Draft; cpl2Draft; phoneDraft; qzDraft; lrDraft; qz2Draft
             cpLeftDraft; cpRightDraft; constantDraft; plateDraft; polarimeterDraft; crystalPlateDraft; indexPlateDraft
+            realLp2Draft
         ]
 
     /// Each item's model as its draft chose it.
@@ -297,6 +302,8 @@ module StudyEngineTests =
         itemOf cpl1Draft
         |> stating fastAxisOffset (unknownWithin 0.0 (-0.5) 0.5)
         |> stating retardance (unknownWithin quarterWave 1.0 2.0)
+
+    let private realLp2Unknown : Item = itemOf realLp2Draft |> stating ParameterName.dialZero (unknownWithin 0.0 (-0.5) 0.5)
 
     let private lp2 : Item = itemOf lp2Draft |> publishing [ ParameterName.dialZero, 0.0 ]
     let private cpl1 : Item = itemOf cpl1Draft |> publishing [ fastAxisOffset, 0.0; retardance, quarterWave ]
@@ -417,6 +424,10 @@ module StudyEngineTests =
     let private qzThenQz2 : Setup = benchOf "LP-QZ-QZ2-LP" lp1 [ Some qzAllFree; Some qz2Known ] lp2 phone
     let private qzTwice : Setup = benchOf "LP-QZ-QZ-LP" lp1 [ Some qzAllFree; Some qzAllFree ] lp2 phone
 
+    // Stage one's AIR benches behind the real LP2; LP1 -> CPL2 is `lpCplAir`.
+    let private lp1AirRealLp2 : Setup = benchOf "LP1-AIR-LP2" lp1 [ None ] realLp2Unknown phone
+    let private cpl1AirRealLp2 : Setup = benchOf "CPL1-AIR-LP2" cpl1Unknown [ None ] realLp2Unknown phone
+
     /// The HeNe, the crystal plate as the lone object, and the polarimeter.
     let private crystalBench : Setup =
         setupOf
@@ -441,6 +452,7 @@ module StudyEngineTests =
         [
             lpLpAir; lpCplAir; cplLpAir; qzBehindCpl; qzBehindLp; qzBehindCpLeft; qzBehindCpRight; qzBehindConstant; qzSurrounded
             qz2BehindCpl; qz2BehindLp; seriesBehindCpl; seriesBehindLp; qzThenQz2; qzTwice; crystalBench; indexBench
+            lp1AirRealLp2; cpl1AirRealLp2
         ]
 
     // The reference projection the rows are made of: a source's state, the analyzer's row at each dial reading.
@@ -466,23 +478,26 @@ module StudyEngineTests =
 
     let private dialReadings : Angle list = [ 0.0 .. 20.0 .. 160.0 ] |> List.map (fun reading -> Angle.degree (reading * 1.0<deg>))
 
-    /// The Phone's capture rows over the analyzer's dial: 1000 · (designRow s a · M.vecColumnMajor) + 5, the source's state
-    /// through `matrix` onto the analyzer's row at each reading.
-    let private capturesOf (label : string) (source : SourceModel) (analyzer : AnalyzerModel) (matrix : MuellerMatrix) : MuellerRawRow list =
-        let m = matrix.vecColumnMajor
-
+    /// The Phone's capture rows over the analyzer's dial: 1000 · the prediction at each reading + 5.
+    let private phoneRowsOf (label : string) (predictedAt : Angle -> float) : MuellerRawRow list =
         dialReadings
         |> List.mapi (fun k reading ->
-            let (DesignRow row) = designRow source.baseStokes (analyzerBaseRow analyzer reading)
-            let predicted = [ 0 .. 15 ] |> List.sumBy (fun i -> row.[i] * m.[i])
-
             ({
                 experiment = MuellerExperimentLabel label
                 captureIndex = CaptureIndex (k + 1)
                 capturedAt = DateTimeOffset(2026, 11, 13, 10, 0, 0, TimeSpan.Zero).AddSeconds(float k)
                 description = reading
-                avgTotal = MeasuredIntensity (1000.0 * predicted + 5.0)
+                avgTotal = MeasuredIntensity (1000.0 * predictedAt reading + 5.0)
             } : MuellerRawRow))
+
+    /// The Phone's capture rows over the analyzer's dial: 1000 · (designRow s a · M.vecColumnMajor) + 5, the source's state
+    /// through `matrix` onto the analyzer's row at each reading.
+    let private capturesOf (label : string) (source : SourceModel) (analyzer : AnalyzerModel) (matrix : MuellerMatrix) : MuellerRawRow list =
+        let m = matrix.vecColumnMajor
+
+        phoneRowsOf label (fun reading ->
+            let (DesignRow row) = designRow source.baseStokes (analyzerBaseRow analyzer reading)
+            [ 0 .. 15 ] |> List.sumBy (fun i -> row.[i] * m.[i]))
 
     /// A run and the points its attached file reads.
     type private AttachedRun =
@@ -596,9 +611,8 @@ module StudyEngineTests =
             solverParameters = SolverParameters.defaultValue
         }
 
-    /// The engine `engineWith` chooses for the study staged with its calibrations held, once every run its pre-fit reads is
-    /// ready and its layout holds an entry, so no answer comes from an earlier refusal.
-    let private engineOf (context : StudyForwardContext) (study : Study) (stage : FitStage) : StudyEngineKind =
+    /// The study staged as asked with its calibrations held, and its pre-fit over the staged items.
+    let private prefitStaged (context : StudyForwardContext) (study : Study) (stage : FitStage) : StagedStudy * ExperimentPrefit list =
         let staged =
             match study.stageWith context.kit stage CalibrationHeldFixed with
             | Ok staged -> staged
@@ -606,10 +620,15 @@ module StudyEngineTests =
 
         let stagedContext = { context with kit = { context.kit with items = staged.items } }
 
-        let prefits =
-            match staged.study.prefitWith stagedContext [] with
-            | Ok prefits -> prefits
-            | Error error -> failwith $"'{study.name.value}' has no pre-fit: {error.describe}"
+        match staged.study.prefitWith stagedContext [] with
+        | Ok prefits -> staged, prefits
+        | Error error -> failwith $"'{study.name.value}' has no pre-fit: {error.describe}"
+
+    /// The engine `engineWith` chooses for the study staged with its calibrations held, once every run its pre-fit reads is
+    /// ready and its layout holds an entry, so no answer comes from an earlier refusal.
+    let private engineOf (context : StudyForwardContext) (study : Study) (stage : FitStage) : StudyEngineKind =
+        let staged, prefits = prefitStaged context study stage
+        let stagedContext = { context with kit = { context.kit with items = staged.items } }
 
         Assert.NotEmpty(prefits)
 
@@ -1065,6 +1084,130 @@ module StudyEngineTests =
         Assert.Empty(silent)
         Assert.Empty(drawn)
 
+    // ============================ spec 0050 S11.3: the linear engine's stage 1 ============================
+
+    /// The stage-1 truth the AIR rows are made of: dark 5, LP2's zero 3°, CPL2's zero −2° and retardance 88°, and CPL1's
+    /// source retarder at 46° and 91°.
+    let private stageOneTruth : StageOneCalibrationData =
+        {
+            darkMean = DarkMean 5.0
+            lpZero = Angle.degree 3.0<deg>
+            cplZero = Angle.degree (-2.0<deg>)
+            cplAnalyzerRetardance = Retardance.degree 88.0<deg>
+            cplSourceModel = ({ thetaRel = Angle.degree 46.0<deg>; retardance = Retardance.degree 91.0<deg> } : SourceCplModel)
+        }
+
+    /// An AIR run's rows: 1000 · `airIdentityPred` of the source and the analyzer's row at each reading, plus the dark 5.
+    let private airCapturesOf (label : string) (source : SourceModel) (analyzer : AnalyzerModel) : MuellerRawRow list =
+        phoneRowsOf label (fun reading -> (airIdentityPred source.baseStokes (analyzerBaseRow analyzer reading)).value)
+
+    let private stageOneLpLpRows : MuellerRawRow list = airCapturesOf "LP-(AIR#0)-LP" LpSource stageOneTruth.lpAnalyzer
+    let private stageOneLpCplRows : MuellerRawRow list = airCapturesOf "LP-(AIR#0)-CPL" LpSource stageOneTruth.cplAnalyzer
+    let private stageOneCplLpRows : MuellerRawRow list = airCapturesOf "CPL-(AIR#0)-LP" stageOneTruth.cplSource stageOneTruth.lpAnalyzer
+
+    /// A Calibration run over the setup turning the analyzer's dial 0° to 160° by 20°, its Phone ROI CSV the rows.
+    let private stageOneRunOver (setup : Setup) (name : string) (rows : MuellerRawRow list) : AttachedRun =
+        let range : VariableRange =
+            {
+                min = Propagation.SweptValue 0.0
+                max = Propagation.SweptValue 160.0
+                points = Propagation.CurvePointCount 9
+            }
+
+        let captured = capturedOver setup name CalibrationRun rows
+        let scan = ExperimentScan.oneAxis { analyzerTurn with range = range } CaptureTransmitted None
+        { captured with attachedRun = { captured.attachedRun with scan = scan } }
+
+    let private stageOneLpLp : AttachedRun = stageOneRunOver lp1AirRealLp2 "S1" stageOneLpLpRows
+    let private stageOneLpCpl : AttachedRun = stageOneRunOver lpCplAir "S2" stageOneLpCplRows
+    let private stageOneCplLp : AttachedRun = stageOneRunOver cpl1AirRealLp2 "S3" stageOneCplLpRows
+    let private stageOneDark : AttachedRun = darkOver lp1AirRealLp2
+    let private stageOneInstruments : Item list = [ laser; lp1; realLp2Unknown; cpl2Unknown; cpl1Unknown; phone ]
+
+    /// The calibration stage of a study of the runs over the stage-one instruments, its pre-fit, and the context it was
+    /// staged in.
+    let private stageOneOver (runs : AttachedRun list) : StagedStudy * ExperimentPrefit list * StudyForwardContext =
+        let study = studyOver "Stage one" runs
+        let context = contextOver stageOneInstruments runs study
+        let staged, prefits = prefitStaged context study CalibrationStage
+        staged, prefits, context
+
+    [<Fact>]
+    let ``the calibration stage recovers the instruments' zeros, retardances and offset through the reference stage one`` () : unit =
+        let staged, prefits, context = stageOneOver [ stageOneLpLp; stageOneLpCpl; stageOneCplLp; stageOneDark ]
+        let solver = createMathNetSvd ()
+        Assert.Equal(LinearStudyEngine, staged.engineWith context prefits)
+
+        let darknessRows =
+            match stageOneDark.attachedPoints with
+            | CapturePoints rows -> rows
+            | SeriesPoints _
+            | ObservationPoints _
+            | ColumnPoints _ -> failwith "the Dark run holds no capture rows"
+
+        let airRows : StageOneAirRows =
+            {
+                darknessRows = darknessRows
+                lpLpAirRows = stageOneLpLpRows
+                lpCplAirRows = stageOneLpCplRows
+                cplLpAirRows = stageOneCplLpRows
+            }
+
+        let expected =
+            match calibrateFromAirRows solver airRows with
+            | Ok stageOne -> stageOne
+            | Error error -> failwith $"stage one refused the rows: {error.describe}"
+
+        let solution = solutionOf (staged.calibrateLinear context prefits solver)
+        Assert.Equal(LinearStudyEngine, solution.engine)
+        Assert.Empty(solution.objectMatrices)
+
+        let fittedOf (item : Item) (name : ParameterName) : float =
+            match solution.layout.entries |> List.tryFindIndex (fun entry -> entry.unknown.parameter = ItemParameterRef (item.id, name)) with
+            | Some k -> solution.fitted.value.[k]
+            | None -> failwith $"no entry fits {item.label.value}'s {name.value}"
+
+        // The truth's zeros, 3° and −2°, as stage one reports an axis, within [0°, 180°): −2° is the same axis as 178°.
+        Assert.Equal(stageOneTruth.lpZero.value, fittedOf realLp2Unknown ParameterName.dialZero, 1e-9)
+        Assert.Equal((stageOneTruth.cplZero + Angle.pi).value, fittedOf cpl2Unknown ParameterName.dialZero, 1e-9)
+
+        // Both retardances are the truth's. CPL1's offset is checked against stage one alone: through LP2's negative dial
+        // the reference reads the source's 46° as 44°.
+        Assert.Equal(stageOneTruth.cplAnalyzerRetardance.value, fittedOf cpl2Unknown retardance, 1e-9)
+        Assert.Equal(stageOneTruth.cplSourceModel.retardance.value, fittedOf cpl1Unknown retardance, 1e-9)
+
+        // Each of the five values is stage one's own constant, exactly; CPL1's retarder offset is its θ less 45°.
+        let constants : (Item * ParameterName * float) list =
+            [
+                realLp2Unknown, ParameterName.dialZero, expected.lpZero.value
+                cpl2Unknown, ParameterName.dialZero, expected.cplZero.value
+                cpl2Unknown, retardance, expected.cplAnalyzerRetardance.value
+                cpl1Unknown, fastAxisOffset, (expected.cplSourceModel.thetaRel - Angle.degree 45.0<deg>).value
+                cpl1Unknown, retardance, expected.cplSourceModel.retardance.value
+            ]
+
+        Assert.Equal(constants.Length, solution.layout.entries.Length)
+
+        for item, name, value in constants do
+            Assert.Equal<float>(value, fittedOf item name)
+
+        // One member, from the layout's starts to the fitted values, with no common χ².
+        match solution.members with
+        | [ { start = start; outcome = MemberConverged (fitted, None) } ] ->
+            Assert.Equal<ParameterValue list>(solution.layout.entries |> List.map (fun entry -> entry.unknown.unknown.start), start)
+            Assert.Equal<float list>(List.ofArray solution.fitted.value, fitted |> List.map (fun value -> value.value))
+        | members -> Assert.Fail($"expected one converged member without a χ², got %A{members}")
+
+    [<Fact>]
+    let ``a calibration stage without a dark run is refused with the staged path's error`` () : unit =
+        let staged, prefits, context = stageOneOver [ stageOneLpLp; stageOneLpCpl; stageOneCplLp ]
+        Assert.Equal(LinearStudyEngine, staged.engineWith context prefits)
+
+        match staged.calibrateLinear context prefits (createMathNetSvd ()) with
+        | Error (StagedPathFitErr (EmptyCaptureSetErr reason)) -> Assert.Contains("darkness", reason)
+        | Error error -> Assert.Fail($"expected the staged path's EmptyCaptureSetErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("a calibration stage without a dark run was fitted")
+
     [<Fact>]
     let ``every study-fit error renders its condition and its payload`` () : unit =
         let forwardError = MissingStudyRunErr "E9, which the study 'QZ' names"
@@ -1072,6 +1215,7 @@ module StudyEngineTests =
         let gainReason = "'Session 1' anchors its gain to A1"
         let failuresReason = "member 1: the solver did not converge: BackendFailed"
         let cancelReason = "1 of 3 member(s) ran, the last one's result dropped"
+        let stagedError = EmptyCaptureSetErr "the darkness checks hold no capture row, so stage one has no dark mean"
 
         let cases : (StudyFitError * string) list =
             [
@@ -1080,6 +1224,7 @@ module StudyEngineTests =
                 SessionGainNeedsLinearEngineErr gainReason, $"the nonlinear engine fits a session's gain as its detector's parameter: {gainReason}"
                 NoConvergedMemberErr failuresReason, $"no start of the fit converged: {failuresReason}"
                 FitCancelledErr cancelReason, $"the fit was cancelled: {cancelReason}"
+                StagedPathFitErr stagedError, $"the staged Mueller path refused the fit: {stagedError.describe}"
             ]
 
         for error, expected in cases do
@@ -1090,4 +1235,5 @@ module StudyEngineTests =
         Assert.Contains(gainReason, (SessionGainNeedsLinearEngineErr gainReason).describe)
         Assert.Contains(failuresReason, (NoConvergedMemberErr failuresReason).describe)
         Assert.Contains(cancelReason, (FitCancelledErr cancelReason).describe)
+        Assert.Contains("the darkness checks hold no capture row", (StagedPathFitErr stagedError).describe)
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)

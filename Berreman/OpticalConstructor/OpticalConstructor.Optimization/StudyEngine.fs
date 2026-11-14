@@ -16,6 +16,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.StagedMuellerPath
 
 /// The study engine: its automatic choice between the linear path (S10.3's staged Mueller path) and the nonlinear one
 /// (the multi-start study residual), and the fit (spec 0050 S11.3; 001 §L).
@@ -33,6 +34,8 @@ module StudyEngine =
         | NoConvergedMemberErr of reason : string
         /// The fit's watch asked it to stop (spec 0050 S11.3).
         | FitCancelledErr of reason : string
+        /// S10.3's staged Mueller path refused the linear engine's rows (spec 0050 S11.3).
+        | StagedPathFitErr of error : StagedMuellerError
 
         member this.describe : string =
             match this with
@@ -41,6 +44,7 @@ module StudyEngine =
             | SessionGainNeedsLinearEngineErr reason -> $"the nonlinear engine fits a session's gain as its detector's parameter: {reason}"
             | NoConvergedMemberErr reason -> $"no start of the fit converged: {reason}"
             | FitCancelledErr reason -> $"the fit was cancelled: {reason}"
+            | StagedPathFitErr error -> $"the staged Mueller path refused the fit: {error.describe}"
 
     /// The reference families' two polarizers, linear or LP-then-retarder circular; derived, never stored, so it carries
     /// no tag (spec 0050 S11.3; `MuellerReconstruction.Family`).
@@ -89,6 +93,25 @@ module StudyEngine =
             | SourcePresetChoice _
             | StackSampleChoice _ -> None
 
+    // Declared ahead of `calibrateLinear` because the stage-1 constants below read them (spec 0050 S11.3).
+    type Angle with
+
+        /// The angle in radians as a parameter's number; `ParameterValue.angle` is the reading the other way (spec 0050
+        /// S11.3).
+        member this.parameterValue : ParameterValue = ParameterValue this.value
+
+    type Retardance with
+
+        /// The retardance in radians as a parameter's number (spec 0050 S11.3).
+        member this.parameterValue : ParameterValue = ParameterValue this.value
+
+    /// One stage-1 constant: the parameter it gives and its value in stage one's answer (spec 0050 S11.3).
+    type private StageOneConstant =
+        {
+            constantParameter : StudyParameterRef
+            constantIn : StageOneCalibrationData -> ParameterValue
+        }
+
     /// A Calibration run's reference family and the items preparing and analyzing it (spec 0050 S11.3).
     type private CalibrationRunFamily =
         {
@@ -97,20 +120,85 @@ module StudyEngine =
             analyzerItem : ItemId
         }
 
-        /// The parameters stage one fits on a run of this family, the reference stage-1 constants (spec 0050 S11.3;
-        /// `StagedMuellerPath.calibrateStageOne`).
-        member this.stageOneConstants : StudyParameterRef list =
+        /// The parameters stage one fits on a run of this family and the reference stage-1 constant each takes; the CPL
+        /// source's retarder sits at 45° plus its offset (spec 0050 S11.3; `StagedMuellerPath.calibrateStageOne`).
+        member this.stageOneConstants : StageOneConstant list =
             let retardance = ParameterName.retardance.inComponent retarderComponent
 
             match this.runFamily with
-            | LpLp -> [ ItemParameterRef (this.analyzerItem, ParameterName.dialZero) ]
-            | LpCpl -> [ ItemParameterRef (this.analyzerItem, ParameterName.dialZero); ItemParameterRef (this.analyzerItem, retardance) ]
+            | LpLp ->
+                [ { constantParameter = ItemParameterRef (this.analyzerItem, ParameterName.dialZero); constantIn = fun stageOne -> stageOne.lpZero.parameterValue } ]
+            | LpCpl ->
+                [
+                    { constantParameter = ItemParameterRef (this.analyzerItem, ParameterName.dialZero); constantIn = fun stageOne -> stageOne.cplZero.parameterValue }
+                    {
+                        constantParameter = ItemParameterRef (this.analyzerItem, retardance)
+                        constantIn = fun stageOne -> stageOne.cplAnalyzerRetardance.parameterValue
+                    }
+                ]
             | CplLp ->
                 [
-                    ItemParameterRef (this.prepItem, ParameterName.fastAxisOffset.inComponent retarderComponent)
-                    ItemParameterRef (this.prepItem, retardance)
+                    {
+                        constantParameter = ItemParameterRef (this.prepItem, ParameterName.fastAxisOffset.inComponent retarderComponent)
+                        constantIn = fun stageOne -> (stageOne.cplSourceModel.thetaRel - retarderComponentOffset).parameterValue
+                    }
+                    {
+                        constantParameter = ItemParameterRef (this.prepItem, retardance)
+                        constantIn = fun stageOne -> stageOne.cplSourceModel.retardance.parameterValue
+                    }
                 ]
             | CplCpl -> []
+
+    /// A run's held items in light order with their models among `items`; `None` when its setup, an item or a model does
+    /// not resolve (spec 0050 S11.3).
+    let private heldItemsIn (context : StudyForwardContext) (items : Item list) (run : Experiment) : (SlotRole * Item * ItemModelChoice) list option =
+        match run.slotsIn context.kit.setups with
+        | Error _ -> None
+        | Ok slots ->
+            let roledItems = SetupSlot.inLightOrder slots |> List.choose (fun roled -> roled.slot.content.itemOpt |> Option.map (fun id -> roled.role, id))
+
+            let resolved =
+                roledItems
+                |> List.choose (fun (role, id) ->
+                    items
+                    |> List.tryFind (fun item -> item.id = id)
+                    |> Option.bind (fun item -> context.choiceOf item |> Option.map (fun model -> role, item, model)))
+
+            if resolved.Length = roledItems.Length then Some resolved else None
+
+    /// The staged study's fitted runs that resolve, in study order, each with its held items (spec 0050 S11.3).
+    let private fittedHeldIn (staged : StagedStudy) (context : StudyForwardContext) : (ExperimentName * (SlotRole * Item * ItemModelChoice) list) list =
+        staged.fittedRuns
+        |> List.choose (fun run ->
+            context.kit.experiments
+            |> List.tryFind (fun experiment -> experiment.name = run)
+            |> Option.bind (heldItemsIn context staged.items)
+            |> Option.map (fun held -> run, held))
+
+    /// An AIR run's family: no object but an empty-slot item, one reference polarizer preparing and one analyzing (spec
+    /// 0050 S11.3).
+    let private calibrationRunOf (held : (SlotRole * Item * ItemModelChoice) list) : CalibrationRunFamily option =
+        let objectsEmpty =
+            held
+            |> List.forall (fun (role, _, model) ->
+                match role, model with
+                | ObjectSlotRole _, LibraryModelChoice version ->
+                    match version.entry.model with
+                    | EmptySlotModel -> true
+                    | _ -> false
+                | ObjectSlotRole _, _ -> false
+                | (SourceSlotRole | PrepSlotRole _ | AnalyzerSlotRole _ | DetectorSlotRole _), _ -> true)
+
+        let preps = held |> List.filter (fun (role, _, _) -> match role with PrepSlotRole _ -> true | _ -> false)
+        let analyzers = held |> List.filter (fun (role, _, _) -> match role with AnalyzerSlotRole _ -> true | _ -> false)
+
+        match objectsEmpty, preps, analyzers with
+        | true, [ (_, prep, prepModel) ], [ (_, analyzer, analyzerModel) ] ->
+            match prepModel.calibrationPolarizerOpt, analyzerModel.calibrationPolarizerOpt with
+            | Some prepPolarizer, Some analyzerPolarizer ->
+                Some { runFamily = prepPolarizer.familyWith analyzerPolarizer; prepItem = prep.id; analyzerItem = analyzer.id }
+            | _ -> None
+        | _ -> None
 
     /// The sixteen-element black box's coefficients m00 … m33, its form's own axes (spec 0050 S8.1).
     let private muellerCoefficients : ParameterName list =
@@ -144,27 +232,7 @@ module StudyEngine =
                 | ItemOwner owner, ItemParameterRef (item, _) -> owner = item
                 | (ItemOwner _ | MaterialOwner _ | SessionOwner _ | ExperimentOwner _), _ -> false
 
-            // A fitted run's held items in light order with their models; `None` when its setup, an item or a model does
-            // not resolve.
-            let heldIn (run : Experiment) : (SlotRole * Item * ItemModelChoice) list option =
-                match run.slotsIn kit.setups with
-                | Error _ -> None
-                | Ok slots ->
-                    let roledItems = SetupSlot.inLightOrder slots |> List.choose (fun roled -> roled.slot.content.itemOpt |> Option.map (fun id -> roled.role, id))
-
-                    let resolved =
-                        roledItems
-                        |> List.choose (fun (role, id) ->
-                            this.items
-                            |> List.tryFind (fun item -> item.id = id)
-                            |> Option.bind (fun item -> context.choiceOf item |> Option.map (fun model -> role, item, model)))
-
-                    if resolved.Length = roledItems.Length then Some resolved else None
-
-            let fitted : (ExperimentName * (SlotRole * Item * ItemModelChoice) list) list =
-                this.fittedRuns
-                |> List.choose (fun run ->
-                    kit.experiments |> List.tryFind (fun experiment -> experiment.name = run) |> Option.bind heldIn |> Option.map (fun held -> run, held))
+            let fitted : (ExperimentName * (SlotRole * Item * ItemModelChoice) list) list = fittedHeldIn this context
 
             let everyRunResolves = fitted.Length = this.fittedRuns.Length
 
@@ -202,30 +270,6 @@ module StudyEngine =
             let readsCapturesByIntensity (run : ExperimentName, held : (SlotRole * Item * ItemModelChoice) list) : bool =
                 readsCaptureRows run && readByIntensityDetector held
 
-            // An AIR run: no object but an empty-slot item, one reference polarizer preparing and one analyzing.
-            let calibrationRunOf (held : (SlotRole * Item * ItemModelChoice) list) : CalibrationRunFamily option =
-                let objectsEmpty =
-                    held
-                    |> List.forall (fun (role, _, model) ->
-                        match role, model with
-                        | ObjectSlotRole _, LibraryModelChoice version ->
-                            match version.entry.model with
-                            | EmptySlotModel -> true
-                            | _ -> false
-                        | ObjectSlotRole _, _ -> false
-                        | (SourceSlotRole | PrepSlotRole _ | AnalyzerSlotRole _ | DetectorSlotRole _), _ -> true)
-
-                let preps = held |> List.filter (fun (role, _, _) -> match role with PrepSlotRole _ -> true | _ -> false)
-                let analyzers = held |> List.filter (fun (role, _, _) -> match role with AnalyzerSlotRole _ -> true | _ -> false)
-
-                match objectsEmpty, preps, analyzers with
-                | true, [ (_, prep, prepModel) ], [ (_, analyzer, analyzerModel) ] ->
-                    match prepModel.calibrationPolarizerOpt, analyzerModel.calibrationPolarizerOpt with
-                    | Some prepPolarizer, Some analyzerPolarizer ->
-                        Some { runFamily = prepPolarizer.familyWith analyzerPolarizer; prepItem = prep.id; analyzerItem = analyzer.id }
-                    | _ -> None
-                | _ -> None
-
             // (a) Stage 1 of the reference: LP-LP, LP-CPL and CPL-LP AIR runs over capture rows, fitting only their
             // stage-1 constants.
             let calibrationShape () : bool =
@@ -233,7 +277,9 @@ module StudyEngine =
                     fitted
                     |> List.choose (fun (run, held) -> if readsCapturesByIntensity (run, held) then calibrationRunOf held else None)
 
-                let constants = families |> List.collect (fun family -> family.stageOneConstants)
+                let constants =
+                    families |> List.collect (fun family -> family.stageOneConstants |> List.map (fun constant -> constant.constantParameter))
+
                 let present = families |> List.map (fun family -> family.runFamily)
 
                 everyRunResolves
@@ -510,3 +556,84 @@ module StudyEngine =
                             |> String.concat "; "
 
                         Error (NoConvergedMemberErr failures)))
+
+    type StagedStudy with
+
+        /// Stage 1 by the reference AIR calibration, where `engineWith` finds the calibration shape: S10.3's stage one over
+        /// every Dark run's capture rows and each family's Calibration runs', its constants the instruments' values; the
+        /// cosine fits report no common χ² (spec 0050 S11.3; 001 §L).
+        member this.calibrateLinear
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (solver : MuellerSolverProxy)
+            : Result<StudyFitSolution, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+            let layout = this.study.parameterLayoutWith staged
+
+            let families : (ExperimentName * CalibrationRunFamily) list =
+                fittedHeldIn this staged |> List.choose (fun (run, held) -> calibrationRunOf held |> Option.map (fun family -> run, family))
+
+            let isDark (prefit : ExperimentPrefit) : bool =
+                match prefit.experiment.role with
+                | DarkRun -> true
+                | ScienceRun
+                | CalibrationRun
+                | DriftCheckRun
+                | DiagnosticRun
+                | IgnoredRun
+                | PlannedRun -> false
+
+            let ofFamily (family : Family) (prefit : ExperimentPrefit) : bool =
+                families |> List.exists (fun (run, calibration) -> run = prefit.experiment.name && calibration.runFamily = family)
+
+            // The pre-fit check has kept its points by the attachment's exclusions (`MappedPoints.keptBy`, step 314); a run
+            // stage one reads is refused, never dropped, when its check failed or holds no capture rows.
+            let captureRowsOf (prefit : ExperimentPrefit) : Result<MuellerRawRow list, StudyFitError> =
+                let name = prefit.experiment.name
+
+                match prefit.check with
+                | Ok (CapturePoints rows) -> Ok rows
+                | Ok (SeriesPoints _ | ObservationPoints _ | ColumnPoints _) ->
+                    Error (StudyForwardFitErr (ReadingMismatchErr $"{name.value} holds no capture rows, which the staged Mueller path reads"))
+                | Error error -> Error (StudyForwardFitErr (PrefitFailedErr (name, error)))
+
+            // Prefits are in study order, so each selection keeps it.
+            let rowsOf (selected : ExperimentPrefit -> bool) : Result<MuellerRawRow list, StudyFitError> =
+                prefits |> List.filter selected |> List.map captureRowsOf |> ItemEvaluation.sequenced |> Result.map List.concat
+
+            rowsOf isDark
+            |> Result.bind (fun darknessRows ->
+                rowsOf (ofFamily LpLp)
+                |> Result.bind (fun lpLpAirRows ->
+                    rowsOf (ofFamily LpCpl)
+                    |> Result.bind (fun lpCplAirRows ->
+                        rowsOf (ofFamily CplLp)
+                        |> Result.bind (fun cplLpAirRows ->
+                            let rows : StageOneAirRows =
+                                {
+                                    darknessRows = darknessRows
+                                    lpLpAirRows = lpLpAirRows
+                                    lpCplAirRows = lpCplAirRows
+                                    cplLpAirRows = cplLpAirRows
+                                }
+
+                            calibrateFromAirRows solver rows |> Result.mapError StagedPathFitErr))))
+            |> Result.map (fun stageOne ->
+                let constants = families |> List.collect (fun (_, family) -> family.stageOneConstants)
+
+                // Under the calibration shape every entry is a constant; any other keeps its start.
+                let valueOf (entry : StudyVectorEntry) : ParameterValue =
+                    match constants |> List.tryFind (fun constant -> constant.constantParameter = entry.unknown.parameter) with
+                    | Some constant -> constant.constantIn stageOne
+                    | None -> entry.unknown.unknown.start
+
+                let starts = layout.entries |> List.map (fun entry -> entry.unknown.unknown.start)
+                let values = layout.entries |> List.map valueOf
+
+                {
+                    engine = LinearStudyEngine
+                    layout = layout
+                    members = [ ({ start = starts; outcome = MemberConverged (values, None) } : FitRunMember) ]
+                    fitted = StudyParameterVector.ofParameterValues values
+                    objectMatrices = []
+                })
