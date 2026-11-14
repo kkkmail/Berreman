@@ -44,6 +44,7 @@
         <Compile Include="RecoveryEnsembles.fs" />
         <Compile Include="FitUncertainty.fs" />
         <Compile Include="StagedMuellerPath.fs" />
+        <Compile Include="FittedProblems.fs" />
         <Compile Include="StudyEngine.fs" />
         <Compile Include="Synthesis.fs" />
     </ItemGroup>

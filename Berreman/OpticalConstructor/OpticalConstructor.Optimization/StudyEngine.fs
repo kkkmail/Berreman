@@ -1,6 +1,5 @@
 namespace OpticalConstructor.Optimization
 
-open System.Threading
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
@@ -21,6 +20,7 @@ open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.StagedMuellerPath
+open OpticalConstructor.Optimization.FittedProblems
 
 /// The study engine: its automatic choice between the linear path (S10.3's staged Mueller path) and the nonlinear one
 /// (the multi-start study residual), and the fit (spec 0050 S11.3; 001 §L).
@@ -485,10 +485,7 @@ module StudyEngine =
                 let count = this.study.settings.starts.value
                 let search = problem.search
 
-                let cancellation : CancellationToken =
-                    match watch with
-                    | WatchedIterations observer -> observer.cancellation
-                    | UnwatchedIterations -> CancellationToken.None
+                let cancellation = watch.cancellation
 
                 let valuesOf (vector : StudyParameterVector) : ParameterValue list =
                     List.init vector.value.Length (fun k -> vector.valueAt (StudyVectorIndex k))
@@ -503,26 +500,11 @@ module StudyEngine =
 
                 // A member's watch counts on from the iterations the earlier members were told of, so the progress runs
                 // 1, 2, … over the whole fit; the count is kept where the solver tells it, its one effect.
-                let watchAfter (earlier : IterationCount) : IterationWatch * (unit -> IterationCount) =
-                    match watch with
-                    | UnwatchedIterations -> UnwatchedIterations, (fun () -> earlier)
-                    | WatchedIterations observer ->
-                        let told = ref earlier
-
-                        let counting : OptimizerIterationObserver =
-                            {
-                                reportIteration =
-                                    fun own ->
-                                        told.Value <- IterationCount (earlier.value + own.value)
-                                        observer.reportIteration told.Value
-                                cancellation = observer.cancellation
-                            }
-
-                        WatchedIterations counting, (fun () -> told.Value)
+                let told = ref (IterationCount 0)
+                let telling = watch.tellingAlso (fun count -> told.Value <- count)
 
                 let rec membersFrom
                     (k : int)
-                    (earlier : IterationCount)
                     (ran : (FitRunMember * (StudyParameterVector * FitChiSquared) option) list)
                     : Result<(FitRunMember * (StudyParameterVector * FitChiSquared) option) list, StudyFitError> =
                     if k > count then
@@ -531,8 +513,7 @@ module StudyEngine =
                         Error (FitCancelledErr $"{k - 1} of {count} member(s) ran")
                     else
                         let start = if k = 1 then search.start else drawnStart ()
-                        let memberWatch, toldOf = watchAfter earlier
-                        let solved = { search with start = start }.solveWith memberWatch problem.residual
+                        let solved = { search with start = start }.solveWith (telling.after told.Value) problem.residual
 
                         if cancellation.IsCancellationRequested then
                             Error (FitCancelledErr $"{k} of {count} member(s) ran, the last one's result dropped")
@@ -546,9 +527,9 @@ module StudyEngine =
                                 | Error error -> MemberFailed error.failureText, None
 
                             let ran' = ({ start = valuesOf (problem.physicalOf start); outcome = outcome }, convergedOpt) :: ran
-                            membersFrom (k + 1) (toldOf ()) ran'
+                            membersFrom (k + 1) ran'
 
-                membersFrom 1 (IterationCount 0) []
+                membersFrom 1 []
                 |> Result.bind (fun outcomes ->
                     let members = outcomes |> List.map fst
 
