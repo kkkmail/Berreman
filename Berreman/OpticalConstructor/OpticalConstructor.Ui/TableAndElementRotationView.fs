@@ -26,6 +26,8 @@ open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.ItemEvaluation
+open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
@@ -52,6 +54,7 @@ open OpticalConstructor.Domain.TableView
 // shadows the type under `WorkbenchSettings.`-qualified expression resolution.
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 
 // ---------------------------------------------------------------------------
 // Wheel gesture map: the rotations act on whatever is selected; Ctrl+Alt(+Shift) zoom the
@@ -542,6 +545,24 @@ type DataSplitState =
         creating : DataRowKey list
     }
 
+/// The study surfaces' selections and New study draft; window state only, never stored (spec 0050 S11.5).
+type StudySurfaceState =
+    {
+        studyOpt : StudyName option
+        fitRunOpt : FitRunName option
+        newStudyName : ControlCaption
+        newStudyExperiments : Experiments.ExperimentName list
+    }
+
+    /// Nothing selected and an empty New study form (spec 0050 S11.5).
+    static member initial : StudySurfaceState =
+        {
+            studyOpt = None
+            fitRunOpt = None
+            newStudyName = ControlCaption ""
+            newStudyExperiments = []
+        }
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -660,6 +681,12 @@ type TableAndElementRotationModel =
         setupGridOpt : SetupGrids.SetupGridDraft option
         /// The flow strip's step the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
         flowStep : ConstructorFlowStep
+        /// The kit's studies in name order, as last read or recorded (spec 0050 S11.5).
+        kitStudies : Study list
+        /// The kit's fit runs, in study order and then stamp order (spec 0050 S11.5).
+        kitFitRuns : FitRun list
+        /// The study selections and New study form held by this window (spec 0050 S11.5).
+        studySurface : StudySurfaceState
         /// The item-model store the add form offers (spec 0050 S7.2, step 209).
         itemModels : ItemModels.ItemModelProxy
         /// Mints the id of the item the add form opens for (spec 0050 S7.2).
@@ -838,6 +865,9 @@ let initWith
         setupGridOpt = None
         // Spec 0050 S7.2: a window opens on the table and its Add bay, as before the strip.
         flowStep = SetupsFlowStep
+        kitStudies = []
+        kitFitRuns = []
+        studySurface = StudySurfaceState.initial
         itemModels = ItemModels.ItemModelProxy.createInMemory ()
         itemIds = ItemIdProvider.system
         selectedItemOpt = None
@@ -987,6 +1017,14 @@ let initMain () : Result<TableAndElementRotationModel, KitError> =
         })
 
 type TableAndElementRotationMsg =
+    /// Applies and records a study verb, shared by the surfaces and their tests (spec 0050 S11.5).
+    | StudyCommand of StudyMsg
+    /// Shows a held study and its latest fit run without writing (spec 0050 S11.5).
+    | SelectStudy of StudyName
+    /// Sets the New study form's typed name without writing (spec 0050 S11.5).
+    | SetNewStudyName of ControlCaption
+    /// Toggles an experiment in the New study form without writing (spec 0050 S11.5).
+    | ToggleNewStudyExperiment of Experiments.ExperimentName
     | RotateR1By of BarDegrees
     | RotateR2By of BarDegrees
     | RotateR3By of BarDegrees
@@ -1988,13 +2026,14 @@ let private checkExperimentData (model : TableAndElementRotationModel) (experime
         | Error error -> ExperimentDataBadge.ofCheck experiment.dataOpt None (Some (Error (MeasuredData.MalformedDataFileErr error.describe)))
     | None -> ExperimentDataBadge.ofCheck None None None
 
-/// Sets what a kit's content decides, so a reload sets exactly what an open sets (spec 0050 S4.3, S5.3, S8.2, S8.3;
-/// 001 §E): the kit, its naming template in the field, its experiments with a fresh draft, their attachments rechecked
-/// through the model's `experimentData`, its items, its setups with the active one as read, and no status or offer.
+/// Sets opened or reloaded kit content, rechecks attachments and keeps selections still held by the kit;
+/// clears the status and change offer (spec 0050 S4.3, S5.3, S8.2, S8.3, S11.5; 001 §E).
 let private withKitContent
     (kit : KitContext)
     (experiments : Experiments.Experiment list)
     (items : Item list)
+    (studies : Study list)
+    (fitRuns : FitRun list)
     (setups : Setups.Setup list)
     (model : TableAndElementRotationModel)
     : TableAndElementRotationModel =
@@ -2011,6 +2050,19 @@ let private withKitContent
                     model.activeSetupOpt
                     |> Option.bind (fun active -> setups |> List.tryFind (fun setup -> setup.name = active.name))
                 kitItems = items
+                kitStudies = studies
+                kitFitRuns = fitRuns
+                studySurface =
+                    {
+                        model.studySurface with
+                            studyOpt =
+                                model.studySurface.studyOpt
+                                |> Option.filter (fun name -> studies |> List.exists (fun study -> study.name = name))
+                                |> Option.orElseWith (fun () -> studies |> List.tryHead |> Option.map _.name)
+                            fitRunOpt =
+                                model.studySurface.fitRunOpt
+                                |> Option.filter (fun name -> fitRuns |> List.exists (fun run -> run.name = name))
+                    }
         }
     let badges =
         experiments
@@ -2031,14 +2083,14 @@ type TableAndElementRotationModel with
         | Some badge -> badge
         | None -> ExperimentDataBadge.ofCheck experiment.dataOpt None None
 
-    /// Works in the opened kit, loads its items and rechecks every recorded data attachment (spec 0050 S4.3, S6; 001 §E).
+    /// Loads the opened kit's content and rechecks every recorded data attachment (spec 0050 S4.3, S6, S11.5; 001 §E).
     member model.loadKit (opened : OpenedKit) : TableAndElementRotationModel =
         {
             model with
                 kitFolderOpt = Some opened.folder
                 experimentData = opened.experimentData
         }
-        |> withKitContent opened.library.kit opened.experiments opened.items opened.setups
+        |> withKitContent opened.library.kit opened.experiments opened.items opened.studies opened.fitRuns opened.setups
 
     /// The kit's name, ` (read-only)` when it was opened read-only, then ` — ` and its folder when it has one
     /// (spec 0050 S5.3; .manual/001 §O).
@@ -2066,6 +2118,34 @@ type TableAndElementRotationModel with
         match model.kit.access with
         | ReadWriteKitAccess -> ControlOffered
         | ReadOnlyKitAccess -> ControlWithheld
+
+    /// The kit content and material resolution that study commands consume (spec 0050 S11.5).
+    member model.studyContext : StudyContext =
+        {
+            studies = model.kitStudies
+            experiments = model.experimentCollection.experiments
+            setups = model.kitSetups
+            items = model.kitItems
+            resolveMaterial = fun version ->
+                match model.materials.resolveVersion version with
+                | Ok (Some entry) -> Ok entry
+                | Ok None -> Error (MaterialUnavailableErr $"material {version.materialId.value} v{version.version.value} is not in the library")
+                | Error error -> Error (MaterialUnavailableErr error.caption.value)
+        }
+
+    /// The held study named by the surface selection, or none (spec 0050 S11.5).
+    member model.selectedStudyOpt : Study option =
+        model.studySurface.studyOpt
+        |> Option.bind (fun name -> model.kitStudies |> List.tryFind (fun study -> study.name = name))
+
+    /// The selected study's fit runs, oldest first, or none without a held study (spec 0050 S11.5).
+    member model.studyFitRuns : FitRun list =
+        match model.selectedStudyOpt with
+        | None -> []
+        | Some study ->
+            model.kitFitRuns
+            |> List.filter (fun run -> run.study = study.name)
+            |> List.sortBy _.stamp
 
     /// The item's model as the window's stores resolve it: its stored version through `itemModels`, its form checked
     /// against the instance, and only then its preset or sample version; `None` when any of them is unresolved, an
@@ -2654,6 +2734,84 @@ let private withGridDraftEdited
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     match msg with
+    | StudyCommand message ->
+        guardKitWrite model (fun () ->
+            match message.applyTo model.studyContext with
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"The study was not changed — {error.describe}")
+                }
+            | Ok study ->
+                let context : KitLibraryContext =
+                    {
+                        kit = model.kit
+                        imports = model.catalogueImports
+                    }
+                match context.recordStudy study with
+                | Error error ->
+                    {
+                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    }
+                | Ok () ->
+                    let surface =
+                        match message with
+                        | CreateStudy _ ->
+                            {
+                                model.studySurface with
+                                    newStudyName = StudySurfaceState.initial.newStudyName
+                                    newStudyExperiments = StudySurfaceState.initial.newStudyExperiments
+                            }
+                        | _ -> model.studySurface
+                    {
+                        model with
+                            kitStudies =
+                                study :: (model.kitStudies |> List.filter (fun held -> held.name <> study.name))
+                                |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                            studySurface =
+                                {
+                                    surface with studyOpt = Some study.name
+                                }
+                            kitStatus = None
+                    })
+    | SelectStudy name ->
+        match model.kitStudies |> List.tryFind (fun study -> study.name = name) with
+        | None -> model
+        | Some _ ->
+            let selected =
+                {
+                    model with
+                        studySurface =
+                            {
+                                model.studySurface with studyOpt = Some name
+                            }
+                }
+            {
+                selected with
+                    studySurface =
+                        {
+                            selected.studySurface with fitRunOpt = selected.studyFitRuns |> List.tryLast |> Option.map _.name
+                        }
+            }
+    | SetNewStudyName name ->
+        {
+            model with
+                studySurface =
+                    {
+                        model.studySurface with newStudyName = name
+                    }
+        }
+    | ToggleNewStudyExperiment name ->
+        let held = model.studySurface.newStudyExperiments
+        let chosen =
+            if List.contains name held then held |> List.filter ((<>) name)
+            else held @ [ name ]
+        {
+            model with
+                studySurface =
+                    {
+                        model.studySurface with newStudyExperiments = chosen
+                    }
+        }
     | RotateR1By d -> rotateSelected RotationControls.R1 d model
     | RotateR2By d -> rotateSelected RotationControls.R2 d model
     | RotateR3By d -> rotateSelected RotationControls.R3 d model
@@ -3574,15 +3732,17 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     |> Result.bind (fun experiments ->
                         proxy.readItems ()
                         |> Result.bind (fun items ->
-                            proxy.readSetups ()
-                            |> Result.bind (fun setups ->
-                                proxy.recordStamps ()
-                                |> Result.map (fun () ->
-                                    let kit =
-                                        {
-                                            model.kit with kitFile = kitFile
-                                        }
-                                    withKitContent kit experiments items setups model)))))
+                            proxy.readStudiesWithFitRuns ()
+                            |> Result.bind (fun (studies, fitRuns) ->
+                                proxy.readSetups ()
+                                |> Result.bind (fun setups ->
+                                    proxy.recordStamps ()
+                                    |> Result.map (fun () ->
+                                        let kit =
+                                            {
+                                                model.kit with kitFile = kitFile
+                                            }
+                                        withKitContent kit experiments items studies fitRuns setups model))))))
             match reloaded with
             | Ok reloadedModel -> reloadedModel
             | Error error ->
@@ -3786,7 +3946,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         {
                             model.kit with kitFile = report.kitFile
                         }
-                    let shown = withKitContent copiedKit experiments items setups model
+                    let shown = withKitContent copiedKit experiments items model.kitStudies model.kitFitRuns setups model
                     let copiedCount = List.length report.experiments
                     let sourceName = copySource.source.kitFile.name
                     let told =

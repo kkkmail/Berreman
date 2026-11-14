@@ -11,11 +11,13 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
@@ -50,6 +52,10 @@ type OpenedKit =
         experiments : Experiment list
         /// The kit's items as read at open, in label order (spec 0050 S6, S7.1).
         items : Item list
+        /// The kit's studies in the order readStudies returns them (spec 0050 S11.5).
+        studies : Study list
+        /// Every study's fit runs, in study order and then stamp order (spec 0050 S11.5).
+        fitRuns : FitRun list
         /// The kit's setups as read at open, in name order (spec 0050 S8.2).
         setups : Setup list
         decisions : ImportDecision list
@@ -91,8 +97,19 @@ type OpenedKit =
                 if not wasApplied then closePendingKit ())
             dialog.Show()
 
-/// Reads an opened kit's experiments, items, setups and snapshot decisions and opens its overlay (spec 0050 S4.3,
-/// S5.2, S6). Any failure closes the kit, logging a failed close, and answers the first error.
+type KitProxy with
+
+    /// Reads studies and their fit runs in storage order, refusing the first failed read (spec 0050 S11.5).
+    member internal this.readStudiesWithFitRuns () : Result<Study list * FitRun list, KitError> =
+        this.readStudies ()
+        |> Result.bind (fun studies ->
+            studies
+            |> List.map (fun study -> this.readFitRuns study.name)
+            |> ItemEvaluation.sequenced
+            |> Result.map (fun runs -> studies, List.concat runs))
+
+/// Reads the kit's content and snapshot decisions and opens its overlay (spec 0050 S4.3, S5.2, S6, S11.5).
+/// Any failure closes the kit, logging a failed close, and answers the first error.
 let private openedOver (folder : KitFolder) (context : KitContext) (imports : CatalogueImportContext) : Result<OpenedKit, KitLibraryError> =
     let library : KitLibraryContext =
         {
@@ -106,23 +123,28 @@ let private openedOver (folder : KitFolder) (context : KitContext) (imports : Ca
             context.proxy.readItems ()
             |> Result.mapError KitLibraryKitErr
             |> Result.bind (fun items ->
-                context.proxy.readSetups ()
+                context.proxy.readStudiesWithFitRuns ()
                 |> Result.mapError KitLibraryKitErr
-                |> Result.bind (fun setups ->
-                    library.resolveSnapshots ()
-                    |> Result.bind (fun decisions ->
-                        library.openOverlay []
-                        |> Result.map (fun overlay ->
-                            {
-                                folder = folder
-                                library = library
-                                experimentData = ExperimentDataStore.createFileBacked context.proxy
-                                experiments = experiments
-                                items = items
-                                setups = setups
-                                decisions = decisions
-                                overlay = overlay
-                            })))))
+                |> Result.bind (fun (studies, fitRuns) ->
+                    context.proxy.readSetups ()
+                    |> Result.mapError KitLibraryKitErr
+                    |> Result.bind (fun setups ->
+                        library.resolveSnapshots ()
+                        |> Result.bind (fun decisions ->
+                            library.openOverlay []
+                            |> Result.map (fun overlay ->
+                                {
+                                    folder = folder
+                                    library = library
+                                    experimentData = ExperimentDataStore.createFileBacked context.proxy
+                                    experiments = experiments
+                                    items = items
+                                    studies = studies
+                                    fitRuns = fitRuns
+                                    setups = setups
+                                    decisions = decisions
+                                    overlay = overlay
+                                }))))))
     match result with
     | Ok kit -> Ok kit
     | Error error ->

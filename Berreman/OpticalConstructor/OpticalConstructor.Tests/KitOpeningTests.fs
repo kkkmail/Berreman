@@ -15,6 +15,8 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
@@ -192,6 +194,50 @@ module KitOpeningTests =
             File.Delete broken.value
             withOpenedKit folder ReadWriteKitAccess imports (fun reopened ->
                 Assert.Equal<Item list>([ openingCpl1; openingLp1 ], reopened.items)))
+
+    [<Fact>]
+    let ``opening a kit reads its studies and their fit runs, and a study file that does not read refuses the open`` () : unit =
+        withOpeningFolder (fun folder imports _ ->
+            let studyOf (name : StudyName) : Study =
+                Study.create name [] [] [] |> Result.defaultWith (fun error -> failwith error.describe)
+            let qzLr = studyOf (StudyName "QZ-LR")
+            let lr = studyOf (StudyName "LR")
+            let first = FitRunFileFixtures.fitRunOf qzLr.name FitRunFileFixtures.firstFitRunStamp
+            let later = ClockTime (first.stamp.value.AddHours 1.0)
+            let second = FitRunFileFixtures.fitRunOf qzLr.name later
+            withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
+                Assert.Empty opened.studies
+                Assert.Empty opened.fitRuns
+                for study in [ qzLr; lr ] do
+                    opened.library.recordStudy study |> openingValue
+                for run in [ second; first ] do
+                    opened.library.kit.proxy.writeFitRun run |> kitValue)
+
+            for access in [ ReadWriteKitAccess; ReadOnlyKitAccess ] do
+                withOpenedKit folder access imports (fun opened ->
+                    Assert.Equal<KitAccess>(access, opened.library.kit.access)
+                    Assert.Equal<Study list>([ lr; qzLr ], opened.studies)
+                    Assert.Equal<FitRun list>([ first; second ], opened.fitRuns)
+                    let rebound = opened.withRebindings [] |> openingValue
+                    Assert.Equal<Study list>(opened.studies, rebound.studies)
+                    Assert.Equal<FitRun list>(opened.fitRuns, rebound.fitRuns))
+
+            for file in [ FileName "Broken.study-json"; FileName "Broken.fitrun-json" ] do
+                let broken = file.combine folder.value
+                File.WriteAllText(broken.value, "{")
+                for access in [ ReadWriteKitAccess; ReadOnlyKitAccess ] do
+                    match openKitAt folder access ClockProvider.system openingAuthor imports with
+                    | Error (KitLibraryKitErr (KitFileRejectedErr reason)) -> Assert.Contains(file.value, reason)
+                    | Error error -> Assert.Fail error.describe
+                    | Ok opened ->
+                        opened.library.kit.close () |> kitValue
+                        Assert.Fail "a kit with an unreadable study or fit run must refuse the open"
+                    Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
+                File.Delete broken.value
+
+            withOpenedKit folder ReadWriteKitAccess imports (fun opened ->
+                Assert.Equal<Study list>([ lr; qzLr ], opened.studies)
+                Assert.Equal<FitRun list>([ first; second ], opened.fitRuns)))
 
     [<Fact>]
     let ``a kit open elsewhere is KitLockedErr inside the open's error, and opening it read-only writes nothing`` () : unit =

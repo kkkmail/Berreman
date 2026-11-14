@@ -232,6 +232,7 @@
         <Compile Include="StudyFitJobTests.fs" />
         <Compile Include="FitResultsTests.fs" />
         <Compile Include="StudyPublishingTests.fs" />
+        <Compile Include="StudyWindowModelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
