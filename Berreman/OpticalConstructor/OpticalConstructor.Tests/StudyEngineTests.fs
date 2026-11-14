@@ -26,6 +26,7 @@ open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.ExperimentData
 open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
@@ -223,11 +224,14 @@ module StudyEngineTests =
     /// LP2 as the reference's stage one reads it: the real linear polarizer on a negative dial.
     let private realLp2Draft : ItemDraft = draftOf 17 "LP2" realLinearChoice (DialMounted DialNegative)
 
+    /// The Malus bench's analyzer: the ideal-LP preset on a fixed mount, so a scan turns it by its R1.
+    let private malusAnalyzerDraft : ItemDraft = draftOf 18 "Analyzer" idealLpChoice FixedMounting
+
     let private drafts : ItemDraft list =
         [
             laserDraft; lp1Draft; lp2Draft; cpl1Draft; cpl2Draft; phoneDraft; qzDraft; lrDraft; qz2Draft
             cpLeftDraft; cpRightDraft; constantDraft; plateDraft; polarimeterDraft; crystalPlateDraft; indexPlateDraft
-            realLp2Draft
+            realLp2Draft; malusAnalyzerDraft
         ]
 
     /// Each item's model as its draft chose it.
@@ -2541,6 +2545,352 @@ module StudyEngineTests =
         Assert.Equal<FitProblemSubject list>(
             [ StudyEntriesProblem ],
             subjectsOf (plateStaged.engineProblemsWith plateContext [] plateData solver plateSolution))
+
+    // ============================ spec 0050 S11.4: the fit's results and its profiles ============================
+
+    let private malusAnalyzer : Item = itemOf malusAnalyzerDraft
+
+    /// The Phone draft's intensity detector, its gain unknown from 1.8 within [1, 4] and its dark offset in that state.
+    let private malusCameraWith (darkOffset : ParameterState) : Item =
+        itemOf phoneDraft |> stating ParameterName.gain (unknownWithin 1.8 1.0 4.0) |> stating ParameterName.darkOffset darkOffset
+
+    /// The HeNe, LP1 preparing at R1 0°, the Malus analyzer and the camera: one setup of the four.
+    let private malusBench : Setup = benchOf "Malus" lp1 [] malusAnalyzer (malusCameraWith (KnownParameter (ParameterValue 0.1)))
+
+    /// Nine analyzer readings from 0° by that step.
+    let private malusReadingsBy (step : float<deg>) : Angle list = List.init 9 (fun k -> Angle.degree (float k * step))
+
+    let private malusSettingAt (reading : Angle) : ScanSetting =
+        { elementId = Library.ElementId "analyzer"; variable = VaryR1; value = Propagation.SweptValue reading.degrees }
+
+    /// M1, the Science run turning the Malus analyzer's R1 over the readings, its intensity series the points.
+    let private malusRunOf (readings : Angle list) (points : IntensityPoint list) : AttachedRun =
+        let axis : ScanAxis =
+            {
+                elementId = Library.ElementId "analyzer"
+                label = ElementLabel "Analyzer"
+                variable = VaryR1
+                range =
+                    {
+                        min = Propagation.SweptValue (List.head readings).degrees
+                        max = Propagation.SweptValue (List.last readings).degrees
+                        points = Propagation.CurvePointCount readings.Length
+                    }
+            }
+
+        let attached = attachedOver malusBench "M1" ScienceRun ImportProfileName.intensitySeries (SeriesPoints (IntensityData { points = points }))
+        { attached with attachedRun = { attached.attachedRun with scan = ExperimentScan.oneAxis axis CaptureTransmitted None } }
+
+    /// S₀ at each reading as `ExperimentRun.read Intensity` gives it at unit scale, the bound path's steps at that reading.
+    let private malusS0Over (readings : Angle list) : float list =
+        let blank = malusRunOf readings []
+        let study = studyOver "Malus S0" [ blank ]
+        let items = [ laser; lp1; malusAnalyzer; malusCameraWith (KnownParameter (ParameterValue 0.1)) ]
+        let context = contextWithin [ malusBench ] items [ blank ] study
+        let own : ExperimentAssignment = { itemValues = Map.empty; crystals = Map.empty }
+
+        match blank.attachedRun.boundWith context study own None with
+        | Error error -> failwith $"M1 was not bound: {error.describe}"
+        | Ok bound ->
+            let unitScale = { bound.emission with intensityScale = ParameterValue 1.0 }
+
+            readings
+            |> List.map (fun reading ->
+                let settings = [ malusSettingAt reading ]
+
+                let steps =
+                    bound.path
+                    |> List.map (fun step ->
+                        match step.element.muellerAt (bound.orientationAt settings step) bound.operatingWaveLength with
+                        | Ok mueller -> step.slot.runStepOf mueller
+                        | Error error -> failwith $"'{step.slot.id.value}' was not evaluated: %A{error}")
+
+                match ExperimentRun.read Intensity unitScale steps with
+                | ExperimentRun.IntensityReading s0 -> s0.value
+                | ExperimentRun.EllipsometricReading _ -> failwith "an intensity reading is S₀")
+
+    /// Point i is 2 · S₀ + 0.1 + 0.002 · (−1)ⁱ: a gain-and-scale product of 2 over the dark offset 0.1, alternately off.
+    let private malusPointsOver (readings : Angle list) : IntensityPoint list =
+        List.mapi2
+            (fun i (reading : Angle) (s0 : float) ->
+                let offset = if i % 2 = 0 then 0.002 else -0.002
+                ({ x = MeasuredAbscissa reading.degrees; intensity = MeasuredIntensity (2.0 * s0 + 0.1 + offset) } : IntensityPoint))
+            readings
+            (malusS0Over readings)
+
+    /// A Malus study fitted by `fitNonlinear` from its starts, unwatched: the staged study, the unstaged context, its
+    /// pre-fit, its data and the solution.
+    type private MalusFit =
+        {
+            malusStaged : StagedStudy
+            malusContext : StudyForwardContext
+            malusPrefits : ExperimentPrefit list
+            malusData : StudyData
+            malusSolution : StudyFitSolution
+        }
+
+        /// The fit's results under the watch.
+        member this.resultsUnder (watch : IterationWatch) : Result<FitRunResults, StudyFitError> =
+            this.malusStaged.resultsWith this.malusContext this.malusPrefits this.malusData (createMathNetSvd ()) this.malusSolution watch
+
+        /// The problems the results are read from.
+        member this.engineProblems : EngineProblems =
+            engineProblemsOf (this.malusStaged.engineProblemsWith this.malusContext this.malusPrefits this.malusData (createMathNetSvd ()) this.malusSolution)
+
+        /// The layout entry of that parameter and its index, failing the fact when the fit holds none.
+        member this.entryOf (parameter : StudyParameterRef) : FitEntryRef * StudyVectorIndex =
+            match this.malusSolution.layout.entries |> List.tryFindIndex (fun entry -> entry.unknown.parameter = parameter) with
+            | Some k ->
+                let entry = List.item k this.malusSolution.layout.entries
+                ({ parameter = entry.unknown.parameter; owner = entry.owner } : FitEntryRef), StudyVectorIndex k
+            | None -> failwith $"the fit holds no entry of {parameter.describe}"
+
+    /// M1's study over a kit of the items with the readings' points, staged jointly with its calibrations held, as step 387
+    /// stages its studies, and fitted.
+    let private malusFitOver (items : Item list) (readings : Angle list) : MalusFit =
+        let run = malusRunOf readings (malusPointsOver readings)
+        let study = studyOver "Malus" [ run ]
+        let context = contextWithin [ malusBench ] items [ run ] study
+        let staged, prefits = prefitStaged context study JointStage CalibrationHeldFixed
+        let stagedContext = { context with kit = { context.kit with items = staged.items } }
+
+        let data =
+            match staged.study.dataWith stagedContext prefits with
+            | Ok data -> data
+            | Error error -> failwith $"M1 has no data: {error.describe}"
+
+        {
+            malusStaged = staged
+            malusContext = context
+            malusPrefits = prefits
+            malusData = data
+            malusSolution = solutionOf (staged.fitNonlinear context data (deviatesOf [] (ResizeArray<UniformDeviate>())) UnwatchedIterations)
+        }
+
+    /// The gain and the dark offset unknown, over the readings.
+    let private gainAndDarkFitBy (step : float<deg>) : MalusFit * Item =
+        let camera = malusCameraWith (unknownWithin 0.0 -1.0 1.0)
+        malusFitOver [ laser; lp1; malusAnalyzer; camera ] (malusReadingsBy step), camera
+
+    /// The gain and the source's scale unknown, the dark offset known at 0.1, over 0° to 160° by 20°: the data sees only
+    /// their product.
+    let private confoundedFit () : MalusFit * Item * Item =
+        let camera = malusCameraWith (KnownParameter (ParameterValue 0.1))
+        let source = laser |> stating ParameterName.intensityScale (unknownWithin 1.0 0.25 4.0)
+        malusFitOver [ source; lp1; malusAnalyzer; camera ] (malusReadingsBy 20.0<deg>), camera, source
+
+    let private resultsOf (result : Result<FitRunResults, StudyFitError>) : FitRunResults =
+        match result with
+        | Ok results -> results
+        | Error error -> failwith $"expected the fit's results, got {error.describe}"
+
+    /// The results' one problem, failing the fact on any other count.
+    let private loneQualityOf (results : FitRunResults) : FitProblemQuality =
+        match results.problems with
+        | [ quality ] -> quality
+        | problems -> failwith $"expected one problem, got {problems.Length}"
+
+    /// The results' σ of the entry, failing the fact when they hold none.
+    let private sigmaOf (results : FitRunResults) (entry : FitEntryRef) : ParameterSigma option =
+        match results.sigmas |> List.tryFind (fun sigma -> sigma.entry = entry) with
+        | Some sigma -> sigma.sigmaOpt
+        | None -> failwith $"the results hold no σ of {entry.parameter.describe}"
+
+    /// Each point's value within 1e-12 of the expected, converged, its χ² checked by `chiSquaredAt` at its place j.
+    let private assertProfilePoints (expected : float list) (chiSquaredAt : int -> float -> unit) (points : ProfilePoint list) : unit =
+        Assert.Equal(expected.Length, points.Length)
+
+        List.iteri2
+            (fun j (value : float) (point : ProfilePoint) ->
+                Assert.Equal(value, point.value.value, 1e-12)
+
+                match point.outcome with
+                | ProfileConverged chiSquared -> chiSquaredAt j chiSquared.value
+                | ProfileFailed failure -> Assert.Fail($"the re-fit at {value:R} failed: {failure.value}"))
+            expected
+            points
+
+    [<Fact>]
+    let ``an identifiable pair is determined, with no suspect and no profile`` () : unit =
+        let fit, camera = gainAndDarkFitBy 20.0<deg>
+        let results = resultsOf (fit.resultsUnder UnwatchedIterations)
+        let gain, _ = fit.entryOf (ItemParameterRef (camera.id, ParameterName.gain))
+        let dark, _ = fit.entryOf (ItemParameterRef (camera.id, ParameterName.darkOffset))
+        let quality = loneQualityOf results
+
+        // The gain's and the dark offset's own coordinates, both determined.
+        Assert.Equal(StudyEntriesProblem, quality.subject)
+        Assert.Equal(MatrixRank 2, quality.rank)
+        Assert.Equal<FitEntryRef list>(
+            fit.malusSolution.layout.entries |> List.map (fun entry -> { parameter = entry.unknown.parameter; owner = entry.owner }),
+            results.sigmas |> List.map (fun sigma -> sigma.entry))
+
+        // ρ = −Σuᵢ / √(n Σuᵢ²) for uᵢ ∝ cos² θᵢ over nine readings across 180°: −(9/2) / √(9 · 27/8) = −√(2/3).
+        match quality.correlationOpt with
+        | Some correlation -> Assert.Equal(-sqrt (2.0 / 3.0), correlation.value.[0].[1], 1e-6)
+        | None -> Assert.Fail("a determined pair has no correlation")
+
+        // Each σ within a tenth of its span: 3 for the gain's [1, 4], 2 for the dark offset's [−1, 1].
+        for entry, span in [ gain, 3.0; dark, 2.0 ] do
+            match sigmaOf results entry with
+            | Some sigma -> Assert.InRange(sigma.value, Double.Epsilon, 0.1 * span)
+            | None -> Assert.Fail($"{entry.parameter.describe} has no σ")
+
+        Assert.Empty(fit.engineProblems.suspectsWith fit.malusStaged.study.settings.suspect fit.malusSolution.layout)
+        Assert.Empty(results.profiles)
+
+        // The study's own thresholds decide: under a correlation threshold of 0.8, |ρ| ≈ 0.816 makes both entries suspect.
+        let strict =
+            match SuspectThresholds.tryCreate 0.8 0.1 with
+            | Ok thresholds -> thresholds
+            | Error error -> failwith error.describe
+
+        let strictFit = { fit with malusStaged = { fit.malusStaged with study = fit.malusStaged.study.withSuspectThresholds strict } }
+
+        Assert.Equal<FitEntryRef list>(
+            results.sigmas |> List.map (fun sigma -> sigma.entry),
+            (resultsOf (strictFit.resultsUnder UnwatchedIterations)).profiles |> List.map (fun profile -> profile.entry))
+
+    [<Fact>]
+    let ``an exactly confounded pair has no sigma, and its profile is flat along the confounded direction`` () : unit =
+        let fit, camera, source = confoundedFit ()
+        let results = resultsOf (fit.resultsUnder UnwatchedIterations)
+        let gain, _ = fit.entryOf (ItemParameterRef (camera.id, ParameterName.gain))
+        let scale, _ = fit.entryOf (ItemParameterRef (source.id, ParameterName.intensityScale))
+        let quality = loneQualityOf results
+        let fitChiSquared = quality.chiSquared.value
+
+        // One direction of two is determined: no σ and no correlation.
+        Assert.Equal(MatrixRank 1, quality.rank)
+        Assert.Equal(None, quality.correlationOpt)
+        Assert.Equal(2, results.sigmas.Length)
+        Assert.All(results.sigmas, fun sigma -> Assert.Equal(None, sigma.sigmaOpt))
+        Assert.True(fitChiSquared > 0.0, $"the fit's χ² is {fitChiSquared:R}")
+
+        // Both suspect with an undetermined σ, each profiled across its own bounds in the layout's order.
+        Assert.Equal<FitEntryRef list>(results.sigmas |> List.map (fun sigma -> sigma.entry), results.profiles |> List.map (fun profile -> profile.entry))
+        Assert.All(results.profiles, fun profile -> Assert.Equal<SuspectReason list>([ UndeterminedSigmaReason ], profile.reasons))
+
+        let profileOf (entry : FitEntryRef) : ParameterProfile = results.profiles |> List.find (fun profile -> profile.entry = entry)
+
+        // Holding the gain anywhere in [1, 4], the scale takes up their product, which is all the data sees.
+        let flat (_ : int) (chiSquared : float) : unit = Assert.Equal(fitChiSquared, chiSquared, 1e-9 * fitChiSquared)
+        assertProfilePoints [ for i in 0 .. 6 -> 1.0 + 0.5 * float i ] flat (profileOf gain).points
+
+        // Across the scale's [0.25, 4] every re-fit converges, the lowest scale's with the gain held at its upper bound.
+        assertProfilePoints [ for i in 0 .. 6 -> 0.25 + 0.625 * float i ] (fun _ _ -> ()) (profileOf scale).points
+
+    [<Fact>]
+    let ``a nearly confounded pair is suspect by its correlation and profiled across three sigmas`` () : unit =
+        let fit, camera = gainAndDarkFitBy 2.5<deg>
+        let results = resultsOf (fit.resultsUnder UnwatchedIterations)
+        let quality = loneQualityOf results
+        let fitChiSquared = quality.chiSquared.value
+
+        let rho =
+            match quality.correlationOpt with
+            | Some correlation -> correlation.value.[0].[1]
+            | None -> failwith "a determined pair has no correlation"
+
+        // Over 0° to 20° the readings barely move cos² θ, so the gain and the dark offset trade off.
+        Assert.Equal(MatrixRank 2, quality.rank)
+        Assert.True(rho < -0.95, $"ρ is {rho:R}")
+        Assert.True(fitChiSquared > 0.0, $"the fit's χ² is {fitChiSquared:R}")
+
+        let entries =
+            [ ParameterName.gain; ParameterName.darkOffset ]
+            |> List.map (fun name -> fit.entryOf (ItemParameterRef (camera.id, name)))
+            |> List.sortBy (fun (_, index) -> index.value)
+
+        Assert.Equal<FitEntryRef list>(entries |> List.map fst, results.profiles |> List.map (fun profile -> profile.entry))
+
+        for (entry, index), profile in List.zip entries results.profiles do
+            let partner = entries |> List.map fst |> List.find (fun other -> other <> entry)
+
+            match profile.reasons with
+            | [ CorrelatedEntryReason (named, correlation) ] ->
+                Assert.Equal(partner, named)
+                Assert.Equal(rho, correlation.value, 1e-12)
+            | reasons -> Assert.Fail($"{entry.parameter.describe}: expected one correlated reason, got %A{reasons}")
+
+            // x̂ + j · σ for j = −3 … 3; a model linear in both, nine points and two parameters: χ²_min · (1 + j² / 7).
+            let fitted = (fit.malusSolution.fitted.valueAt index).value
+
+            let sigma =
+                match sigmaOf results entry with
+                | Some sigma -> sigma.value
+                | None -> failwith $"{entry.parameter.describe} has no σ"
+
+            let quadratic (j : int) (chiSquared : float) : unit =
+                let k = j - 3
+
+                if k = 0 then Assert.Equal<float>(fitChiSquared, chiSquared)
+                else
+                    let expected = fitChiSquared * (1.0 + float (k * k) / 7.0)
+                    Assert.Equal(expected, chiSquared, 1e-6 * expected)
+
+            assertProfilePoints [ for k in -3 .. 3 -> fitted + float k * sigma ] quadratic profile.points
+
+    [<Fact>]
+    let ``a profile pass under a cancelled watch answers FitCancelledErr`` () : unit =
+        let fit, _, _ = confoundedFit ()
+
+        // A live watch counts the profile pass's re-fits on from one, the second profile's after the first's.
+        let counted = ResizeArray<IterationCount>()
+        let live = WatchedIterations { reportIteration = counted.Add; cancellation = CancellationToken.None }
+        Assert.Equal(2, (resultsOf (fit.resultsUnder live)).profiles.Length)
+        Assert.True(counted.Count >= 14, $"{counted.Count} iteration(s) were reported over fourteen re-fits")
+        Assert.Equal<IterationCount list>([ for k in 1 .. counted.Count -> IterationCount k ], List.ofSeq counted)
+
+        // Cancelled before the pass: the first re-fit never starts.
+        use cancelled = new CancellationTokenSource()
+        cancelled.Cancel()
+        let silent = ResizeArray<IterationCount>()
+        let watch = WatchedIterations { reportIteration = silent.Add; cancellation = cancelled.Token }
+
+        match fit.resultsUnder watch with
+        | Error (FitCancelledErr reason) -> Assert.Contains("0 of 7", reason)
+        | Error error -> Assert.Fail($"expected FitCancelledErr, got {error.describe}")
+        | Ok results -> Assert.Fail($"expected FitCancelledErr, got {results.profiles.Length} profile(s)")
+
+        Assert.Empty(silent)
+
+    [<Fact>]
+    let ``a fit's results gather its sigmas, solves, run residuals, realizability and product checks`` () : unit =
+        let thresholds =
+            match SuspectThresholds.tryCreate 1.0 1.0e9 with
+            | Ok thresholds -> thresholds
+            | Error error -> failwith error.describe
+
+        let setups, runs, study, _ = seriesFixture ()
+        let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qzAllFree; lrFree ]) runs (study.withSuspectThresholds thresholds)
+        let solver = createMathNetSvd ()
+        let solution = solutionOf (staged.reconstructLinear context prefits data solver)
+        let results = resultsOf (staged.resultsWith context prefits data solver solution UnwatchedIterations)
+        let engineProblems = engineProblemsOf (staged.engineProblemsWith context prefits data solver solution)
+
+        // One σ per entry, QZ's sixteen then LR's, each its coordinate's.
+        Assert.Equal(32, results.sigmas.Length)
+        Assert.Equal<FitEntrySigma list>(engineProblems.sigmasFor solution.layout, results.sigmas)
+
+        // One problem per object solve, in the solves' order, each of full rank.
+        Assert.Equal<FitProblemSubject list>(
+            solution.objectMatrices |> List.map (fun fit -> ObjectSolveProblem fit.items),
+            results.problems |> List.map (fun quality -> quality.subject))
+
+        Assert.All(results.problems, fun quality -> Assert.Equal(MatrixRank 16, quality.rank))
+
+        // One run residual per fitted run, in the study's order.
+        Assert.Equal<ExperimentName list>(staged.fittedRuns, results.runResiduals |> List.map (fun residual -> residual.run))
+
+        // QZ's and LR's realizability, both retarders; the [QZ; LR] series' product check.
+        Assert.Equal<ItemId list>([ qzAllFree.id; lrFree.id ], results.realizability |> List.map (fun realizability -> realizability.item))
+        Assert.All(results.realizability, fun realizability -> Assert.Equal(RealizableMueller, realizability.realizability))
+        Assert.Equal<ItemId list list>([ [ qzAllFree.id; lrFree.id ] ], results.productChecks |> List.map (fun check -> check.items))
+
+        // No entry is suspect under these thresholds, so nothing is re-fitted.
+        Assert.Empty(engineProblems.suspectsWith thresholds solution.layout)
+        Assert.Empty(results.profiles)
 
     // ============================ spec 0050 S11.3: one fit, one fit run ============================
 

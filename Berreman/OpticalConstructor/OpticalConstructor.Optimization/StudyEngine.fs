@@ -1654,6 +1654,50 @@ module StudyEngine =
                             |> Option.map (fun (run, _) -> checkedAt run item form)))
                     |> ItemEvaluation.sequenced))
 
+    type StagedStudy with
+
+        /// A fit's results: each entry's σ, each solve's quality, run residual, realizability and product check, then each
+        /// suspect entry's χ² profile by re-fits under `watch`, counted on from the profiles before it; a cancel answers
+        /// `FitCancelledErr` (spec 0050 S11.4; 001 §L).
+        member this.resultsWith
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (data : StudyData)
+            (solver : MuellerSolverProxy)
+            (solution : StudyFitSolution)
+            (watch : IterationWatch)
+            : Result<FitRunResults, StudyFitError> =
+            let layout = solution.layout
+
+            let rec profilesFrom
+                (remaining : SuspectCoordinate list)
+                (earlier : IterationCount)
+                (finished : ParameterProfile list)
+                : Result<ParameterProfile list, StudyFitError> =
+                match remaining with
+                | [] -> Ok (List.rev finished)
+                | suspect :: rest ->
+                    match suspect.problem.profileAt suspect.coordinate earlier watch with
+                    | Error (ProfileCancelledErr reason) -> Error (FitCancelledErr reason)
+                    | Ok run ->
+                        let profile : ParameterProfile = { entry = suspect.entry; reasons = suspect.reasons; points = run.points }
+                        profilesFrom rest (IterationCount (earlier.value + run.iterations.value)) (profile :: finished)
+
+            this.engineProblemsWith context prefits data solver solution
+            |> Result.bind (fun engine ->
+                this.realizabilityWith context layout solution.fitted
+                |> Result.bind (fun realizability ->
+                    profilesFrom (engine.suspectsWith this.study.settings.suspect layout) (IterationCount 0) []
+                    |> Result.map (fun profiles ->
+                        ({
+                            sigmas = engine.sigmasFor layout
+                            problems = engine.problems |> List.map (fun problem -> problem.quality)
+                            runResiduals = engine.runResiduals
+                            realizability = realizability
+                            productChecks = engine.productChecks
+                            profiles = profiles
+                        } : FitRunResults))))
+
     /// What `RunFit` asks: the study, the stage (Run joint is `JointStage`, Run stage `CalibrationStage` or `ObjectStage`)
     /// and how its calibrations are used (spec 0050 S11.3, S11.5).
     type StudyFitRequest =
