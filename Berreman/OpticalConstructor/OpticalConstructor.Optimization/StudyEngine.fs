@@ -221,6 +221,11 @@ module StudyEngine =
             | _ -> None
         | _ -> None
 
+    /// The staged study's fitted AIR runs that resolve, in study order, each with its reference family (spec 0050 S11.3,
+    /// S11.4).
+    let private calibrationFamiliesIn (staged : StagedStudy) (context : StudyForwardContext) : (ExperimentName * CalibrationRunFamily) list =
+        fittedHeldIn staged context |> List.choose (fun (run, held) -> calibrationRunOf held |> Option.map (fun family -> run, family))
+
     /// The sixteen-element black box's coefficients m00 … m33, its form's own axes (spec 0050 S8.1).
     let private muellerCoefficients : ParameterName list =
         (BlackBoxMuellerModel SixteenElementMueller).parameterAxes |> List.map (fun axis -> axis.name)
@@ -580,21 +585,40 @@ module StudyEngine =
                 Error (StudyForwardFitErr (ReadingMismatchErr $"{name.value} holds no capture rows, which the staged Mueller path reads"))
             | Error error -> Error (StudyForwardFitErr (PrefitFailedErr (name, error)))
 
+    /// One AIR run's capture rows, kept by its attachment's exclusions (spec 0050 S11.4).
+    type AirRunRows =
+        {
+            run : ExperimentName
+            rows : MuellerRawRow list
+        }
+
+    /// A calibration's Dark rows and each reference family's AIR runs, every run with its own rows (spec 0050 S11.4).
+    type AirFamilyRuns =
+        {
+            darkRows : MuellerRawRow list
+            lpLpRuns : AirRunRows list
+            lpCplRuns : AirRunRows list
+            cplLpRuns : AirRunRows list
+        }
+
+        /// The rows stage one reads: the Dark rows, and each family's rows run after run (spec 0050 S11.4).
+        member this.stageOneRows : StageOneAirRows =
+            let rowsOf (runs : AirRunRows list) : MuellerRawRow list = runs |> List.collect (fun run -> run.rows)
+
+            {
+                darknessRows = this.darkRows
+                lpLpAirRows = rowsOf this.lpLpRuns
+                lpCplAirRows = rowsOf this.lpCplRuns
+                cplLpAirRows = rowsOf this.cplLpRuns
+            }
+
     type StagedStudy with
 
-        /// Stage 1 by the reference AIR calibration, where `engineWith` finds the calibration shape: S10.3's stage one over
-        /// every Dark run's capture rows and each family's Calibration runs', its constants the instruments' values; the
-        /// cosine fits report no common χ² (spec 0050 S11.3; 001 §L).
-        member this.calibrateLinear
-            (context : StudyForwardContext)
-            (prefits : ExperimentPrefit list)
-            (solver : MuellerSolverProxy)
-            : Result<StudyFitSolution, StudyFitError> =
-            let staged = { context with kit = { context.kit with items = this.items } }
-            let layout = this.study.parameterLayoutWith staged
-
-            let families : (ExperimentName * CalibrationRunFamily) list =
-                fittedHeldIn this staged |> List.choose (fun (run, held) -> calibrationRunOf held |> Option.map (fun family -> run, family))
+        /// The AIR runs of the calibration: every Dark run's rows in prefit order, and each family's Calibration runs in
+        /// study order, its family their prep's and analyzer's; a run read without capture rows is refused (spec 0050 S11.3,
+        /// S11.4).
+        member this.airRunsWith (context : StudyForwardContext) (prefits : ExperimentPrefit list) : Result<AirFamilyRuns, StudyFitError> =
+            let families = calibrationFamiliesIn this { context with kit = { context.kit with items = this.items } }
 
             let isDark (prefit : ExperimentPrefit) : bool =
                 match prefit.experiment.role with
@@ -610,26 +634,44 @@ module StudyEngine =
                 families |> List.exists (fun (run, calibration) -> run = prefit.experiment.name && calibration.runFamily = family)
 
             // Prefits are in study order, so each selection keeps it.
-            let rowsOf (selected : ExperimentPrefit -> bool) : Result<MuellerRawRow list, StudyFitError> =
-                prefits |> List.filter selected |> List.map (fun prefit -> prefit.captureRows) |> ItemEvaluation.sequenced |> Result.map List.concat
+            let runsOf (family : Family) : Result<AirRunRows list, StudyFitError> =
+                prefits
+                |> List.filter (ofFamily family)
+                |> List.map (fun prefit -> prefit.captureRows |> Result.map (fun rows -> ({ run = prefit.experiment.name; rows = rows } : AirRunRows)))
+                |> ItemEvaluation.sequenced
 
-            rowsOf isDark
-            |> Result.bind (fun darknessRows ->
-                rowsOf (ofFamily LpLp)
-                |> Result.bind (fun lpLpAirRows ->
-                    rowsOf (ofFamily LpCpl)
-                    |> Result.bind (fun lpCplAirRows ->
-                        rowsOf (ofFamily CplLp)
-                        |> Result.bind (fun cplLpAirRows ->
-                            let rows : StageOneAirRows =
-                                {
-                                    darknessRows = darknessRows
-                                    lpLpAirRows = lpLpAirRows
-                                    lpCplAirRows = lpCplAirRows
-                                    cplLpAirRows = cplLpAirRows
-                                }
+            prefits
+            |> List.filter isDark
+            |> List.map (fun prefit -> prefit.captureRows)
+            |> ItemEvaluation.sequenced
+            |> Result.bind (fun darkRows ->
+                runsOf LpLp
+                |> Result.bind (fun lpLpRuns ->
+                    runsOf LpCpl
+                    |> Result.bind (fun lpCplRuns ->
+                        runsOf CplLp
+                        |> Result.map (fun cplLpRuns ->
+                            ({
+                                darkRows = List.concat darkRows
+                                lpLpRuns = lpLpRuns
+                                lpCplRuns = lpCplRuns
+                                cplLpRuns = cplLpRuns
+                            } : AirFamilyRuns)))))
 
-                            calibrateFromAirRows solver rows |> Result.mapError StagedPathFitErr))))
+        /// Stage 1 by the reference AIR calibration, where `engineWith` finds the calibration shape: S10.3's stage one over
+        /// every Dark run's capture rows and each family's Calibration runs', its constants the instruments' values; the
+        /// cosine fits report no common χ² (spec 0050 S11.3; 001 §L).
+        member this.calibrateLinear
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (solver : MuellerSolverProxy)
+            : Result<StudyFitSolution, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+            let layout = this.study.parameterLayoutWith staged
+            let families = calibrationFamiliesIn this staged
+
+            this.airRunsWith context prefits
+            |> Result.bind (fun runs -> calibrateFromAirRows solver runs.stageOneRows |> Result.mapError StagedPathFitErr)
             |> Result.map (fun stageOne ->
                 let constants = families |> List.collect (fun (_, family) -> family.stageOneConstants)
 
@@ -1126,6 +1168,16 @@ module StudyEngine =
             productChecks : SeriesProductCheck list
         }
 
+    /// A run's residual entries with their root mean square, zero over no entry (spec 0050 S11.4).
+    let private runResidualFrom (run : ExperimentName) (residuals : ResidualVector) : RunResidual =
+        let count = residuals.value.Length
+
+        ({
+            run = run
+            residuals = residuals
+            rmse = if count = 0 then ResidualRmse 0.0 else ResidualRmse (sqrt (residuals.sumOfSquares / float count))
+        } : RunResidual)
+
     type StagedStudy with
 
         /// For a solution `fitNonlinear` answered: the study residual and its priors over the scaled coordinates it searched,
@@ -1164,14 +1216,7 @@ module StudyEngine =
                 let runResidualOf (run : StudyRun) : Result<RunResidual, StudyFitError> =
                     this.study.residualWith staged problem.layout { data with runs = [ run ] } solution.fitted
                     |> Result.mapError StudyForwardFitErr
-                    |> Result.map (fun residuals ->
-                        let count = residuals.value.Length
-
-                        ({
-                            run = run.experiment.name
-                            residuals = residuals
-                            rmse = if count = 0 then ResidualRmse 0.0 else ResidualRmse (sqrt (residuals.sumOfSquares / float count))
-                        } : RunResidual))
+                    |> Result.map (runResidualFrom run.experiment.name)
 
                 data.runs
                 |> List.filter (fun run -> List.contains run.experiment.name this.fittedRuns)
@@ -1317,6 +1362,131 @@ module StudyEngine =
                     runResiduals = this.fittedRuns |> List.choose (fun name -> runResiduals |> List.tryFind (fun residual -> residual.run = name))
                     productChecks = solves |> List.choose (fun (group, solved) -> productCheckOpt group solved)
                 } : EngineProblems))
+
+    type StagedStudy with
+
+        /// For a solution `calibrateLinear` answered: stage one's LP-LP, LP-CPL and CPL-LP AIR fringes over the
+        /// instruments' entries, each starting at the constants it wrote, and each AIR run's own trace's residual there
+        /// (spec 0050 S11.4; 001 §L).
+        member this.calibrationProblemsWith
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (solver : MuellerSolverProxy)
+            : Result<EngineProblems, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+            let layout = this.study.parameterLayoutWith staged
+            let families = calibrationFamiliesIn this staged
+
+            this.airRunsWith context prefits
+            |> Result.bind (fun airRuns ->
+                let rows = airRuns.stageOneRows
+
+                calibrateFromAirRows solver rows
+                |> Result.mapError StagedPathFitErr
+                |> Result.bind (fun stageOne ->
+                    // Coordinate k of a family's fringe is its runs' k-th stage-1 constant: every layout entry taking it,
+                    // started at the value `calibrateLinear` writes (step 389).
+                    let constantsOf (family : Family) : Result<(FitCoordinate * float * StudyVectorEntry list) list, StudyFitError> =
+                        let calibrations = families |> List.filter (fun (_, calibration) -> calibration.runFamily = family) |> List.map snd
+
+                        match calibrations with
+                        | [] -> Error (StagedPathFitErr (EmptyCaptureSetErr $"the calibration holds no {family.text} AIR run, whose fringe fits its constants"))
+                        | first :: _ ->
+                            first.stageOneConstants
+                            |> List.mapi (fun k constant ->
+                                let parameters =
+                                    calibrations
+                                    |> List.choose (fun calibration -> List.tryItem k calibration.stageOneConstants)
+                                    |> List.map (fun held -> held.constantParameter)
+
+                                let entries = layout.entries |> List.filter (fun entry -> List.contains entry.unknown.parameter parameters)
+                                let refs = entries |> List.map (fun entry -> ({ parameter = entry.unknown.parameter; owner = entry.owner } : FitEntryRef))
+                                EntryCoordinate refs, (constant.constantIn stageOne).value, entries)
+                            |> Ok
+
+                    // The fringes in the instruments' own constants (step 398); LP-CPL's visibility is cos δ, the inverse
+                    // of `FringeVisibility.retardance` on 0 ≤ δ ≤ 90°.
+                    let lpLpResidual (trace : AirTrace) (ScaledVector s) : ResidualVector =
+                        let zero = Angle s.[0]
+                        let visibility = FringeVisibility s.[1]
+                        trace.fringeResidualAt zero visibility
+
+                    let lpCplResidual (trace : AirTrace) (ScaledVector s) : ResidualVector =
+                        let zero = Angle s.[0]
+                        let visibility = FringeVisibility (cos s.[1])
+                        trace.fringeResidualAt zero visibility
+
+                    let cplLpResidual (trace : AirTrace) (ScaledVector s) : ResidualVector =
+                        let offset = Angle s.[0]
+                        let retardance = Retardance s.[1]
+                        let model : SourceCplModel = { thetaRel = offset + retarderComponentOffset; retardance = retardance }
+                        model.lpFrameResidualOn trace stageOne.lpZero
+
+                    // Centre zero and unit one, each coordinate within every one of its entries' bounds; a run's residual
+                    // is its own trace's at the fringe's start.
+                    let traceOf (airRows : MuellerRawRow list) : AirTrace = reduceAirTraces stageOne.darkMean airRows
+
+                    let fringeOf
+                        (runs : AirRunRows list)
+                        (trace : AirTrace)
+                        (plans : (FitCoordinate * float * StudyVectorEntry list) list)
+                        (residualOn : AirTrace -> ScaledVector -> ResidualVector)
+                        : FittedProblem * RunResidual list =
+                        let count = plans.Length
+                        let start = plans |> List.map (fun (_, value, _) -> value) |> Array.ofList |> ScaledVector
+
+                        let sideOf (bound : float -> float -> float) (unbounded : float) (side : ParameterInterval -> ParameterValue) : ScaledVector =
+                            plans
+                            |> List.map (fun (_, _, entries) ->
+                                entries |> List.fold (fun (held : float) entry -> bound held (side entry.unknown.unknown.bounds).value) unbounded)
+                            |> Array.ofList
+                            |> ScaledVector
+
+                        let search : ScaledSearch =
+                            {
+                                start = start
+                                lowerBounds = sideOf max -infinity (fun bounds -> bounds.lower)
+                                upperBounds = sideOf min infinity (fun bounds -> bounds.upper)
+                            }
+
+                        let problem : FittedProblem =
+                            {
+                                subject = AirFringeProblem (runs |> List.map (fun run -> run.run))
+                                coordinates = plans |> List.map (fun (coordinate, _, _) -> coordinate)
+                                residual = residualOn trace
+                                search = search
+                                centre = Array.zeroCreate count |> StudyParameterVector
+                                unit = Array.create count 1.0 |> StudyParameterVector
+                            }
+
+                        problem, runs |> List.map (fun run -> runResidualFrom run.run (residualOn (traceOf run.rows) start))
+
+                    let lpLpTrace = traceOf rows.lpLpAirRows
+
+                    // The LP-LP visibility starts where stage one's own free cosine fit left it.
+                    freeCosineFit solver lpLpTrace
+                    |> Result.mapError (fun error -> StagedPathFitErr (AirCalibrationFitErr (LpLp, error)))
+                    |> Result.bind (fun lpLpFit ->
+                        constantsOf LpLp
+                        |> Result.bind (fun lpLpPlans ->
+                            constantsOf LpCpl
+                            |> Result.bind (fun lpCplPlans ->
+                                constantsOf CplLp
+                                |> Result.map (fun cplLpPlans ->
+                                    let visibility : FitCoordinate * float * StudyVectorEntry list = FringeVisibilityCoordinate, lpLpFit.visibility.value, []
+
+                                    let fringes =
+                                        [
+                                            fringeOf airRuns.lpLpRuns lpLpTrace (lpLpPlans @ [ visibility ]) lpLpResidual
+                                            fringeOf airRuns.lpCplRuns (traceOf rows.lpCplAirRows) lpCplPlans lpCplResidual
+                                            fringeOf airRuns.cplLpRuns (traceOf rows.cplLpAirRows) cplLpPlans cplLpResidual
+                                        ]
+
+                                    ({
+                                        problems = fringes |> List.map fst
+                                        runResiduals = fringes |> List.collect snd
+                                        productChecks = []
+                                    } : EngineProblems)))))))
 
     /// What `RunFit` asks: the study, the stage (Run joint is `JointStage`, Run stage `CalibrationStage` or `ObjectStage`)
     /// and how its calibrations are used (spec 0050 S11.3, S11.5).

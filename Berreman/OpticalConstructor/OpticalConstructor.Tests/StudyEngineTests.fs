@@ -1932,8 +1932,8 @@ module StudyEngineTests =
 
     // ============================ spec 0050 S11.4: the object stage's problems ============================
 
-    /// The runs with every capture row's `avgTotal` moved by 0.01 · (−1)ⁱ, i its place in its run, so no solve is exact.
-    let private jittered (runs : AttachedRun list) : AttachedRun list =
+    /// The runs with every capture row's `avgTotal` moved by amount · (−1)ⁱ, i its place in its run, so no solve is exact.
+    let private jittered (amount : float) (runs : AttachedRun list) : AttachedRun list =
         runs
         |> List.map (fun attached ->
             match attached.attachedPoints with
@@ -1941,7 +1941,7 @@ module StudyEngineTests =
                 let moved =
                     rows
                     |> List.mapi (fun i (row : MuellerRawRow) ->
-                        { row with avgTotal = MeasuredIntensity (row.avgTotal.value + (if i % 2 = 0 then 0.01 else -0.01)) })
+                        { row with avgTotal = MeasuredIntensity (row.avgTotal.value + (if i % 2 = 0 then amount else -amount)) })
 
                 { attached with attachedPoints = CapturePoints moved }
             | SeriesPoints _
@@ -2011,7 +2011,7 @@ module StudyEngineTests =
         | problems -> Assert.Fail($"expected one object solve, got {problems.Length}")
 
         // Off the exact solve every element has a σ, m00's √(χ² / (m − 16) · (AᵀA)⁻¹₀₀) over the solve's own rows.
-        let _, noisyProblems, noisy = qzProblemsOver setups study (jittered runs)
+        let _, noisyProblems, noisy = qzProblemsOver setups study (jittered 0.01 runs)
 
         match noisyProblems.problems with
         | [ problem ] ->
@@ -2044,7 +2044,7 @@ module StudyEngineTests =
     let ``each run of an object stage has its own rows' residual at its object's solve`` () : unit =
         // Off the exact solve, so each residual entry stands far above round-off.
         let setups, runs, study, scienceRuns = sessionFixture ()
-        let solution, engineProblems, system = qzProblemsOver setups study (jittered runs)
+        let solution, engineProblems, system = qzProblemsOver setups study (jittered 0.01 runs)
         let readings = dialReadings.Length
         let solved = vecValuesOf (objectFitOf [ qzAllFree ] solution) |> Array.ofList
 
@@ -2111,6 +2111,185 @@ module StudyEngineTests =
             Assert.Equal<float[]>(Array.create 16 -infinity, series.search.lowerBounds.value)
             Assert.Equal<float[]>(Array.create 16 infinity, series.search.upperBounds.value)
         | None -> Assert.Fail("the series has no problem")
+
+    // ============================ spec 0050 S11.4: the calibration stage's problems ============================
+
+    /// Step 389's runs, the Dark run's included.
+    let private stageOneRuns : AttachedRun list = [ stageOneLpLp; stageOneLpCpl; stageOneCplLp; stageOneDark ]
+
+    /// Step 389's runs with every AIR row's `avgTotal` moved by 2 · (−1)ⁱ, so no fringe is exact; the Dark run unmoved.
+    let private movedStageOneRuns : AttachedRun list = jittered 2.0 [ stageOneLpLp; stageOneLpCpl; stageOneCplLp ] @ [ stageOneDark ]
+
+    /// The calibration stage of a study of the runs: `calibrateLinear`'s solution, the problems `calibrationProblemsWith`
+    /// reads, and the AIR runs `airRunsWith` selects, each through the MathNet SVD.
+    let private calibrationProblemsOver (runs : AttachedRun list) : StudyFitSolution * EngineProblems * AirFamilyRuns =
+        let staged, prefits, context = stageOneOver runs
+        Assert.Equal(LinearStudyEngine, staged.engineWith context prefits)
+        let solution = solutionOf (staged.calibrateLinear context prefits (createMathNetSvd ()))
+        let engineProblems = engineProblemsOf (staged.calibrationProblemsWith context prefits (createMathNetSvd ()))
+
+        match staged.airRunsWith context prefits with
+        | Ok airRuns -> solution, engineProblems, airRuns
+        | Error error -> failwith $"the calibration's AIR runs were refused: {error.describe}"
+
+    /// Stage one over the AIR runs' rows.
+    let private stageOneOf (airRuns : AirFamilyRuns) : StageOneCalibrationData =
+        match calibrateFromAirRows (createMathNetSvd ()) airRuns.stageOneRows with
+        | Ok stageOne -> stageOne
+        | Error error -> failwith $"stage one refused the rows: {error.describe}"
+
+    /// The residual entries' root mean square.
+    let private rootMeanSquareOf (residuals : ResidualVector) : float =
+        sqrt ((residuals.value |> Array.sumBy (fun entry -> entry * entry)) / float residuals.value.Length)
+
+    [<Fact>]
+    let ``the calibration fit's problems are the three AIR fringes in the instruments' own constants`` () : unit =
+        let entryOf (item : Item) (name : ParameterName) : FitCoordinate =
+            EntryCoordinate [ ({ parameter = ItemParameterRef (item.id, name); owner = ItemOwner item.id } : FitEntryRef) ]
+
+        // At step 389's exact rows, then off them, where the RMSEs stand far above round-off.
+        for runs in [ stageOneRuns; movedStageOneRuns ] do
+            let solution, engineProblems, airRuns = calibrationProblemsOver runs
+            let stageOne = stageOneOf airRuns
+            let traceOf (rows : MuellerRawRow list) : AirTrace = reduceAirTraces stageOne.darkMean rows
+
+            Assert.Equal<FitProblemSubject list>(
+                [ AirFringeProblem [ ExperimentName "S1" ]; AirFringeProblem [ ExperimentName "S2" ]; AirFringeProblem [ ExperimentName "S3" ] ],
+                engineProblems.problems |> List.map (fun problem -> problem.subject))
+
+            Assert.Equal<FitCoordinate list list>(
+                [
+                    [ entryOf realLp2Unknown ParameterName.dialZero; FringeVisibilityCoordinate ]
+                    [ entryOf cpl2Unknown ParameterName.dialZero; entryOf cpl2Unknown retardance ]
+                    [ entryOf cpl1Unknown fastAxisOffset; entryOf cpl1Unknown retardance ]
+                ],
+                engineProblems.problems |> List.map (fun problem -> problem.coordinates))
+
+            Assert.Empty(engineProblems.productChecks)
+
+            // Centre zero and unit one; each entry coordinate within its entry's bounds, the visibility unbounded.
+            Assert.Equal<float[] list>(
+                [ [| -0.5; -infinity |]; [| -0.5; 1.0 |]; [| -0.5; 1.0 |] ],
+                engineProblems.problems |> List.map (fun problem -> problem.search.lowerBounds.value))
+
+            Assert.Equal<float[] list>(
+                [ [| 0.5; infinity |]; [| 0.5; 2.0 |]; [| 0.5; 2.0 |] ],
+                engineProblems.problems |> List.map (fun problem -> problem.search.upperBounds.value))
+
+            for problem in engineProblems.problems do
+                Assert.Equal<float[]>(Array.zeroCreate 2, problem.centre.value)
+                Assert.Equal<float[]>(Array.create 2 1.0, problem.unit.value)
+
+                // Each entry coordinate starts exactly at the value `calibrateLinear` gives its entry.
+                List.zip problem.coordinates (List.ofArray problem.search.start.value)
+                |> List.iter (fun (coordinate, start) ->
+                    match coordinate with
+                    | EntryCoordinate [ entry ] ->
+                        match solution.layout.entries |> List.tryFindIndex (fun held -> held.unknown.parameter = entry.parameter) with
+                        | Some k -> Assert.Equal<float>(solution.fitted.value.[k], start)
+                        | None -> Assert.Fail("a calibration coordinate holds an entry the layout does not")
+                    | FringeVisibilityCoordinate -> ()
+                    | EntryCoordinate _
+                    | ElementCoordinate _ -> Assert.Fail($"a calibration coordinate is %A{coordinate}"))
+
+            match engineProblems.problems with
+            | [ lpLp; lpCpl; cplLp ] ->
+                let lpLpFit, lpCplFit =
+                    match freeCosineFit (createMathNetSvd ()) (traceOf airRuns.stageOneRows.lpLpAirRows),
+                          freeCosineFit (createMathNetSvd ()) (traceOf airRuns.stageOneRows.lpCplAirRows) with
+                    | Ok lpLpFit, Ok lpCplFit -> lpLpFit, lpCplFit
+                    | _ -> failwith "a free cosine fit of the AIR fringes was refused"
+
+                // The LP-LP visibility starts at the free cosine fit's, which stage one's LP2 zero came from.
+                Assert.Equal<float>(lpLpFit.visibility.value, lpLp.search.start.value.[1])
+
+                // At their starts the LP-LP and LP-CPL fringes have the RMSE their free cosine fits report.
+                let atLpLp = lpLp.residual lpLp.search.start
+                let atLpCpl = lpCpl.residual lpCpl.search.start
+                Assert.Equal(dialReadings.Length, atLpLp.value.Length)
+                Assert.Equal(dialReadings.Length, atLpCpl.value.Length)
+                Assert.Equal(lpLpFit.rmse.value, rootMeanSquareOf atLpLp, 1e-12)
+                Assert.Equal(lpCplFit.rmse.value, rootMeanSquareOf atLpCpl, 1e-12)
+
+                // The CPL-LP fringe at its start is stage one's source model on its trace, phased on LP2's zero.
+                let expected = stageOne.cplSourceModel.lpFrameResidualOn (traceOf airRuns.stageOneRows.cplLpAirRows) stageOne.lpZero
+                Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) expected.value (cplLp.residual cplLp.search.start).value
+            | problems -> Assert.Fail($"expected three AIR fringes, got {problems.Length}")
+
+    [<Fact>]
+    let ``each instrument constant of a calibration fit gets its sigma from its fringe`` () : unit =
+        let _, engineProblems, _ = calibrationProblemsOver movedStageOneRuns
+        let sigmas = engineProblems.problems |> List.collect (fun problem -> problem.entrySigmas)
+
+        // The five entries, each once, in fringe and coordinate order; the LP-LP visibility is no entry's.
+        Assert.Equal<FitEntryRef list>(
+            [
+                realLp2Unknown, ParameterName.dialZero
+                cpl2Unknown, ParameterName.dialZero
+                cpl2Unknown, retardance
+                cpl1Unknown, fastAxisOffset
+                cpl1Unknown, retardance
+            ]
+            |> List.map (fun (item, name) -> ({ parameter = ItemParameterRef (item.id, name); owner = ItemOwner item.id } : FitEntryRef)),
+            sigmas |> List.map (fun sigma -> sigma.entry))
+
+        for sigma in sigmas do
+            match sigma.sigmaOpt with
+            | Some value -> Assert.True(value.value > 0.0, $"{sigma.entry.parameter.describe}'s σ is {value.value:R}")
+            | None -> Assert.Fail($"{sigma.entry.parameter.describe} of a full-rank fringe has no σ")
+
+        // LP2's zero is the phase of a full-visibility fringe, so 2 counts in about 500 hold it well under a degree.
+        match sigmas with
+        | { sigmaOpt = Some lpZeroSigma } :: _ ->
+            Assert.True(lpZeroSigma.value < (Angle.degree 1.0<deg>).value, $"LP2's zero has σ {lpZeroSigma.value:R} rad")
+        | _ -> Assert.Fail("LP2's zero has no σ")
+
+    [<Fact>]
+    let ``each AIR run of a calibration fit has its own trace's residual`` () : unit =
+        // A second LP-LP run, last in the study and read exactly, beside step 389's moved runs: the families come in the
+        // order LP-LP, LP-CPL, CPL-LP, each family's runs in study order.
+        let secondLpLp = stageOneRunOver lp1AirRealLp2 "S4" (airCapturesOf "LP-(AIR#1)-LP" LpSource stageOneTruth.lpAnalyzer)
+        let _, engineProblems, airRuns = calibrationProblemsOver (movedStageOneRuns @ [ secondLpLp ])
+        let names (runs : AirRunRows list) : ExperimentName list = runs |> List.map (fun run -> run.run)
+        let families = [ [ ExperimentName "S1"; ExperimentName "S4" ]; [ ExperimentName "S2" ]; [ ExperimentName "S3" ] ]
+
+        Assert.Equal<ExperimentName list list>(families, [ names airRuns.lpLpRuns; names airRuns.lpCplRuns; names airRuns.cplLpRuns ])
+        Assert.Equal(3, airRuns.darkRows.Length)
+
+        // One per AIR Calibration run, none for the Dark run.
+        let residualNames = engineProblems.runResiduals |> List.map (fun residual -> residual.run)
+        Assert.Equal<ExperimentName list>(List.concat families, residualNames)
+        Assert.DoesNotContain(ExperimentName "K1", residualNames)
+
+        // Each run's own trace, one entry per dial reading, with its root mean square.
+        for runResidual in engineProblems.runResiduals do
+            Assert.Equal(dialReadings.Length, runResidual.residuals.value.Length)
+            let rootMeanSquare = rootMeanSquareOf runResidual.residuals
+            Assert.True(rootMeanSquare > 1e-9, $"{runResidual.run.value}'s root mean square is {rootMeanSquare:R}")
+            Assert.Equal(rootMeanSquare, runResidual.rmse.value, 1e-12 * rootMeanSquare)
+
+        // A family's runs' entries, run after run, are its fringe's residual at its start.
+        List.zip engineProblems.problems families
+        |> List.iter (fun (problem, runs) ->
+            let ofRuns =
+                runs
+                |> List.collect (fun run ->
+                    match engineProblems.runResiduals |> List.tryFind (fun residual -> residual.run = run) with
+                    | Some residual -> List.ofArray residual.residuals.value
+                    | None -> failwith $"{run.value} has no residual")
+                |> Array.ofList
+
+            let atStart = (problem.residual problem.search.start).value
+            Assert.Equal(atStart.Length, ofRuns.Length)
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) atStart ofRuns)
+
+        // S1 and S4 share LP2's zero, so its coordinate holds that one entry.
+        match engineProblems.problems with
+        | lpLp :: _ ->
+            Assert.Equal<FitCoordinate>(
+                EntryCoordinate [ ({ parameter = ItemParameterRef (realLp2Unknown.id, ParameterName.dialZero); owner = ItemOwner realLp2Unknown.id } : FitEntryRef) ],
+                List.head lpLp.coordinates)
+        | [] -> Assert.Fail("the calibration has no fringe")
 
     // ============================ spec 0050 S11.3: one fit, one fit run ============================
 
