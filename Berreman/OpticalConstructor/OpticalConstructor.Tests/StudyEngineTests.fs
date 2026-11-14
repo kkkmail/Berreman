@@ -29,6 +29,7 @@ open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.StagedMuellerPath
+open OpticalConstructor.Optimization.FittedProblems
 open OpticalConstructor.Optimization.StudyEngine
 open Xunit
 
@@ -1099,6 +1100,102 @@ module StudyEngineTests =
 
         Assert.Empty(silent)
         Assert.Empty(drawn)
+
+    // ============================ spec 0050 S11.4: the nonlinear fit's problems ============================
+
+    let private engineProblemsOf (result : Result<EngineProblems, StudyFitError>) : EngineProblems =
+        match result with
+        | Ok problems -> problems
+        | Error error -> failwith $"expected the fit's problems, got {error.describe}"
+
+    [<Fact>]
+    let ``the nonlinear fit's problem is the study residual over its scaled coordinates at the fitted vector`` () : unit =
+        let study = plateStudyWith None
+        let context = plateContextOf study
+        let staged, _, data = stagedOver context study
+        let solution = solutionOf (staged.fitNonlinear context data (deviatesOf [] (ResizeArray<UniformDeviate>())) UnwatchedIterations)
+        let scaled = problemOf (staged.scaledProblemWith context data)
+        let engineProblems = engineProblemsOf (staged.nonlinearProblemsWith context data solution)
+
+        Assert.Empty(engineProblems.productChecks)
+
+        match engineProblems.problems with
+        | [ problem ] ->
+            Assert.Equal(StudyEntriesProblem, problem.subject)
+
+            // n_o's then n_e's entry, each its own coordinate, both shared by the opened version.
+            Assert.Equal<FitCoordinate list>(
+                [ ordinaryIndex; extraordinaryIndex ]
+                |> List.map (fun name ->
+                    EntryCoordinate [ ({ parameter = MaterialParameterRef (indexVersion, name); owner = MaterialOwner indexVersion } : FitEntryRef) ]),
+                problem.coordinates)
+
+            // The frame and box the fit searched, its start the fitted vector's scaled coordinates.
+            Assert.Equal<float[]>(scaled.centre.value, problem.centre.value)
+            Assert.Equal<float[]>(scaled.unit.value, problem.unit.value)
+            Assert.Equal<float[]>(scaled.search.lowerBounds.value, problem.search.lowerBounds.value)
+            Assert.Equal<float[]>(scaled.search.upperBounds.value, problem.search.upperBounds.value)
+
+            let atFitted =
+                Array.map3 (fun (fitted : float) (centre : float) (unit : float) -> (fitted - centre) / unit) solution.fitted.value scaled.centre.value scaled.unit.value
+
+            Assert.Equal(atFitted.Length, problem.search.start.value.Length)
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) atFitted problem.search.start.value
+
+            // Its residual at its start is the scaled problem's there: the study residual's sixteen entries per observation.
+            let expected = (scaled.residual (ScaledVector atFitted)).value
+            let actual = (problem.residual problem.search.start).value
+            Assert.Equal(16 * indexObservations.Length, expected.Length)
+            Assert.Equal(expected.Length, actual.Length)
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) expected actual
+
+            // The same function away from the fit too: at the parameters' starts, where the residual is far from nothing.
+            let origin = ScaledVector [| 0.0; 0.0 |]
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) (scaled.residual origin).value (problem.residual origin).value
+
+            // Both coordinates determined, at the converged member's χ².
+            let quality = problem.quality
+            Assert.Equal(MatrixRank 2, quality.rank)
+
+            match solution.members with
+            | [ { start = _; outcome = MemberConverged (_, Some chiSquared) } ] -> Assert.Equal(chiSquared.value, quality.chiSquared.value, 1e-12)
+            | members -> Assert.Fail($"expected one converged member, got %A{members}")
+
+            // Each σ in physical units: the coordinate's unit times the report's standard error.
+            let standardErrors = problem.report.standardErrors.value
+
+            for k in 0 .. 1 do
+                let sigma = ParameterSigma (problem.unit.value.[k] * standardErrors.[k])
+                Assert.Equal<ParameterSigma option>(Some sigma, problem.sigmaAt (FitCoordinateIndex k))
+        | problems -> Assert.Fail($"expected one problem, got {problems.Length}")
+
+    [<Fact>]
+    let ``each run of a nonlinear fit has the study residual over that run alone`` () : unit =
+        let study = plateStudyWith None
+        let context = plateContextOf study
+        let staged, stagedContext, data = stagedOver context study
+        let solution = solutionOf (staged.fitNonlinear context data (deviatesOf [] (ResizeArray<UniformDeviate>())) UnwatchedIterations)
+        let engineProblems = engineProblemsOf (staged.nonlinearProblemsWith context data solution)
+
+        match engineProblems.runResiduals, data.runs with
+        | [ runResidual ], [ run ] ->
+            Assert.Equal(plateRun.attachedRun.name, runResidual.run)
+
+            // The study residual over a data holding P1 alone, at the fitted vector.
+            let alone =
+                match staged.study.residualWith stagedContext solution.layout { data with runs = [ run ] } solution.fitted with
+                | Ok residual -> residual.value
+                | Error error -> failwith $"the study residual was refused: {error.describe}"
+
+            Assert.Equal(16 * indexObservations.Length, alone.Length)
+            Assert.Equal(alone.Length, runResidual.residuals.value.Length)
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) alone runResidual.residuals.value
+
+            // Relative: the converged entries are so small that an absolute 1e-12 could not tell an RMSE from its square.
+            let rootMeanSquare = sqrt ((alone |> Array.sumBy (fun entry -> entry * entry)) / float alone.Length)
+            Assert.True(rootMeanSquare > 0.0, $"the run's root mean square is {rootMeanSquare:R}")
+            Assert.Equal(rootMeanSquare, runResidual.rmse.value, 1e-12 * rootMeanSquare)
+        | runResiduals, runs -> Assert.Fail($"expected one run residual over one run, got {runResiduals.Length} over {runs.Length}")
 
     // ============================ spec 0050 S11.3: the linear engine's stage 1 ============================
 

@@ -1077,6 +1077,70 @@ module StudyEngine =
                                 objectMatrices = solves |> List.map (fun solve -> solve.matrixFit)
                             }))))
 
+    /// What a fit's results are read from, each engine giving its own: its solves, each fitted run's residual and each
+    /// series' product check (spec 0050 S11.4).
+    [<ReferenceEquality>]
+    type EngineProblems =
+        {
+            problems : FittedProblem list
+            runResiduals : RunResidual list
+            productChecks : SeriesProductCheck list
+        }
+
+    type StagedStudy with
+
+        /// For a solution `fitNonlinear` answered: the study residual and its priors over the scaled coordinates it searched,
+        /// at the fitted vector, and each fitted run's study residual over that run alone; it solves no series (spec 0050
+        /// S11.4; 001 §L).
+        member this.nonlinearProblemsWith
+            (context : StudyForwardContext)
+            (data : StudyData)
+            (solution : StudyFitSolution)
+            : Result<EngineProblems, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+
+            this.scaledProblemWith context data
+            |> Result.bind (fun problem ->
+                let atFitted : ScaledVector =
+                    Array.map3
+                        (fun (fitted : float) (centre : float) (unit : float) -> (fitted - centre) / unit)
+                        solution.fitted.value
+                        problem.centre.value
+                        problem.unit.value
+                    |> ScaledVector
+
+                let solved : FittedProblem =
+                    {
+                        subject = StudyEntriesProblem
+                        coordinates =
+                            problem.layout.entries
+                            |> List.map (fun entry -> EntryCoordinate [ ({ parameter = entry.unknown.parameter; owner = entry.owner } : FitEntryRef) ])
+                        residual = problem.residual
+                        search = { problem.search with start = atFitted }
+                        centre = problem.centre
+                        unit = problem.unit
+                    }
+
+                // The study residual alone, without the priors' rows, so its entries are the run's weighted ones.
+                let runResidualOf (run : StudyRun) : Result<RunResidual, StudyFitError> =
+                    this.study.residualWith staged problem.layout { data with runs = [ run ] } solution.fitted
+                    |> Result.mapError StudyForwardFitErr
+                    |> Result.map (fun residuals ->
+                        let count = residuals.value.Length
+
+                        ({
+                            run = run.experiment.name
+                            residuals = residuals
+                            rmse = if count = 0 then ResidualRmse 0.0 else ResidualRmse (sqrt (residuals.sumOfSquares / float count))
+                        } : RunResidual))
+
+                data.runs
+                |> List.filter (fun run -> List.contains run.experiment.name this.fittedRuns)
+                |> List.map runResidualOf
+                |> ItemEvaluation.sequenced
+                |> Result.map (fun runResiduals ->
+                    ({ problems = [ solved ]; runResiduals = runResiduals; productChecks = [] } : EngineProblems)))
+
     /// What `RunFit` asks: the study, the stage (Run joint is `JointStage`, Run stage `CalibrationStage` or `ObjectStage`)
     /// and how its calibrations are used (spec 0050 S11.3, S11.5).
     type StudyFitRequest =
