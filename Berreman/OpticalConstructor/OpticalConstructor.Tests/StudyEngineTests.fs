@@ -390,22 +390,27 @@ module StudyEngineTests =
         | Ok setup -> setup
         | Error error -> failwith $"'{name}' was refused: {error.describe}"
 
-    /// The HeNe, the prep, the object slots in light order (an empty one holds nothing), the analyzer and the detector.
-    let private benchOf (name : string) (prep : Item) (objects : Item option list) (analyzer : Item) (detector : Item) : Setup =
-        let objectSlots =
-            objects
-            |> List.mapi (fun k objectOpt ->
-                let slot = emptySlot $"object{k + 1}" Sample (alongBeam (-0.2<meter> + float k * 0.1<meter>))
+    /// The k-th object slot, from 0, in light order between the prep and the analyzer.
+    let private objectSlotAt (k : int) : SetupSlot = emptySlot $"object{k + 1}" Sample (alongBeam (-0.2<meter> + float k * 0.1<meter>))
 
-                match objectOpt with
-                | Some item -> holding item slot
-                | None -> slot)
-
+    /// The HeNe, the prep, these object slots, the analyzer and the detector.
+    let private benchWith (name : string) (prep : Item) (objectSlots : SetupSlot list) (analyzer : Item) (detector : Item) : Setup =
         setupOf
             name
             ([ emptySlot "src" LightSource RayModel.defaultSourcePoint |> holding laser; opticSlot "prep" (-0.4<meter>) prep ]
              @ objectSlots
              @ [ opticSlot "analyzer" 0.4<meter> analyzer; emptySlot "det" Detector RayModel.defaultDetectorPoint |> holding detector ])
+
+    /// The HeNe, the prep, the object slots in light order (an empty one holds nothing), the analyzer and the detector.
+    let private benchOf (name : string) (prep : Item) (objects : Item option list) (analyzer : Item) (detector : Item) : Setup =
+        let objectSlots =
+            objects
+            |> List.mapi (fun k objectOpt ->
+                match objectOpt with
+                | Some item -> holding item (objectSlotAt k)
+                | None -> objectSlotAt k)
+
+        benchWith name prep objectSlots analyzer detector
 
     // The AIR benches of the three calibration families, and the Science benches.
     let private lpLpAir : Setup = benchOf "LP-AIR-LP" lp1 [ None ] lp2 phone
@@ -590,14 +595,14 @@ module StudyEngineTests =
         let experiments = runs |> List.map (fun attached -> attached.attachedRun)
         studyOf (Study.create (StudyName name) (experiments |> List.map (fun run -> run.name)) [] experiments)
 
-    /// The forward context over a kit of these items, every bench and the runs holding the study, the Built-in library and
-    /// materials, and the runs' files.
-    let private contextOver (items : Item list) (runs : AttachedRun list) (study : Study) : StudyForwardContext =
+    /// The forward context over a kit of these items, these setups and the runs holding the study, the Built-in library
+    /// and materials, and the runs' files.
+    let private contextWithin (setups : Setup list) (items : Item list) (runs : AttachedRun list) (study : Study) : StudyForwardContext =
         let kit : StudyContext =
             {
                 studies = [ study ]
                 experiments = runs |> List.map (fun attached -> attached.attachedRun)
-                setups = benches
+                setups = setups
                 items = items
                 resolveMaterial = fun version -> Error (MaterialUnavailableErr $"material {version.materialId.value} is not the test's")
             }
@@ -610,6 +615,10 @@ module StudyEngineTests =
             choiceOf = choiceOf
             solverParameters = SolverParameters.defaultValue
         }
+
+    /// The forward context over a kit of these items, every bench and the runs holding the study.
+    let private contextOver (items : Item list) (runs : AttachedRun list) (study : Study) : StudyForwardContext =
+        contextWithin benches items runs study
 
     /// The study staged as asked with its calibrations held, and its pre-fit over the staged items.
     let private prefitStaged (context : StudyForwardContext) (study : Study) (stage : FitStage) : StagedStudy * ExperimentPrefit list =
@@ -1105,8 +1114,8 @@ module StudyEngineTests =
     let private stageOneLpCplRows : MuellerRawRow list = airCapturesOf "LP-(AIR#0)-CPL" LpSource stageOneTruth.cplAnalyzer
     let private stageOneCplLpRows : MuellerRawRow list = airCapturesOf "CPL-(AIR#0)-LP" stageOneTruth.cplSource stageOneTruth.lpAnalyzer
 
-    /// A Calibration run over the setup turning the analyzer's dial 0° to 160° by 20°, its Phone ROI CSV the rows.
-    let private stageOneRunOver (setup : Setup) (name : string) (rows : MuellerRawRow list) : AttachedRun =
+    /// The scan turning the analyzer's dial 0° to 160° by 20°, the readings the rows are taken at.
+    let private dialSweep : ExperimentScan =
         let range : VariableRange =
             {
                 min = Propagation.SweptValue 0.0
@@ -1114,9 +1123,12 @@ module StudyEngineTests =
                 points = Propagation.CurvePointCount 9
             }
 
+        ExperimentScan.oneAxis { analyzerTurn with range = range } CaptureTransmitted None
+
+    /// A Calibration run over the setup turning the analyzer's dial 0° to 160° by 20°, its Phone ROI CSV the rows.
+    let private stageOneRunOver (setup : Setup) (name : string) (rows : MuellerRawRow list) : AttachedRun =
         let captured = capturedOver setup name CalibrationRun rows
-        let scan = ExperimentScan.oneAxis { analyzerTurn with range = range } CaptureTransmitted None
-        { captured with attachedRun = { captured.attachedRun with scan = scan } }
+        { captured with attachedRun = { captured.attachedRun with scan = dialSweep } }
 
     let private stageOneLpLp : AttachedRun = stageOneRunOver lp1AirRealLp2 "S1" stageOneLpLpRows
     let private stageOneLpCpl : AttachedRun = stageOneRunOver lpCplAir "S2" stageOneLpCplRows
@@ -1208,6 +1220,599 @@ module StudyEngineTests =
         | Error error -> Assert.Fail($"expected the staged path's EmptyCaptureSetErr, got {error.describe}")
         | Ok _ -> Assert.Fail("a calibration stage without a dark run was fitted")
 
+    // ============================ spec 0050 S11.3: the linear engine's object stage ============================
+
+    // Step 389's instruments, each stage-1 constant published as a calibration at the truth's: LP2's zero 3°, CPL2's zero
+    // −2° and retardance 88°, and CPL1's retarder at 46° (its offset 1° past the 45° it sits at) and 91°.
+    let private calibratedLp2 : Item = itemOf realLp2Draft |> publishing [ ParameterName.dialZero, stageOneTruth.lpZero.value ]
+
+    let private calibratedCpl2 : Item =
+        itemOf cpl2Draft
+        |> publishing [ ParameterName.dialZero, stageOneTruth.cplZero.value; retardance, stageOneTruth.cplAnalyzerRetardance.value ]
+
+    let private calibratedCpl1 : Item =
+        itemOf cpl1Draft
+        |> publishing
+            [
+                fastAxisOffset, (stageOneTruth.cplSourceModel.thetaRel - Angle.degree 45.0<deg>).value
+                retardance, stageOneTruth.cplSourceModel.retardance.value
+            ]
+
+    /// The instruments every object-stage kit holds, the quarter-wave plate among them.
+    let private objectInstruments : Item list = [ laser; lp1; calibratedLp2; calibratedCpl1; calibratedCpl2; phone; plate ]
+
+    let private phis : float<deg> list = [ 0.0<deg>; 30.0<deg>; 60.0<deg>; 90.0<deg> ]
+
+    /// The bench of these objects in light order, each at its R1, read by the Phone.
+    let private turnedBench (name : string) (prep : Item) (objects : (Item * Angle) list) (analyzer : Item) : Setup =
+        let objectSlots =
+            objects
+            |> List.mapi (fun k (item, turn) ->
+                let slot = objectSlotAt k
+                holding item { slot with placement = { slot.placement with r1 = turn } })
+
+        benchWith name prep objectSlots analyzer phone
+
+    /// The four reference families about the segment, each of its objects at φ: LP1 or CPL1 preparing, and LP2, or the
+    /// quarter-wave plate then CPL2, analyzing. The shipped CPL is a polarizer then a retarder in light order, so as an
+    /// analyzer it reads no S₃; the plate ahead of it does, as the reference's circular analyzer (a retarder, then an LP).
+    let private familyBenches (label : string) (segment : Item list) (phi : float<deg>) : Setup list =
+        let turned = segment |> List.map (fun item -> item, Angle.degree phi)
+        let quarterWave = [ plate, Angle.zero ]
+
+        [
+            turnedBench $"{label} LP-LP {phi}" lp1 turned calibratedLp2
+            turnedBench $"{label} LP-CPL {phi}" lp1 (turned @ quarterWave) calibratedCpl2
+            turnedBench $"{label} CPL-LP {phi}" calibratedCpl1 turned calibratedLp2
+            turnedBench $"{label} CPL-CPL {phi}" calibratedCpl1 (turned @ quarterWave) calibratedCpl2
+        ]
+
+    /// LP1 to LP2 through no object: the AIR bench the sessions' gains are anchored to.
+    let private airBench : Setup = benchOf "AIR LP-LP" lp1 [ None ] calibratedLp2 phone
+
+    /// A run of that role over the setup, in that hand-set session or none, turning the analyzer's dial 0° to 160° by 20°.
+    let private sweptRunOver (setup : Setup) (name : string) (role : ExperimentRole) (sessionOpt : SessionName option) : Experiment =
+        { (capturedOver setup name role []).attachedRun with scan = dialSweep; sessionOpt = sessionOpt }
+
+    let private dialSettingAt (reading : Angle) : ScanSetting =
+        { elementId = Library.ElementId "analyzer"; variable = VaryDialReading; value = Propagation.SweptValue reading.degrees }
+
+    /// A black box's values: the unit matrix at vec place k (4·column + row), or the identity.
+    let private probeValues (placeOpt : int option) : ItemEvaluation.ParameterValues =
+        coefficientPlaces
+        |> List.map (fun (row, column) ->
+            let value =
+                match placeOpt with
+                | Some place -> if 4 * column + row = place then 1.0 else 0.0
+                | None -> if row = column then 1.0 else 0.0
+
+            coefficient row column, ParameterValue value)
+        |> Map.ofList
+        |> ItemEvaluation.ParameterValues
+
+    /// The ordinary run law's S₀ per unit gain at each dial reading: the Phone's reading over 1000 at no dark, every item
+    /// at its own values but the probed ones.
+    let private runLawSignalsOf (context : StudyForwardContext) (run : Experiment) (probed : (ItemId * ItemEvaluation.ParameterValues) list) : float list =
+        let study = studyOf (Study.create (StudyName "Run law") [ run.name ] [] [ run ])
+        let assignment : ExperimentAssignment = { itemValues = Map.ofList probed; crystals = Map.empty }
+
+        match run.boundWith context study assignment (Some (DarkMean 0.0)) with
+        | Error error -> failwith $"{run.name.value} was not bound: {error.describe}"
+        | Ok bound ->
+            dialReadings
+            |> List.map (fun reading ->
+                match bound.readingAt [ dialSettingAt reading ] None with
+                | Ok (RecordedSignal signal) -> signal.value / 1000.0
+                | Ok other -> failwith $"{run.name.value} read {other.kindText}"
+                | Error error -> failwith $"{run.name.value} was not read: {error.describe}")
+
+    /// The run law's design row at each dial reading: entry 4·column + row is S₀ per unit gain with the segment's last item
+    /// at that place's unit matrix and each other at the identity, so a series reads its combined matrix.
+    let private runLawDesignsOf (context : StudyForwardContext) (run : Experiment) (segment : ItemId list) : float[] list =
+        let byPlace : float list list =
+            [
+                for place in 0 .. 15 ->
+                    segment
+                    |> List.mapi (fun k item -> item, probeValues (if k = segment.Length - 1 then Some place else None))
+                    |> runLawSignalsOf context run
+            ]
+
+        dialReadings |> List.mapi (fun r _ -> byPlace |> List.map (List.item r) |> Array.ofList)
+
+    /// A run to observe: the experiment, its unknown segment's items in light order (none for an AIR run) and the matrix
+    /// they make, and each reading's capture time and the Phone's gain at a time.
+    type private PlannedRun =
+        {
+            plannedRun : Experiment
+            segment : ItemId list
+            segmentTruth : MuellerMatrix
+            timeOf : int -> DateTimeOffset
+            gainAt : DateTimeOffset -> float
+        }
+
+    /// An observed run: the run with its rows, and per row the run law's design and the corrected signal it is made of.
+    type private ObservedRun =
+        {
+            observed : AttachedRun
+            designs : float[] list
+            targets : float list
+        }
+
+    /// Each planned run's Phone ROI CSV over a kit of the items within these setups: g · (design · M.vecColumnMajor) + 5
+    /// at each reading's time, an AIR run's g · S₀ + 5, the dark 5.
+    let private observedOver (setups : Setup list) (items : Item list) (planned : PlannedRun list) : ObservedRun list =
+        let blank = planned |> List.map (fun plan -> ({ attachedRun = plan.plannedRun; attachedPoints = CapturePoints [] } : AttachedRun))
+        let context = contextWithin setups items blank (studyOver "Run law" blank)
+
+        planned
+        |> List.map (fun plan ->
+            let designs, targets =
+                match plan.segment with
+                | [] -> [], runLawSignalsOf context plan.plannedRun []
+                | segment ->
+                    let designs = runLawDesignsOf context plan.plannedRun segment
+                    let m = plan.segmentTruth.vecColumnMajor
+                    designs, designs |> List.map (fun design -> design |> Array.mapi (fun place entry -> entry * m.[place]) |> Array.sum)
+
+            let rows =
+                targets
+                |> List.mapi (fun k target ->
+                    let at = plan.timeOf k
+
+                    ({
+                        experiment = MuellerExperimentLabel plan.plannedRun.name.value
+                        captureIndex = CaptureIndex (k + 1)
+                        capturedAt = at
+                        description = List.item k dialReadings
+                        avgTotal = MeasuredIntensity (plan.gainAt at * target + 5.0)
+                    } : MuellerRawRow))
+
+            { observed = { attachedRun = plan.plannedRun; attachedPoints = CapturePoints rows }; designs = designs; targets = targets })
+
+    let private afternoon : DateTimeOffset = DateTimeOffset(2026, 11, 13, 14, 0, 0, TimeSpan.Zero)
+
+    /// A run of a free session: its readings a second apart from 14:00, the Phone at its gain 1000.
+    let private freelyPlanned (run : Experiment) (segment : Item list) (truth : MuellerMatrix) : PlannedRun =
+        {
+            plannedRun = run
+            segment = segment |> List.map (fun item -> item.id)
+            segmentTruth = truth
+            timeOf = fun k -> afternoon.AddSeconds(float k)
+            gainAt = fun _ -> 1000.0
+        }
+
+    /// The free-session Science runs of the segment's four families at each φ, named `<prefix><k>`.
+    let private freeFamilyRuns (prefix : string) (segment : Item list) (truth : MuellerMatrix) : Setup list * PlannedRun list =
+        let benches = phis |> List.collect (familyBenches prefix segment)
+        let runs = benches |> List.mapi (fun k bench -> freelyPlanned (sweptRunOver bench $"{prefix}{k + 1}" ScienceRun None) segment truth)
+        benches, runs
+
+    /// The object stage over a kit of the items within these setups: the staged study, the unstaged context, its pre-fit,
+    /// each run of it ready, and its data.
+    let private objectStageOf
+        (setups : Setup list)
+        (items : Item list)
+        (runs : AttachedRun list)
+        (study : Study)
+        : StagedStudy * StudyForwardContext * ExperimentPrefit list * StudyData =
+        let context = contextWithin setups items runs study
+        let staged, prefits = prefitStaged context study ObjectStage
+        let stagedContext = { context with kit = { context.kit with items = staged.items } }
+
+        for prefit in prefits do
+            match prefit.check with
+            | Ok _ -> ()
+            | Error error -> Assert.Fail($"{prefit.experiment.name.value} is not ready: {error.describe}")
+
+        match staged.study.dataWith stagedContext prefits with
+        | Ok data -> staged, context, prefits, data
+        | Error error -> failwith $"'{study.name.value}' has no data: {error.describe}"
+
+    /// The real MathNet SVD, recording each system it is handed, in order.
+    let private recordingSvd (recorded : ResizeArray<LeastSquaresSystem>) : MuellerSolverProxy =
+        let real = createMathNetSvd ()
+
+        {
+            solveLinearLeastSquares =
+                fun system ->
+                    recorded.Add system
+                    real.solveLinearLeastSquares system
+        }
+
+    /// Where a coefficient of a solved object comes from: the system column it is fitted in, or its fixed value.
+    type private CoefficientSource =
+        | FittedInColumn of column : int
+        | FixedAtValue of value : float
+
+    /// A black box's sources: its free places, in row-major order, fitted in the columns from `first` on, every other
+    /// place fixed at the truth's element.
+    let private sourcesOf (truth : MuellerMatrix) (free : (int * int) list) (first : int) : int * int -> CoefficientSource =
+        fun (row, column) ->
+            match free |> List.tryFindIndex (fun place -> place = (row, column)) with
+            | Some k -> FittedInColumn (first + k)
+            | None -> FixedAtValue (truth.element row column)
+
+    /// A full reconstruction's sources: every place fitted in its own vec column, 4·column + row.
+    let private vecSources : int * int -> CoefficientSource = fun (row, column) -> FittedInColumn (4 * column + row)
+
+    /// The system a solve must be handed over the observed runs, in order: each column of a row the sum of the run law's
+    /// design entries of the places fitted in it, its target less the fixed places' part.
+    let private assertSystemOver (columnCount : int) (runs : (ObservedRun * (int * int -> CoefficientSource)) list) (system : LeastSquaresSystem) : unit =
+        let expected =
+            runs
+            |> List.collect (fun (run, sourceOf) ->
+                List.map2
+                    (fun (design : float[]) (target : float) ->
+                        let sources = coefficientPlaces |> List.map (fun (row, column) -> design.[4 * column + row], sourceOf (row, column))
+
+                        let columns =
+                            List.init columnCount (fun j ->
+                                sources
+                                |> List.sumBy (fun (entry, source) ->
+                                    match source with
+                                    | FittedInColumn k when k = j -> entry
+                                    | FittedInColumn _
+                                    | FixedAtValue _ -> 0.0))
+
+                        let fixedPart =
+                            sources
+                            |> List.sumBy (fun (entry, source) ->
+                                match source with
+                                | FixedAtValue value -> entry * value
+                                | FittedInColumn _ -> 0.0)
+
+                        columns, target - fixedPart)
+                    run.designs
+                    run.targets)
+
+        Assert.Equal(expected.Length, system.design.Length)
+
+        expected
+        |> List.iteri (fun r (columns, _) ->
+            Assert.Equal(columnCount, system.design.[r].value.Length)
+            assertValuesWithin 1e-12 columns (system.design.[r].value |> List.ofArray |> List.map ParameterValue))
+
+        assertValuesWithin 1e-12 (expected |> List.map snd) (system.rhs |> List.ofArray |> List.map ParameterValue)
+
+    let private placeOf (row : int) (column : int) : int = 4 * row + column
+
+    /// The object solve of these items, failing the fact when there is none.
+    let private objectFitOf (items : Item list) (solution : StudyFitSolution) : ObjectMatrixFit =
+        match solution.objectMatrices |> List.tryFind (fun fit -> fit.items = (items |> List.map (fun item -> item.id))) with
+        | Some fit -> fit
+        | None ->
+            let labels = items |> List.map (fun item -> item.label.value) |> String.concat ", "
+            failwith $"no object solve of {labels}"
+
+    /// The fitted values of the item's coefficients at these places, failing the fact when the layout fits one not.
+    let private fittedCoefficientsOf (solution : StudyFitSolution) (item : Item) (places : (int * int) list) : ParameterValue list =
+        places
+        |> List.map (fun (row, column) ->
+            match solution.layout.entries |> List.tryFindIndex (fun entry -> entry.unknown.parameter = ItemParameterRef (item.id, coefficient row column)) with
+            | Some k -> solution.fitted.valueAt (StudyVectorIndex k)
+            | None -> failwith $"no entry fits {item.label.value}'s m{row}{column}")
+
+    /// The truth's elements at these places.
+    let private elementsAt (truth : MuellerMatrix) (places : (int * int) list) : float list =
+        places |> List.map (fun (row, column) -> truth.element row column)
+
+    /// A lone black box's solve: one object solve of it of rank `free.Length`, every element within 1e-9 of the truth and
+    /// each fixed one exactly the truth's; its free places in row-major order its only entries, each within 1e-9.
+    let private assertLoneSolve (item : Item) (truth : MuellerMatrix) (free : (int * int) list) (solution : StudyFitSolution) : unit =
+        Assert.Equal(LinearStudyEngine, solution.engine)
+
+        Assert.Equal<StudyParameterRef list>(
+            free |> List.map (fun (row, column) -> ItemParameterRef (item.id, coefficient row column)),
+            solution.layout.entries |> List.map (fun entry -> entry.unknown.parameter))
+
+        assertValuesWithin 1e-9 (elementsAt truth free) (fittedCoefficientsOf solution item free)
+
+        Assert.Equal(1, solution.objectMatrices.Length)
+        let fit = objectFitOf [ item ] solution
+        Assert.Equal(MatrixRank free.Length, fit.rank)
+        assertValuesWithin 1e-9 (truth.rowMajorValues |> List.map (fun value -> value.value)) fit.elements
+
+        for row, column in coefficientPlaces |> List.filter (fun place -> not (List.contains place free)) do
+            Assert.Equal<float>(truth.element row column, (List.item (placeOf row column) fit.elements).value)
+
+        // One member, from the layout's starts to the fitted values, with the χ² of the solves.
+        match solution.members with
+        | [ { start = start; outcome = MemberConverged (fitted, Some chiSquared) } ] ->
+            Assert.Equal<ParameterValue list>(solution.layout.entries |> List.map (fun entry -> entry.unknown.unknown.start), start)
+            Assert.Equal<float list>(List.ofArray solution.fitted.value, fitted |> List.map (fun value -> value.value))
+            Assert.InRange(chiSquared.value, 0.0, 1e-18)
+        | members -> Assert.Fail($"expected one converged member with a χ², got %A{members}")
+
+    /// QZ with every coefficient unknown except these places, each held at M_QZ's element in its state.
+    let private qzHolding (held : (int * int * ParameterState) list) : Item =
+        blackBoxWith qzDraft (held |> List.map (fun (row, column, state) -> coefficient row column, state))
+
+    /// QZ's places other than these, in row-major order.
+    let private placesBut (held : (int * int) list) : (int * int) list =
+        coefficientPlaces |> List.filter (fun place -> not (List.contains place held))
+
+    let private day1 : SessionName = SessionName "Day 1"
+    let private day2 : SessionName = SessionName "Day 2"
+    let private tenOClock : DateTimeOffset = DateTimeOffset(2026, 11, 13, 10, 0, 0, TimeSpan.Zero)
+
+    /// Day 2's gain, from 1000 at 10:00 to 1200 at 12:00.
+    let private day2GainAt (at : DateTimeOffset) : float = 1000.0 + 200.0 * (at - tenOClock).TotalSeconds / 7200.0
+
+    /// QZ's object stage over two sessions: Day 1 anchored to the LP-LP AIR run A1 of gain 1000; Day 2 interpolated between
+    /// the AIR runs A2 of gain 1000 at 10:00 and A3 of 1200 at 12:00, its Science runs read at the gain then; and the Dark
+    /// run K1 of 5. The setups, the runs and the study, and QZ's sixteen observed Science runs.
+    let private sessionFixture () : Setup list * AttachedRun list * Study * ObservedRun list =
+        let benchesAt = phis |> List.map (fun phi -> phi, familyBenches "QZ" [ qzAllFree ] phi)
+        let setups = airBench :: (benchesAt |> List.collect snd)
+
+        let science : PlannedRun list =
+            benchesAt
+            |> List.collect (fun (phi, benches) -> benches |> List.map (fun bench -> phi, bench))
+            |> List.mapi (fun k (phi, bench) ->
+                let onDay1 = phi < 60.0<deg>
+                let run = sweptRunOver bench $"E{k + 1}" ScienceRun (Some (if onDay1 then day1 else day2))
+
+                {
+                    plannedRun = run
+                    segment = [ qzAllFree.id ]
+                    segmentTruth = qzTruth
+                    timeOf =
+                        if onDay1 then fun reading -> DateTimeOffset(2026, 11, 13, 8, 10, 0, TimeSpan.Zero).AddMinutes(float (5 * k)).AddSeconds(float (10 * reading))
+                        else fun reading -> tenOClock.AddMinutes(float (10 + 12 * (k - 8))).AddSeconds(float (30 * reading))
+                    gainAt = if onDay1 then (fun _ -> 1000.0) else day2GainAt
+                })
+
+        let air (name : string) (session : SessionName) (at : DateTimeOffset) (gain : float) : PlannedRun =
+            {
+                plannedRun = sweptRunOver airBench name CalibrationRun (Some session)
+                segment = []
+                segmentTruth = Propagation.identityMueller
+                timeOf = fun reading -> at.AddSeconds(float (reading - 4))
+                gainAt = fun _ -> gain
+            }
+
+        let a1 = air "A1" day1 (DateTimeOffset(2026, 11, 13, 8, 0, 0, TimeSpan.Zero)) 1000.0
+        let a2 = air "A2" day2 tenOClock 1000.0
+        let a3 = air "A3" day2 (tenOClock.AddHours 2.0) 1200.0
+        let observed = observedOver setups (objectInstruments @ [ qzAllFree ]) ([ a1; a2; a3 ] @ science)
+        let observedOf (plan : PlannedRun) : AttachedRun = (observed |> List.find (fun run -> run.observed.attachedRun.name = plan.plannedRun.name)).observed
+        let scienceObserved = observed |> List.filter (fun run -> science |> List.exists (fun plan -> plan.plannedRun.name = run.observed.attachedRun.name))
+        let day1Runs = scienceObserved |> List.take 8 |> List.map (fun run -> run.observed)
+        let day2Runs = scienceObserved |> List.skip 8 |> List.map (fun run -> run.observed)
+        let runs = [ observedOf a1 ] @ day1Runs @ [ darkOver airBench; observedOf a2 ] @ day2Runs @ [ observedOf a3 ]
+        let kitRuns = runs |> List.map (fun run -> run.attachedRun)
+
+        let study =
+            (studyOver "QZ" runs).withSessionGainModel day1 (AnchoredSessionGain [ a1.plannedRun.name ]) kitRuns
+            |> Result.bind (fun study ->
+                study.withSessionGainModel day2 (InterpolatedSessionGain { opening = a2.plannedRun.name; closing = a3.plannedRun.name }) kitRuns)
+            |> studyOf
+
+        setups, runs, study, scienceObserved
+
+    /// The observed runs of a free-session study of the runs and the Dark run K1, its setups and its study.
+    let private freeStudyOf (name : string) (setups : Setup list) (observed : ObservedRun list) : Setup list * AttachedRun list * Study =
+        let runs = (observed |> List.map (fun run -> run.observed)) @ [ darkOver airBench ]
+        airBench :: setups, runs, studyOver name runs
+
+    /// The variant's solve over the kit of the instruments and these objects, through the recording SVD, the engine
+    /// first asserted linear.
+    let private linearSolveOf
+        (setups : Setup list)
+        (objects : Item list)
+        (runs : AttachedRun list)
+        (study : Study)
+        (recorded : ResizeArray<LeastSquaresSystem>)
+        : StudyFitSolution =
+        let staged, context, prefits, data = objectStageOf setups (objectInstruments @ objects) runs study
+        Assert.Equal(LinearStudyEngine, staged.engineWith context prefits)
+        solutionOf (staged.reconstructLinear context prefits data (recordingSvd recorded))
+
+    [<Fact>]
+    let ``the object stage reconstructs a black-box matrix behind calibrated instruments, each row divided by its session's gain at its time`` () : unit =
+        let setups, runs, study, scienceRuns = sessionFixture ()
+
+        // Every coefficient free: one `reconstruct` of the sixteen, its rows the run law's designs and corrected signals.
+        let allFree = ResizeArray<LeastSquaresSystem>()
+        let fullSolution = linearSolveOf setups [ qzAllFree ] runs study allFree
+        assertLoneSolve qzAllFree qzTruth coefficientPlaces fullSolution
+        Assert.Equal(1, allFree.Count)
+        assertSystemOver 16 (scienceRuns |> List.map (fun run -> run, vecSources)) allFree.[0]
+
+        // Over the same observations, m33 known (15 free), m23 known with m32 calibrated (14 free: the two are of opposite
+        // sign, so a transposed column shows), and m00 alone unknown (1 free): each solved on its own columns, A_U·m_U =
+        // b − A_K·m_K, never sixteen columns with the fixed ones overwritten after.
+        Assert.NotEqual(qzTruth.element 2 3, qzTruth.element 3 2)
+
+        let m00Free = placesBut [ 0, 0 ] |> List.map (fun (row, column) -> row, column, knownIn qzTruth row column)
+
+        let partials : (Item * (int * int) list) list =
+            [
+                qzHolding [ 3, 3, knownIn qzTruth 3 3 ], placesBut [ 3, 3 ]
+                qzHolding [ 2, 3, knownIn qzTruth 2 3; 3, 2, calibratedAt (qzTruth.element 3 2) ], placesBut [ 2, 3; 3, 2 ]
+                qzHolding m00Free, [ 0, 0 ]
+            ]
+
+        for qz, free in partials do
+            let recorded = ResizeArray<LeastSquaresSystem>()
+            let solution = linearSolveOf setups [ qz ] runs study recorded
+            assertLoneSolve qz qzTruth free solution
+            Assert.Equal(1, recorded.Count)
+            assertSystemOver free.Length (scienceRuns |> List.map (fun run -> run, sourcesOf qzTruth free 0)) recorded.[0]
+
+        // (a) m00 alone free behind a fixed ideal CP of either handedness, analyzed by the calibrated linear LP2.
+        let qzM00 = qzHolding m00Free
+
+        for prep, prefix in [ cpLeft, "L"; cpRight, "R" ] do
+            let bench = turnedBench $"CP {prefix}-QZ-LP" prep [ qzM00, Angle.zero ] calibratedLp2
+            let planned = freelyPlanned (sweptRunOver bench $"{prefix}1" ScienceRun None) [ qzM00 ] qzTruth
+            let observed = observedOver [ bench ] (objectInstruments @ [ prep; qzM00 ]) [ planned ]
+            let kitSetups, kitRuns, kitStudy = freeStudyOf $"CP {prefix}" [ bench ] observed
+            let recorded = ResizeArray<LeastSquaresSystem>()
+            let solution = linearSolveOf kitSetups [ prep; qzM00 ] kitRuns kitStudy recorded
+            assertLoneSolve qzM00 qzTruth [ 0, 0 ] solution
+            Assert.Equal(1, recorded.Count)
+            assertSystemOver 1 (observed |> List.map (fun run -> run, sourcesOf qzTruth [ 0, 0 ] 0)) recorded.[0]
+
+        // (b) behind the fixed constant-Mueller preparation (the compound CPL1 prepares above): its circular state shows
+        // QZ's first column through LP2.
+        let firstColumn = [ 0, 0; 1, 0; 2, 0 ]
+        let qzFirstColumn = qzHolding (placesBut firstColumn |> List.map (fun (row, column) -> row, column, knownIn qzTruth row column))
+
+        let constantBenches = [ 0.0<deg>; 30.0<deg> ] |> List.map (fun phi -> turnedBench $"CMP-QZ-LP {phi}" constantPrep [ qzFirstColumn, Angle.degree phi ] calibratedLp2)
+        let constantPlanned = constantBenches |> List.mapi (fun k bench -> freelyPlanned (sweptRunOver bench $"C{k + 1}" ScienceRun None) [ qzFirstColumn ] qzTruth)
+        let constantObserved = observedOver constantBenches (objectInstruments @ [ constantPrep; qzFirstColumn ]) constantPlanned
+        let constantSetups, constantRuns, constantStudy = freeStudyOf "CMP" constantBenches constantObserved
+        let constantRecorded = ResizeArray<LeastSquaresSystem>()
+        let constantSolution = linearSolveOf constantSetups [ constantPrep; qzFirstColumn ] constantRuns constantStudy constantRecorded
+        assertLoneSolve qzFirstColumn qzTruth firstColumn constantSolution
+        Assert.Equal(1, constantRecorded.Count)
+        assertSystemOver 3 (constantObserved |> List.map (fun run -> run, sourcesOf qzTruth firstColumn 0)) constantRecorded.[0]
+
+        // (c) between fixed objects: the quarter-wave plate at 30° before it, the known LR after it, its upper 3 × 3 free.
+        let block = [ for row in 0 .. 2 do for column in 0 .. 2 -> row, column ]
+        let qzBlock = qzHolding (placesBut block |> List.map (fun (row, column) -> row, column, knownIn qzTruth row column))
+
+        let betweenBenches =
+            phis
+            |> List.map (fun phi ->
+                turnedBench $"LP-WP-QZ-LR-LP {phi}" lp1 [ plate, Angle.degree 30.0<deg>; qzBlock, Angle.degree phi; lrKnown, Angle.zero ] calibratedLp2)
+
+        let betweenPlanned = betweenBenches |> List.mapi (fun k bench -> freelyPlanned (sweptRunOver bench $"S{k + 1}" ScienceRun None) [ qzBlock ] qzTruth)
+        let betweenObserved = observedOver betweenBenches (objectInstruments @ [ lrKnown; qzBlock ]) betweenPlanned
+        let betweenSetups, betweenRuns, betweenStudy = freeStudyOf "Between" betweenBenches betweenObserved
+        let betweenRecorded = ResizeArray<LeastSquaresSystem>()
+        let betweenSolution = linearSolveOf betweenSetups [ lrKnown; qzBlock ] betweenRuns betweenStudy betweenRecorded
+        assertLoneSolve qzBlock qzTruth block betweenSolution
+        Assert.Equal(1, betweenRecorded.Count)
+        assertSystemOver 9 (betweenObserved |> List.map (fun run -> run, sourcesOf qzTruth block 0)) betweenRecorded.[0]
+
+        // (d) equality links: QZ's m21 follows its m12, QZ2's m00 follows QZ's free m00 across separately observed runs,
+        // and QZ2's m33 QZ's known m33, a fixed leader; the truths satisfy them. One system stacks both objects' rows on
+        // the shared columns, so solving each object alone cannot pass.
+        let qzLinked = qzHolding [ 3, 3, knownIn qzTruth 3 3 ]
+        let qzBenches, qzPlanned = freeFamilyRuns "Q" [ qzLinked ] qzTruth
+        let qz2Benches, qz2Planned = freeFamilyRuns "W" [ qz2Free ] qz2Truth
+        let linkedItems = [ qzLinked; qz2Free ]
+        let linkedObserved = observedOver (qzBenches @ qz2Benches) (objectInstruments @ linkedItems) (qzPlanned @ qz2Planned)
+        let linkedSetups, linkedRuns, unlinked = freeStudyOf "Linked" (qzBenches @ qz2Benches) linkedObserved
+
+        let linked =
+            let used = (contextWithin linkedSetups (objectInstruments @ linkedItems) linkedRuns unlinked).kit.itemsUsedBy unlinked
+
+            let links : ParameterLink list =
+                [
+                    { follower = ItemParameterRef (qzLinked.id, coefficient 2 1); leader = ItemParameterRef (qzLinked.id, coefficient 1 2) }
+                    { follower = ItemParameterRef (qz2Free.id, coefficient 0 0); leader = ItemParameterRef (qzLinked.id, coefficient 0 0) }
+                    { follower = ItemParameterRef (qz2Free.id, coefficient 3 3); leader = ItemParameterRef (qzLinked.id, coefficient 3 3) }
+                ]
+
+            links |> List.fold (fun (held : Study) link -> studyOf (held.withLink link used)) unlinked
+
+        let linkedRecorded = ResizeArray<LeastSquaresSystem>()
+        let linkedSolution = linearSolveOf linkedSetups linkedItems linkedRuns linked linkedRecorded
+
+        // QZ's fourteen entries (m21 follows, m33 is known) in columns 0 to 13, then QZ2's fourteen (m00 and m33 follow).
+        let qzFree = placesBut [ 2, 1; 3, 3 ]
+        let qz2Own = placesBut [ 0, 0; 3, 3 ]
+
+        let qzSources (place : int * int) : CoefficientSource =
+            match place with
+            | 2, 1 -> sourcesOf qzTruth qzFree 0 (1, 2)
+            | _ -> sourcesOf qzTruth qzFree 0 place
+
+        let qz2Sources (place : int * int) : CoefficientSource =
+            match place with
+            | 0, 0 -> sourcesOf qzTruth qzFree 0 (0, 0)
+            | 3, 3 -> FixedAtValue (qzTruth.element 3 3)
+            | _ -> sourcesOf qz2Truth qz2Own qzFree.Length place
+
+        Assert.Equal(LinearStudyEngine, linkedSolution.engine)
+        Assert.Equal(1, linkedRecorded.Count)
+
+        let qzRuns, qz2Runs = linkedObserved |> List.splitAt qzPlanned.Length
+        assertSystemOver 28 ((qzRuns |> List.map (fun run -> run, qzSources)) @ (qz2Runs |> List.map (fun run -> run, qz2Sources))) linkedRecorded.[0]
+
+        Assert.Equal<StudyParameterRef list>(
+            (qzFree |> List.map (fun (row, column) -> ItemParameterRef (qzLinked.id, coefficient row column)))
+            @ (qz2Own |> List.map (fun (row, column) -> ItemParameterRef (qz2Free.id, coefficient row column))),
+            linkedSolution.layout.entries |> List.map (fun entry -> entry.unknown.parameter))
+
+        assertValuesWithin 1e-9 (elementsAt qzTruth qzFree) (fittedCoefficientsOf linkedSolution qzLinked qzFree)
+        assertValuesWithin 1e-9 (elementsAt qz2Truth qz2Own) (fittedCoefficientsOf linkedSolution qz2Free qz2Own)
+
+        let qzFit = objectFitOf [ qzLinked ] linkedSolution
+        let qz2Fit = objectFitOf [ qz2Free ] linkedSolution
+        let elementOf (fit : ObjectMatrixFit) (row : int) (column : int) : float = (List.item (placeOf row column) fit.elements).value
+
+        for fit, truth in [ qzFit, qzTruth; qz2Fit, qz2Truth ] do
+            Assert.Equal(MatrixRank 28, fit.rank)
+            assertValuesWithin 1e-9 (truth.rowMajorValues |> List.map (fun value -> value.value)) fit.elements
+
+        // The known leader is kept exactly, and each follower is its leader's value exactly.
+        Assert.Equal<float>(qzTruth.element 3 3, elementOf qzFit 3 3)
+        Assert.Equal<float>(qzTruth.element 3 3, elementOf qz2Fit 3 3)
+        Assert.Equal<float>(elementOf qzFit 1 2, elementOf qzFit 2 1)
+        Assert.Equal<float>(elementOf qzFit 0 0, elementOf qz2Fit 0 0)
+
+    [<Fact>]
+    let ``a series of two black-box objects is reconstructed as one combined matrix`` () : unit =
+        let qzBenches, qzPlanned = freeFamilyRuns "Q" [ qzAllFree ] qzTruth
+        let lrBenches, lrPlanned = freeFamilyRuns "L" [ lrFree ] lrTruth
+        let combined = cascadeProduct lrTruth qzTruth
+        let seriesBenches, seriesPlanned = freeFamilyRuns "QL" [ qzAllFree; lrFree ] combined
+        let benches = qzBenches @ lrBenches @ seriesBenches
+        let observed = observedOver benches (objectInstruments @ [ qzAllFree; lrFree ]) (qzPlanned @ lrPlanned @ seriesPlanned)
+        let setups, runs, study = freeStudyOf "QZ-LR" benches observed
+        let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qzAllFree; lrFree ]) runs study
+        let recorded = ResizeArray<LeastSquaresSystem>()
+        let solution = solutionOf (staged.reconstructLinear context prefits data (recordingSvd recorded))
+
+        // QZ's and LR's own runs fit their coefficients; the series' rows give only its combined matrix.
+        Assert.Equal(LinearStudyEngine, solution.engine)
+
+        assertValuesWithin 1e-9 (elementsAt qzTruth coefficientPlaces) (fittedCoefficientsOf solution qzAllFree coefficientPlaces)
+        assertValuesWithin 1e-9 (elementsAt lrTruth coefficientPlaces) (fittedCoefficientsOf solution lrFree coefficientPlaces)
+
+        // One object solve per group in first-run order, the series' M_comb against S11.4's cascade M_LR · M_QZ.
+        Assert.Equal<ItemId list list>(
+            [ [ qzAllFree.id ]; [ lrFree.id ]; [ qzAllFree.id; lrFree.id ] ],
+            solution.objectMatrices |> List.map (fun fit -> fit.items))
+
+        for fit, truth in List.zip solution.objectMatrices [ qzTruth; lrTruth; combined ] do
+            Assert.Equal(MatrixRank 16, fit.rank)
+            assertValuesWithin 1e-9 (truth.rowMajorValues |> List.map (fun value -> value.value)) fit.elements
+
+        // Each group is one sixteen-column `reconstruct`, the series' over its own rows' combined designs.
+        Assert.Equal(3, recorded.Count)
+        let seriesObserved = observed |> List.skip (qzPlanned.Length + lrPlanned.Length)
+        assertSystemOver 16 (seriesObserved |> List.map (fun run -> run, vecSources)) recorded.[2]
+
+    [<Fact>]
+    let ``an object stage whose design is rank-deficient is refused naming its objects`` () : unit =
+        // QZ's runs of the LP-LP family at φ 0° alone: a linear state into a linear analyzer, three directions of sixteen.
+        let bench = turnedBench "QZ LP-LP 0" lp1 [ qzAllFree, Angle.zero ] calibratedLp2
+        let planned = freelyPlanned (sweptRunOver bench "E1" ScienceRun None) [ qzAllFree ] qzTruth
+        let observed = observedOver [ bench ] (objectInstruments @ [ qzAllFree ]) [ planned ]
+        let setups, runs, study = freeStudyOf "QZ alone" [ bench ] observed
+
+        // The full matrix, then the partial variant with only m33 fixed, judged against its 15 free columns.
+        for qz, columns in [ qzAllFree, 16; qzHolding [ 3, 3, knownIn qzTruth 3 3 ], 15 ] do
+            let recorded = ResizeArray<LeastSquaresSystem>()
+            let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qz ]) runs study
+            Assert.Equal(LinearStudyEngine, staged.engineWith context prefits)
+
+            match staged.reconstructLinear context prefits data (recordingSvd recorded) with
+            | Error (ObjectSolveFitErr (items, RankDeficientErr rank)) ->
+                Assert.Equal<ItemId list>([ qz.id ], items)
+                Assert.InRange(rank.value, 1, columns - 1)
+            | Error error -> Assert.Fail($"expected ObjectSolveFitErr naming QZ, got {error.describe}")
+            | Ok _ -> Assert.Fail("a rank-deficient object stage was fitted")
+
+            // The solver was reached, with the variant's own columns.
+            Assert.Equal(1, recorded.Count)
+            Assert.All(recorded.[0].design, fun row -> Assert.Equal(columns, row.value.Length))
+
     [<Fact>]
     let ``every study-fit error renders its condition and its payload`` () : unit =
         let forwardError = MissingStudyRunErr "E9, which the study 'QZ' names"
@@ -1216,6 +1821,9 @@ module StudyEngineTests =
         let failuresReason = "member 1: the solver did not converge: BackendFailed"
         let cancelReason = "1 of 3 member(s) ran, the last one's result dropped"
         let stagedError = EmptyCaptureSetErr "the darkness checks hold no capture row, so stage one has no dark mean"
+        let gainModelError = MissingAnchorGainErr "'A9' is not among the 2 AIR gains given"
+        let solverError = RankDeficientErr (MatrixRank 3)
+        let objects = [ qzAllFree.id; lrFree.id ]
 
         let cases : (StudyFitError * string) list =
             [
@@ -1225,6 +1833,9 @@ module StudyEngineTests =
                 NoConvergedMemberErr failuresReason, $"no start of the fit converged: {failuresReason}"
                 FitCancelledErr cancelReason, $"the fit was cancelled: {cancelReason}"
                 StagedPathFitErr stagedError, $"the staged Mueller path refused the fit: {stagedError.describe}"
+                SessionGainFitErr gainModelError, $"a session gain model was refused: {gainModelError.describe}"
+                ObjectSolveFitErr (objects, solverError),
+                $"the objects could not be reconstructed: {qzAllFree.id.value}, {lrFree.id.value} — {solverError.describe}"
             ]
 
         for error, expected in cases do
@@ -1236,4 +1847,7 @@ module StudyEngineTests =
         Assert.Contains(failuresReason, (NoConvergedMemberErr failuresReason).describe)
         Assert.Contains(cancelReason, (FitCancelledErr cancelReason).describe)
         Assert.Contains("the darkness checks hold no capture row", (StagedPathFitErr stagedError).describe)
+        Assert.Contains("'A9' is not among the 2 AIR gains given", (SessionGainFitErr gainModelError).describe)
+        Assert.Contains($"{lrFree.id.value}", (ObjectSolveFitErr (objects, solverError)).describe)
+        Assert.Contains("rank 3", (ObjectSolveFitErr (objects, solverError)).describe)
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)

@@ -201,26 +201,23 @@ module StagedMuellerPath =
             productCheck : ProductCheckData
         }
 
-    /// The AIR run's anchor over its rows (`fit_air_gain` + `fit_scalar_gain`): the scalar gain of `signal_dark_sub ~
-    /// gain * (a . s)` at φ = 0, at the rows' mean capture time; no row answers `EmptyCaptureSetErr` naming the run
-    /// (spec 0050 S11.3).
-    let airAnchorGainOf
-        (source : SourceModel)
-        (analyzer : AnalyzerModel)
+    /// An AIR run's anchor over its rows, each with the source state and analyzer row it is predicted by at φ = 0
+    /// (`fit_air_gain` + `fit_scalar_gain`): the scalar gain of `signal_dark_sub ~ gain * (a . s)`, at the rows' mean
+    /// capture time; no row answers `EmptyCaptureSetErr` naming the run (spec 0050 S11.3).
+    let airAnchorGainOver
         (dark : DarkMean)
         (run : ExperimentName)
-        (rows : MuellerRawRow list)
+        (projections : (StokesVector * RealVector4 * MuellerRawRow) list)
         : Result<AirAnchorGain, StagedMuellerError> =
-        match rows with
+        match projections with
         | [] -> Error (EmptyCaptureSetErr $"the AIR block {run.value} holds no capture row, so its gain has no fit")
-        | firstRow :: _ ->
-            let sBase = source.baseStokes
-            let preds = rows |> List.map (fun r -> airIdentityPred sBase (analyzerBaseRow analyzer r.description)) |> List.toArray
-            let signals = rows |> List.map (fun r -> darkSubtract dark r.avgTotal) |> List.toArray
+        | (_, _, firstRow) :: _ ->
+            let preds = projections |> List.map (fun (s, a, _) -> airIdentityPred s a) |> List.toArray
+            let signals = projections |> List.map (fun (_, _, r) -> darkSubtract dark r.avgTotal) |> List.toArray
 
             // The mean is taken relative to the first tick so the tick sum never overflows int64.
             let t0 = firstRow.capturedAt.UtcTicks
-            let meanDelta = rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
+            let meanDelta = projections |> List.averageBy (fun (_, _, r) -> float (r.capturedAt.UtcTicks - t0))
 
             Ok
                 {
@@ -228,6 +225,32 @@ module StagedMuellerPath =
                     gain = scalarGain signals preds
                     capturedAt = System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
                 }
+
+    /// The AIR run's anchor over its rows (`fit_air_gain` + `fit_scalar_gain`), each predicted by the family's source
+    /// and the analyzer's row at its dial (spec 0050 S11.3).
+    let airAnchorGainOf
+        (source : SourceModel)
+        (analyzer : AnalyzerModel)
+        (dark : DarkMean)
+        (run : ExperimentName)
+        (rows : MuellerRawRow list)
+        : Result<AirAnchorGain, StagedMuellerError> =
+        airAnchorGainOver dark run (rows |> List.map (fun r -> source.baseStokes, analyzerBaseRow analyzer r.description, r))
+
+    /// A science row's effective source and analyzer in its object frame φ, from the state reaching the object and the
+    /// detector's S₀ row past it, and its signal dark-subtracted and divided by `gain` (`enrich_frame`; spec 0050 S11.3).
+    let projectCaptureRowFrom
+        (arriving : StokesVector)
+        (analyzing : RealVector4)
+        (phi : Angle)
+        (dark : DarkMean)
+        (gain : AirGain)
+        (row : MuellerRawRow)
+        : StokesVector * RealVector4 * DetectorIntensity =
+        let sEff = effectiveSource phi arriving
+        let aEff = effectiveAnalyzer phi analyzing
+        let signal = correctSignal dark row.avgTotal gain
+        sEff, aEff, signal
 
     /// A science row's effective source and analyzer in its object frame φ and its signal dark-subtracted and divided by
     /// `gain` (`enrich_frame`; spec 0050 S11.3).
@@ -239,10 +262,7 @@ module StagedMuellerPath =
         (gain : AirGain)
         (row : MuellerRawRow)
         : StokesVector * RealVector4 * DetectorIntensity =
-        let sEff = effectiveSource phi source.baseStokes
-        let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer row.description)
-        let signal = correctSignal dark row.avgTotal gain
-        sEff, aEff, signal
+        projectCaptureRowFrom source.baseStokes (analyzerBaseRow analyzer row.description) phi dark gain row
 
     // The reference procedure's nine AIR runs: in a kit they are experiments of these names, which a gain model anchors
     // to (spec 0050 S11.1; 001 §L).

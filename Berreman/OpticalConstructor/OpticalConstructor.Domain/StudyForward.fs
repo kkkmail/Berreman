@@ -621,43 +621,51 @@ module StudyForward =
 
     type BoundExperiment with
 
-        /// The detector's predicted reading at the point's settings, at `waveLengthOpt` else the point's wavelength else
-        /// the operating one: S₀ · gain + dark, Ψ and Δ, or the path's Mueller matrix (spec 0050 S11.2; 001 §N).
-        member this.readingAt (settings : ScanSetting list) (waveLengthOpt : WaveLength option) : Result<RecordedReading, StudyForwardError> =
+        /// The wavelength a point is predicted at: `waveLengthOpt`, else the point's wavelength setting, else the operating
+        /// one; `readingAt`'s, and the linear engine's (spec 0050 S11.2, S11.3).
+        member this.waveLengthAt (settings : ScanSetting list) (waveLengthOpt : WaveLength option) : WaveLength =
+            match waveLengthOpt, settings |> List.tryFindBack (fun setting -> setting.variable = VaryWaveLength) with
+            | Some requested, _ -> requested
+            | None, Some setting -> Units.toWaveLength Units.Nanometer setting.value.toUnitMagnitude
+            | None, None -> this.operatingWaveLength
+
+        /// A path step's orientation at a point: its R1 setting, else its dial setting or recorded turn through its dial,
+        /// else its drawn R1; its R2 setting, else its drawn incidence; `readingAt`'s, and the linear engine's (spec 0050
+        /// S11.2, S11.3).
+        member this.orientationAt (settings : ScanSetting list) (step : BoundPathStep) : ElementOrientation =
             let degreesOf (value : SweptValue) : Angle = Angle.degree (value.value * 1.0<deg>)
 
-            let settingOn (step : BoundPathStep) (variable : VariableParameter) : ScanSetting option =
+            let settingOn (variable : VariableParameter) : ScanSetting option =
                 settings |> List.tryFindBack (fun setting -> setting.elementId = step.slot.id && setting.variable = variable)
 
-            let w : WaveLength =
-                match waveLengthOpt, settings |> List.tryFindBack (fun setting -> setting.variable = VaryWaveLength) with
-                | Some requested, _ -> requested
-                | None, Some setting -> Units.toWaveLength Units.Nanometer setting.value.toUnitMagnitude
-                | None, None -> this.operatingWaveLength
-
             // A raw reading turns its slot as `sign · (reading − zero)`, a fixed mounting as the reading (spec 0050 S11.2; step 255).
-            let throughDial (step : BoundPathStep) (reading : Angle) : Angle =
+            let throughDial (reading : Angle) : Angle =
                 match step.dial with
                 | DialMounted sign -> sign.physicalAngleOf step.dialZero reading
                 | FixedMounting -> reading
 
-            let rotationOf (step : BoundPathStep) : Angle =
-                match settingOn step VaryR1, settingOn step VaryDialReading, step.slot.content with
+            let rotation : Angle =
+                match settingOn VaryR1, settingOn VaryDialReading, step.slot.content with
                 | Some setting, _, _ -> degreesOf setting.value
-                | None, Some setting, _ -> throughDial step (degreesOf setting.value)
-                | None, None, ItemInSlot (_, DialTurn reading) -> throughDial step reading
+                | None, Some setting, _ -> throughDial (degreesOf setting.value)
+                | None, None, ItemInSlot (_, DialTurn reading) -> throughDial reading
                 | None, None, ItemInSlot (_, PlacementTurn)
                 | None, None, EmptySlotContent -> step.slot.placement.r1
 
-            let incidenceOf (step : BoundPathStep) : IncidenceAngle =
-                match settingOn step VaryR2 with
+            let incidence : IncidenceAngle =
+                match settingOn VaryR2 with
                 | Some setting -> IncidenceAngle.create (degreesOf setting.value)
                 | None -> step.drawnIncidence
 
+            { rotation = rotation; incidence = incidence; branch = step.branch }
+
+        /// The detector's predicted reading at the point's settings, at `waveLengthOpt` else the point's wavelength else
+        /// the operating one: S₀ · gain + dark, Ψ and Δ, or the path's Mueller matrix (spec 0050 S11.2; 001 §N).
+        member this.readingAt (settings : ScanSetting list) (waveLengthOpt : WaveLength option) : Result<RecordedReading, StudyForwardError> =
+            let w = this.waveLengthAt settings waveLengthOpt
+
             this.path
-            |> List.map (fun step ->
-                let orientation : ElementOrientation = { rotation = rotationOf step; incidence = incidenceOf step; branch = step.branch }
-                step.element.muellerAt orientation w |> Result.map step.slot.runStepOf)
+            |> List.map (fun step -> step.element.muellerAt (this.orientationAt settings step) w |> Result.map step.slot.runStepOf)
             |> ItemEvaluation.sequenced
             |> Result.mapError (SlotEvaluationErr >> ForwardSlotErr)
             |> Result.map (fun steps ->

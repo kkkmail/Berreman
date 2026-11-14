@@ -1,7 +1,9 @@
 namespace OpticalConstructor.Optimization
 
 open System.Threading
+open Berreman.MathNetNumericsMath
 open Berreman.Geometry
+open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -13,6 +15,7 @@ open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.BenchNoise
@@ -36,6 +39,10 @@ module StudyEngine =
         | FitCancelledErr of reason : string
         /// S10.3's staged Mueller path refused the linear engine's rows (spec 0050 S11.3).
         | StagedPathFitErr of error : StagedMuellerError
+        /// A fitted run's session gain model its AIR runs' gains cannot resolve (spec 0050 S11.3).
+        | SessionGainFitErr of error : StudyError
+        /// The least-squares solve of these black-box objects refused (spec 0050 S11.3).
+        | ObjectSolveFitErr of items : ItemId list * error : SolverError
 
         member this.describe : string =
             match this with
@@ -45,6 +52,10 @@ module StudyEngine =
             | NoConvergedMemberErr reason -> $"no start of the fit converged: {reason}"
             | FitCancelledErr reason -> $"the fit was cancelled: {reason}"
             | StagedPathFitErr error -> $"the staged Mueller path refused the fit: {error.describe}"
+            | SessionGainFitErr error -> $"a session gain model was refused: {error.describe}"
+            | ObjectSolveFitErr (items, error) ->
+                let named = items |> List.map (fun item -> $"{item.value}") |> String.concat ", "
+                $"the objects could not be reconstructed: {named} — {error.describe}"
 
     /// The reference families' two polarizers, linear or LP-then-retarder circular; derived, never stored, so it carries
     /// no tag (spec 0050 S11.3; `MuellerReconstruction.Family`).
@@ -204,6 +215,25 @@ module StudyEngine =
     let private muellerCoefficients : ParameterName list =
         (BlackBoxMuellerModel SixteenElementMueller).parameterAxes |> List.map (fun axis -> axis.name)
 
+    /// The same coefficients in `MuellerMatrix.vecColumnMajor` order, m[row, column] at 4·column + row (spec 0050 S11.3).
+    let private vecOrderCoefficients : ParameterName list =
+        List.init 16 (fun place -> List.item (4 * (place % 4) + place / 4) muellerCoefficients)
+
+    /// A link's follower takes its leader's value, so following a fitted leader makes it fitted too (spec 0050 S11.1,
+    /// S11.3).
+    let private fittedFollowersIn (study : Study) (fitted : StudyParameterRef list) : StudyParameterRef list =
+        study.links |> List.filter (fun link -> List.contains link.leader fitted) |> List.map (fun link -> link.follower)
+
+    /// The held items owning a moved parameter, in their order and once per slot holding them (spec 0050 S11.3).
+    let private bearersAmong (moved : StudyParameterRef list) (held : ItemId list) : ItemId list =
+        held
+        |> List.filter (fun item ->
+            moved
+            |> List.exists (fun parameter ->
+                match parameter with
+                | ItemParameterRef (owner, _) -> owner = item
+                | MaterialParameterRef _ -> false))
+
     type StagedStudy with
 
         /// Linear for the reference AIR calibration under stage 1, or for sixteen-element black boxes, one per fitted path,
@@ -213,19 +243,7 @@ module StudyEngine =
             let kit = { context.kit with items = this.items }
             let entries = (this.study.parameterLayoutWith { context with kit = kit }).entries
             let fittedParameters = entries |> List.map (fun entry -> entry.unknown.parameter)
-
-            // A link's follower takes its leader's value, so following a fitted leader makes it fitted too (spec 0050 S11.1).
-            let fittedFollowers : StudyParameterRef list =
-                this.study.links
-                |> List.filter (fun link -> List.contains link.leader fittedParameters)
-                |> List.map (fun link -> link.follower)
-
-            let bearsUnknown (item : ItemId) : bool =
-                fittedParameters @ fittedFollowers
-                |> List.exists (fun parameter ->
-                    match parameter with
-                    | ItemParameterRef (owner, _) -> owner = item
-                    | MaterialParameterRef _ -> false)
+            let fittedFollowers : StudyParameterRef list = fittedFollowersIn this.study fittedParameters
 
             let itemOwned (entry : StudyVectorEntry) : bool =
                 match entry.owner, entry.unknown.parameter with
@@ -306,7 +324,7 @@ module StudyEngine =
             let blackBoxShape () : bool =
                 // Counted per slot: one free item held in two slots is a double pass, quadratic in its coefficients.
                 let oneUnknownMatrix (held : (SlotRole * Item * ItemModelChoice) list) : bool =
-                    let bearing = held |> List.filter (fun (_, item, _) -> bearsUnknown item.id)
+                    let bearing = bearersAmong (fittedParameters @ fittedFollowers) (held |> List.map (fun (_, item, _) -> item.id))
                     bearing.Length <= 1
 
                 everyRunResolves
@@ -557,6 +575,20 @@ module StudyEngine =
 
                         Error (NoConvergedMemberErr failures)))
 
+    type ExperimentPrefit with
+
+        /// The run's capture rows as its pre-fit check kept them by the attachment's exclusions (`MappedPoints.keptBy`,
+        /// step 314); a run the linear engine reads is refused, never dropped, when its check failed or holds no capture
+        /// rows (spec 0050 S11.3).
+        member private this.captureRows : Result<MuellerRawRow list, StudyFitError> =
+            let name = this.experiment.name
+
+            match this.check with
+            | Ok (CapturePoints rows) -> Ok rows
+            | Ok (SeriesPoints _ | ObservationPoints _ | ColumnPoints _) ->
+                Error (StudyForwardFitErr (ReadingMismatchErr $"{name.value} holds no capture rows, which the staged Mueller path reads"))
+            | Error error -> Error (StudyForwardFitErr (PrefitFailedErr (name, error)))
+
     type StagedStudy with
 
         /// Stage 1 by the reference AIR calibration, where `engineWith` finds the calibration shape: S10.3's stage one over
@@ -586,20 +618,9 @@ module StudyEngine =
             let ofFamily (family : Family) (prefit : ExperimentPrefit) : bool =
                 families |> List.exists (fun (run, calibration) -> run = prefit.experiment.name && calibration.runFamily = family)
 
-            // The pre-fit check has kept its points by the attachment's exclusions (`MappedPoints.keptBy`, step 314); a run
-            // stage one reads is refused, never dropped, when its check failed or holds no capture rows.
-            let captureRowsOf (prefit : ExperimentPrefit) : Result<MuellerRawRow list, StudyFitError> =
-                let name = prefit.experiment.name
-
-                match prefit.check with
-                | Ok (CapturePoints rows) -> Ok rows
-                | Ok (SeriesPoints _ | ObservationPoints _ | ColumnPoints _) ->
-                    Error (StudyForwardFitErr (ReadingMismatchErr $"{name.value} holds no capture rows, which the staged Mueller path reads"))
-                | Error error -> Error (StudyForwardFitErr (PrefitFailedErr (name, error)))
-
             // Prefits are in study order, so each selection keeps it.
             let rowsOf (selected : ExperimentPrefit -> bool) : Result<MuellerRawRow list, StudyFitError> =
-                prefits |> List.filter selected |> List.map captureRowsOf |> ItemEvaluation.sequenced |> Result.map List.concat
+                prefits |> List.filter selected |> List.map (fun prefit -> prefit.captureRows) |> ItemEvaluation.sequenced |> Result.map List.concat
 
             rowsOf isDark
             |> Result.bind (fun darknessRows ->
@@ -637,3 +658,430 @@ module StudyEngine =
                     fitted = StudyParameterVector.ofParameterValues values
                     objectMatrices = []
                 })
+
+    type ParameterValue with
+
+        /// The number as a detector's gain, the scale a row's dark-subtracted signal is divided by (spec 0050 S11.3).
+        member this.airGain : AirGain =
+            let (ParameterValue gain) = this
+            AirGain gain
+
+    type MuellerMatrix with
+
+        /// Its sixteen elements m00 … m33, row-major, as parameter numbers (spec 0050 S11.3).
+        member this.rowMajorValues : ParameterValue list =
+            [
+                for row in 0 .. 3 do
+                    for column in 0 .. 3 -> ParameterValue (this.element row column)
+            ]
+
+    /// One capture row as the run law reads it about its run's unknown segment, every step at the row's own orientation
+    /// and wavelength: the state reaching the segment, the detector's S₀ row through the steps past it, and the segment's
+    /// rotation; the whole path, unrotated, for a run with none (spec 0050 S11.3).
+    type private SegmentProjection =
+        {
+            arriving : StokesVector
+            analyzing : RealVector4
+            segmentRotation : Angle
+            captured : MuellerRawRow
+        }
+
+    /// A run's projected capture rows, the items of its unknown segment in light order, and the dark level and held gain
+    /// its detector reads with (spec 0050 S11.3).
+    type private ProjectedRun =
+        {
+            projectedRun : ExperimentName
+            bearers : ItemId list
+            runDark : DarkMean
+            heldGain : ParameterValue
+            projections : SegmentProjection list
+        }
+
+    /// An object's sixteen coefficients in `vecColumnMajor` order as the affine image m = k + P·x of the fitted vector:
+    /// `fixedPart` is k, and each free column is P's column of the entry it names (spec 0050 S11.3).
+    type private CoefficientMap =
+        {
+            fixedPart : RealVector
+            freeColumns : (StudyVectorIndex * RealVector) list
+        }
+
+    /// A lone object's fitted runs: each run's full system over its corrected rows, with its coefficient map (spec 0050
+    /// S11.3).
+    type private LoneObjectRuns =
+        {
+            loneItem : ItemId
+            runSystems : (LeastSquaresSystem * CoefficientMap) list
+        }
+
+        /// The entries any of its runs fits it in.
+        member this.columns : StudyVectorIndex list =
+            this.runSystems |> List.collect (fun (_, map) -> map.freeColumns |> List.map fst) |> List.distinct
+
+    /// One group's solve: its object solve, its complete matrix, and its own rows, which its share of the χ² counts (spec
+    /// 0050 S11.3).
+    type private GroupSolve =
+        {
+            matrixFit : ObjectMatrixFit
+            solvedMatrix : MuellerMatrix
+            ownRows : LeastSquaresSystem
+        }
+
+    type StagedStudy with
+
+        /// Stage 2, or a joint fit, by the reference linear path where `engineWith` finds the black-box shape: each capture
+        /// row projected by the run law about its unknown object and divided by its session's gain at its time, then solved
+        /// by `reconstruct` or on its free columns through the same proxy (spec 0050 S11.3; 001 §L).
+        member this.reconstructLinear
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (data : StudyData)
+            (solver : MuellerSolverProxy)
+            : Result<StudyFitSolution, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+            let layout = this.study.parameterLayoutWith staged
+            let items = staged.kit.items
+            let fittedParameters = layout.entries |> List.map (fun entry -> entry.unknown.parameter)
+            let moved = fittedParameters @ fittedFollowersIn this.study fittedParameters
+
+            let sessionOf (run : ExperimentName) : StudySession option =
+                layout.sessions |> List.tryFind (fun session -> List.contains run session.experiments)
+
+            // A run whose session reads no Dark run keeps its detector's own dark offset, as the residual does (step 374).
+            let darkOf (run : ExperimentName) : DarkMean option =
+                sessionOf run |> Option.bind (fun session -> data.darkOf session.name)
+
+            let evaluationErr (error : ItemEvaluation.ItemEvaluationError) : StudyFitError =
+                StudyForwardFitErr (ForwardSlotErr (ItemEvaluation.SlotEvaluationErr error))
+
+            // Bound once at the start vector: an unknown is never evaluated, and every fixed item holds its own value.
+            let projectedOf (prefit : ExperimentPrefit) : Result<ProjectedRun, StudyFitError> =
+                let experiment = prefit.experiment
+                let name = experiment.name
+
+                prefit.captureRows
+                |> Result.bind (fun rows ->
+                    layout.assignmentFor this.study items name layout.startVector
+                    |> Result.bind (fun assignment -> experiment.boundWith staged this.study assignment (darkOf name))
+                    |> Result.bind (fun bound ->
+                        (CapturePoints rows).measuredRowsFor experiment.scan |> Result.map (fun measured -> bound, List.zip rows measured))
+                    |> Result.mapError StudyForwardFitErr)
+                |> Result.bind (fun (bound, placed) ->
+                    match bound.readout with
+                    | IntensityDetectorReadout (gain, dark) ->
+                        let bearers = bearersAmong moved (bound.path |> List.choose (fun step -> step.slot.content.itemOpt))
+
+                        let bearing (step : BoundPathStep) : bool =
+                            match step.slot.content.itemOpt with
+                            | Some item -> List.contains item bearers
+                            | None -> false
+
+                        // The segment runs from the first unknown-bearing step to the last; a black box is a sample's
+                        // object step, which `emittedInto` never takes as the reference, so the steps before it fold the
+                        // emission as the whole path does (spec 0050 S8.1).
+                        let before, segmentOpt, after =
+                            match List.tryFindIndex bearing bound.path, List.tryFindIndexBack bearing bound.path with
+                            | Some first, Some last -> List.take first bound.path, Some (List.item first bound.path), List.skip (last + 1) bound.path
+                            | _ -> bound.path, None, []
+
+                        let projectionOf (row : MuellerRawRow, measured : MeasuredRow) : Result<SegmentProjection, StudyFitError> =
+                            match measured with
+                            | SettingsRow (settings, waveLengthOpt, _) ->
+                                let w = bound.waveLengthAt settings waveLengthOpt
+
+                                let stepsOf (steps : BoundPathStep list) : Result<ExperimentRun.RunStep list, ItemEvaluation.ItemEvaluationError> =
+                                    steps
+                                    |> List.map (fun step -> step.element.muellerAt (bound.orientationAt settings step) w |> Result.map step.slot.runStepOf)
+                                    |> ItemEvaluation.sequenced
+
+                                stepsOf before
+                                |> Result.bind (fun beforeSteps ->
+                                    stepsOf after
+                                    |> Result.map (fun afterSteps ->
+                                        let past = ExperimentRun.RunStep.productOf afterSteps
+
+                                        let rotation =
+                                            match segmentOpt with
+                                            | Some step -> (bound.orientationAt settings step).rotation
+                                            | None -> Angle.zero
+
+                                        let projection : SegmentProjection =
+                                            {
+                                                arriving = ExperimentRun.detectorStokes bound.emission beforeSteps
+                                                analyzing = RealVector4.create [ for column in 0 .. 3 -> past.element 0 column ]
+                                                segmentRotation = rotation
+                                                captured = row
+                                            }
+
+                                        projection))
+                                |> Result.mapError evaluationErr
+                            | ObservationRow _ ->
+                                Error (StudyForwardFitErr (ReadingMismatchErr $"{name.value} holds a Mueller observation, which the linear path does not read"))
+
+                        placed
+                        |> List.map projectionOf
+                        |> ItemEvaluation.sequenced
+                        |> Result.map (fun projections ->
+                            let projected : ProjectedRun =
+                                {
+                                    projectedRun = name
+                                    bearers = bearers
+                                    runDark = dark
+                                    heldGain = gain
+                                    projections = projections
+                                }
+
+                            projected)
+                    | PolarimeterDetectorReadout
+                    | EllipsometerDetectorReadout ->
+                        Error (StudyForwardFitErr (ReadingMismatchErr $"{name.value} is not read by an intensity detector, which the linear path reads")))
+
+            // An AIR run's gain from its own rows, projected by the run law and dark-corrected as its detector reads them.
+            let anchorOf (prefit : ExperimentPrefit) : Result<AirAnchorGain, StudyFitError> =
+                projectedOf prefit
+                |> Result.bind (fun air ->
+                    air.projections
+                    |> List.map (fun projection -> projection.arriving, projection.analyzing, projection.captured)
+                    |> airAnchorGainOver air.runDark air.projectedRun
+                    |> Result.mapError StagedPathFitErr)
+
+            // A free session divides by the held detector gain, an anchored or interpolated one by its rule (spec 0050 S11.1).
+            let ruleOf (run : ExperimentName) : Result<SessionGainRule option, StudyFitError> =
+                let model =
+                    match sessionOf run with
+                    | Some session -> this.study.gainModelOf session.name
+                    | None -> FreeSessionGain
+
+                let anchoredBy (airRuns : ExperimentName list) : Result<SessionGainRule option, StudyFitError> =
+                    prefits
+                    |> List.filter (fun prefit -> List.contains prefit.experiment.name airRuns)
+                    |> List.map anchorOf
+                    |> ItemEvaluation.sequenced
+                    |> Result.bind (fun anchors -> model.ruleWith anchors |> Result.mapError SessionGainFitErr)
+                    |> Result.map Some
+
+                match model with
+                | FreeSessionGain -> Ok None
+                | AnchoredSessionGain anchors -> anchoredBy anchors
+                | InterpolatedSessionGain repeats -> anchoredBy [ repeats.opening; repeats.closing ]
+
+            // Each row as (s, a, (avg − dark) / gain at its capture time) in its object's frame, its full row `designRow s a`.
+            let fullSystemOf (projected : ProjectedRun) : Result<LeastSquaresSystem, StudyFitError> =
+                ruleOf projected.projectedRun
+                |> Result.map (fun ruleOpt ->
+                    projected.projections
+                    |> List.map (fun projection ->
+                        let gain =
+                            match ruleOpt with
+                            | Some rule -> rule.gainAt projection.captured.capturedAt
+                            | None -> projected.heldGain.airGain
+
+                        projectCaptureRowFrom projection.arriving projection.analyzing projection.segmentRotation projected.runDark gain projection.captured)
+                    |> LeastSquaresSystem.ofProjections)
+
+            let count = layout.entries.Length
+
+            // The study's assignment is affine in the vector, each value a copy of an entry, of a leader or its own: its image
+            // of the zero vector is k, and each unit vector's change is P's column of that entry (spec 0050 S11.1, S11.3).
+            let coefficientMapOf (run : ExperimentName) (item : ItemId) : Result<CoefficientMap, StudyFitError> =
+                let coefficientsAt (vector : StudyParameterVector) : Result<float[], StudyFitError> =
+                    layout.assignmentFor this.study items run vector
+                    |> Result.mapError StudyForwardFitErr
+                    |> Result.bind (fun assignment ->
+                        match items |> List.tryFind (fun held -> held.id = item) with
+                        | Some held ->
+                            let values = assignment.valuesOf held
+
+                            vecOrderCoefficients
+                            |> List.map values.valueOf
+                            |> ItemEvaluation.sequenced
+                            |> Result.map (fun coefficients -> coefficients |> List.map (fun coefficient -> coefficient.value) |> Array.ofList)
+                            |> Result.mapError evaluationErr
+                        | None -> Error (StudyForwardFitErr (ForwardSlotErr (ItemEvaluation.SlotItemErr (UnknownSlotItemErr $"the kit holds no item {item.value}")))))
+
+                let unitAt (entry : int) : StudyParameterVector = Array.init count (fun k -> if k = entry then 1.0 else 0.0) |> StudyParameterVector
+
+                coefficientsAt (Array.zeroCreate count |> StudyParameterVector)
+                |> Result.bind (fun fixedPart ->
+                    List.init count (fun entry -> coefficientsAt (unitAt entry) |> Result.map (fun image -> StudyVectorIndex entry, Array.map2 (-) image fixedPart))
+                    |> ItemEvaluation.sequenced
+                    |> Result.map (fun columns ->
+                        let map : CoefficientMap =
+                            {
+                                fixedPart = RealVector.create fixedPart
+                                freeColumns =
+                                    columns
+                                    |> List.filter (fun (_, column) -> column |> Array.exists (fun weight -> weight <> 0.0))
+                                    |> List.map (fun (index, column) -> index, RealVector.create column)
+                            }
+
+                        map))
+
+            let dot (row : DesignRow) (vector : RealVector) : float = row.value |> Array.mapi (fun i entry -> entry * vector.[i]) |> Array.sum
+
+            let columnIn (map : CoefficientMap) (index : StudyVectorIndex) : RealVector option =
+                map.freeColumns |> List.tryFind (fun (held, _) -> held = index) |> Option.map snd
+
+            // A run's rows over the system's columns: A·P, a linked column the sum of its coefficients' entries, and b − A·k.
+            let reducedOver (columns : StudyVectorIndex list) (system : LeastSquaresSystem, map : CoefficientMap) : LeastSquaresSystem =
+                let weights = columns |> List.map (columnIn map)
+
+                {
+                    design =
+                        system.design
+                        |> Array.map (fun row ->
+                            weights
+                            |> List.map (fun weightOpt ->
+                                match weightOpt with
+                                | Some column -> dot row column
+                                | None -> 0.0)
+                            |> Array.ofList
+                            |> DesignRow)
+                    rhs = Array.map2 (fun (row : DesignRow) (target : float) -> target - dot row map.fixedPart) system.design system.rhs
+                }
+
+            // m = k + P·x assembled whole before it is un-vec'd; a coefficient no column carries keeps its fixed value exactly.
+            let assembledOf (columns : StudyVectorIndex list) (solution : RealVector) (map : CoefficientMap) : MuellerMatrix =
+                let carried =
+                    columns |> List.mapi (fun position index -> columnIn map index |> Option.map (fun column -> column, solution.[position])) |> List.choose id
+
+                let values =
+                    Array.init 16 (fun place ->
+                        match carried |> List.filter (fun (column, _) -> column.[place] <> 0.0) with
+                        | [] -> map.fixedPart.[place]
+                        | weighted -> map.fixedPart.[place] + (weighted |> List.sumBy (fun (column, value) -> column.[place] * value)))
+
+                (RealVector.create values).columnMajorMueller
+
+            let solveOf (solvedItems : ItemId list) (matrix : MuellerMatrix) (rank : MatrixRank) (rmse : ResidualRmse) (rows : LeastSquaresSystem) : GroupSolve =
+                {
+                    matrixFit = { items = solvedItems; elements = matrix.rowMajorValues; rank = rank; rmse = rmse }
+                    solvedMatrix = matrix
+                    ownRows = rows
+                }
+
+            let ownedBy (item : ItemId) (index : StudyVectorIndex) : bool =
+                match (List.item index.value layout.entries).unknown.parameter with
+                | ItemParameterRef (owner, _) -> owner = item
+                | MaterialParameterRef _ -> false
+
+            // One system of lone objects, its columns in layout order: a lone item fitting all sixteen of its own by
+            // `reconstruct`, any other through the proxy on A·P·x = b − A·k (spec 0050 S11.3).
+            let solveLone (system : LoneObjectRuns list) : Result<GroupSolve list, StudyFitError> =
+                let solvedItems = system |> List.map (fun lone -> lone.loneItem)
+                let columns = system |> List.collect (fun lone -> lone.columns) |> List.distinct |> List.sortBy (fun index -> index.value)
+                let rowsOf (lone : LoneObjectRuns) : LeastSquaresSystem = lone.runSystems |> List.map fst |> LeastSquaresSystem.concat
+
+                match system with
+                | [ lone ] when columns.Length = 16 && columns |> List.forall (ownedBy lone.loneItem) ->
+                    let rows = rowsOf lone
+
+                    reconstruct solver rows
+                    |> Result.mapError (fun error -> ObjectSolveFitErr (solvedItems, error))
+                    |> Result.map (fun reconstructed -> [ solveOf solvedItems reconstructed.matrix reconstructed.rank reconstructed.rmse rows ])
+                | _ ->
+                    system
+                    |> List.collect (fun lone -> lone.runSystems |> List.map (reducedOver columns))
+                    |> LeastSquaresSystem.concat
+                    |> solver.solveLinearLeastSquares
+                    |> Result.mapError (fun error -> ObjectSolveFitErr (solvedItems, error))
+                    |> Result.map (fun solution ->
+                        system
+                        |> List.choose (fun lone ->
+                            match lone.runSystems with
+                            | (_, map) :: _ ->
+                                let matrix = assembledOf columns solution.solution map
+                                Some (solveOf [ lone.loneItem ] matrix solution.rank solution.rmse (rowsOf lone))
+                            | [] -> None))
+
+            // A series' combined matrix, its first unknown to its last, over its own rows: a diagnostic beside its
+            // constituents' fits, never their coefficients (spec 0050 S11.3, S11.4).
+            let solveSeries (seriesItems : ItemId list) (systems : LeastSquaresSystem list) : Result<GroupSolve, StudyFitError> =
+                let rows = LeastSquaresSystem.concat systems
+
+                reconstruct solver rows
+                |> Result.mapError (fun error -> ObjectSolveFitErr (seriesItems, error))
+                |> Result.map (fun reconstructed -> solveOf seriesItems reconstructed.matrix reconstructed.rank reconstructed.rmse rows)
+
+            prefits
+            |> List.filter (fun prefit -> List.contains prefit.experiment.name this.fittedRuns)
+            |> List.map projectedOf
+            |> ItemEvaluation.sequenced
+            |> Result.bind (fun projectedRuns ->
+                projectedRuns
+                |> List.filter (fun projected -> not (List.isEmpty projected.bearers))
+                |> List.map (fun projected -> fullSystemOf projected |> Result.map (fun system -> projected, system))
+                |> ItemEvaluation.sequenced)
+            |> Result.bind (fun systems ->
+                // By the items of each run's unknown segment, in first-run order.
+                let groups = systems |> List.groupBy (fun (projected, _) -> projected.bearers)
+
+                groups
+                |> List.choose (fun (key, runs) ->
+                    match key with
+                    | [ item ] -> Some (item, runs)
+                    | _ -> None)
+                |> List.map (fun (item, runs) ->
+                    runs
+                    |> List.map (fun (projected, system) -> coefficientMapOf projected.projectedRun item |> Result.map (fun map -> system, map))
+                    |> ItemEvaluation.sequenced
+                    |> Result.map (fun runSystems -> ({ loneItem = item; runSystems = runSystems } : LoneObjectRuns)))
+                |> ItemEvaluation.sequenced
+                |> Result.bind (fun lones ->
+                    let firstRunOrder (lone : LoneObjectRuns) : int = lones |> List.findIndex (fun held -> held.loneItem = lone.loneItem)
+
+                    // Lone objects sharing a fitted entry, a link's leader, are one system (spec 0050 S11.1, S11.3).
+                    let loneSystems : LoneObjectRuns list list =
+                        lones
+                        |> List.fold
+                            (fun (held : LoneObjectRuns list list) lone ->
+                                let shares (system : LoneObjectRuns list) : bool =
+                                    system |> List.exists (fun other -> other.columns |> List.exists (fun index -> List.contains index lone.columns))
+
+                                let sharing, apart = held |> List.partition shares
+                                apart @ [ List.concat sharing @ [ lone ] |> List.sortBy firstRunOrder ])
+                            []
+
+                    loneSystems
+                    |> List.map solveLone
+                    |> ItemEvaluation.sequenced
+                    |> Result.map List.concat
+                    |> Result.bind (fun loneSolves ->
+                        groups
+                        |> List.choose (fun (key, runs) ->
+                            match key with
+                            | _ :: _ :: _ -> Some (solveSeries key (runs |> List.map snd))
+                            | []
+                            | [ _ ] -> None)
+                        |> ItemEvaluation.sequenced
+                        |> Result.map (fun seriesSolves ->
+                            let solves =
+                                groups
+                                |> List.choose (fun (key, _) -> loneSolves @ seriesSolves |> List.tryFind (fun solve -> solve.matrixFit.items = key))
+
+                            let startValues = layout.entries |> List.map (fun entry -> entry.unknown.unknown.start)
+
+                            // A lone object fills only its own entries, each from its complete matrix.
+                            let fittedValues =
+                                layout.entries
+                                |> List.map (fun entry ->
+                                    match entry.unknown.parameter with
+                                    | ItemParameterRef (item, name) ->
+                                        let solveOpt = solves |> List.tryFind (fun solve -> solve.matrixFit.items = [ item ])
+
+                                        match solveOpt, vecOrderCoefficients |> List.tryFindIndex (fun held -> held = name) with
+                                        | Some solve, Some place -> ParameterValue solve.solvedMatrix.vecColumnMajor.[place]
+                                        | _ -> entry.unknown.unknown.start
+                                    | MaterialParameterRef _ -> entry.unknown.unknown.start)
+
+                            let chiSquared =
+                                solves
+                                |> List.sumBy (fun solve -> solve.matrixFit.rmse.value * solve.matrixFit.rmse.value * float solve.ownRows.design.Length)
+                                |> FitChiSquared
+
+                            {
+                                engine = LinearStudyEngine
+                                layout = layout
+                                members = [ ({ start = startValues; outcome = MemberConverged (fittedValues, Some chiSquared) } : FitRunMember) ]
+                                fitted = StudyParameterVector.ofParameterValues fittedValues
+                                objectMatrices = solves |> List.map (fun solve -> solve.matrixFit)
+                            }))))
