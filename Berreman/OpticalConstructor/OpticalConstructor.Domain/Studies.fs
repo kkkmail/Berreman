@@ -1021,9 +1021,11 @@ module Studies =
         | SetParameterScope of study : StudyName * scoped : ScopedParameter
         /// The study with one of its parameters following another (spec 0050 S11.1).
         | LinkParameters of study : StudyName * link : ParameterLink
+        /// Set one component's state in an opened material's study-local working copy (spec 0050 S11.5).
+        | SetOpenedMaterialParameter of study : StudyName * material : MaterialVersionId * parameter : Parameter
 
         /// The study the message creates or changes through its pure update, which the caller records and replaces in its
-        /// list; a refusal answers its error and changes nothing (spec 0050 S11.1; 001 §P).
+        /// list; a refusal answers its error and changes nothing (spec 0050 S11.1, S11.5; 001 §P).
         member this.applyTo (context : StudyContext) : Result<Study, StudyError> =
             let studyNamed (name : StudyName) : Result<Study, StudyError> =
                 match context.studies |> List.tryFind (fun study -> study.name = name) with
@@ -1041,3 +1043,5 @@ module Studies =
                 studyNamed study |> Result.bind (fun held -> held.withParameterScope scoped (context.itemsUsedBy held))
             | LinkParameters (study, link) ->
                 studyNamed study |> Result.bind (fun held -> held.withLink link (context.itemsUsedBy held))
+            | SetOpenedMaterialParameter (study, material, parameter) ->
+                studyNamed study |> Result.bind (fun held -> held.withMaterialParameterState material parameter.name parameter.state)

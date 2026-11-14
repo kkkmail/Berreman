@@ -255,6 +255,106 @@ module StudyMessageTests =
         Assert.Equal({ created with experiments = [ e1; e2 ] }, stored)
         Assert.Equal(added, stored)
 
+    /// The material edit uses the same message and recording path as the study view (spec 0050 S11.5).
+    [<Fact>]
+    let ``SetOpenedMaterialParameter frees an opened component in the stored study, and a refused one records nothing`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = studyKit database
+        recorded fixture (CreateStudy (qzLr, [ e1; e2; e3 ])) |> ignore
+        let opened = recorded fixture (OpenMaterial (qzLr, crystalVersion))
+        let originalCopy = Assert.Single(opened.materials)
+        let n1 : ParameterName = ParameterName "n1"
+        let unknown : UnknownParameterData =
+            {
+                start = ParameterValue 1.70
+                bounds =
+                    {
+                        lower = ParameterValue 1.60
+                        upper = ParameterValue 1.80
+                    }
+                priorOpt = None
+            }
+        let parameter : Parameter =
+            {
+                name = n1
+                state = UnknownParameter unknown
+            }
+
+        let freed = recorded fixture (SetOpenedMaterialParameter (qzLr, crystalVersion, parameter))
+        let stored = storedStudy fixture
+        let copy = Assert.Single(stored.materials)
+        Assert.Equal(parameter, copy.parameters |> List.find (fun held -> held.name = n1))
+        Assert.Equal(15, copy.parameters.Length)
+
+        for held in copy.parameters |> List.filter (fun held -> held.name <> n1) do
+            match held.state with
+            | KnownParameter _ -> ()
+            | UnknownParameter _
+            | CalibratedParameter _ -> Assert.Fail($"{held.name.value} must remain known")
+
+        let expectedCopy =
+            {
+                originalCopy with
+                    parameters = originalCopy.parameters |> List.map (fun held -> if held.name = n1 then parameter else held)
+            }
+        let expectedStudy =
+            {
+                opened with materials = [ expectedCopy ]
+            }
+        Assert.Equal(expectedCopy, copy)
+        Assert.Equal(expectedStudy, stored)
+        Assert.Equal(freed, stored)
+
+        let paths = fixture.folder.paths ()
+        let bytes = kitFileBytes fixture
+        let assertUnchanged () : unit =
+            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+            Assert.Equal<Map<KitRelativePath, FileByteContent>>(bytes, kitFileBytes fixture)
+            Assert.Equal(stored, storedStudy fixture)
+
+        let unopenedVersion = MaterialVersionId.firstOf (MaterialId (Guid.Parse "40900000-0000-4000-8000-000000000009"))
+        match sent fixture (SetOpenedMaterialParameter (qzLr, unopenedVersion, parameter)) with
+        | Error (UnknownStudyMaterialErr reason) -> Assert.Contains($"{unopenedVersion.materialId.value}", reason)
+        | Error error -> Assert.Fail($"expected UnknownStudyMaterialErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("an unopened material version must be refused")
+        assertUnchanged ()
+
+        let reversed : Parameter =
+            {
+                parameter with
+                    state =
+                        UnknownParameter
+                            {
+                                unknown with
+                                    bounds =
+                                        {
+                                            lower = unknown.bounds.upper
+                                            upper = unknown.bounds.lower
+                                        }
+                            }
+            }
+        match sent fixture (SetOpenedMaterialParameter (qzLr, crystalVersion, reversed)) with
+        | Error (InvalidStudyParameterErr reason) -> Assert.Contains(n1.value, reason)
+        | Error error -> Assert.Fail($"expected InvalidStudyParameterErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("reversed parameter bounds must be refused")
+        assertUnchanged ()
+
+        let missingParameter : Parameter =
+            {
+                parameter with name = ParameterName "n_o"
+            }
+        match sent fixture (SetOpenedMaterialParameter (qzLr, crystalVersion, missingParameter)) with
+        | Error (UnknownStudyParameterErr reason) -> Assert.Contains(missingParameter.name.value, reason)
+        | Error error -> Assert.Fail($"expected UnknownStudyParameterErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("an absent material component must be refused")
+        assertUnchanged ()
+
+        match sent fixture (SetOpenedMaterialParameter (StudyName "LR", crystalVersion, parameter)) with
+        | Error (UnknownStudyErr reason) -> Assert.Contains("'LR'", reason)
+        | Error error -> Assert.Fail($"expected UnknownStudyErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("an absent study must be refused")
+        assertUnchanged ()
+
     [<Fact>]
     let ``OpenMaterial snapshots the material version into the kit and stores its working copy in the study file`` () : unit =
         use database = BuiltinCatalogue.freshLibraryDatabase ()
