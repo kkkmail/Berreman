@@ -996,7 +996,12 @@ module KitContentFileJsonTests =
             | Ok starts -> starts
             | Error error -> failwith error.describe
 
-        let study = qzLrStudy.withFitStarts threeStarts
+        let thresholds =
+            match SuspectThresholds.tryCreate 0.9 0.2 with
+            | Ok kept -> kept
+            | Error error -> failwith error.describe
+
+        let study = (qzLrStudy.withFitStarts threeStarts).withSuspectThresholds thresholds
         let file = study.studyFile
         let text = file.fileText |> kitContentJsonValue
         let readBack = text.parseStudyFile |> kitContentJsonValue
@@ -1005,6 +1010,7 @@ module KitContentFileJsonTests =
         Assert.Equal<Study>(study, file.study)
         Assert.Equal<StudyFile>(file, readBack)
         Assert.Equal<FitStartCount>(threeStarts, readBack.study.settings.starts)
+        Assert.Equal<SuspectThresholds>(thresholds, readBack.study.settings.suspect)
         Assert.DoesNotContain("\r", text.value)
         Assert.EndsWith("}\n", text.value)
         Assert.False(text.value.EndsWith "\n\n", "the file ends with exactly one line end")
@@ -1025,6 +1031,14 @@ module KitContentFileJsonTests =
         let starts = node.["study"].["settings"].["starts"]
         Assert.Equal(System.Text.Json.JsonValueKind.Number, starts.GetValueKind())
         Assert.Equal(3, starts.GetValue<int>())
+
+        // The suspect thresholds are written as their numbers (spec 0050 S11.4).
+        let suspect = node.["study"].["settings"].["suspect"]
+        let suspectKeys = [ for KeyValue (key, _) in suspect.AsObject() -> key ]
+        Assert.Equal<string list>([ "correlation"; "sigmaFraction" ], suspectKeys)
+        for expected, written in [ 0.9, suspect.["correlation"]; 0.2, suspect.["sigmaFraction"] ] do
+            Assert.Equal(System.Text.Json.JsonValueKind.Number, written.GetValueKind())
+            Assert.Equal(expected, written.GetValue<float>())
 
         Assert.Equal<KitFileText>(text, readBack.fileText |> kitContentJsonValue)
 
@@ -1054,6 +1068,9 @@ module KitContentFileJsonTests =
                 (fun node -> node.["study"].["settings"].["mode"] <- JsonValue.Create 3)
                 (fun node -> node.["study"].["settings"].["starts"] <- JsonValue.Create 0)
                 (fun node -> node.["study"].["settings"].AsObject().Remove "starts" |> ignore)
+                (fun node -> node.["study"].["settings"].AsObject().Remove "suspect" |> ignore)
+                (fun node -> node.["study"].["settings"].["suspect"].["correlation"] <- JsonValue.Create 1.5)
+                (fun node -> node.["study"].["settings"].["suspect"].["sigmaFraction"] <- JsonValue.Create 0.0)
             ]
 
         for edit in invalidEdits do

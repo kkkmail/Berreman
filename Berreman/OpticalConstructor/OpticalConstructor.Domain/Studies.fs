@@ -59,6 +59,9 @@ module Studies =
         | MaterialUnavailableErr of reason : string
         /// A fit start count below one (spec 0050 S11.3).
         | InvalidFitStartCountErr of reason : string
+        /// A suspect correlation threshold outside (0, 1], or a sigma fraction not finite and above zero
+        /// (spec 0050 S11.4).
+        | InvalidSuspectThresholdErr of reason : string
 
         member this.describe : string =
             match this with
@@ -82,6 +85,7 @@ module Studies =
             | UnknownStudyErr reason -> $"the kit has no such study: {reason}"
             | MaterialUnavailableErr reason -> $"the material version could not be read: {reason}"
             | InvalidFitStartCountErr reason -> $"the fit start count is not valid: {reason}"
+            | InvalidSuspectThresholdErr reason -> $"the suspect thresholds are not valid: {reason}"
 
     /// The AIR runs that open and close a drifting session (spec 0050 S11.1).
     type AirRepeatPair =
@@ -388,8 +392,52 @@ module Studies =
         /// The parameters' own start alone, so a study fits as the inverse suites do (spec 0050 S11.3).
         static member single : FitStartCount = FitStartCount 1
 
-    /// A study's fit mode, its residual weights, the experiments it leaves out and its fit's start count
-    /// (spec 0050 S11.1, S11.3; 001 §L).
+    /// A correlation coefficient between two fitted parameters, read both as a measured correlation and as its
+    /// threshold (spec 0050 S11.4).
+    type FitCorrelation =
+        | FitCorrelation of float
+
+        member this.value : float = let (FitCorrelation correlation) = this in correlation
+
+    /// A fitted parameter's standard deviation over the span of its bounds (spec 0050 S11.4).
+    type SigmaFraction =
+        | SigmaFraction of float
+
+        member this.value : float = let (SigmaFraction fraction) = this in fraction
+
+    /// A fitted parameter is suspect, and so profiled, when its correlation with another exceeds `correlation` in
+    /// magnitude or its sigma exceeds `sigmaFraction` of its bounds' span (spec 0050 S11.4; 001 §L).
+    type SuspectThresholds =
+        {
+            correlation : FitCorrelation
+            sigmaFraction : SigmaFraction
+        }
+
+        /// A correlation of 0.95 and a tenth of the bounds' span (spec 0050 S11.4).
+        static member initial : SuspectThresholds =
+            {
+                correlation = FitCorrelation 0.95
+                sigmaFraction = SigmaFraction 0.1
+            }
+
+        /// Keeps a correlation in (0, 1] and a finite fraction above zero; anything else, NaN included, is refused
+        /// naming the value (spec 0050 S11.4).
+        static member tryCreate (correlation : float) (sigmaFraction : float) : Result<SuspectThresholds, StudyError> =
+            let rendered (value : float) : string = value.ToString("R", CultureInfo.InvariantCulture)
+
+            if not (correlation > 0.0 && correlation <= 1.0) then
+                Error (InvalidSuspectThresholdErr $"the correlation {rendered correlation} is not above zero and at most one")
+            elif not (Double.IsFinite sigmaFraction && sigmaFraction > 0.0) then
+                Error (InvalidSuspectThresholdErr $"the sigma fraction {rendered sigmaFraction} is not a finite number above zero")
+            else
+                Ok
+                    {
+                        correlation = FitCorrelation correlation
+                        sigmaFraction = SigmaFraction sigmaFraction
+                    }
+
+    /// A study's fit mode, its residual weights, the experiments it leaves out, its fit's start count and the
+    /// thresholds that make a fitted parameter suspect (spec 0050 S11.1, S11.3, S11.4; 001 §L).
     type StudyFitSettings =
         {
             mode : FitMode
@@ -397,9 +445,11 @@ module Studies =
             detectorWeights : DetectorWeightSetting list
             disabled : ExperimentName list
             starts : FitStartCount
+            suspect : SuspectThresholds
         }
 
-        /// A joint fit of one start with no weight set and nothing left out (spec 0050 S11.1, S11.3).
+        /// A joint fit of one start with no weight set, nothing left out and the initial suspect thresholds
+        /// (spec 0050 S11.1, S11.3, S11.4).
         static member initial : StudyFitSettings =
             {
                 mode = JointFit
@@ -407,6 +457,7 @@ module Studies =
                 detectorWeights = []
                 disabled = []
                 starts = FitStartCount.single
+                suspect = SuspectThresholds.initial
             }
 
     /// Whether a study fits an experiment or leaves it out (ablation). Not stored: the study keeps its `disabled` list
@@ -687,6 +738,10 @@ module Studies =
 
         /// The study's fit making that many starts (spec 0050 S11.3).
         member this.withFitStarts (starts : FitStartCount) : Study = { this with settings = { this.settings with starts = starts } }
+
+        /// The study's fitted parameters judged suspect by those thresholds (spec 0050 S11.4).
+        member this.withSuspectThresholds (thresholds : SuspectThresholds) : Study =
+            { this with settings = { this.settings with suspect = thresholds } }
 
         /// The study with the experiment's residual weight replaced in place, else appended; refused, nothing changed,
         /// for an experiment the study does not hold (spec 0050 S11.1; 001 §L).

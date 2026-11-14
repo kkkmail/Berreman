@@ -33,7 +33,7 @@
           "sessionGains": { "type": "array" },
           "settings": {
             "type": "object",
-            "required": ["mode", "experimentWeights", "detectorWeights", "disabled", "starts"],
+            "required": ["mode", "experimentWeights", "detectorWeights", "disabled", "starts", "suspect"],
             "additionalProperties": false,
             "properties": {
               "mode": { "type": "integer", "minimum": 1, "maximum": 2 },
@@ -43,7 +43,16 @@
                 "type": "array",
                 "items": { "type": "string", "minLength": 1 }
               },
-              "starts": { "type": "integer", "minimum": 1 }
+              "starts": { "type": "integer", "minimum": 1 },
+              "suspect": {
+                "type": "object",
+                "required": ["correlation", "sigmaFraction"],
+                "additionalProperties": false,
+                "properties": {
+                  "correlation": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+                  "sigmaFraction": { "type": "number", "exclusiveMinimum": 0 }
+                }
+              }
             }
           },
           "notes": { "type": "string" }

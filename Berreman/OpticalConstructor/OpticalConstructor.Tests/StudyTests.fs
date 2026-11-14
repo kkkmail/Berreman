@@ -582,6 +582,7 @@ module StudyTests =
                 detectorWeights = [ { detector = phone.id; weight = ResidualWeight 0.5 } ]
                 disabled = [ e3 ]
                 starts = FitStartCount.single
+                suspect = SuspectThresholds.initial
             }
 
         Assert.Equal({ settingsStudy with settings = expectedSettings; notes = notes }, noted)
@@ -627,11 +628,64 @@ module StudyTests =
                 detectorWeights = []
                 disabled = [ e2 ]
                 starts = fourStarts
+                suspect = SuspectThresholds.initial
             }
 
         Assert.Equal({ configured with settings = expectedSettings }, fourFold)
         Assert.Equal(4, fourFold.settings.starts.value)
         Assert.Equal(configured, fourFold.withFitStarts FitStartCount.single)
+
+    [<Fact>]
+    let ``suspect thresholds keep a correlation in zero to one and a positive sigma fraction, and a study's are set in place`` () : unit =
+        Assert.Equal<SuspectThresholds>(SuspectThresholds.initial, StudyFitSettings.initial.suspect)
+        Assert.Equal(0.95, StudyFitSettings.initial.suspect.correlation.value)
+        Assert.Equal(0.1, StudyFitSettings.initial.suspect.sigmaFraction.value)
+
+        let thresholds =
+            match SuspectThresholds.tryCreate 0.9 0.2 with
+            | Ok kept -> kept
+            | Error error -> failwith $"expected the thresholds 0.9 and 0.2 kept, got {error.describe}"
+
+        Assert.Equal(0.9, thresholds.correlation.value)
+        Assert.Equal(0.2, thresholds.sigmaFraction.value)
+
+        let renderedOf (value : float) : string = value.ToString("R", Globalization.CultureInfo.InvariantCulture)
+
+        for correlation in [ 0.0; -0.5; 1.5; nan ] do
+            match SuspectThresholds.tryCreate correlation 0.2 with
+            | Error (InvalidSuspectThresholdErr reason) -> Assert.Contains($"correlation {renderedOf correlation}", reason)
+            | other -> Assert.Fail($"expected Error (InvalidSuspectThresholdErr _) for the correlation {correlation}, got %A{other}")
+
+        for fraction in [ 0.0; -0.1; nan; infinity ] do
+            match SuspectThresholds.tryCreate 0.9 fraction with
+            | Error (InvalidSuspectThresholdErr reason) -> Assert.Contains($"fraction {renderedOf fraction}", reason)
+            | other -> Assert.Fail($"expected Error (InvalidSuspectThresholdErr _) for the sigma fraction {fraction}, got %A{other}")
+
+        let threeStarts =
+            match FitStartCount.tryCreate 3 with
+            | Ok starts -> starts
+            | Error error -> failwith $"expected three starts, got {error.describe}"
+
+        // The thresholds leave the mode, the weights, the runs left out and the starts as they were.
+        let used = [ cpl1; cpl2; phone ]
+        let weighted = studyOf ((settingsStudy.withFitMode StagedFit).withExperimentWeight e1 (ResidualWeight 2.0))
+        let detectorWeighted = studyOf (weighted.withDetectorWeight phone.id (ResidualWeight 0.5) used)
+        let configured = (studyOf (detectorWeighted.withExperimentEnablement e2 DisabledInStudy)).withFitStarts threeStarts
+        let thresholded = configured.withSuspectThresholds thresholds
+
+        let expectedSettings : StudyFitSettings =
+            {
+                mode = StagedFit
+                experimentWeights = [ { experiment = e1; weight = ResidualWeight 2.0 } ]
+                detectorWeights = [ { detector = phone.id; weight = ResidualWeight 0.5 } ]
+                disabled = [ e2 ]
+                starts = threeStarts
+                suspect = thresholds
+            }
+
+        Assert.Equal({ configured with settings = expectedSettings }, thresholded)
+        Assert.Equal<SuspectThresholds>(thresholds, thresholded.settings.suspect)
+        Assert.Equal(configured, thresholded.withSuspectThresholds SuspectThresholds.initial)
 
     [<Fact>]
     let ``a setting naming an experiment, item or session the study lacks is refused`` () : unit =

@@ -177,6 +177,7 @@ module StudySessionTests =
         let studyReason = "'LR' is not among the kit's 1 studies"
         let unavailableReason = "material 36600000-0000-4000-8000-000000000009 v1 is not in the library"
         let startsReason = "0 is fewer than one start"
+        let suspectReason = "the correlation 1.5 is not above zero and at most one"
         let rendered =
             [ (EmptyGainAnchorsErr emptyReason).describe
               (MissingAnchorGainErr missingReason).describe
@@ -197,7 +198,8 @@ module StudySessionTests =
               (UnknownStudyItemErr itemReason).describe
               (UnknownStudyErr studyReason).describe
               (MaterialUnavailableErr unavailableReason).describe
-              (InvalidFitStartCountErr startsReason).describe ]
+              (InvalidFitStartCountErr startsReason).describe
+              (InvalidSuspectThresholdErr suspectReason).describe ]
 
         Assert.Equal($"the gain model names no AIR run: {emptyReason}", rendered.[0])
         Assert.Equal($"the AIR run's gain is not known: {missingReason}", rendered.[1])
@@ -219,6 +221,7 @@ module StudySessionTests =
         Assert.Equal($"the kit has no such study: {studyReason}", rendered.[17])
         Assert.Equal($"the material version could not be read: {unavailableReason}", rendered.[18])
         Assert.Equal($"the fit start count is not valid: {startsReason}", rendered.[19])
+        Assert.Equal($"the suspect thresholds are not valid: {suspectReason}", rendered.[20])
         Assert.Equal(rendered.Length, rendered |> List.distinct |> List.length)
 
     [<Fact>]
