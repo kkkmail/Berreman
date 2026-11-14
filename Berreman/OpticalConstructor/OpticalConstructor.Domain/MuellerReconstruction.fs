@@ -199,11 +199,14 @@ module MuellerReconstruction =
             rhs : float[]
         }
 
+        /// The residuals `A·x − b` of a solution over this system's rows, one per row (spec 0050 S11.4).
+        member this.residualsAt (solution : RealVector) : RealVector =
+            (RealMatrix.create (this.design |> Array.map (fun row -> row.value)) * solution) - RealVector.create this.rhs
+
         /// The residual RMSE `‖A·x − b‖ / √m` of a solution over this system's rows, the one the solver reports and the
         /// product check reuses (spec 0050 S10.3).
         member this.residualRmseAt (solution : RealVector) : ResidualRmse =
-            let residual = (RealMatrix.create (this.design |> Array.map (fun row -> row.value)) * solution) - RealVector.create this.rhs
-            residual.norm / sqrt (float this.design.Length) |> ResidualRmse
+            (this.residualsAt solution).norm / sqrt (float this.design.Length) |> ResidualRmse
 
         /// The systems' design rows and right-hand sides, stacked in list order (spec 0050 S11.3).
         static member concat (systems : LeastSquaresSystem list) : LeastSquaresSystem =

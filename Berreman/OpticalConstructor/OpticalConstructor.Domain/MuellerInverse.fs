@@ -881,6 +881,20 @@ module MuellerInverse =
                     let smallest = List.min values
                     if smallest <= 0.0 then ConditionNumber infinity else List.max values / smallest |> ConditionNumber
 
+        /// The singular values above 1e-6 of the largest (spec 0050 S11.4). The floor is relative and two orders above a
+        /// forward-difference Jacobian's noise at ALGLIB's step (~1e-8 of a column), so a pair confounded up to that
+        /// noise counts once while a direction 1e4 times weaker than the strongest still counts.
+        member this.rank : MatrixRank =
+            let (ResidualJacobian jacobian) = this
+            if jacobian.Length = 0 || jacobian.[0].Length = 0 then MatrixRank 0
+            else
+                let (RealMatrix a) = RealMatrix.create jacobian
+                let svd = a.Svd(false)
+                let values = [ for i in 0 .. svd.S.Count - 1 -> svd.S.[i] ]
+                let largest = List.max values
+                if largest <= 0.0 then MatrixRank 0
+                else values |> List.filter (fun s -> s > 1.0e-6 * largest) |> List.length |> MatrixRank
+
         /// The parameter CORRELATION matrix, computed from the Jacobian alone:
         /// `corrᵢⱼ = Cᵢⱼ / √(Cᵢᵢ·Cⱼⱼ)` with `C = (JᵀJ)⁻¹`. A magnitude near 1 off the diagonal means those two
         /// parameters are only constrained in combination, so the fit determines a ridge rather than a point.
