@@ -30,6 +30,7 @@ open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
@@ -1027,6 +1028,10 @@ type TableAndElementRotationMsg =
     | StudyCommand of StudyMsg
     /// The Fit step's verbs and the running fit's progress and completion (spec 0050 S11.5).
     | StudyFit of StudyFitMsg
+    /// Publishes the run's item calibrations as their next revisions (spec 0050 S11.5).
+    | PublishCalibration of FitRunName
+    /// Promotes a fitted material or black-box item to its next library version (spec 0050 S11.5).
+    | PromoteToLibrary of FitRunName * PromotionSubject
     /// Shows a held study and its latest fit run without writing (spec 0050 S11.5).
     | SelectStudy of StudyName
     /// Sets the New study form's typed name without writing (spec 0050 S11.5).
@@ -2304,6 +2309,27 @@ let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -
             model with kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")
         }
 
+/// Resolves the named run and its study only after the kit's write guard allows publishing (spec 0050 S11.5).
+let private withPublishingRun
+    (name : FitRunName)
+    (model : TableAndElementRotationModel)
+    (publish : Study -> FitRun -> TableAndElementRotationModel)
+    : TableAndElementRotationModel =
+    guardKitWrite model (fun () ->
+        let held =
+            model.kitFitRuns
+            |> List.tryFind (fun run -> run.name = name)
+            |> Option.bind (fun run ->
+                model.kitStudies
+                |> List.tryFind (fun study -> study.name = run.study)
+                |> Option.map (fun study -> study, run))
+        match held with
+        | Some (study, run) -> publish study run
+        | None ->
+            {
+                model with kitStatus = Some (ControlCaption $"The kit holds no fit run {name.value}.")
+            })
+
 /// Runs a step of the reload offer only for a kit with a folder: nothing outside the app changes a scratch kit (spec 0050 S5.3).
 let private guardKitFolder (model : TableAndElementRotationModel) (step : unit -> TableAndElementRotationModel) : TableAndElementRotationModel =
     match model.kitFolderOpt with
@@ -2755,6 +2781,62 @@ let private withGridDraftEdited
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     match msg with
+    | PublishCalibration name ->
+        withPublishingRun name model (fun study run ->
+            match study.calibratedItemsWith run model.kitItems with
+            | Error error ->
+                {
+                    model with kitStatus = Some (ControlCaption $"Nothing was published — {error.describe}")
+                }
+            | Ok items ->
+                let library : KitLibraryContext =
+                    {
+                        kit = model.kit
+                        imports = model.catalogueImports
+                    }
+                let itemHeld (current : TableAndElementRotationModel) (item : Item) : TableAndElementRotationModel =
+                    {
+                        current with kitItems = current.kitItemsWith item
+                    }
+                match writtenInOrder library.recordItem itemHeld items model with
+                | Ok recorded ->
+                    let labels = items |> List.map (fun item -> item.label.value) |> String.concat ", "
+                    {
+                        recorded with kitStatus = Some (ControlCaption $"Published the calibration of {labels} from {run.name.value}.")
+                    }
+                | Error (recorded, error) ->
+                    {
+                        recorded with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    })
+    | PromoteToLibrary (name, subject) ->
+        withPublishingRun name model (fun study run ->
+            let library : KitLibraryContext =
+                {
+                    kit = model.kit
+                    imports = model.catalogueImports
+                }
+            let promotedStatus (result : Result<LibraryVersionRef, PublishError>) : ControlCaption =
+                match result with
+                | Ok version -> ControlCaption $"Promoted to the library as {version.describe}."
+                | Error error -> ControlCaption $"Not promoted — {error.describe}"
+            let caption =
+                match subject with
+                | MaterialPromotion version ->
+                    match model.materials.resolveVersion version with
+                    | Ok (Some entry) -> library.promoteMaterial study run version entry |> promotedStatus
+                    | Ok None
+                    | Error _ -> ControlCaption "The material version could not be read."
+                | BlackBoxPromotion id ->
+                    let promotionOpt =
+                        model.kitItems
+                        |> List.tryFind (fun item -> item.id = id)
+                        |> Option.bind (fun item -> model.tryItemModelChoice item |> Option.map (library.promoteBlackBox run item))
+                    match promotionOpt with
+                    | Some result -> promotedStatus result
+                    | None -> ControlCaption "The item or its model is not in the kit."
+            {
+                model with kitStatus = Some caption
+            })
     | StudyFit message ->
         let updateFit () : TableAndElementRotationModel =
             let environment = StudyFitEnvironment.create model.kitShell.studyFits model.kit.proxy model.studyForwardContext model.kit.clock

@@ -20,16 +20,19 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.StudyEngine
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.JobRunner
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.StudyFitJob
@@ -234,6 +237,447 @@ module StudyWindowModelTests =
             finally opened.library.kit.close () |> kitValue
         finally
             if Directory.Exists root.value then Directory.Delete(root.value, true)
+
+    let private calibrationEntry : FitRunEntry =
+        {
+            parameter = ItemParameterRef (cpl1.id, retardance)
+            owner = ItemOwner cpl1.id
+            start = polarizerUnknown.start
+            fitted = ParameterValue 1.55
+        }
+
+    let private calibrationRun : FitRun =
+        {
+            schemaVersion = FitRun.currentSchemaVersion
+            name = qzLr.fitRunNameAt FitRunFileFixtures.firstFitRunStamp
+            study = qzLr
+            stamp = FitRunFileFixtures.firstFitRunStamp
+            mode = StagedFit
+            stage = CalibrationStage
+            calibrationUse = CalibrationHeldFixed
+            engine = NonlinearStudyEngine
+            runs = [ e1; e2 ]
+            dataRead = []
+            parameters =
+                [ cpl1; cpl2; phone ]
+                |> List.collect (fun item ->
+                    item.parameters |> List.map (fun parameter ->
+                        {
+                            parameter = ItemParameterRef (item.id, parameter.name)
+                            state = parameter.state
+                        }))
+            entries = [ calibrationEntry ]
+            members = []
+            objectMatrices = []
+            results =
+                {
+                    sigmas =
+                        [
+                            {
+                                entry =
+                                    {
+                                        parameter = calibrationEntry.parameter
+                                        owner = calibrationEntry.owner
+                                    }
+                                sigmaOpt = Some (ParameterSigma 0.002)
+                            }
+                        ]
+                    problems = []
+                    runResiduals = []
+                    realizability = []
+                    productChecks = []
+                    profiles = []
+                }
+            notes = FitRunNotes.none
+        }
+
+    let private linkPolarizers (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let link : ParameterLink =
+            {
+                follower = ItemParameterRef (cpl2.id, retardance)
+                leader = calibrationEntry.parameter
+            }
+        let linked = model |> updateTableAndElementRotation (StudyCommand (LinkParameters (qzLr, link)))
+        Assert.Equal<ControlCaption option>(None, linked.kitStatus)
+        linked
+
+    let private assertStatusOnly (caption : ControlCaption) (before : TableAndElementRotationModel) (after : TableAndElementRotationModel) : unit =
+        let expected =
+            {
+                before with kitStatus = Some caption
+            }
+        Assert.Equal<TableAndElementRotationModel>(expected, after)
+
+    let private withMaterialFit
+        (access : KitAccess)
+        (run : MaterialVersionId -> FitRun -> KitFolder -> TableAndElementRotationModel -> unit)
+        : unit =
+        withWindow ReadWriteKitAccess [ studyOf qzLr; studyOf lr ] [ calibrationRun ] (fun folder loaded ->
+            use database = BuiltinCatalogue.freshLibraryDatabase ()
+            let shared =
+                {
+                    loaded with
+                        materials = MaterialProxy.createInDatabase database
+                        catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database)
+                }
+                |> linkPolarizers
+            let materialId = MaterialId (Guid.Parse "41300000-0000-4000-8000-000000000001")
+            let version = MaterialVersionId.firstOf materialId
+            let crystal = AbsorbingTriclinicCrystal CrystalMaterialFixtures.absorbingTriclinicParameters
+            let entry : MaterialEntry =
+                {
+                    id = materialId
+                    name = EntryName "Window promotion crystal"
+                    category = CategoryIds.crystal
+                    description = None
+                    physics = CrystalParameterPhysics crystal
+                }
+            Assert.Equal<Result<unit, MaterialError>>(Ok (), shared.materials.saveMaterial entry)
+            let opened = shared |> updateTableAndElementRotation (StudyCommand (OpenMaterial (qzLr, version)))
+            Assert.Equal<ControlCaption option>(None, opened.kitStatus)
+            let study = opened.kitStudies |> List.find (fun held -> held.name = qzLr)
+            let n1 = ParameterName "n1"
+            let stamp = ClockTime (calibrationRun.stamp.value.AddHours 1.0)
+            let fitted : FitRunEntry =
+                {
+                    parameter = MaterialParameterRef (version, n1)
+                    owner = MaterialOwner version
+                    start = (crystal.parameterAxes |> List.find (fun axis -> axis.name = n1)).parameterValueOf crystal
+                    fitted = ParameterValue 1.7
+                }
+            let materialRun =
+                {
+                    calibrationRun with
+                        name = qzLr.fitRunNameAt stamp
+                        stamp = stamp
+                        stage = ObjectStage
+                        parameters =
+                            study.materials |> List.collect (fun material ->
+                                material.parameters |> List.map (fun parameter ->
+                                    {
+                                        parameter = MaterialParameterRef (material.version, parameter.name)
+                                        state = parameter.state
+                                    }))
+                        entries = [ fitted ]
+                        results =
+                            {
+                                calibrationRun.results with sigmas = []
+                            }
+                }
+            opened.kit.proxy.writeFitRun materialRun |> kitValue
+            match access with
+            | ReadWriteKitAccess ->
+                let refreshed = opened |> updateTableAndElementRotation ReloadKitChanges
+                Assert.Equal<FitRun list>([ calibrationRun; materialRun ], refreshed.kitFitRuns)
+                run version materialRun folder refreshed
+            | ReadOnlyKitAccess ->
+                let readOnly = openKitAt folder ReadOnlyKitAccess ClockProvider.system author shared.catalogueImports |> libraryValue
+                try run version materialRun folder (opened.loadKit readOnly)
+                finally readOnly.library.kit.close () |> kitValue)
+
+    [<Fact>]
+    let ``PublishCalibration records each calibrated item's next revision in the kit and tells which`` () : unit =
+        withWindow ReadWriteKitAccess [ studyOf qzLr; studyOf lr ] [ calibrationRun ] (fun folder loaded ->
+            let linked = loaded |> linkPolarizers |> updateTableAndElementRotation (SelectStudy lr)
+            let before = folderBytes folder
+            let published = linked |> updateTableAndElementRotation (PublishCalibration calibrationRun.name)
+            let calibration : CalibratedParameterData =
+                {
+                    value = ParameterValue 1.55
+                    sigma = ParameterSigma 0.002
+                    fitRun = calibrationRun.name
+                }
+            for original in [ cpl1; cpl2 ] do
+                let item = published.kitItems |> List.find (fun held -> held.id = original.id)
+                Assert.Equal<ItemRevision>(ItemRevision 2, item.revision)
+                Assert.Equal<ParameterState option>(Some (CalibratedParameter calibration), item.tryFindParameter retardance |> Option.map _.state)
+                let history : ItemRevisionRecord =
+                    {
+                        revision = original.revision
+                        parameters = original.parameters
+                    }
+                Assert.Equal<ItemRevisionRecord list>([ history ], item.history)
+                let restored =
+                    {
+                        item with parameters = original.parameters; revision = original.revision; history = original.history
+                    }
+                Assert.Equal<Item>(original, restored)
+                Assert.Equal<Parameter list>(
+                    original.parameters |> List.filter (fun parameter -> parameter.name <> retardance),
+                    item.parameters |> List.filter (fun parameter -> parameter.name <> retardance))
+            Assert.Equal<Item>(phone, published.kitItems |> List.find (fun item -> item.id = phone.id))
+            Assert.Equal<Item list>(published.kitItems, published.kit.proxy.readItems () |> kitValue)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Published the calibration of CPL1, CPL2 from QZ-LR@20261101T120000Z."), published.kitStatus)
+            let expected =
+                {
+                    linked with kitItems = published.kitItems; kitStatus = published.kitStatus
+                }
+            Assert.Equal<TableAndElementRotationModel>(expected, published)
+            let after = folderBytes folder
+            for KeyValue(file, bytes) in before do
+                if file <> FileName "CPL1.item-json" && file <> FileName "CPL2.item-json" then
+                    Assert.Equal<FileByteContent>(bytes, Map.find file after))
+
+    [<Fact>]
+    let ``a publish the run refuses, or of a fit run the kit lacks, is told and records nothing`` () : unit =
+        withWindow ReadWriteKitAccess [ studyOf qzLr ] [ calibrationRun ] (fun folder loaded ->
+            let linked = linkPolarizers loaded
+            let beforeFailure = folderBytes folder
+            let noSigma =
+                {
+                    calibrationRun with
+                        results =
+                            {
+                                calibrationRun.results with sigmas = []
+                            }
+                }
+            let undetermined =
+                {
+                    linked with kitFitRuns = [ noSigma ]
+                }
+            let refused = undetermined |> updateTableAndElementRotation (PublishCalibration noSigma.name)
+            match refused.kitStatus with
+            | Some caption ->
+                Assert.StartsWith("Nothing was published — the fit leaves a sigma undetermined", caption.value)
+                assertStatusOnly caption undetermined refused
+            | None -> Assert.Fail "a refused calibration must tell why"
+            Assert.Equal<Map<FileName, FileByteContent>>(beforeFailure, folderBytes folder)
+
+            let failure = KitFileRejectedErr "CPL2 write refused by the fixture"
+            let attempts = ResizeArray<FileStem>()
+            let partial =
+                {
+                    linked with
+                        kit =
+                            {
+                                linked.kit with
+                                    proxy =
+                                        {
+                                            linked.kit.proxy with
+                                                writeKindFile = fun kind stem text ->
+                                                    attempts.Add stem
+                                                    if kind = ItemKitFile && stem = FileStem "CPL2" then Error failure
+                                                    else linked.kit.proxy.writeKindFile kind stem text
+                                        }
+                            }
+                }
+                |> updateTableAndElementRotation (PublishCalibration calibrationRun.name)
+            Assert.Equal<FileStem list>([ FileStem "CPL1"; FileStem "CPL2" ], List.ofSeq attempts)
+            Assert.Equal<ItemRevision>(cpl1.revision.next, (partial.kitItems |> List.find (fun item -> item.id = cpl1.id)).revision)
+            Assert.Equal<Item>(cpl2, partial.kitItems |> List.find (fun item -> item.id = cpl2.id))
+            Assert.Equal<Item list>(partial.kitItems, linked.kit.proxy.readItems () |> kitValue)
+            let error = KitLibraryKitErr failure
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Not saved to the kit — {error.describe}"), partial.kitStatus)
+            Assert.Equal<FileByteContent>(Map.find (FileName "CPL2.item-json") beforeFailure, Map.find (FileName "CPL2.item-json") (folderBytes folder))
+            let retryable =
+                {
+                    partial with kit = linked.kit
+                }
+            let published = retryable |> updateTableAndElementRotation (PublishCalibration calibrationRun.name)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Published the calibration of CPL2 from QZ-LR@20261101T120000Z."), published.kitStatus)
+            let before = folderBytes folder
+            let repeated = published |> updateTableAndElementRotation (PublishCalibration calibrationRun.name)
+            match repeated.kitStatus with
+            | Some caption ->
+                Assert.StartsWith("Nothing was published — the calibration is already published", caption.value)
+                assertStatusOnly caption published repeated
+            | None -> Assert.Fail "a repeated calibration must tell why it writes nothing"
+            let missing = FitRunName "Missing@20261101T120000Z"
+            let withoutStudy =
+                {
+                    published with kitStudies = []
+                }
+            for name, model in [ missing, published; calibrationRun.name, withoutStudy ] do
+                let absent = model |> updateTableAndElementRotation (PublishCalibration name)
+                assertStatusOnly (ControlCaption $"The kit holds no fit run {name.value}.") model absent
+            Assert.Equal<Item list>(published.kitItems, published.kit.proxy.readItems () |> kitValue)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+    [<Fact>]
+    let ``PromoteToLibrary of a fitted material mints its next library version and snapshots it into the kit`` () : unit =
+        withMaterialFit ReadWriteKitAccess (fun version fit folder loaded ->
+            let selected = loaded |> updateTableAndElementRotation (SelectStudy lr)
+            let before = folderBytes folder
+            let original = selected.materials.resolveVersion version
+            let promoted = selected |> updateTableAndElementRotation (PromoteToLibrary (fit.name, MaterialPromotion version))
+            let next =
+                {
+                    version with version = version.version.next
+                }
+            let caption = ControlCaption $"Promoted to the library as {version.materialId.value} v2."
+            assertStatusOnly caption selected promoted
+            let envelope =
+                promoted.catalogueImports.proxy.tryHeldEnvelope version.materialId.toLibraryEntryId next.version
+                |> Result.defaultWith (fun error -> failwith error.describe)
+                |> Option.defaultWith (fun () -> failwith "the promoted material envelope is missing")
+            Assert.Equal<EntryProvenance>(fit.provenanceIn promoted.kit.kitFile.id, envelope.content.provenance)
+            Assert.Contains<LibraryEntryEnvelope>(envelope, promoted.kit.proxy.listSnapshots () |> kitValue)
+            let path = KitRelativePath $"library/{version.materialId.value:D}@v2.material-json"
+            promoted.kit.proxy.readLabFile path |> kitValue |> ignore
+            let entry =
+                promoted.materials.resolveVersion next
+                |> Result.defaultWith (fun error -> failwith error.caption.value)
+                |> Option.defaultWith (fun () -> failwith "the promoted material version is missing")
+            match entry.physics with
+            | CrystalParameterPhysics crystal ->
+                let n1 = ParameterName "n1"
+                Assert.Equal<ParameterValue>(ParameterValue 1.7, (crystal.parameterAxes |> List.find (fun axis -> axis.name = n1)).parameterValueOf crystal)
+            | _ -> Assert.Fail "the promoted material must keep its crystal physics"
+            Assert.Equal<Result<MaterialEntry option, MaterialError>>(original, promoted.materials.resolveVersion version)
+            let after = folderBytes folder
+            for KeyValue(file, bytes) in before do Assert.Equal<FileByteContent>(bytes, Map.find file after)
+
+            let held = promoted.catalogueImports.proxy.tryHeldEntry version.materialId.toLibraryEntryId
+            for result in [ Ok None; Error (MaterialStoreUnavailableErr "unreadable material") ] do
+                let unreadable =
+                    {
+                        promoted with
+                            materials =
+                                {
+                                    promoted.materials with resolveVersion = fun _ -> result
+                                }
+                    }
+                let refused = unreadable |> updateTableAndElementRotation (PromoteToLibrary (fit.name, MaterialPromotion version))
+                assertStatusOnly (ControlCaption "The material version could not be read.") unreadable refused
+            let unfitted = promoted |> updateTableAndElementRotation (PromoteToLibrary (calibrationRun.name, MaterialPromotion version))
+            match unfitted.kitStatus with
+            | Some caption ->
+                Assert.StartsWith("Not promoted — the fit run fitted none of its values", caption.value)
+                assertStatusOnly caption promoted unfitted
+            | None -> Assert.Fail "an unfitted promotion must tell why"
+            let missing = FitRunName "Missing@20261101T120000Z"
+            let withoutStudy =
+                {
+                    promoted with kitStudies = []
+                }
+            for name, model in [ missing, promoted; fit.name, withoutStudy ] do
+                let refused = model |> updateTableAndElementRotation (PromoteToLibrary (name, MaterialPromotion version))
+                assertStatusOnly (ControlCaption $"The kit holds no fit run {name.value}.") model refused
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(held, promoted.catalogueImports.proxy.tryHeldEntry version.materialId.toLibraryEntryId)
+            Assert.Equal<Map<FileName, FileByteContent>>(after, folderBytes folder))
+
+        withWindow ReadWriteKitAccess [ studyOf qzLr ] [] (fun folder loaded ->
+            let modelVersion = BuiltinCatalogue.itemModel ItemModelIds.blackBoxMuellerModelId
+            let draft : ItemDraft =
+                {
+                    id = ItemId (Guid.Parse "41300000-0000-4000-8000-000000000002")
+                    label = ItemLabel "QZ"
+                    model = LibraryModelChoice modelVersion
+                    dial = FixedMounting
+                }
+            let added = loaded |> updateTableAndElementRotation (AddItem draft)
+            Assert.Equal<ControlCaption option>(None, added.kitStatus)
+            let item = added.kitItems |> List.find (fun held -> held.id = draft.id)
+            let m00 = ParameterName "m00"
+            let fitted : FitRunEntry =
+                {
+                    parameter = ItemParameterRef (item.id, m00)
+                    owner = ItemOwner item.id
+                    start = ParameterValue 1.0
+                    fitted = ParameterValue 0.9
+                }
+            let fit =
+                {
+                    calibrationRun with
+                        stage = ObjectStage
+                        entries = [ fitted ]
+                        parameters =
+                            item.parameters |> List.map (fun parameter ->
+                                {
+                                    parameter = ItemParameterRef (item.id, parameter.name)
+                                    state = parameter.state
+                                })
+                        results =
+                            {
+                                calibrationRun.results with sigmas = []
+                            }
+                }
+            added.kit.proxy.writeFitRun fit |> kitValue
+            let refreshed = added |> updateTableAndElementRotation ReloadKitChanges
+            let requested = ResizeArray<ItemModelVersionId>()
+            let resolving =
+                {
+                    refreshed with
+                        itemModels =
+                            {
+                                refreshed.itemModels with
+                                    resolveItemModelVersion = fun version ->
+                                        requested.Add version
+                                        refreshed.itemModels.resolveItemModelVersion version
+                            }
+                }
+            let before = folderBytes folder
+            let promoted = resolving |> updateTableAndElementRotation (PromoteToLibrary (fit.name, BlackBoxPromotion item.id))
+            assertStatusOnly (ControlCaption $"Promoted to the library as {item.id.value} v1.") resolving promoted
+            Assert.Equal<ItemModelVersionId list>([ modelVersion.versionId ], List.ofSeq requested)
+            let envelope =
+                promoted.catalogueImports.proxy.tryHeldEnvelope item.id.toLibraryEntryId VersionNumber.first
+                |> Result.defaultWith (fun error -> failwith error.describe)
+                |> Option.defaultWith (fun () -> failwith "the promoted black-box envelope is missing")
+            Assert.Equal<EntryProvenance>(fit.provenanceIn promoted.kit.kitFile.id, envelope.content.provenance)
+            Assert.Contains<LibraryEntryEnvelope>(envelope, promoted.kit.proxy.listSnapshots () |> kitValue)
+            let path = KitRelativePath $"library/{item.id.value:D}@v1.polarizer-json"
+            promoted.kit.proxy.readLabFile path |> kitValue |> ignore
+            let preset = envelope.content.toPolarizerPreset |> Result.defaultWith (fun error -> failwith error.describe)
+            match preset.behavior with
+            | ConstantMueller [ muellerPart ] ->
+                let stored = muellerPart.matrix.element 0 0 |> ParameterValue
+                Assert.Equal<ParameterValue>(fitted.fitted, stored)
+            | _ -> Assert.Fail "the fitted black box must promote its constant Mueller matrix"
+            let after = folderBytes folder
+            for KeyValue(file, bytes) in before do Assert.Equal<FileByteContent>(bytes, Map.find file after)
+
+            let missingItem = ItemId (Guid.Parse "41300000-0000-4000-8000-000000000099")
+            let absent = promoted |> updateTableAndElementRotation (PromoteToLibrary (fit.name, BlackBoxPromotion missingItem))
+            assertStatusOnly (ControlCaption "The item or its model is not in the kit.") promoted absent
+            for result in [ Ok None; Error (ItemModelStoreUnavailableErr "unreadable model") ] do
+                let unreadable =
+                    {
+                        promoted with
+                            itemModels =
+                                {
+                                    promoted.itemModels with resolveItemModelVersion = fun _ -> result
+                                }
+                    }
+                let refused = unreadable |> updateTableAndElementRotation (PromoteToLibrary (fit.name, BlackBoxPromotion item.id))
+                assertStatusOnly (ControlCaption "The item or its model is not in the kit.") unreadable refused
+            let notBlackBox = promoted |> updateTableAndElementRotation (PromoteToLibrary (fit.name, BlackBoxPromotion cpl1.id))
+            match notBlackBox.kitStatus with
+            | Some caption ->
+                Assert.StartsWith("Not promoted — the item is not a black-box Mueller matrix", caption.value)
+                assertStatusOnly caption promoted notBlackBox
+            | None -> Assert.Fail "a non-black-box promotion must tell why"
+            Assert.Equal<Map<FileName, FileByteContent>>(after, folderBytes folder))
+
+    [<Fact>]
+    let ``a read-only kit publishes and promotes nothing`` () : unit =
+        withMaterialFit ReadOnlyKitAccess (fun version fit folder loaded ->
+            Assert.Equal<KitAccess>(ReadOnlyKitAccess, loaded.kit.access)
+            let before = folderBytes folder
+            let held = loaded.catalogueImports.proxy.tryHeldEntry version.materialId.toLibraryEntryId
+            let guarded =
+                {
+                    loaded with
+                        materials =
+                            {
+                                loaded.materials with resolveVersion = fun _ -> failwith "read-only promotion must not resolve a material"
+                            }
+                        itemModels =
+                            {
+                                loaded.itemModels with resolveItemModelVersion = fun _ -> failwith "read-only promotion must not resolve an item model"
+                            }
+                }
+            for message in
+                [
+                    PublishCalibration calibrationRun.name
+                    PromoteToLibrary (fit.name, MaterialPromotion version)
+                    PromoteToLibrary (calibrationRun.name, BlackBoxPromotion cpl1.id)
+                    PublishCalibration (FitRunName "Absent")
+                ] do
+                let refused = guarded |> updateTableAndElementRotation message
+                assertStatusOnly (ControlCaption "The kit is open read-only: nothing is saved.") guarded refused
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)
+                Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(held, loaded.catalogueImports.proxy.tryHeldEntry version.materialId.toLibraryEntryId))
 
     [<Fact>]
     let ``a loaded kit's studies and fit runs are the window's, and Reload reads a study another writer wrote`` () : unit =
