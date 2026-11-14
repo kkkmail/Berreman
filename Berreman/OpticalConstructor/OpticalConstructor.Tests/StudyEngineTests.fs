@@ -5,6 +5,7 @@ open System.Threading
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
+open Berreman.MathNetNumericsMath
 open Berreman.Media
 open Berreman.MaterialProperties
 open Berreman.Solvers
@@ -1864,15 +1865,23 @@ module StudyEngineTests =
         Assert.Equal<float>(elementOf qzFit 1 2, elementOf qzFit 2 1)
         Assert.Equal<float>(elementOf qzFit 0 0, elementOf qz2Fit 0 0)
 
-    [<Fact>]
-    let ``a series of two black-box objects is reconstructed as one combined matrix`` () : unit =
+    /// M_LR · M_QZ, the matrix the series runs of QZ then LR are made of.
+    let private seriesTruth : MuellerMatrix = cascadeProduct lrTruth qzTruth
+
+    /// QZ's and LR's own free-session family runs, then the series' of QZ then LR: the setups, the runs with the Dark
+    /// run K1, the study, and the series' observed runs.
+    let private seriesFixture () : Setup list * AttachedRun list * Study * ObservedRun list =
         let qzBenches, qzPlanned = freeFamilyRuns "Q" [ qzAllFree ] qzTruth
         let lrBenches, lrPlanned = freeFamilyRuns "L" [ lrFree ] lrTruth
-        let combined = cascadeProduct lrTruth qzTruth
-        let seriesBenches, seriesPlanned = freeFamilyRuns "QL" [ qzAllFree; lrFree ] combined
+        let seriesBenches, seriesPlanned = freeFamilyRuns "QL" [ qzAllFree; lrFree ] seriesTruth
         let benches = qzBenches @ lrBenches @ seriesBenches
         let observed = observedOver benches (objectInstruments @ [ qzAllFree; lrFree ]) (qzPlanned @ lrPlanned @ seriesPlanned)
         let setups, runs, study = freeStudyOf "QZ-LR" benches observed
+        setups, runs, study, observed |> List.skip (qzPlanned.Length + lrPlanned.Length)
+
+    [<Fact>]
+    let ``a series of two black-box objects is reconstructed as one combined matrix`` () : unit =
+        let setups, runs, study, seriesObserved = seriesFixture ()
         let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qzAllFree; lrFree ]) runs study
         let recorded = ResizeArray<LeastSquaresSystem>()
         let solution = solutionOf (staged.reconstructLinear context prefits data (recordingSvd recorded))
@@ -1888,13 +1897,12 @@ module StudyEngineTests =
             [ [ qzAllFree.id ]; [ lrFree.id ]; [ qzAllFree.id; lrFree.id ] ],
             solution.objectMatrices |> List.map (fun fit -> fit.items))
 
-        for fit, truth in List.zip solution.objectMatrices [ qzTruth; lrTruth; combined ] do
+        for fit, truth in List.zip solution.objectMatrices [ qzTruth; lrTruth; seriesTruth ] do
             Assert.Equal(MatrixRank 16, fit.rank)
             assertValuesWithin 1e-9 (truth.rowMajorValues |> List.map (fun value -> value.value)) fit.elements
 
         // Each group is one sixteen-column `reconstruct`, the series' over its own rows' combined designs.
         Assert.Equal(3, recorded.Count)
-        let seriesObserved = observed |> List.skip (qzPlanned.Length + lrPlanned.Length)
         assertSystemOver 16 (seriesObserved |> List.map (fun run -> run, vecSources)) recorded.[2]
 
     [<Fact>]
@@ -1921,6 +1929,188 @@ module StudyEngineTests =
             // The solver was reached, with the variant's own columns.
             Assert.Equal(1, recorded.Count)
             Assert.All(recorded.[0].design, fun row -> Assert.Equal(columns, row.value.Length))
+
+    // ============================ spec 0050 S11.4: the object stage's problems ============================
+
+    /// The runs with every capture row's `avgTotal` moved by 0.01 · (−1)ⁱ, i its place in its run, so no solve is exact.
+    let private jittered (runs : AttachedRun list) : AttachedRun list =
+        runs
+        |> List.map (fun attached ->
+            match attached.attachedPoints with
+            | CapturePoints rows ->
+                let moved =
+                    rows
+                    |> List.mapi (fun i (row : MuellerRawRow) ->
+                        { row with avgTotal = MeasuredIntensity (row.avgTotal.value + (if i % 2 = 0 then 0.01 else -0.01)) })
+
+                { attached with attachedPoints = CapturePoints moved }
+            | SeriesPoints _
+            | ObservationPoints _
+            | ColumnPoints _ -> attached)
+
+    /// QZ's object stage over step 390's sessions with these runs: `reconstructLinear`'s solution, the problems
+    /// `objectProblemsWith` reads, and the one system it hands its solver.
+    let private qzProblemsOver (setups : Setup list) (study : Study) (runs : AttachedRun list) : StudyFitSolution * EngineProblems * LeastSquaresSystem =
+        let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qzAllFree ]) runs study
+        let solution = solutionOf (staged.reconstructLinear context prefits data (createMathNetSvd ()))
+        let recorded = ResizeArray<LeastSquaresSystem>()
+        let engineProblems = engineProblemsOf (staged.objectProblemsWith context prefits data (recordingSvd recorded))
+        Assert.Equal(1, recorded.Count)
+        solution, engineProblems, recorded.[0]
+
+    /// Coordinate k = 4c + r of an object solve is the element (r, c).
+    let private vecPlaces : (int * int) list = List.init 16 (fun k -> k % 4, k / 4)
+
+    /// An object solve's elements in vec order.
+    let private vecValuesOf (fit : ObjectMatrixFit) : float list =
+        vecPlaces |> List.map (fun (row, column) -> (List.item (placeOf row column) fit.elements).value)
+
+    [<Fact>]
+    let ``an object solve's problem is its design over the matrix's elements, each coordinate an entry of the object`` () : unit =
+        let setups, runs, study, scienceRuns = sessionFixture ()
+        let solution, engineProblems, system = qzProblemsOver setups study runs
+
+        match engineProblems.problems with
+        | [ problem ] ->
+            Assert.Equal(ObjectSolveProblem [ qzAllFree.id ], problem.subject)
+
+            Assert.Equal<FitCoordinate list>(
+                vecPlaces
+                |> List.map (fun (row, column) ->
+                    EntryCoordinate [ ({ parameter = ItemParameterRef (qzAllFree.id, coefficient row column); owner = ItemOwner qzAllFree.id } : FitEntryRef) ]),
+                problem.coordinates)
+
+            // It starts at QZ's fitted entries in that order, exactly, centre zero and unit one, within QZ's bounds [−2, 2].
+            Assert.Equal<float list>(
+                fittedCoefficientsOf solution qzAllFree vecPlaces |> List.map (fun value -> value.value),
+                List.ofArray problem.search.start.value)
+
+            Assert.Equal<float[]>(Array.zeroCreate 16, problem.centre.value)
+            Assert.Equal<float[]>(Array.create 16 1.0, problem.unit.value)
+            Assert.Equal<float[]>(Array.create 16 (-2.0), problem.search.lowerBounds.value)
+            Assert.Equal<float[]>(Array.create 16 2.0, problem.search.upperBounds.value)
+
+            // Its design is the run law's over every Science run, and its residual A · s − b, away from the solve too.
+            assertSystemOver 16 (scienceRuns |> List.map (fun run -> run, vecSources)) system
+            let identity = Array.init 16 (fun k -> if k % 5 = 0 then 1.0 else 0.0)
+
+            let atIdentity =
+                system.design
+                |> Array.mapi (fun i row -> (Array.map2 (fun (entry : float) (value : float) -> entry * value) row.value identity |> Array.sum) - system.rhs.[i])
+
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) atIdentity (problem.residual (ScaledVector identity)).value
+
+            // Full rank, its condition the design rows' own.
+            let quality = problem.quality
+            Assert.Equal(MatrixRank 16, quality.rank)
+            let designCondition = (ResidualJacobian (system.design |> Array.map (fun row -> row.value))).conditionNumber.value
+
+            match quality.conditionOpt with
+            | Some condition -> Assert.Equal(designCondition, condition.value, 1e-6 * designCondition)
+            | None -> Assert.Fail("a full-rank object solve has no condition")
+        | problems -> Assert.Fail($"expected one object solve, got {problems.Length}")
+
+        // Off the exact solve every element has a σ, m00's √(χ² / (m − 16) · (AᵀA)⁻¹₀₀) over the solve's own rows.
+        let _, noisyProblems, noisy = qzProblemsOver setups study (jittered runs)
+
+        match noisyProblems.problems with
+        | [ problem ] ->
+            for k in 0 .. 15 do
+                match problem.sigmaAt (FitCoordinateIndex k) with
+                | Some sigma -> Assert.True(sigma.value > 0.0, $"coordinate {k}'s σ is {sigma.value:R}")
+                | None -> Assert.Fail($"coordinate {k} of a full-rank object solve has no σ")
+
+            let rows = noisy.design |> Array.map (fun row -> row.value)
+            let m = rows.Length
+            let a = RealMatrix.create rows
+            let aTransposed = RealMatrix.create [ for column in 0 .. 15 -> [ for row in 0 .. m - 1 -> rows.[row].[column] ] ]
+            let normalInverse = (aTransposed * a).inverse
+            let solved = normalInverse * (aTransposed * RealVector.create noisy.rhs)
+
+            let chiSquared =
+                rows
+                |> Array.mapi (fun i row -> (row |> Array.mapi (fun j entry -> entry * solved.[j]) |> Array.sum) - noisy.rhs.[i])
+                |> Array.sumBy (fun residual -> residual * residual)
+
+            let expected = sqrt (chiSquared / float (m - 16) * normalInverse.[0, 0])
+            Assert.True(expected > 0.0, $"the expected σ of m00 is {expected:R}")
+
+            match problem.sigmaAt (FitCoordinateIndex 0) with
+            | Some sigma -> Assert.Equal(expected, sigma.value, 1e-6 * expected)
+            | None -> Assert.Fail("m00 has no σ")
+        | problems -> Assert.Fail($"expected one object solve, got {problems.Length}")
+
+    [<Fact>]
+    let ``each run of an object stage has its own rows' residual at its object's solve`` () : unit =
+        // Off the exact solve, so each residual entry stands far above round-off.
+        let setups, runs, study, scienceRuns = sessionFixture ()
+        let solution, engineProblems, system = qzProblemsOver setups study (jittered runs)
+        let readings = dialReadings.Length
+        let solved = vecValuesOf (objectFitOf [ qzAllFree ] solution) |> Array.ofList
+
+        // One per Science run, in study order: the AIR runs and the Dark run hold no unknown segment.
+        Assert.Equal<ExperimentName list>(
+            scienceRuns |> List.map (fun run -> run.observed.attachedRun.name),
+            engineProblems.runResiduals |> List.map (fun residual -> residual.run))
+
+        Assert.Equal(scienceRuns.Length * readings, system.design.Length)
+
+        // Run j's rows are block j of the system its object's solve was over.
+        engineProblems.runResiduals
+        |> List.iteri (fun j runResidual ->
+            let expected =
+                Array.init readings (fun reading ->
+                    let i = j * readings + reading
+                    (Array.map2 (fun (entry : float) (value : float) -> entry * value) system.design.[i].value solved |> Array.sum) - system.rhs.[i])
+
+            Assert.Equal(readings, runResidual.residuals.value.Length)
+            Array.iter2 (fun (e : float) (a : float) -> Assert.Equal(e, a, 1e-12)) expected runResidual.residuals.value
+
+            // Relative, as step 399's: an absolute tolerance this small could not tell an RMSE from its square.
+            let rootMeanSquare = sqrt ((expected |> Array.sumBy (fun entry -> entry * entry)) / float readings)
+            Assert.True(rootMeanSquare > 1e-9, $"{runResidual.run.value}'s root mean square is {rootMeanSquare:R}")
+            Assert.Equal(rootMeanSquare, runResidual.rmse.value, 1e-9 * rootMeanSquare))
+
+    [<Fact>]
+    let ``a series is checked against the cascade of its objects' own solves`` () : unit =
+        let setups, runs, study, _ = seriesFixture ()
+        let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qzAllFree; lrFree ]) runs study
+        let solution = solutionOf (staged.reconstructLinear context prefits data (createMathNetSvd ()))
+        let engineProblems = engineProblemsOf (staged.objectProblemsWith context prefits data (createMathNetSvd ()))
+        let seriesItems = [ qzAllFree.id; lrFree.id ]
+        let seriesFit = objectFitOf [ qzAllFree; lrFree ] solution
+
+        let matrixOf (fit : ObjectMatrixFit) : MuellerMatrix =
+            RealMatrix4x4.create [ for row in 0 .. 3 -> [ for column in 0 .. 3 -> (List.item (placeOf row column) fit.elements).value ] ]
+            |> MuellerMatrix
+
+        match engineProblems.productChecks with
+        | [ check ] ->
+            Assert.Equal<ItemId list>(seriesItems, check.items)
+
+            // M_LR · M_QZ of LR's and QZ's own solves, which the series' own solve matches.
+            let cascade = cascadeProduct (matrixOf (objectFitOf [ lrFree ] solution)) (matrixOf (objectFitOf [ qzAllFree ] solution))
+            assertValuesWithin 1e-12 [ for row in 0 .. 3 do for column in 0 .. 3 -> cascade.element row column ] check.cascade
+            Assert.True(check.difference.maxAbs.value < 1e-9, $"the series differs from the cascade by {check.difference.maxAbs.value:R}")
+            Assert.Equal(seriesFit.rmse, check.fitRmse)
+            Assert.Equal(check.productRmse.value / check.fitRmse.value, check.rmseRatio.value)
+        | checks -> Assert.Fail($"expected one product check, got {checks.Length}")
+
+        // One problem per group, the series' over its combined matrix's sixteen elements, unbounded, from its own solve.
+        Assert.Equal<FitProblemSubject list>(
+            [ ObjectSolveProblem [ qzAllFree.id ]; ObjectSolveProblem [ lrFree.id ]; ObjectSolveProblem seriesItems ],
+            engineProblems.problems |> List.map (fun problem -> problem.subject))
+
+        match engineProblems.problems |> List.tryFind (fun problem -> problem.subject = ObjectSolveProblem seriesItems) with
+        | Some series ->
+            Assert.Equal<FitCoordinate list>(
+                vecPlaces |> List.map (fun (row, column) -> ElementCoordinate (MuellerRowIndex row, MuellerColumnIndex column)),
+                series.coordinates)
+
+            Assert.Equal<float list>(vecValuesOf seriesFit, List.ofArray series.search.start.value)
+            Assert.Equal<float[]>(Array.create 16 -infinity, series.search.lowerBounds.value)
+            Assert.Equal<float[]>(Array.create 16 infinity, series.search.upperBounds.value)
+        | None -> Assert.Fail("the series has no problem")
 
     // ============================ spec 0050 S11.3: one fit, one fit run ============================
 

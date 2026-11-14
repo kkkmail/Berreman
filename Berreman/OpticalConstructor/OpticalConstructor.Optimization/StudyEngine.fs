@@ -717,17 +717,39 @@ module StudyEngine =
             ownRows : LeastSquaresSystem
         }
 
+    /// An item evaluation's refusal as the study fit's, the one mapping the object stage's systems and solves share (spec
+    /// 0050 S11.3, S11.4).
+    let private evaluatedForFit (result : Result<'Value, ItemEvaluation.ItemEvaluationError>) : Result<'Value, StudyFitError> =
+        result |> Result.mapError (fun error -> StudyForwardFitErr (ForwardSlotErr (ItemEvaluation.SlotEvaluationErr error)))
+
+    /// One fitted run's capture rows, each projected by the run law about its unknown segment and divided by its session's
+    /// gain at its time (spec 0050 S11.4).
+    type ObjectRunSystem =
+        {
+            run : ExperimentName
+            system : LeastSquaresSystem
+        }
+
+    /// The fitted runs whose unknown segment holds these items in light order, in study order (spec 0050 S11.4).
+    type ObjectGroupSystem =
+        {
+            items : ItemId list
+            runs : ObjectRunSystem list
+        }
+
+        /// Its runs' rows stacked in run order, the system its object solve is over (spec 0050 S11.4).
+        member this.system : LeastSquaresSystem = this.runs |> List.map (fun run -> run.system) |> LeastSquaresSystem.concat
+
     type StagedStudy with
 
-        /// Stage 2, or a joint fit, by the reference linear path where `engineWith` finds the black-box shape: each capture
-        /// row projected by the run law about its unknown object and divided by its session's gain at its time, then solved
-        /// by `reconstruct` or on its free columns through the same proxy (spec 0050 S11.3; 001 §L).
-        member this.reconstructLinear
+        /// The object stage's systems: each fitted run's capture rows projected by the run law about its unknown segment and
+        /// divided by its session's gain at its time, grouped by the segment's items in first-run order (spec 0050 S11.3,
+        /// S11.4).
+        member this.objectSystemsWith
             (context : StudyForwardContext)
             (prefits : ExperimentPrefit list)
             (data : StudyData)
-            (solver : MuellerSolverProxy)
-            : Result<StudyFitSolution, StudyFitError> =
+            : Result<ObjectGroupSystem list, StudyFitError> =
             let staged = { context with kit = { context.kit with items = this.items } }
             let layout = this.study.parameterLayoutWith staged
             let items = staged.kit.items
@@ -740,9 +762,6 @@ module StudyEngine =
             // A run whose session reads no Dark run keeps its detector's own dark offset, as the residual does (step 374).
             let darkOf (run : ExperimentName) : DarkMean option =
                 sessionOf run |> Option.bind (fun session -> data.darkOf session.name)
-
-            let evaluationErr (error : ItemEvaluation.ItemEvaluationError) : StudyFitError =
-                StudyForwardFitErr (ForwardSlotErr (ItemEvaluation.SlotEvaluationErr error))
 
             // Bound once at the start vector: an unknown is never evaluated, and every fixed item holds its own value.
             let projectedOf (prefit : ExperimentPrefit) : Result<ProjectedRun, StudyFitError> =
@@ -804,7 +823,7 @@ module StudyEngine =
                                             }
 
                                         projection))
-                                |> Result.mapError evaluationErr
+                                |> evaluatedForFit
                             | ObservationRow _ ->
                                 Error (StudyForwardFitErr (ReadingMismatchErr $"{name.value} holds a Mueller observation, which the linear path does not read"))
 
@@ -869,6 +888,37 @@ module StudyEngine =
                         projectCaptureRowFrom projection.arriving projection.analyzing projection.segmentRotation projected.runDark gain projection.captured)
                     |> LeastSquaresSystem.ofProjections)
 
+            prefits
+            |> List.filter (fun prefit -> List.contains prefit.experiment.name this.fittedRuns)
+            |> List.map projectedOf
+            |> ItemEvaluation.sequenced
+            |> Result.bind (fun projectedRuns ->
+                projectedRuns
+                |> List.filter (fun projected -> not (List.isEmpty projected.bearers))
+                |> List.map (fun projected ->
+                    fullSystemOf projected
+                    |> Result.map (fun system -> projected.bearers, ({ run = projected.projectedRun; system = system } : ObjectRunSystem)))
+                |> ItemEvaluation.sequenced)
+            |> Result.map (fun systems ->
+                // By the items of each run's unknown segment, in first-run order.
+                systems
+                |> List.groupBy fst
+                |> List.map (fun (key, runs) -> ({ items = key; runs = List.map snd runs } : ObjectGroupSystem)))
+
+    type StagedStudy with
+
+        /// Stage 2, or a joint fit, by the reference linear path where `engineWith` finds the black-box shape: each capture
+        /// row projected by the run law about its unknown object and divided by its session's gain at its time, then solved
+        /// by `reconstruct` or on its free columns through the same proxy (spec 0050 S11.3; 001 §L).
+        member this.reconstructLinear
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (data : StudyData)
+            (solver : MuellerSolverProxy)
+            : Result<StudyFitSolution, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+            let layout = this.study.parameterLayoutWith staged
+            let items = staged.kit.items
             let count = layout.entries.Length
 
             // The study's assignment is affine in the vector, each value a copy of an entry, of a leader or its own: its image
@@ -886,7 +936,7 @@ module StudyEngine =
                             |> List.map values.valueOf
                             |> ItemEvaluation.sequenced
                             |> Result.map (fun coefficients -> coefficients |> List.map (fun coefficient -> coefficient.value) |> Array.ofList)
-                            |> Result.mapError evaluationErr
+                            |> evaluatedForFit
                         | None -> Error (StudyForwardFitErr (ForwardSlotErr (ItemEvaluation.SlotItemErr (UnknownSlotItemErr $"the kit holds no item {item.value}")))))
 
                 let unitAt (entry : int) : StudyParameterVector = Array.init count (fun k -> if k = entry then 1.0 else 0.0) |> StudyParameterVector
@@ -986,34 +1036,23 @@ module StudyEngine =
 
             // A series' combined matrix, its first unknown to its last, over its own rows: a diagnostic beside its
             // constituents' fits, never their coefficients (spec 0050 S11.3, S11.4).
-            let solveSeries (seriesItems : ItemId list) (systems : LeastSquaresSystem list) : Result<GroupSolve, StudyFitError> =
-                let rows = LeastSquaresSystem.concat systems
+            let solveSeries (series : ObjectGroupSystem) : Result<GroupSolve, StudyFitError> =
+                let rows = series.system
 
                 reconstruct solver rows
-                |> Result.mapError (fun error -> ObjectSolveFitErr (seriesItems, error))
-                |> Result.map (fun reconstructed -> solveOf seriesItems reconstructed.matrix reconstructed.rank reconstructed.rmse rows)
+                |> Result.mapError (fun error -> ObjectSolveFitErr (series.items, error))
+                |> Result.map (fun reconstructed -> solveOf series.items reconstructed.matrix reconstructed.rank reconstructed.rmse rows)
 
-            prefits
-            |> List.filter (fun prefit -> List.contains prefit.experiment.name this.fittedRuns)
-            |> List.map projectedOf
-            |> ItemEvaluation.sequenced
-            |> Result.bind (fun projectedRuns ->
-                projectedRuns
-                |> List.filter (fun projected -> not (List.isEmpty projected.bearers))
-                |> List.map (fun projected -> fullSystemOf projected |> Result.map (fun system -> projected, system))
-                |> ItemEvaluation.sequenced)
-            |> Result.bind (fun systems ->
-                // By the items of each run's unknown segment, in first-run order.
-                let groups = systems |> List.groupBy (fun (projected, _) -> projected.bearers)
-
+            this.objectSystemsWith context prefits data
+            |> Result.bind (fun groups ->
                 groups
-                |> List.choose (fun (key, runs) ->
-                    match key with
-                    | [ item ] -> Some (item, runs)
+                |> List.choose (fun group ->
+                    match group.items with
+                    | [ item ] -> Some (item, group.runs)
                     | _ -> None)
                 |> List.map (fun (item, runs) ->
                     runs
-                    |> List.map (fun (projected, system) -> coefficientMapOf projected.projectedRun item |> Result.map (fun map -> system, map))
+                    |> List.map (fun run -> coefficientMapOf run.run item |> Result.map (fun map -> run.system, map))
                     |> ItemEvaluation.sequenced
                     |> Result.map (fun runSystems -> ({ loneItem = item; runSystems = runSystems } : LoneObjectRuns)))
                 |> ItemEvaluation.sequenced
@@ -1038,16 +1077,16 @@ module StudyEngine =
                     |> Result.map List.concat
                     |> Result.bind (fun loneSolves ->
                         groups
-                        |> List.choose (fun (key, runs) ->
-                            match key with
-                            | _ :: _ :: _ -> Some (solveSeries key (runs |> List.map snd))
+                        |> List.choose (fun group ->
+                            match group.items with
+                            | _ :: _ :: _ -> Some (solveSeries group)
                             | []
                             | [ _ ] -> None)
                         |> ItemEvaluation.sequenced
                         |> Result.map (fun seriesSolves ->
                             let solves =
                                 groups
-                                |> List.choose (fun (key, _) -> loneSolves @ seriesSolves |> List.tryFind (fun solve -> solve.matrixFit.items = key))
+                                |> List.choose (fun group -> loneSolves @ seriesSolves |> List.tryFind (fun solve -> solve.matrixFit.items = group.items))
 
                             let startValues = layout.entries |> List.map (fun entry -> entry.unknown.unknown.start)
 
@@ -1140,6 +1179,144 @@ module StudyEngine =
                 |> ItemEvaluation.sequenced
                 |> Result.map (fun runResiduals ->
                     ({ problems = [ solved ]; runResiduals = runResiduals; productChecks = [] } : EngineProblems)))
+
+    type ProductCheckData with
+
+        /// The check as a fit run stores it for the series of these items: its cascade's sixteen elements row-major, its
+        /// difference and its two RMSEs (spec 0050 S11.4).
+        member this.storedFor (items : ItemId list) : SeriesProductCheck =
+            {
+                items = items
+                cascade = this.cascade.rowMajorValues
+                difference = this.difference
+                fitRmse = this.fitRmse
+                productRmse = this.productRmse
+            }
+
+    type SeriesProductCheck with
+
+        /// The stored check's `productRmse / fitRmse`, the one place its ratio is formed (spec 0050 S11.4).
+        member this.rmseRatio : ProductRmseRatio = ProductRmseRatio.between this.productRmse this.fitRmse
+
+    type StagedStudy with
+
+        /// For a solution `reconstructLinear` answered: each group's `reconstruct` over its own rows as its design over the
+        /// matrix's sixteen elements, each fitted run's own rows' residual at its group's solve, and each series' check
+        /// against the cascade of its objects' own solves (spec 0050 S11.4; 001 §L).
+        member this.objectProblemsWith
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (data : StudyData)
+            (solver : MuellerSolverProxy)
+            : Result<EngineProblems, StudyFitError> =
+            let staged = { context with kit = { context.kit with items = this.items } }
+            let layout = this.study.parameterLayoutWith staged
+
+            // The bounds of the item's own entry of that coefficient, the one its `ItemOwner` holds.
+            let boundsOf (item : ItemId) (name : ParameterName) : ParameterInterval option =
+                layout.entries
+                |> List.tryPick (fun entry ->
+                    match entry.owner, entry.unknown.parameter with
+                    | ItemOwner owner, ItemParameterRef (held, coefficient) when owner = item && held = item && coefficient = name ->
+                        Some entry.unknown.unknown.bounds
+                    | (ItemOwner _ | MaterialOwner _ | SessionOwner _ | ExperimentOwner _), _ -> None)
+
+            let residualsOf (system : LeastSquaresSystem) (solution : RealVector) : ResidualVector =
+                let residuals = system.residualsAt solution
+                Array.init system.design.Length (fun row -> residuals.[row]) |> ResidualVector
+
+            // Coordinate k = 4c + r is the element (r, c), the order `vecColumnMajor` and the solve share.
+            let problemOf (group : ObjectGroupSystem) (solved : ReconstructedMatrix) : FittedProblem =
+                let system = group.system
+                let solution = solved.matrix.vecColumnMajor
+
+                let coordinates, boundsOpts =
+                    match group.items with
+                    | [ item ] ->
+                        vecOrderCoefficients
+                        |> List.map (fun name ->
+                            EntryCoordinate [ ({ parameter = ItemParameterRef (item, name); owner = ItemOwner item } : FitEntryRef) ], boundsOf item name)
+                        |> List.unzip
+                    | _ -> List.init 16 (fun place -> ElementCoordinate (MuellerRowIndex (place % 4), MuellerColumnIndex (place / 4)), None) |> List.unzip
+
+                let sideOf (side : ParameterInterval -> ParameterValue) (unbounded : float) : ScaledVector =
+                    boundsOpts
+                    |> List.map (fun boundsOpt ->
+                        match boundsOpt with
+                        | Some bounds -> (side bounds).value
+                        | None -> unbounded)
+                    |> Array.ofList
+                    |> ScaledVector
+
+                let search : ScaledSearch =
+                    {
+                        start = Array.init 16 (fun place -> solution.[place]) |> ScaledVector
+                        lowerBounds = sideOf (fun bounds -> bounds.lower) -infinity
+                        upperBounds = sideOf (fun bounds -> bounds.upper) infinity
+                    }
+
+                {
+                    subject = ObjectSolveProblem group.items
+                    coordinates = coordinates
+                    residual = fun (ScaledVector scaled) -> residualsOf system (RealVector.create scaled)
+                    search = search
+                    centre = Array.zeroCreate 16 |> StudyParameterVector
+                    unit = Array.create 16 1.0 |> StudyParameterVector
+                }
+
+            let runResidualsOf (group : ObjectGroupSystem) (solved : ReconstructedMatrix) : RunResidual list =
+                let solution = solved.matrix.vecColumnMajor
+
+                group.runs
+                |> List.map (fun run ->
+                    ({
+                        run = run.run
+                        residuals = residualsOf run.system solution
+                        rmse = if run.system.design.Length = 0 then ResidualRmse 0.0 else run.system.residualRmseAt solution
+                    } : RunResidual))
+
+            this.objectSystemsWith context prefits data
+            |> Result.bind (fun groups ->
+                groups
+                |> List.map (fun group ->
+                    reconstruct solver group.system
+                    |> Result.mapError (fun error -> ObjectSolveFitErr (group.items, error))
+                    |> Result.map (fun solved -> group, solved))
+                |> ItemEvaluation.sequenced)
+            |> Result.map (fun solves ->
+                let runResiduals = solves |> List.collect (fun (group, solved) -> runResidualsOf group solved)
+
+                let ownMatrixOf (item : ItemId) : MuellerMatrix option =
+                    solves
+                    |> List.tryPick (fun (group, solved) ->
+                        match group.items with
+                        | [ own ] when own = item -> Some solved.matrix
+                        | _ -> None)
+
+                // Mₖ ⋯ M₂ cascaded onto M₁, so `productCheckOf`'s cascade is Mₖ ⋯ M₂ · M₁: for [QZ; LR], M_LR · M_QZ.
+                let productCheckOpt (group : ObjectGroupSystem) (series : ReconstructedMatrix) : SeriesProductCheck option =
+                    let ownsOpt =
+                        group.items
+                        |> List.fold
+                            (fun (heldOpt : MuellerMatrix list option) item ->
+                                match heldOpt, ownMatrixOf item with
+                                | Some held, Some own -> Some (held @ [ own ])
+                                | _ -> None)
+                            (Some [])
+
+                    match ownsOpt with
+                    | Some (first :: second :: rest) ->
+                        let later = rest |> List.fold (fun soFar next -> cascadeProduct next soFar) second
+                        Some ((productCheckOf later first series group.system).storedFor group.items)
+                    | Some [ _ ]
+                    | Some []
+                    | None -> None
+
+                ({
+                    problems = solves |> List.map (fun (group, solved) -> problemOf group solved)
+                    runResiduals = this.fittedRuns |> List.choose (fun name -> runResiduals |> List.tryFind (fun residual -> residual.run = name))
+                    productChecks = solves |> List.choose (fun (group, solved) -> productCheckOpt group solved)
+                } : EngineProblems))
 
     /// What `RunFit` asks: the study, the stage (Run joint is `JointStage`, Run stage `CalibrationStage` or `ObjectStage`)
     /// and how its calibrations are used (spec 0050 S11.3, S11.5).
