@@ -260,13 +260,15 @@ module StudyEngineTests =
                 fitRun = FitRunName "AIR@20261101T120000Z"
             }
 
-    /// The item at its next revision, each named parameter published as a calibration of that value.
-    let private publishing (values : (ParameterName * float) list) (item : Item) : Item =
-        let published : Parameter list = values |> List.map (fun (name, value) -> ({ name = name; state = calibratedAt value } : Parameter))
-
+    /// The item at its next revision, each parameter published in its state, failing with the refusal's text.
+    let private revisedWith (published : Parameter list) (item : Item) : Item =
         match item.publishRevision published with
         | Ok revised -> revised
         | Error error -> failwith $"'{item.label.value}' refused its calibration: {error.describe}"
+
+    /// The item at its next revision, each named parameter published as a calibration of that value.
+    let private publishing (values : (ParameterName * float) list) (item : Item) : Item =
+        item |> revisedWith (values |> List.map (fun (name, value) -> ({ name = name; state = calibratedAt value } : Parameter)))
 
     let private retardance : ParameterName = ParameterName "c2.retardance"
     let private fastAxisOffset : ParameterName = ParameterName "c2.fastAxisOffset"
@@ -620,10 +622,15 @@ module StudyEngineTests =
     let private contextOver (items : Item list) (runs : AttachedRun list) (study : Study) : StudyForwardContext =
         contextWithin benches items runs study
 
-    /// The study staged as asked with its calibrations held, and its pre-fit over the staged items.
-    let private prefitStaged (context : StudyForwardContext) (study : Study) (stage : FitStage) : StagedStudy * ExperimentPrefit list =
+    /// The study staged as asked, its calibrations used so, and its pre-fit over the staged items.
+    let private prefitStaged
+        (context : StudyForwardContext)
+        (study : Study)
+        (stage : FitStage)
+        (calibrationUse : CalibrationUse)
+        : StagedStudy * ExperimentPrefit list =
         let staged =
-            match study.stageWith context.kit stage CalibrationHeldFixed with
+            match study.stageWith context.kit stage calibrationUse with
             | Ok staged -> staged
             | Error error -> failwith $"'{study.name.value}' was not staged for {stage.text}: {error.describe}"
 
@@ -636,7 +643,7 @@ module StudyEngineTests =
     /// The engine `engineWith` chooses for the study staged with its calibrations held, once every run its pre-fit reads is
     /// ready and its layout holds an entry, so no answer comes from an earlier refusal.
     let private engineOf (context : StudyForwardContext) (study : Study) (stage : FitStage) : StudyEngineKind =
-        let staged, prefits = prefitStaged context study stage
+        let staged, prefits = prefitStaged context study stage CalibrationHeldFixed
         let stagedContext = { context with kit = { context.kit with items = staged.items } }
 
         Assert.NotEmpty(prefits)
@@ -1136,12 +1143,39 @@ module StudyEngineTests =
     let private stageOneDark : AttachedRun = darkOver lp1AirRealLp2
     let private stageOneInstruments : Item list = [ laser; lp1; realLp2Unknown; cpl2Unknown; cpl1Unknown; phone ]
 
+    /// The AIR runs' rows as the reference stage one reads them: the Dark run's, then each family's.
+    let private stageOneAirRows : StageOneAirRows =
+        let darknessRows =
+            match stageOneDark.attachedPoints with
+            | CapturePoints rows -> rows
+            | SeriesPoints _
+            | ObservationPoints _
+            | ColumnPoints _ -> failwith "the Dark run holds no capture rows"
+
+        {
+            darknessRows = darknessRows
+            lpLpAirRows = stageOneLpLpRows
+            lpCplAirRows = stageOneLpCplRows
+            cplLpAirRows = stageOneCplLpRows
+        }
+
+    /// The five instrument parameters stage one fits, each at its constant in stage one's answer; CPL1's retarder
+    /// offset is its θ less 45°.
+    let private stageOneValuesOf (stageOne : StageOneCalibrationData) : (Item * ParameterName * float) list =
+        [
+            realLp2Unknown, ParameterName.dialZero, stageOne.lpZero.value
+            cpl2Unknown, ParameterName.dialZero, stageOne.cplZero.value
+            cpl2Unknown, retardance, stageOne.cplAnalyzerRetardance.value
+            cpl1Unknown, fastAxisOffset, (stageOne.cplSourceModel.thetaRel - Angle.degree 45.0<deg>).value
+            cpl1Unknown, retardance, stageOne.cplSourceModel.retardance.value
+        ]
+
     /// The calibration stage of a study of the runs over the stage-one instruments, its pre-fit, and the context it was
     /// staged in.
     let private stageOneOver (runs : AttachedRun list) : StagedStudy * ExperimentPrefit list * StudyForwardContext =
         let study = studyOver "Stage one" runs
         let context = contextOver stageOneInstruments runs study
-        let staged, prefits = prefitStaged context study CalibrationStage
+        let staged, prefits = prefitStaged context study CalibrationStage CalibrationHeldFixed
         staged, prefits, context
 
     [<Fact>]
@@ -1150,23 +1184,8 @@ module StudyEngineTests =
         let solver = createMathNetSvd ()
         Assert.Equal(LinearStudyEngine, staged.engineWith context prefits)
 
-        let darknessRows =
-            match stageOneDark.attachedPoints with
-            | CapturePoints rows -> rows
-            | SeriesPoints _
-            | ObservationPoints _
-            | ColumnPoints _ -> failwith "the Dark run holds no capture rows"
-
-        let airRows : StageOneAirRows =
-            {
-                darknessRows = darknessRows
-                lpLpAirRows = stageOneLpLpRows
-                lpCplAirRows = stageOneLpCplRows
-                cplLpAirRows = stageOneCplLpRows
-            }
-
         let expected =
-            match calibrateFromAirRows solver airRows with
+            match calibrateFromAirRows solver stageOneAirRows with
             | Ok stageOne -> stageOne
             | Error error -> failwith $"stage one refused the rows: {error.describe}"
 
@@ -1188,15 +1207,8 @@ module StudyEngineTests =
         Assert.Equal(stageOneTruth.cplAnalyzerRetardance.value, fittedOf cpl2Unknown retardance, 1e-9)
         Assert.Equal(stageOneTruth.cplSourceModel.retardance.value, fittedOf cpl1Unknown retardance, 1e-9)
 
-        // Each of the five values is stage one's own constant, exactly; CPL1's retarder offset is its θ less 45°.
-        let constants : (Item * ParameterName * float) list =
-            [
-                realLp2Unknown, ParameterName.dialZero, expected.lpZero.value
-                cpl2Unknown, ParameterName.dialZero, expected.cplZero.value
-                cpl2Unknown, retardance, expected.cplAnalyzerRetardance.value
-                cpl1Unknown, fastAxisOffset, (expected.cplSourceModel.thetaRel - Angle.degree 45.0<deg>).value
-                cpl1Unknown, retardance, expected.cplSourceModel.retardance.value
-            ]
+        // Each of the five values is stage one's own constant, exactly.
+        let constants = stageOneValuesOf expected
 
         Assert.Equal(constants.Length, solution.layout.entries.Length)
 
@@ -1396,7 +1408,7 @@ module StudyEngineTests =
         (study : Study)
         : StagedStudy * StudyForwardContext * ExperimentPrefit list * StudyData =
         let context = contextWithin setups items runs study
-        let staged, prefits = prefitStaged context study ObjectStage
+        let staged, prefits = prefitStaged context study ObjectStage CalibrationHeldFixed
         let stagedContext = { context with kit = { context.kit with items = staged.items } }
 
         for prefit in prefits do
@@ -2274,3 +2286,151 @@ module StudyEngineTests =
         Assert.Contains("rank 3", (ObjectSolveFitErr (objects, solverError)).describe)
         Assert.Contains("'LR', which the fit names", (UnknownFitStudyErr studyReason).describe)
         Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+
+    // ============================ spec 0050 S11.3: the staged hand-off ============================
+
+    /// The sigma each stage-1 value is published with; S11.5's `PublishCalibration` takes it from S11.4's results.
+    let private handOffSigma : ParameterSigma = ParameterSigma 1.0e-6
+
+    /// Steps 389 and 390's runs in one study over a kit with the five instrument parameters unknown: the AIR Calibration
+    /// runs S1 to S3, the Dark run K1 and QZ's sixteen free-session Science runs. QZ's rows are the run law's at the
+    /// values the reference stage one reads from the AIR rows, so only those values give M_QZ back. The context, the
+    /// study and those values.
+    let private handOffFixture () : StudyForwardContext * Study * (Item * ParameterName * float) list =
+        let stageOne =
+            match calibrateFromAirRows (createMathNetSvd ()) stageOneAirRows with
+            | Ok read -> read
+            | Error error -> failwith $"stage one refused the rows: {error.describe}"
+
+        let values = stageOneValuesOf stageOne
+
+        // Known, not calibrated, so the rows never share the read of a calibration that stage 2 is checked on.
+        let readAt (item : Item) : Item =
+            values
+            |> List.filter (fun (owner, _, _) -> owner.id = item.id)
+            |> List.fold (fun held (_, name, value) -> stating name (KnownParameter (ParameterValue value)) held) item
+
+        let instrumentsRead = values |> List.map (fun (item, _, _) -> item) |> List.distinctBy (fun item -> item.id) |> List.map readAt
+        let qzBenches, qzPlanned = freeFamilyRuns "Q" [ qzAllFree ] qzTruth
+        let observed = observedOver qzBenches ([ laser; lp1; phone; plate; qzAllFree ] @ instrumentsRead) qzPlanned
+        let runs = [ stageOneLpLp; stageOneLpCpl; stageOneCplLp; stageOneDark ] @ (observed |> List.map (fun run -> run.observed))
+        let study = studyOver "Hand-off" runs
+        let setups = [ lp1AirRealLp2; lpCplAir; cpl1AirRealLp2 ] @ qzBenches
+        contextWithin setups (stageOneInstruments @ [ plate; qzAllFree ]) runs study, study, values
+
+    /// Stage 1 of the study through `runFit` over the real SVD, its calibrations held: a linear run.
+    let private stageOneRunOf (context : StudyForwardContext) (study : Study) : FitRun =
+        let fit = fitParamOver context (ResizeArray<ClockTime>()) (createMathNetSvd ()) (ResizeArray<UniformDeviate>())
+        let run = fitRunOf (fit.runFit (heldRequest study CalibrationStage) UnwatchedIterations)
+        Assert.Equal(LinearStudyEngine, run.engine)
+        run
+
+    /// The stage-1 run's fitted value of the item's parameter, failing the fact when it fits none.
+    let private stageOneValueOf (stageOne : FitRun) (item : Item) (name : ParameterName) : ParameterValue =
+        match stageOne.entries |> List.tryFind (fun entry -> entry.parameter = ItemParameterRef (item.id, name)) with
+        | Some entry -> entry.fitted
+        | None -> failwith $"stage 1 fits no {item.label.value}'s {name.value}"
+
+    /// The context whose items the stage-1 run fits are each at their next revision (`Item.publishRevision`, step 235),
+    /// every entry of theirs a calibration of its fitted value from that run.
+    let private publishedBy (stageOne : FitRun) (context : StudyForwardContext) : StudyForwardContext =
+        let calibrationsOf (item : Item) : Parameter list =
+            stageOne.entries
+            |> List.choose (fun entry ->
+                match entry.parameter with
+                | ItemParameterRef (owner, name) when owner = item.id ->
+                    let calibration : CalibratedParameterData = { value = entry.fitted; sigma = handOffSigma; fitRun = stageOne.name }
+                    Some ({ name = name; state = CalibratedParameter calibration } : Parameter)
+                | ItemParameterRef _
+                | MaterialParameterRef _ -> None)
+
+        let items =
+            context.kit.items
+            |> List.map (fun item ->
+                match calibrationsOf item with
+                | [] -> item
+                | published -> revisedWith published item)
+
+        { context with kit = { context.kit with items = items } }
+
+    [<Fact>]
+    let ``publishing stage one fixes the instruments' values for stage two`` () : unit =
+        let context, study, values = handOffFixture ()
+        let reads = ResizeArray<ClockTime>()
+        let unpublished = fitParamOver context reads (createMathNetSvd ()) (ResizeArray<UniformDeviate>())
+
+        // Stage 2 first: the instruments' parameters are unknown until stage 1 publishes them.
+        match unpublished.runFit (heldRequest study ObjectStage) UnwatchedIterations with
+        | Error (FitStageErr (InstrumentNotCalibratedErr _)) -> Assert.Empty(reads)
+        | Error error -> Assert.Fail($"expected FitStageErr (InstrumentNotCalibratedErr _), got {error.describe}")
+        | Ok run -> Assert.Fail($"a stage 2 over uncalibrated instruments was recorded as {run.name.value}")
+
+        // Stage 1 fits the AIR runs, and its five entries are the instruments' values, exactly.
+        let s1 = stageOneRunOf context study
+        Assert.Equal(CalibrationStage, s1.stage)
+        Assert.Equal<ExperimentName list>([ stageOneLpLp; stageOneLpCpl; stageOneCplLp ] |> List.map (fun run -> run.attachedRun.name), s1.runs)
+        Assert.Equal(values.Length, s1.entries.Length)
+
+        for item, name, value in values do
+            Assert.Equal<float>(value, (stageOneValueOf s1 item name).value)
+
+        // Each instrument's s1 values published and recorded into the kit, which now holds s1 among its fit runs.
+        let published = publishedBy s1 context
+        let stageTwo = { fitParamOver published (ResizeArray<ClockTime>()) (createMathNetSvd ()) (ResizeArray<UniformDeviate>()) with fitRuns = [ s1 ] }
+        let s2 = fitRunOf (stageTwo.runFit (heldRequest study ObjectStage) UnwatchedIterations)
+        Assert.Equal(LinearStudyEngine, s2.engine)
+        Assert.Equal(ObjectStage, s2.stage)
+        Assert.Equal(CalibrationHeldFixed, s2.calibrationUse)
+
+        Assert.Equal<ExperimentName list>(
+            context.kit.experiments |> List.filter (fun run -> run.role = ScienceRun) |> List.map (fun run -> run.name),
+            s2.runs)
+
+        // s2 reads each instrument parameter as exactly the calibration s1 published.
+        for item, name, _ in values do
+            let calibration : CalibratedParameterData = { value = stageOneValueOf s1 item name; sigma = handOffSigma; fitRun = s1.name }
+            Assert.Contains(({ parameter = ItemParameterRef (item.id, name); state = CalibratedParameter calibration } : FitRunParameter), s2.parameters)
+
+        // QZ's sixteen are its only entries, each within 1e-9 of M_QZ, in one complete object solve.
+        assertLoneFitRun qzAllFree qzTruth coefficientPlaces s2
+
+    [<Fact>]
+    let ``as priors, stage two frees the published calibration with its priors for the nonlinear engine`` () : unit =
+        let context, study, values = handOffFixture ()
+        let s1 = stageOneRunOf context study
+        let published = publishedBy s1 context
+        let staged, prefits = prefitStaged published study ObjectStage CalibrationAsPrior
+
+        // Every run stage 2 reads is ready, so the engine is chosen by the freed calibrations alone.
+        Assert.NotEmpty(prefits)
+
+        for prefit in prefits do
+            match prefit.check with
+            | Ok _ -> ()
+            | Error error -> Assert.Fail($"{prefit.experiment.name.value} is not ready: {error.describe}")
+
+        Assert.Equal(NonlinearStudyEngine, staged.engineWith published prefits)
+
+        let layout = staged.study.parameterLayoutWith { published with kit = { published.kit with items = staged.items } }
+        Assert.Equal(coefficientPlaces.Length + values.Length, layout.entries.Length)
+
+        // QZ's sixteen, without a prior.
+        let qzEntries = layout.entries |> List.filter (fun entry -> entry.owner = ItemOwner qzAllFree.id)
+
+        Assert.Equal<StudyParameterRef list>(
+            coefficientPlaces |> List.map (fun (row, column) -> ItemParameterRef (qzAllFree.id, coefficient row column)),
+            qzEntries |> List.map (fun entry -> entry.unknown.parameter))
+
+        Assert.All(qzEntries, fun entry -> Assert.Equal<ParameterPrior option>(None, entry.unknown.unknown.priorOpt))
+
+        // Beside them, each published calibration freed within fifty sigma: from its s1 value, its prior that value.
+        for item, name, _ in values do
+            let value = stageOneValueOf s1 item name
+
+            match layout.entries |> List.tryFind (fun entry -> entry.unknown.parameter = ItemParameterRef (item.id, name)) with
+            | Some entry ->
+                let unknown = entry.unknown.unknown
+                Assert.Equal<ParameterValue>(value, unknown.start)
+                assertValuesWithin 1e-12 [ value.value - 5.0e-5; value.value + 5.0e-5 ] [ unknown.bounds.lower; unknown.bounds.upper ]
+                Assert.Equal<ParameterPrior option>(Some { centre = value; sigma = handOffSigma }, unknown.priorOpt)
+            | None -> Assert.Fail($"the layout holds no entry of {item.label.value}'s {name.value}")
