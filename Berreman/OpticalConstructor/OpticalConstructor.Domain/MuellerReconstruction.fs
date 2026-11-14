@@ -184,6 +184,12 @@ module MuellerReconstruction =
         | SingularDesignErr of reason : string
         | RankDeficientErr of rank : MatrixRank
 
+        /// The failed condition and its payload (spec 0050 S11.3).
+        member this.describe : string =
+            match this with
+            | SingularDesignErr reason -> $"the design is singular: {reason}"
+            | RankDeficientErr rank -> $"the design is rank-deficient: rank {rank.value}"
+
     /// The over-determined system `A·x ≈ b` one least-squares solve resolves: the stacked design rows `A` and
     /// the measured right-hand side `b`, one entry per row.
     [<Softellect.Sys.NumericCarrier("the right-hand side of a least-squares solve (R3): the measured intensities the MathNet SVD consumes whole, beside the design rows")>]
@@ -198,6 +204,13 @@ module MuellerReconstruction =
         member this.residualRmseAt (solution : RealVector) : ResidualRmse =
             let residual = (RealMatrix.create (this.design |> Array.map (fun row -> row.value)) * solution) - RealVector.create this.rhs
             residual.norm / sqrt (float this.design.Length) |> ResidualRmse
+
+        /// The systems' design rows and right-hand sides, stacked in list order (spec 0050 S11.3).
+        static member concat (systems : LeastSquaresSystem list) : LeastSquaresSystem =
+            {
+                design = systems |> List.map (fun system -> system.design) |> Array.concat
+                rhs = systems |> List.map (fun system -> system.rhs) |> Array.concat
+            }
 
     /// The elevated result of a linear least-squares solve. `solution` is the minimizing `x` (for a
     /// reconstruction, the Mueller vec its `columnMajorMueller` un-vecs); `rank` is the numerical rank the
@@ -356,6 +369,14 @@ module MuellerReconstruction =
         | CplLp
         | CplCpl
 
+        /// The family's (source, analyzer) key as the reference writes it (spec 0050 S11.3).
+        member this.text : string =
+            match this with
+            | LpLp -> "LP-LP"
+            | LpCpl -> "LP-CPL"
+            | CplLp -> "CPL-LP"
+            | CplCpl -> "CPL-CPL"
+
     /// Which sample (or the empty AIR calibration) a measurement row constrains — the reference
     /// `object_rotation_from_parsed` matrix-kind (matrix_glue.py:101). `Air` is a bare AIR#0 calibration row (no
     /// sample); `Qz` / `Lr` a single object at its labelled azimuth; `QzLrProduct` the combined QZ·LR stack
@@ -365,6 +386,14 @@ module MuellerReconstruction =
         | Qz
         | Lr
         | QzLrProduct
+
+        /// The kind's name as the reference writes it (spec 0050 S11.3).
+        member this.text : string =
+            match this with
+            | Air -> "AIR"
+            | Qz -> "QZ"
+            | Lr -> "LR"
+            | QzLrProduct -> "QZ+LR"
 
     type NameReading with
 
@@ -444,6 +473,27 @@ module MuellerReconstruction =
             retardanceOpt : Retardance option
         }
 
+        /// An ideal linear analyzer, no retarder, read on `sign` from `zero` (spec 0050 S11.3).
+        static member linearAt (zero : Angle) (sign : DialSign) : AnalyzerModel =
+            {
+                kind = IdealLinear
+                zeroDial = zero
+                dialSign = sign
+                thetaRelOpt = None
+                retardanceOpt = None
+            }
+
+        /// An LP behind a retarder at +45°, its phase the negative of `retardance`: only the relative sign to the source is
+        /// constrained (`matrix_glue.py:211`; spec 0050 S11.3).
+        static member circularAt (zero : Angle) (sign : DialSign) (retardance : Retardance) : AnalyzerModel =
+            {
+                kind = IdealCircularLeft
+                zeroDial = zero
+                dialSign = sign
+                thetaRelOpt = Some (Angle.degree 45.0<Berreman.Constants.deg>)
+                retardanceOpt = Some (Retardance.degree (- retardance.degrees * 1.0<Berreman.Constants.deg>))
+            }
+
     /// The analyzer's physical azimuth for a raw dial reading — the reference `AnalyzerModel.physical_angle_deg`
     /// (matrix_glue.py:152): `dialSign · (dial − zeroDial)`, the rule `DialSign.physicalAngleOf` holds (spec 0050 S8.2).
     let physicalAngle (analyzer : AnalyzerModel) (dial : Angle) : Angle =
@@ -488,6 +538,15 @@ module MuellerReconstruction =
     /// (matrix_glue.py:268): the 16-element Kronecker row `kron4 s a` (entry `4·i + j = s[i]·a[j]`), the same
     /// column-major row `MuellerMatrix.vecColumnMajor` and the `MuellerSolverProxy` consume.
     let designRow (s : StokesVector) (a : RealVector4) : DesignRow = kron4 s a
+
+    type LeastSquaresSystem with
+
+        /// One `designRow s a` and its signal per projection, in order (spec 0050 S11.3).
+        static member ofProjections (projections : (StokesVector * RealVector4 * DetectorIntensity) list) : LeastSquaresSystem =
+            {
+                design = projections |> List.map (fun (s, a, _) -> designRow s a) |> List.toArray
+                rhs = projections |> List.map (fun (_, _, signal) -> signal.value) |> List.toArray
+            }
 
     // -----------------------------------------------------------------------------------------------------
     // Spec 0042 (008, IMPLEMENT) — Stage-1 AIR calibration (the reference `matrix_step1_air_fit.py`) as three
@@ -739,10 +798,7 @@ module MuellerReconstruction =
                     Some (prepareRow r reading)
                 | Ok _
                 | Error _ -> None)
-        {
-            design = prepared |> List.map (fun (s, a, _) -> designRow s a) |> List.toArray
-            rhs = prepared |> List.map (fun (_, _, signal) -> signal.value) |> List.toArray
-        }
+        LeastSquaresSystem.ofProjections prepared
 
     /// Solve the over-determined design system `A·x ≈ b` through the injected `MuellerSolverProxy` and lift the
     /// result into Mueller space — the reference `solve_single_object` least-squares + `matrix_from_vector`

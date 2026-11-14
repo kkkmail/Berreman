@@ -34,6 +34,14 @@ module StagedMuellerPath =
         /// A session's gain model the AIR gains cannot resolve (spec 0050 S11.1).
         | SessionGainErr of error : StudyError
 
+        /// The failed condition and its payload (spec 0050 S11.3).
+        member this.describe : string =
+            match this with
+            | EmptyCaptureSetErr reason -> $"a set of capture rows the staged path needs is empty: {reason}"
+            | AirCalibrationFitErr (family, error) -> $"the AIR cosine fit of {family.text} failed: {error.describe}"
+            | ObjectReconstructionErr (kind, error) -> $"the reconstruction of {kind.text} failed: {error.describe}"
+            | SessionGainErr error -> $"a session gain model was refused: {error.describe}"
+
     /// The stage-1 constants of `matrix_step1_air_fit.py` `main`, with the stage-2 models `matrix_glue.py`
     /// `load_step1_models` builds from them as members.
     type StageOneCalibrationData =
@@ -46,36 +54,21 @@ module StagedMuellerPath =
         }
 
         /// `load_step1_models`' `analyzer_lp`: an ideal linear analyzer read on a negative dial from `lpZero`.
-        member this.lpAnalyzer : AnalyzerModel =
-            {
-                kind = Library.IdealLinear
-                zeroDial = this.lpZero
-                dialSign = DialNegative
-                thetaRelOpt = None
-                retardanceOpt = None
-            }
+        member this.lpAnalyzer : AnalyzerModel = AnalyzerModel.linearAt this.lpZero DialNegative
 
-        /// `load_step1_models`' `analyzer_cpl`: an LP behind a retarder at +45°, its retardance negative (only the
-        /// relative sign to the source is constrained, `matrix_glue.py:211`).
-        member this.cplAnalyzer : AnalyzerModel =
-            {
-                kind = Library.IdealCircularLeft
-                zeroDial = this.cplZero
-                dialSign = DialPositive
-                thetaRelOpt = Some (Angle.degree 45.0<Berreman.Constants.deg>)
-                retardanceOpt = Some (Retardance.degree (- this.cplAnalyzerRetardance.degrees * 1.0<Berreman.Constants.deg>))
-            }
+        /// `load_step1_models`' `analyzer_cpl`: the circular analyzer of `cplZero` and `cplAnalyzerRetardance`, read on a
+        /// positive dial.
+        member this.cplAnalyzer : AnalyzerModel = AnalyzerModel.circularAt this.cplZero DialPositive this.cplAnalyzerRetardance
 
         /// `load_step1_models`' `source_cpl`.
         member this.cplSource : SourceModel = CplSource (this.cplSourceModel.thetaRel, this.cplSourceModel.retardance)
 
-    /// A family's AIR#0 normalized trace, the reference `load_air_traces` + `prepare_normalized_traces`
+    /// A family's AIR#0 normalized trace over its AIR rows, the reference `load_air_traces` + `prepare_normalized_traces`
     /// (`matrix_step1_air_fit.py:78`, `:85`): per experiment, the dark-subtracted mean per dial reading over that
     /// experiment's mean signal.
     let private reduceAirTraces (darkMean : DarkMean) (rows : MuellerRawRow list) : AirTrace =
         let reduced =
             rows
-            |> List.filter (fun r -> r.experiment.value.Contains("(AIR#0)"))
             |> List.groupBy (fun r -> r.experiment)
             |> List.collect (fun (_, expRows) ->
                 let byDescription =
@@ -106,21 +99,32 @@ module StagedMuellerPath =
             let uLp = CosineCoefficient sol.solution.[1]
             sourceCplFromLpFrame qLp uLp)
 
-    /// Stage 1, the AIR calibration of `matrix_step1_air_fit.py` `main`: the dark mean, the LP-LP and LP-CPL free cosine
-    /// fits and the CPL-LP LP-frame fit. The first failed solve answers its family's `AirCalibrationFitErr`.
-    let calibrateStageOne (solver : MuellerSolverProxy) (captures : StagedMuellerCaptureData) : Result<StageOneCalibrationData, StagedMuellerError> =
-        match captures.darknessRows with
+    /// The rows stage one reads: the darkness checks and the AIR#0 rows of the LP-LP, LP-CPL and CPL-LP families, as the
+    /// caller selected them (spec 0050 S11.3).
+    type StageOneAirRows =
+        {
+            darknessRows : MuellerRawRow list
+            lpLpAirRows : MuellerRawRow list
+            lpCplAirRows : MuellerRawRow list
+            cplLpAirRows : MuellerRawRow list
+        }
+
+    /// Stage 1, the AIR calibration of `matrix_step1_air_fit.py` `main` over the given rows: the dark mean, the LP-LP and
+    /// LP-CPL free cosine fits and the CPL-LP LP-frame fit. The first failed solve answers its family's
+    /// `AirCalibrationFitErr` (spec 0050 S11.3).
+    let calibrateFromAirRows (solver : MuellerSolverProxy) (rows : StageOneAirRows) : Result<StageOneCalibrationData, StagedMuellerError> =
+        match rows.darknessRows with
         | [] -> Error (EmptyCaptureSetErr "the darkness checks hold no capture row, so stage one has no dark mean")
         | darknessRows ->
             let darkMean = DarkMean (darknessRows |> List.averageBy (fun r -> r.avgTotal.value))
-            let airFit (family : Family) (rows : MuellerRawRow list) : Result<CosineFit, StagedMuellerError> =
-                freeCosineFit solver (reduceAirTraces darkMean rows) |> Result.mapError (fun e -> AirCalibrationFitErr (family, e))
+            let airFit (family : Family) (airRows : MuellerRawRow list) : Result<CosineFit, StagedMuellerError> =
+                freeCosineFit solver (reduceAirTraces darkMean airRows) |> Result.mapError (fun e -> AirCalibrationFitErr (family, e))
 
-            airFit LpLp captures.lpLpRows
+            airFit LpLp rows.lpLpAirRows
             |> Result.bind (fun lpLpFit ->
-                airFit LpCpl captures.lpCplRows
+                airFit LpCpl rows.lpCplAirRows
                 |> Result.bind (fun lpCplFit ->
-                    lpFrameSourceModel solver (reduceAirTraces darkMean captures.cplLpRows) lpLpFit.zeroAzimuth
+                    lpFrameSourceModel solver (reduceAirTraces darkMean rows.cplLpAirRows) lpLpFit.zeroAzimuth
                     |> Result.mapError (fun e -> AirCalibrationFitErr (CplLp, e))
                     |> Result.map (fun cplSourceModel ->
                         {
@@ -130,6 +134,21 @@ module StagedMuellerPath =
                             cplAnalyzerRetardance = lpCplFit.visibility.retardance
                             cplSourceModel = cplSourceModel
                         })))
+
+    /// Stage 1 over the lab files: `calibrateFromAirRows` of the darkness checks and each family file's rows whose label
+    /// holds `(AIR#0)` (spec 0050 S11.3).
+    let calibrateStageOne (solver : MuellerSolverProxy) (captures : StagedMuellerCaptureData) : Result<StageOneCalibrationData, StagedMuellerError> =
+        let airRowsOf (rows : MuellerRawRow list) : MuellerRawRow list =
+            rows |> List.filter (fun r -> r.experiment.value.Contains("(AIR#0)"))
+
+        calibrateFromAirRows
+            solver
+            {
+                darknessRows = captures.darknessRows
+                lpLpAirRows = airRowsOf captures.lpLpRows
+                lpCplAirRows = airRowsOf captures.lpCplRows
+                cplLpAirRows = airRowsOf captures.cplLpRows
+            }
 
     /// The cascade's prediction RMSE over the combined fit's own, `product / fit` (`matrix_fit_linear.py:334`).
     type ProductRmseRatio =
@@ -182,36 +201,48 @@ module StagedMuellerPath =
             productCheck : ProductCheckData
         }
 
-    /// An AIR block holding at least one capture row: the rows of its file whose experiment is its run.
-    type private AirBlockRows =
-        {
-            firstRow : MuellerRawRow
-            laterRows : MuellerRawRow list
-        }
-
-        member this.rows : MuellerRawRow list = this.firstRow :: this.laterRows
-
-        /// `fit_air_gain`'s `air_rows["captured_at"].mean()`, relative to the first tick so the tick sum never
-        /// overflows int64.
-        member this.meanTime : System.DateTimeOffset =
-            let t0 = this.firstRow.capturedAt.UtcTicks
-            let meanDelta = this.rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
-            System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
-
-    /// The AIR block `assign_gain_model` selects (`matrix_fit_linear.py:94-144`): the rows whose experiment, read as a
-    /// name, is the run; none answers `EmptyCaptureSetErr` naming the run.
-    let private airBlock (rows : MuellerRawRow list) (run : ExperimentName) : Result<AirBlockRows, StagedMuellerError> =
-        match rows |> List.filter (fun r -> r.experiment.nameText.toExperimentName = Ok run) with
+    /// The AIR run's anchor over its rows (`fit_air_gain` + `fit_scalar_gain`): the scalar gain of `signal_dark_sub ~
+    /// gain * (a . s)` at φ = 0, at the rows' mean capture time; no row answers `EmptyCaptureSetErr` naming the run
+    /// (spec 0050 S11.3).
+    let airAnchorGainOf
+        (source : SourceModel)
+        (analyzer : AnalyzerModel)
+        (dark : DarkMean)
+        (run : ExperimentName)
+        (rows : MuellerRawRow list)
+        : Result<AirAnchorGain, StagedMuellerError> =
+        match rows with
         | [] -> Error (EmptyCaptureSetErr $"the AIR block {run.value} holds no capture row, so its gain has no fit")
-        | firstRow :: laterRows -> Ok { firstRow = firstRow; laterRows = laterRows }
+        | firstRow :: _ ->
+            let sBase = source.baseStokes
+            let preds = rows |> List.map (fun r -> airIdentityPred sBase (analyzerBaseRow analyzer r.description)) |> List.toArray
+            let signals = rows |> List.map (fun r -> darkSubtract dark r.avgTotal) |> List.toArray
 
-    /// The AIR scalar gain fitting `signal_dark_sub ~ gain * (a_eff . s_eff)` over one block (`fit_air_gain` +
-    /// `fit_scalar_gain`). An AIR row carries no object (phi = 0), so its effective states are its base states.
-    let private fitAirGain (darkMean : DarkMean) (source : SourceModel) (analyzer : AnalyzerModel) (block : AirBlockRows) : AirGain =
-        let sBase = source.baseStokes
-        let preds = block.rows |> List.map (fun r -> airIdentityPred sBase (analyzerBaseRow analyzer r.description)) |> List.toArray
-        let signals = block.rows |> List.map (fun r -> darkSubtract darkMean r.avgTotal) |> List.toArray
-        scalarGain signals preds
+            // The mean is taken relative to the first tick so the tick sum never overflows int64.
+            let t0 = firstRow.capturedAt.UtcTicks
+            let meanDelta = rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
+
+            Ok
+                {
+                    run = run
+                    gain = scalarGain signals preds
+                    capturedAt = System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
+                }
+
+    /// A science row's effective source and analyzer in its object frame φ and its signal dark-subtracted and divided by
+    /// `gain` (`enrich_frame`; spec 0050 S11.3).
+    let projectCaptureRow
+        (source : SourceModel)
+        (analyzer : AnalyzerModel)
+        (phi : Angle)
+        (dark : DarkMean)
+        (gain : AirGain)
+        (row : MuellerRawRow)
+        : StokesVector * RealVector4 * DetectorIntensity =
+        let sEff = effectiveSource phi source.baseStokes
+        let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer row.description)
+        let signal = correctSignal dark row.avgTotal gain
+        sEff, aEff, signal
 
     // The reference procedure's nine AIR runs: in a kit they are experiments of these names, which a gain model anchors
     // to (spec 0050 S11.1; 001 §L).
@@ -234,41 +265,42 @@ module StagedMuellerPath =
     let private cplCplDay1GainModel = InterpolatedSessionGain { opening = cplCplDay1Opening; closing = cplCplDay1Closing }
     let private cplCplDay2GainModel = AnchoredSessionGain [ cplCplDay2Air ]
 
-    /// One AIR run's anchor: its block in `rows`, the gain `gainOf` fits over it and the block's mean capture time.
+    /// One AIR run's anchor through `anchorOf`, over the block `assign_gain_model` selects (`matrix_fit_linear.py:94-144`):
+    /// the rows of `rows` whose experiment, read as a name, is the run.
     let private airAnchor
-        (gainOf : AirBlockRows -> AirGain)
+        (anchorOf : ExperimentName -> MuellerRawRow list -> Result<AirAnchorGain, StagedMuellerError>)
         (rows : MuellerRawRow list)
         (run : ExperimentName)
         : Result<AirAnchorGain, StagedMuellerError> =
-        airBlock rows run |> Result.map (fun block -> { run = run; gain = gainOf block; capturedAt = block.meanTime })
+        anchorOf run (rows |> List.filter (fun r -> r.experiment.nameText.toExperimentName = Ok run))
 
     /// The anchors of an AIR run and its repeat in one file, in that order.
     let private airAnchorPair
-        (gainOf : AirBlockRows -> AirGain)
+        (anchorOf : ExperimentName -> MuellerRawRow list -> Result<AirAnchorGain, StagedMuellerError>)
         (rows : MuellerRawRow list)
         (run : ExperimentName)
         (repeat : ExperimentName)
         : Result<AirAnchorGain list, StagedMuellerError> =
-        airAnchor gainOf rows run
-        |> Result.bind (fun first -> airAnchor gainOf rows repeat |> Result.map (fun second -> [ first; second ]))
+        airAnchor anchorOf rows run
+        |> Result.bind (fun first -> airAnchor anchorOf rows repeat |> Result.map (fun second -> [ first; second ]))
 
     /// The nine AIR runs' anchors in the reference order, each fitted with its file's source and analyzer.
     let private airAnchors
         (stageOne : StageOneCalibrationData)
         (captures : StagedMuellerCaptureData)
         : Result<AirAnchorGain list, StagedMuellerError> =
-        let lpGain = fitAirGain stageOne.darkMean LpSource
-        let cplGain = fitAirGain stageOne.darkMean stageOne.cplSource
+        let lpAnchor (analyzer : AnalyzerModel) = airAnchorGainOf LpSource analyzer stageOne.darkMean
+        let cplAnchor (analyzer : AnalyzerModel) = airAnchorGainOf stageOne.cplSource analyzer stageOne.darkMean
 
-        airAnchorPair (lpGain stageOne.lpAnalyzer) captures.lpLpRows lpLpAir lpLpAirRepeat
+        airAnchorPair (lpAnchor stageOne.lpAnalyzer) captures.lpLpRows lpLpAir lpLpAirRepeat
         |> Result.bind (fun lpLp ->
-            airAnchorPair (lpGain stageOne.cplAnalyzer) captures.lpCplRows lpCplAir lpCplAirRepeat
+            airAnchorPair (lpAnchor stageOne.cplAnalyzer) captures.lpCplRows lpCplAir lpCplAirRepeat
             |> Result.bind (fun lpCpl ->
-                airAnchorPair (cplGain stageOne.lpAnalyzer) captures.cplLpRows cplLpAir cplLpAirRepeat
+                airAnchorPair (cplAnchor stageOne.lpAnalyzer) captures.cplLpRows cplLpAir cplLpAirRepeat
                 |> Result.bind (fun cplLp ->
-                    airAnchorPair (cplGain stageOne.cplAnalyzer) captures.cplCplDay1Rows cplCplDay1Opening cplCplDay1Closing
+                    airAnchorPair (cplAnchor stageOne.cplAnalyzer) captures.cplCplDay1Rows cplCplDay1Opening cplCplDay1Closing
                     |> Result.bind (fun cplCplDay1 ->
-                        airAnchor (cplGain stageOne.cplAnalyzer) captures.cplCplDay2Rows cplCplDay2Air
+                        airAnchor (cplAnchor stageOne.cplAnalyzer) captures.cplCplDay2Rows cplCplDay2Air
                         |> Result.map (fun cplCplDay2 -> lpLp @ lpCpl @ cplLp @ cplCplDay1 @ [ cplCplDay2 ])))))
 
     /// The rules the six sessions' gain models resolve to.
@@ -308,23 +340,6 @@ module StagedMuellerPath =
                                     cplCplDay2 = cplCplDay2
                                 }))))))
 
-    /// A science row's effective source, effective analyzer and corrected signal (`enrich_frame`), divided by its
-    /// session's gain rule at its capture time (spec 0050 S11.1). φ comes from the reading `buildDesign` kept the row
-    /// by, so the label is read once (spec 0050 S10.3).
-    let private prepareRow
-        (darkMean : DarkMean)
-        (source : SourceModel)
-        (analyzer : AnalyzerModel)
-        (ruleOf : MuellerRawRow -> SessionGainRule)
-        (row : MuellerRawRow)
-        (reading : NameReading)
-        : StokesVector * RealVector4 * DetectorIntensity =
-        let phi = reading.objectPhi
-        let sEff = effectiveSource phi source.baseStokes
-        let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer row.description)
-        let signal = correctSignal darkMean row.avgTotal ((ruleOf row).gainAt row.capturedAt)
-        sEff, aEff, signal
-
     /// Stages 2 and 3 after `calibrateStageOne` (`matrix_fit_linear.py` `main`): the nine AIR gains and the sessions' gain
     /// rules, then M_QZ, M_LR and M_{QZ+LR}, each the five files' designs over `excluded` solved by `reconstruct`, then
     /// the product check. The first missing capture set, refused gain model or failed solve answers its typed error.
@@ -351,19 +366,28 @@ module StagedMuellerPath =
                         let cplLpRuleOf (row : MuellerRawRow) : SessionGainRule =
                             if row.capturedAt < splitTime then rules.cplLpPreSplit else rules.cplLpPostSplit
 
+                        // φ comes from the reading `buildDesign` kept the row by, so the label is read once (spec 0050
+                        // S10.3); the gain is the row's session rule at its capture time (spec 0050 S11.1).
+                        let projectionOf
+                            (source : SourceModel)
+                            (analyzer : AnalyzerModel)
+                            (ruleOf : MuellerRawRow -> SessionGainRule)
+                            (row : MuellerRawRow)
+                            (reading : NameReading)
+                            : StokesVector * RealVector4 * DetectorIntensity =
+                            projectCaptureRow source analyzer reading.objectPhi darkMean ((ruleOf row).gainAt row.capturedAt) row
+
                         let families : (MuellerRawRow list * (MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity)) list =
-                            [ captures.lpLpRows,       prepareRow darkMean LpSource           stageOne.lpAnalyzer  (fun _ -> rules.lpLp)
-                              captures.lpCplRows,      prepareRow darkMean LpSource           stageOne.cplAnalyzer (fun _ -> rules.lpCpl)
-                              captures.cplLpRows,      prepareRow darkMean stageOne.cplSource stageOne.lpAnalyzer  cplLpRuleOf
-                              captures.cplCplDay1Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer (fun _ -> rules.cplCplDay1)
-                              captures.cplCplDay2Rows, prepareRow darkMean stageOne.cplSource stageOne.cplAnalyzer (fun _ -> rules.cplCplDay2) ]
+                            [ captures.lpLpRows,       projectionOf LpSource           stageOne.lpAnalyzer  (fun _ -> rules.lpLp)
+                              captures.lpCplRows,      projectionOf LpSource           stageOne.cplAnalyzer (fun _ -> rules.lpCpl)
+                              captures.cplLpRows,      projectionOf stageOne.cplSource stageOne.lpAnalyzer  cplLpRuleOf
+                              captures.cplCplDay1Rows, projectionOf stageOne.cplSource stageOne.cplAnalyzer (fun _ -> rules.cplCplDay1)
+                              captures.cplCplDay2Rows, projectionOf stageOne.cplSource stageOne.cplAnalyzer (fun _ -> rules.cplCplDay2) ]
 
                         let systemOf (kind : MatrixKind) : LeastSquaresSystem =
-                            let parts = families |> List.map (fun (rows, projection) -> buildDesign projection excluded rows kind)
-                            {
-                                design = parts |> List.map (fun p -> p.design) |> Array.concat
-                                rhs = parts |> List.map (fun p -> p.rhs) |> Array.concat
-                            }
+                            families
+                            |> List.map (fun (rows, projection) -> buildDesign projection excluded rows kind)
+                            |> LeastSquaresSystem.concat
 
                         let reconstructObject (kind : MatrixKind) (system : LeastSquaresSystem) : Result<ReconstructedMatrix, StagedMuellerError> =
                             reconstruct solver system |> Result.mapError (fun error -> ObjectReconstructionErr (kind, error))
