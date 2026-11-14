@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://berreman/schema/fitrun.json",
   "title": "FitRun",
-  "description": "One fit run's <study>@<stamp>.fitrun-json content, written once and never rewritten (spec 0050 S11.3). Only version 1's body is validated so other positive schema versions reach the typed version check before binding; the inner shapes are bound by the serializer.",
+  "description": "One fit run's <study>@<stamp>.fitrun-json content, written once and never rewritten, its results included (spec 0050 S11.3, S11.4). Only version 1's body is validated so other positive schema versions reach the typed version check before binding; the inner shapes are bound by the serializer.",
   "type": "object",
   "required": ["schemaVersion"],
   "properties": {
@@ -13,7 +13,7 @@
     "properties": { "schemaVersion": { "const": 1 } }
   },
   "then": {
-    "required": ["schemaVersion", "name", "study", "stamp", "mode", "stage", "calibrationUse", "engine", "runs", "dataRead", "parameters", "entries", "members", "objectMatrices", "notes"],
+    "required": ["schemaVersion", "name", "study", "stamp", "mode", "stage", "calibrationUse", "engine", "runs", "dataRead", "parameters", "entries", "members", "objectMatrices", "results", "notes"],
     "additionalProperties": false,
     "properties": {
       "schemaVersion": true,
@@ -33,6 +33,19 @@
       "entries": { "type": "array" },
       "members": { "type": "array" },
       "objectMatrices": { "type": "array" },
+      "results": {
+        "type": "object",
+        "required": ["sigmas", "problems", "runResiduals", "realizability", "productChecks", "profiles"],
+        "additionalProperties": false,
+        "properties": {
+          "sigmas": { "type": "array" },
+          "problems": { "type": "array" },
+          "runResiduals": { "type": "array" },
+          "realizability": { "type": "array" },
+          "productChecks": { "type": "array" },
+          "profiles": { "type": "array" }
+        }
+      },
       "notes": { "type": "string" }
     }
   }

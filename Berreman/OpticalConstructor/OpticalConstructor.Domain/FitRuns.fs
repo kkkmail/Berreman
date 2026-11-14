@@ -306,8 +306,8 @@ module FitRuns =
             profiles : ParameterProfile list
         }
 
-    /// One fit, append-only: the runs and data it read, the full parameter vector it used and produced, its members
-    /// and its object solves (spec 0050 S11.3; 001 §E, §I).
+    /// One fit, append-only: the runs and data it read, the full parameter vector it used and produced, its members,
+    /// its object solves and its results (spec 0050 S11.3, S11.4; 001 §E, §I, §L).
     type FitRun =
         {
             schemaVersion : FileSchemaVersion
@@ -324,6 +324,7 @@ module FitRuns =
             entries : FitRunEntry list
             members : FitRunMember list
             objectMatrices : ObjectMatrixFit list
+            results : FitRunResults
             notes : FitRunNotes
         }
 

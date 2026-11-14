@@ -25,6 +25,7 @@ open StudyFileFixtures
 module FitRunFileFixtures =
 
     open OpticalConstructor.Domain.MuellerReconstruction
+    open OpticalConstructor.Domain.MuellerInverse
     open OpticalConstructor.Domain.FitRuns
 
     let private qz : ItemId = ItemId (Guid.Parse "38400000-0000-4000-8000-000000000021")
@@ -35,7 +36,8 @@ module FitRunFileFixtures =
     let firstFitRunStamp : ClockTime = ClockTime (DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc))
 
     /// A joint, object-stage, linear fit run of `study` named by it and `at`: E1 read from `data/raw/e1.csv`, CPL1's
-    /// calibrated retardance held fixed, QZ's `m00` fitted from 1 to 0.98 by one member, and QZ's matrix solved.
+    /// calibrated retardance held fixed, QZ's `m00` fitted from 1 to 0.98 by one member, QZ's matrix solved, and results
+    /// holding one of each shape (spec 0050 S11.4).
     let fitRunOf (study : StudyName) (at : ClockTime) : FitRun =
         let data : DataAttachment =
             {
@@ -72,6 +74,85 @@ module FitRunFileFixtures =
                 rank = MatrixRank 16
                 rmse = ResidualRmse 0.01
             }
+        let qzM00 : FitEntryRef = { parameter = entry.parameter; owner = entry.owner }
+        let cpl1Retardance : FitEntryRef = { parameter = parameter.parameter; owner = ItemOwner cpl1 }
+        let entriesProblem : FitProblemQuality =
+            {
+                subject = StudyEntriesProblem
+                coordinates = [ EntryCoordinate [ qzM00 ]; EntryCoordinate [ cpl1Retardance ] ]
+                rank = MatrixRank 2
+                conditionOpt = Some (ConditionNumber 12.5)
+                columnNorms = JacobianColumnNorms [| 3.0; 0.25 |]
+                correlationOpt = Some (CorrelationMatrix [| [| 1.0; -0.5 |]; [| -0.5; 1.0 |] |])
+                chiSquared = FitChiSquared 0.5
+                rmse = ResidualRmse 0.01
+            }
+        let objectProblem : FitProblemQuality =
+            {
+                subject = ObjectSolveProblem [ qz; cpl1 ]
+                coordinates = [ ElementCoordinate (MuellerRowIndex 1, MuellerColumnIndex 2); ElementCoordinate (MuellerRowIndex 3, MuellerColumnIndex 0) ]
+                rank = MatrixRank 1
+                conditionOpt = None
+                columnNorms = JacobianColumnNorms [| 2.0; 0.0 |]
+                correlationOpt = None
+                chiSquared = FitChiSquared 0.125
+                rmse = ResidualRmse 0.02
+            }
+        let fringeProblem : FitProblemQuality =
+            {
+                subject = AirFringeProblem [ ExperimentName "A1"; ExperimentName "A2" ]
+                coordinates = [ EntryCoordinate [ cpl1Retardance ]; FringeVisibilityCoordinate ]
+                rank = MatrixRank 2
+                conditionOpt = Some (ConditionNumber 4.0)
+                columnNorms = JacobianColumnNorms [| 1.5; 0.75 |]
+                correlationOpt = Some (CorrelationMatrix [| [| 1.0; 0.25 |]; [| 0.25; 1.0 |] |])
+                chiSquared = FitChiSquared 0.0625
+                rmse = ResidualRmse 0.005
+            }
+        let e1Residual : RunResidual =
+            {
+                run = ExperimentName "E1"
+                residuals = ResidualVector [| 0.01; -0.02 |]
+                rmse = ResidualRmse 0.0158
+            }
+        let qzRealizability : ObjectRealizability =
+            {
+                item = qz
+                eigenvalues = [ CoherencyEigenvalue 0.97; CoherencyEigenvalue 0.01; CoherencyEigenvalue 0.002; CoherencyEigenvalue -1.0e-14 ]
+            }
+        let seriesCheck : SeriesProductCheck =
+            {
+                items = [ qz; cpl1 ]
+                cascade = List.init 16 (fun index -> if index % 5 = 0 then ParameterValue 0.97 else ParameterValue 0.001)
+                difference =
+                    {
+                        frobenius = MatrixDeviation 0.003
+                        meanAbs = MatrixDeviation 0.0005
+                        maxAbs = MatrixDeviation 0.002
+                        argMax = (MuellerRowIndex 3, MuellerColumnIndex 2)
+                    }
+                fitRmse = ResidualRmse 0.01
+                productRmse = ResidualRmse 0.012
+            }
+        let retardanceProfile : ParameterProfile =
+            {
+                entry = cpl1Retardance
+                reasons = [ UndeterminedSigmaReason; WideSigmaReason (SigmaFraction 0.25); CorrelatedEntryReason (qzM00, FitCorrelation -0.97) ]
+                points =
+                    [
+                        { value = ParameterValue 1.5; outcome = ProfileConverged (FitChiSquared 0.75) }
+                        { value = ParameterValue 1.75; outcome = ProfileFailed (FitMemberFailure "the solver did not converge: 100 iterations") }
+                    ]
+            }
+        let results : FitRunResults =
+            {
+                sigmas = [ { entry = qzM00; sigmaOpt = Some (ParameterSigma 0.002) }; { entry = cpl1Retardance; sigmaOpt = None } ]
+                problems = [ entriesProblem; objectProblem; fringeProblem ]
+                runResiduals = [ e1Residual ]
+                realizability = [ qzRealizability ]
+                productChecks = [ seriesCheck ]
+                profiles = [ retardanceProfile ]
+            }
         {
             schemaVersion = FitRun.currentSchemaVersion
             name = study.fitRunNameAt at
@@ -87,6 +168,7 @@ module FitRunFileFixtures =
             entries = [ entry ]
             members = [ firstMember ]
             objectMatrices = [ qzMatrix ]
+            results = results
             notes = FitRunNotes "QZ alone behind CPL1's published calibration.\nE2 waits for its dark run."
         }
 
@@ -1119,10 +1201,17 @@ module KitContentFileJsonTests =
         let expectedKeys =
             [
                 "calibrationUse"; "dataRead"; "engine"; "entries"; "members"; "mode"; "name"; "notes"; "objectMatrices"
-                "parameters"; "runs"; "schemaVersion"; "stage"; "stamp"; "study"
+                "parameters"; "results"; "runs"; "schemaVersion"; "stage"; "stamp"; "study"
             ]
         Assert.Equal<string list>(expectedKeys, keys)
         Assert.Equal<string list>(keys |> List.sortWith (fun first second -> String.CompareOrdinal(first, second)), keys)
+
+        // The results are one object of six arrays, each holding the fixture's shapes (spec 0050 S11.4).
+        let results = node.["results"].AsObject()
+        let resultKeys = [ for KeyValue (key, _) in results -> key ]
+        Assert.Equal<string list>([ "problems"; "productChecks"; "profiles"; "realizability"; "runResiduals"; "sigmas" ], resultKeys)
+        for key, count in [ "problems", 3; "productChecks", 1; "profiles", 1; "realizability", 1; "runResiduals", 1; "sigmas", 2 ] do
+            Assert.Equal(count, results.[key].AsArray().Count)
 
         // The mode, stage, calibration use and engine are written as their int tags, not their case names.
         let tags =
@@ -1156,6 +1245,8 @@ module KitContentFileJsonTests =
                 (fun node -> node.Remove "entries" |> ignore)
                 (fun node -> node["unexpected"] <- JsonValue.Create "unexpected")
                 (fun node -> node["stage"] <- JsonValue.Create 4)
+                (fun node -> node.Remove "results" |> ignore)
+                (fun node -> node["results"].AsObject().Remove "profiles" |> ignore)
             ]
 
         for edit in invalidEdits do

@@ -2947,7 +2947,8 @@ module StudyEngineTests =
     /// The study's linear fit run at the stage, its calibrations held, over a kit of the items within these setups,
     /// through the recording SVD: read once by the clock, no iteration told to its watch and no deviate drawn, so a
     /// nonlinear solve or an earlier refusal fails the fact. It fits the stage's runs, records every run's attachment
-    /// in study order and every parameter of the items the fitted runs use, `used` in the kit's order.
+    /// in study order and every parameter of the items the fitted runs use, `used` in the kit's order. Each object is
+    /// solved twice, by the engine and again for the run's results (spec 0050 S11.4).
     let private linearFitRunOf
         (setups : Setup list)
         (items : Item list)
@@ -2968,6 +2969,16 @@ module StudyEngineTests =
         Assert.Empty(drawn)
         Assert.Equal(1, reads.Count)
         Assert.NotEmpty(recorded)
+
+        // The results re-solve exactly the systems the engine solved, in its order (spec 0050 S11.4).
+        let solved = List.ofSeq recorded
+        Assert.Equal(0, solved.Length % 2)
+        Assert.Equal<LeastSquaresSystem list>(List.take (solved.Length / 2) solved, List.skip (solved.Length / 2) solved)
+
+        Assert.Equal<FitEntryRef list>(
+            run.entries |> List.map (fun entry -> ({ parameter = entry.parameter; owner = entry.owner } : FitEntryRef)),
+            run.results.sigmas |> List.map (fun sigma -> sigma.entry))
+
         Assert.Equal(LinearStudyEngine, run.engine)
         Assert.Equal(study.name.fitRunNameAt fitInstant, run.name)
         Assert.Equal(fitInstant, run.stamp)
@@ -3021,6 +3032,25 @@ module StudyEngineTests =
             Assert.Equal<ParameterValue list>(run.entries |> List.map (fun entry -> entry.start), start)
             Assert.Equal<ParameterValue list>(run.entries |> List.map (fun entry -> entry.fitted), fitted)
         | members -> Assert.Fail($"expected one converged member with a χ², got %A{members}")
+
+        // Its results' one problem is the solve the engine made: over its free entries, of their rank (spec 0050 S11.4).
+        let byParameter (entries : FitEntryRef list) : FitEntryRef list = entries |> List.sortBy (fun entry -> entry.parameter.describe)
+
+        match run.results.problems with
+        | [ quality ] ->
+            Assert.Equal(ObjectSolveProblem [ item.id ], quality.subject)
+            Assert.Equal(MatrixRank free.Length, quality.rank)
+
+            Assert.Equal<FitEntryRef list>(
+                run.entries |> List.map (fun entry -> ({ parameter = entry.parameter; owner = entry.owner } : FitEntryRef)) |> byParameter,
+                quality.coordinates
+                |> List.collect (fun coordinate ->
+                    match coordinate with
+                    | EntryCoordinate entries -> entries
+                    | ElementCoordinate _
+                    | FringeVisibilityCoordinate -> [])
+                |> byParameter)
+        | problems -> Assert.Fail($"expected one object solve's problem, got {problems.Length}")
 
     [<Fact>]
     let ``a fit run records its name, stamp, stage, engine, fitted runs, the data it read and the vector it used and produced`` () : unit =
@@ -3085,6 +3115,32 @@ module StudyEngineTests =
         Assert.Empty(run.objectMatrices)
         Assert.Equal(FitRunNotes.none, run.notes)
 
+        // The results `resultsWith` gives that fit, read off the problems of the same solution (spec 0050 S11.4): n_o's and
+        // n_e's σ, the one nonlinear problem, P1's residual, no black box or series, and a profile of each suspect entry.
+        let _, prefits = prefitStaged context study JointStage CalibrationHeldFixed
+        let engine = engineProblemsOf (staged.engineProblemsWith context prefits data (createMathNetSvd ()) expected)
+        Assert.Equal<FitEntrySigma list>(engine.sigmasFor expected.layout, run.results.sigmas)
+        Assert.Equal<FitProblemQuality list>(engine.problems |> List.map (fun problem -> problem.quality), run.results.problems)
+        Assert.Equal<RunResidual list>(engine.runResiduals, run.results.runResiduals)
+        Assert.Empty(run.results.realizability)
+        Assert.Empty(run.results.productChecks)
+
+        Assert.Equal<FitEntryRef list>(
+            engine.suspectsWith staged.study.settings.suspect expected.layout |> List.map (fun suspect -> suspect.entry),
+            run.results.profiles |> List.map (fun profile -> profile.entry))
+
+        Assert.Equal<FitEntryRef list>(
+            run.entries |> List.map (fun entry -> ({ parameter = entry.parameter; owner = entry.owner } : FitEntryRef)),
+            run.results.sigmas |> List.map (fun sigma -> sigma.entry))
+
+        for sigma in run.results.sigmas do
+            match sigma.sigmaOpt with
+            | Some value -> Assert.True(value.value > 0.0, $"{sigma.entry.parameter.describe}'s σ is {value.value:R}")
+            | None -> Assert.Fail($"{sigma.entry.parameter.describe} has no σ")
+
+        Assert.Equal<FitProblemSubject list>([ StudyEntriesProblem ], run.results.problems |> List.map (fun quality -> quality.subject))
+        Assert.Equal<ExperimentName list>([ plateRun.attachedRun.name ], run.results.runResiduals |> List.map (fun residual -> residual.run))
+
         // Step 390's fixtures through automatic dispatch, at stage 2 and jointly: each a real SVD solve answering a linear
         // fit run. QZ every coefficient free, m33 known (15 free), m23 known with m32 calibrated, and m00 alone free.
         let setups, runs, sessionStudy, _ = sessionFixture qzTruth
@@ -3103,14 +3159,14 @@ module StudyEngineTests =
             for qz, free in sessionVariants do
                 let solves = ResizeArray<LeastSquaresSystem>()
                 let fitted = linearFitRunOf setups (objectInstruments @ [ qz ]) (objectInstruments @ [ qz ]) runs sessionStudy stage solves
-                Assert.Equal(1, solves.Count)
+                Assert.Equal(2, solves.Count)
                 assertLoneFitRun qz qzTruth free fitted
 
             // Only m33 fixed: fifteen entries, m33 kept exactly with its known state among the parameters, never an entry.
             let m33Solves = ResizeArray<LeastSquaresSystem>()
             let m33Run = linearFitRunOf setups (objectInstruments @ [ qzM33 ]) (objectInstruments @ [ qzM33 ]) runs sessionStudy stage m33Solves
             let m33 = ItemParameterRef (qzM33.id, coefficient 3 3)
-            Assert.Equal(1, m33Solves.Count)
+            Assert.Equal(2, m33Solves.Count)
             assertLoneFitRun qzM33 qzTruth (placesBut [ 3, 3 ]) m33Run
             Assert.Equal(15, m33Run.entries.Length)
             Assert.DoesNotContain(m33, m33Run.entries |> List.map (fun entry -> entry.parameter))
@@ -3131,7 +3187,7 @@ module StudyEngineTests =
                 let solves = ResizeArray<LeastSquaresSystem>()
                 let used = [ laser; calibratedLp2; phone; prep; qzM00 ]
                 let fitted = linearFitRunOf kitSetups (objectInstruments @ [ prep; qzM00 ]) used kitRuns kitStudy stage solves
-                Assert.Equal(1, solves.Count)
+                Assert.Equal(2, solves.Count)
                 Assert.Equal(1, fitted.entries.Length)
                 assertLoneFitRun qzM00 qzTruth [ 0, 0 ] fitted
 
@@ -3186,14 +3242,14 @@ module StudyEngineTests =
             let constantUsed = [ laser; calibratedLp2; phone; constantPrep; qzFirstColumn ]
             let constantItems = objectInstruments @ [ constantPrep; qzFirstColumn ]
             let constantRun = linearFitRunOf constantSetups constantItems constantUsed constantRuns constantStudy stage constantSolves
-            Assert.Equal(1, constantSolves.Count)
+            Assert.Equal(2, constantSolves.Count)
             assertLoneFitRun qzFirstColumn qzTruth firstColumn constantRun
 
             let betweenSolves = ResizeArray<LeastSquaresSystem>()
             let betweenUsed = [ laser; lp1; calibratedLp2; phone; plate; lrKnown; qzBlock ]
             let betweenItems = objectInstruments @ [ lrKnown; qzBlock ]
             let betweenRun = linearFitRunOf betweenSetups betweenItems betweenUsed betweenRuns betweenStudy stage betweenSolves
-            Assert.Equal(1, betweenSolves.Count)
+            Assert.Equal(2, betweenSolves.Count)
             assertLoneFitRun qzBlock qzTruth block betweenRun
 
         // (d) Equality links: QZ's m21 follows its m12, QZ2's m00 follows QZ's free m00, and QZ2's m33 QZ's known m33.
@@ -3224,7 +3280,7 @@ module StudyEngineTests =
 
             // Every parameter of both objects stays in the record with its own state, the followers' included.
             let linkedRun = linearFitRunOf linkedSetups linkedItems linkedItems linkedRuns linked stage solves
-            Assert.Equal(1, solves.Count)
+            Assert.Equal(2, solves.Count)
 
             // One entry per independent coefficient: QZ's fourteen, then QZ2's fourteen; no follower is an entry.
             Assert.Equal<StudyParameterRef list>(
@@ -3250,6 +3306,17 @@ module StudyEngineTests =
                 Assert.Equal<float>(qzTruth.element 3 3, elementOf qzFit 3 3)
                 Assert.Equal<float>(qzTruth.element 3 3, elementOf qz2Fit 3 3)
             | fits -> Assert.Fail($"expected QZ's and QZ2's object solves, got {fits.Length}")
+
+            // Both objects are one solve, so their results hold one problem over the twenty-eight entries (spec 0050 S11.4).
+            match linkedRun.results.problems with
+            | [ quality ] ->
+                Assert.Equal(ObjectSolveProblem [ qzLinked.id; qz2Free.id ], quality.subject)
+                Assert.Equal(MatrixRank 28, quality.rank)
+
+                Assert.Equal<FitCoordinate list>(
+                    linkedRun.entries |> List.map (fun entry -> EntryCoordinate [ ({ parameter = entry.parameter; owner = entry.owner } : FitEntryRef) ]),
+                    quality.coordinates)
+            | problems -> Assert.Fail($"expected one linked solve's problem, got {problems.Length}")
 
         // A rank-deficient design reaches the solver and answers its refusal: no fit run, so the clock is never read.
         let deficientBench = turnedBench "QZ LP-LP 0" lp1 [ qzM33, Angle.zero ] calibratedLp2
@@ -3508,3 +3575,38 @@ module StudyEngineTests =
                 assertValuesWithin 1e-12 [ value.value - 5.0e-5; value.value + 5.0e-5 ] [ unknown.bounds.lower; unknown.bounds.upper ]
                 Assert.Equal<ParameterPrior option>(Some { centre = value; sigma = handOffSigma }, unknown.priorOpt)
             | None -> Assert.Fail($"the layout holds no entry of {item.label.value}'s {name.value}")
+
+    // ============================ spec 0050 S11.4: the fit run stores its results ============================
+
+    open OpticalConstructor.Storage.KitContentFiles
+
+    [<Fact>]
+    let ``a fit run stores its results, profiles included`` () : unit =
+        // Step 403's exactly confounded intensity study through `runFit`, unwatched: one clock read and no deviate drawn.
+        let fit, camera, source = confoundedFit ()
+        let reads = ResizeArray<ClockTime>()
+        let drawn = ResizeArray<UniformDeviate>()
+        let fitParam = fitParamOver fit.malusContext reads (createMathNetSvd ()) drawn
+        let run = fitRunOf (fitParam.runFit (heldRequest fit.malusStaged.study JointStage) UnwatchedIterations)
+
+        Assert.Equal(1, reads.Count)
+        Assert.Empty(drawn)
+        Assert.Equal(NonlinearStudyEngine, run.engine)
+        Assert.Equal<FitRunResults>(resultsOf (fit.resultsUnder UnwatchedIterations), run.results)
+
+        // The gain's and the scale's profiles, in the layout's order, each of seven points.
+        let suspects =
+            [ ItemParameterRef (camera.id, ParameterName.gain); ItemParameterRef (source.id, ParameterName.intensityScale) ]
+            |> List.map fit.entryOf
+            |> List.sortBy (fun (_, index) -> index.value)
+            |> List.map fst
+
+        Assert.Equal<FitEntryRef list>(suspects, run.results.profiles |> List.map (fun profile -> profile.entry))
+        Assert.All(run.results.profiles, fun profile -> Assert.Equal(7, profile.points.Length))
+
+        // Written and read in its `.fitrun-json` under its schema, the same run, profiles included.
+        match run.fileText |> Result.bind (fun text -> text.parseFitRun |> Result.map (fun readBack -> text, readBack)) with
+        | Ok (text, readBack) ->
+            Assert.Equal<FitRun>(run, readBack)
+            Assert.Equal<KitFileText>(text, readBack.fileText |> Result.defaultWith (fun error -> failwith error.describe))
+        | Error error -> Assert.Fail($"the fit run did not round-trip through its file: {error.describe}")

@@ -759,6 +759,17 @@ module StudyEngine =
             ownRows : LeastSquaresSystem
         }
 
+    /// One solve the object stage made: its items, the system it solved and its solution, the layout entries its columns
+    /// are (`None` for the sixteen elements `reconstruct` solves), and the group solves it gives (spec 0050 S11.3, S11.4).
+    type private MadeObjectSolve =
+        {
+            madeItems : ItemId list
+            madeRows : LeastSquaresSystem
+            madeSolution : RealVector
+            madeColumnsOpt : StudyVectorIndex list option
+            groupSolves : GroupSolve list
+        }
+
     /// An item evaluation's refusal as the study fit's, the one mapping the object stage's systems and solves share (spec
     /// 0050 S11.3, S11.4).
     let private evaluatedForFit (result : Result<'Value, ItemEvaluation.ItemEvaluationError>) : Result<'Value, StudyFitError> =
@@ -949,15 +960,14 @@ module StudyEngine =
 
     type StagedStudy with
 
-        /// Stage 2, or a joint fit, by the reference linear path where `engineWith` finds the black-box shape: each capture
-        /// row projected by the run law about its unknown object and divided by its session's gain at its time, then solved
-        /// by `reconstruct` or on its free columns through the same proxy (spec 0050 S11.3; 001 §L).
-        member this.reconstructLinear
+        /// The object stage's solves, each lone system then each series, with the groups they solve: the one solve path
+        /// `reconstructLinear` fits by and `objectProblemsWith` reads its results off (spec 0050 S11.3, S11.4).
+        member private this.objectSolvesWith
             (context : StudyForwardContext)
             (prefits : ExperimentPrefit list)
             (data : StudyData)
             (solver : MuellerSolverProxy)
-            : Result<StudyFitSolution, StudyFitError> =
+            : Result<ObjectGroupSystem list * MadeObjectSolve list, StudyFitError> =
             let staged = { context with kit = { context.kit with items = this.items } }
             let layout = this.study.parameterLayoutWith staged
             let items = staged.kit.items
@@ -1049,7 +1059,7 @@ module StudyEngine =
 
             // One system of lone objects, its columns in layout order: a lone item fitting all sixteen of its own by
             // `reconstruct`, any other through the proxy on A·P·x = b − A·k (spec 0050 S11.3).
-            let solveLone (system : LoneObjectRuns list) : Result<GroupSolve list, StudyFitError> =
+            let solveLone (system : LoneObjectRuns list) : Result<MadeObjectSolve, StudyFitError> =
                 let solvedItems = system |> List.map (fun lone -> lone.loneItem)
                 let columns = system |> List.collect (fun lone -> lone.columns) |> List.distinct |> List.sortBy (fun index -> index.value)
                 let rowsOf (lone : LoneObjectRuns) : LeastSquaresSystem = lone.runSystems |> List.map fst |> LeastSquaresSystem.concat
@@ -1060,30 +1070,50 @@ module StudyEngine =
 
                     reconstruct solver rows
                     |> Result.mapError (fun error -> ObjectSolveFitErr (solvedItems, error))
-                    |> Result.map (fun reconstructed -> [ solveOf solvedItems reconstructed.matrix reconstructed.rank reconstructed.rmse rows ])
+                    |> Result.map (fun reconstructed ->
+                        {
+                            madeItems = solvedItems
+                            madeRows = rows
+                            madeSolution = reconstructed.matrix.vecColumnMajor
+                            madeColumnsOpt = None
+                            groupSolves = [ solveOf solvedItems reconstructed.matrix reconstructed.rank reconstructed.rmse rows ]
+                        })
                 | _ ->
-                    system
-                    |> List.collect (fun lone -> lone.runSystems |> List.map (reducedOver columns))
-                    |> LeastSquaresSystem.concat
-                    |> solver.solveLinearLeastSquares
+                    let reduced = system |> List.collect (fun lone -> lone.runSystems |> List.map (reducedOver columns)) |> LeastSquaresSystem.concat
+
+                    solver.solveLinearLeastSquares reduced
                     |> Result.mapError (fun error -> ObjectSolveFitErr (solvedItems, error))
                     |> Result.map (fun solution ->
-                        system
-                        |> List.choose (fun lone ->
-                            match lone.runSystems with
-                            | (_, map) :: _ ->
-                                let matrix = assembledOf columns solution.solution map
-                                Some (solveOf [ lone.loneItem ] matrix solution.rank solution.rmse (rowsOf lone))
-                            | [] -> None))
+                        {
+                            madeItems = solvedItems
+                            madeRows = reduced
+                            madeSolution = solution.solution
+                            madeColumnsOpt = Some columns
+                            groupSolves =
+                                system
+                                |> List.choose (fun lone ->
+                                    match lone.runSystems with
+                                    | (_, map) :: _ ->
+                                        let matrix = assembledOf columns solution.solution map
+                                        Some (solveOf [ lone.loneItem ] matrix solution.rank solution.rmse (rowsOf lone))
+                                    | [] -> None)
+                        })
 
             // A series' combined matrix, its first unknown to its last, over its own rows: a diagnostic beside its
             // constituents' fits, never their coefficients (spec 0050 S11.3, S11.4).
-            let solveSeries (series : ObjectGroupSystem) : Result<GroupSolve, StudyFitError> =
+            let solveSeries (series : ObjectGroupSystem) : Result<MadeObjectSolve, StudyFitError> =
                 let rows = series.system
 
                 reconstruct solver rows
                 |> Result.mapError (fun error -> ObjectSolveFitErr (series.items, error))
-                |> Result.map (fun reconstructed -> solveOf series.items reconstructed.matrix reconstructed.rank reconstructed.rmse rows)
+                |> Result.map (fun reconstructed ->
+                    {
+                        madeItems = series.items
+                        madeRows = rows
+                        madeSolution = reconstructed.matrix.vecColumnMajor
+                        madeColumnsOpt = None
+                        groupSolves = [ solveOf series.items reconstructed.matrix reconstructed.rank reconstructed.rmse rows ]
+                    })
 
             this.objectSystemsWith context prefits data
             |> Result.bind (fun groups ->
@@ -1116,7 +1146,6 @@ module StudyEngine =
                     loneSystems
                     |> List.map solveLone
                     |> ItemEvaluation.sequenced
-                    |> Result.map List.concat
                     |> Result.bind (fun loneSolves ->
                         groups
                         |> List.choose (fun group ->
@@ -1125,38 +1154,51 @@ module StudyEngine =
                             | []
                             | [ _ ] -> None)
                         |> ItemEvaluation.sequenced
-                        |> Result.map (fun seriesSolves ->
-                            let solves =
-                                groups
-                                |> List.choose (fun group -> loneSolves @ seriesSolves |> List.tryFind (fun solve -> solve.matrixFit.items = group.items))
+                        |> Result.map (fun seriesSolves -> groups, loneSolves @ seriesSolves))))
 
-                            let startValues = layout.entries |> List.map (fun entry -> entry.unknown.unknown.start)
+        /// Stage 2, or a joint fit, by the reference linear path where `engineWith` finds the black-box shape: each capture
+        /// row projected by the run law about its unknown object and divided by its session's gain at its time, then solved
+        /// by `reconstruct` or on its free columns through the same proxy (spec 0050 S11.3; 001 §L).
+        member this.reconstructLinear
+            (context : StudyForwardContext)
+            (prefits : ExperimentPrefit list)
+            (data : StudyData)
+            (solver : MuellerSolverProxy)
+            : Result<StudyFitSolution, StudyFitError> =
+            let layout = this.study.parameterLayoutWith { context with kit = { context.kit with items = this.items } }
 
-                            // A lone object fills only its own entries, each from its complete matrix.
-                            let fittedValues =
-                                layout.entries
-                                |> List.map (fun entry ->
-                                    match entry.unknown.parameter with
-                                    | ItemParameterRef (item, name) ->
-                                        let solveOpt = solves |> List.tryFind (fun solve -> solve.matrixFit.items = [ item ])
+            this.objectSolvesWith context prefits data solver
+            |> Result.map (fun (groups, made) ->
+                let groupSolves = made |> List.collect (fun solve -> solve.groupSolves)
+                let solves = groups |> List.choose (fun group -> groupSolves |> List.tryFind (fun solve -> solve.matrixFit.items = group.items))
 
-                                        match solveOpt, vecOrderCoefficients |> List.tryFindIndex (fun held -> held = name) with
-                                        | Some solve, Some place -> ParameterValue solve.solvedMatrix.vecColumnMajor.[place]
-                                        | _ -> entry.unknown.unknown.start
-                                    | MaterialParameterRef _ -> entry.unknown.unknown.start)
+                let startValues = layout.entries |> List.map (fun entry -> entry.unknown.unknown.start)
 
-                            let chiSquared =
-                                solves
-                                |> List.sumBy (fun solve -> solve.matrixFit.rmse.value * solve.matrixFit.rmse.value * float solve.ownRows.design.Length)
-                                |> FitChiSquared
+                // A lone object fills only its own entries, each from its complete matrix.
+                let fittedValues =
+                    layout.entries
+                    |> List.map (fun entry ->
+                        match entry.unknown.parameter with
+                        | ItemParameterRef (item, name) ->
+                            let solveOpt = solves |> List.tryFind (fun solve -> solve.matrixFit.items = [ item ])
 
-                            {
-                                engine = LinearStudyEngine
-                                layout = layout
-                                members = [ ({ start = startValues; outcome = MemberConverged (fittedValues, Some chiSquared) } : FitRunMember) ]
-                                fitted = StudyParameterVector.ofParameterValues fittedValues
-                                objectMatrices = solves |> List.map (fun solve -> solve.matrixFit)
-                            }))))
+                            match solveOpt, vecOrderCoefficients |> List.tryFindIndex (fun held -> held = name) with
+                            | Some solve, Some place -> ParameterValue solve.solvedMatrix.vecColumnMajor.[place]
+                            | _ -> entry.unknown.unknown.start
+                        | MaterialParameterRef _ -> entry.unknown.unknown.start)
+
+                let chiSquared =
+                    solves
+                    |> List.sumBy (fun solve -> solve.matrixFit.rmse.value * solve.matrixFit.rmse.value * float solve.ownRows.design.Length)
+                    |> FitChiSquared
+
+                {
+                    engine = LinearStudyEngine
+                    layout = layout
+                    members = [ ({ start = startValues; outcome = MemberConverged (fittedValues, Some chiSquared) } : FitRunMember) ]
+                    fitted = StudyParameterVector.ofParameterValues fittedValues
+                    objectMatrices = solves |> List.map (fun solve -> solve.matrixFit)
+                })
 
     /// What a fit's results are read from, each engine giving its own: its solves, each fitted run's residual and each
     /// series' product check (spec 0050 S11.4).
@@ -1245,9 +1287,9 @@ module StudyEngine =
 
     type StagedStudy with
 
-        /// For a solution `reconstructLinear` answered: each group's `reconstruct` over its own rows as its design over the
-        /// matrix's sixteen elements, each fitted run's own rows' residual at its group's solve, and each series' check
-        /// against the cascade of its objects' own solves (spec 0050 S11.4; 001 §L).
+        /// For a solution `reconstructLinear` answered: each solve it made as its design over its coordinates, an object's
+        /// sixteen elements or a lone system's free entries, each fitted run's own rows' residual at its object's solve, and
+        /// each series' check against the cascade of its objects' own solves (spec 0050 S11.4; 001 §L).
         member this.objectProblemsWith
             (context : StudyForwardContext)
             (prefits : ExperimentPrefit list)
@@ -1270,19 +1312,25 @@ module StudyEngine =
                 let residuals = system.residualsAt solution
                 Array.init system.design.Length (fun row -> residuals.[row]) |> ResidualVector
 
-            // Coordinate k = 4c + r is the element (r, c), the order `vecColumnMajor` and the solve share.
-            let problemOf (group : ObjectGroupSystem) (solved : ReconstructedMatrix) : FittedProblem =
-                let system = group.system
-                let solution = solved.matrix.vecColumnMajor
-
+            // A reconstructed coordinate k = 4c + r is the element (r, c), the order `vecColumnMajor` and the solve share; a
+            // solve on free columns has one per layout entry it fits (spec 0050 S11.4).
+            let problemOf (made : MadeObjectSolve) : FittedProblem =
                 let coordinates, boundsOpts =
-                    match group.items with
-                    | [ item ] ->
+                    match made.madeColumnsOpt, made.madeItems with
+                    | Some columns, _ ->
+                        columns
+                        |> List.map (fun index ->
+                            let entry = List.item index.value layout.entries
+                            EntryCoordinate [ ({ parameter = entry.unknown.parameter; owner = entry.owner } : FitEntryRef) ], Some entry.unknown.unknown.bounds)
+                        |> List.unzip
+                    | None, [ item ] ->
                         vecOrderCoefficients
                         |> List.map (fun name ->
                             EntryCoordinate [ ({ parameter = ItemParameterRef (item, name); owner = ItemOwner item } : FitEntryRef) ], boundsOf item name)
                         |> List.unzip
-                    | _ -> List.init 16 (fun place -> ElementCoordinate (MuellerRowIndex (place % 4), MuellerColumnIndex (place / 4)), None) |> List.unzip
+                    | None, _ -> List.init 16 (fun place -> ElementCoordinate (MuellerRowIndex (place % 4), MuellerColumnIndex (place / 4)), None) |> List.unzip
+
+                let width = coordinates.Length
 
                 let sideOf (side : ParameterInterval -> ParameterValue) (unbounded : float) : ScaledVector =
                     boundsOpts
@@ -1295,22 +1343,22 @@ module StudyEngine =
 
                 let search : ScaledSearch =
                     {
-                        start = Array.init 16 (fun place -> solution.[place]) |> ScaledVector
+                        start = Array.init width (fun place -> made.madeSolution.[place]) |> ScaledVector
                         lowerBounds = sideOf (fun bounds -> bounds.lower) -infinity
                         upperBounds = sideOf (fun bounds -> bounds.upper) infinity
                     }
 
                 {
-                    subject = ObjectSolveProblem group.items
+                    subject = ObjectSolveProblem made.madeItems
                     coordinates = coordinates
-                    residual = fun (ScaledVector scaled) -> residualsOf system (RealVector.create scaled)
+                    residual = fun (ScaledVector scaled) -> residualsOf made.madeRows (RealVector.create scaled)
                     search = search
-                    centre = Array.zeroCreate 16 |> StudyParameterVector
-                    unit = Array.create 16 1.0 |> StudyParameterVector
+                    centre = Array.zeroCreate width |> StudyParameterVector
+                    unit = Array.create width 1.0 |> StudyParameterVector
                 }
 
-            let runResidualsOf (group : ObjectGroupSystem) (solved : ReconstructedMatrix) : RunResidual list =
-                let solution = solved.matrix.vecColumnMajor
+            let runResidualsOf (group : ObjectGroupSystem) (solved : GroupSolve) : RunResidual list =
+                let solution = solved.solvedMatrix.vecColumnMajor
 
                 group.runs
                 |> List.map (fun run ->
@@ -1320,26 +1368,26 @@ module StudyEngine =
                         rmse = if run.system.design.Length = 0 then ResidualRmse 0.0 else run.system.residualRmseAt solution
                     } : RunResidual))
 
-            this.objectSystemsWith context prefits data
-            |> Result.bind (fun groups ->
-                groups
-                |> List.map (fun group ->
-                    reconstruct solver group.system
-                    |> Result.mapError (fun error -> ObjectSolveFitErr (group.items, error))
-                    |> Result.map (fun solved -> group, solved))
-                |> ItemEvaluation.sequenced)
-            |> Result.map (fun solves ->
+            this.objectSolvesWith context prefits data solver
+            |> Result.map (fun (groups, made) ->
+                let groupSolves = made |> List.collect (fun solve -> solve.groupSolves)
+
+                let solves =
+                    groups
+                    |> List.choose (fun group ->
+                        groupSolves |> List.tryFind (fun solve -> solve.matrixFit.items = group.items) |> Option.map (fun solved -> group, solved))
+
                 let runResiduals = solves |> List.collect (fun (group, solved) -> runResidualsOf group solved)
 
                 let ownMatrixOf (item : ItemId) : MuellerMatrix option =
-                    solves
-                    |> List.tryPick (fun (group, solved) ->
-                        match group.items with
-                        | [ own ] when own = item -> Some solved.matrix
+                    groupSolves
+                    |> List.tryPick (fun solve ->
+                        match solve.matrixFit.items with
+                        | [ own ] when own = item -> Some solve.solvedMatrix
                         | _ -> None)
 
                 // Mₖ ⋯ M₂ cascaded onto M₁, so `productCheckOf`'s cascade is Mₖ ⋯ M₂ · M₁: for [QZ; LR], M_LR · M_QZ.
-                let productCheckOpt (group : ObjectGroupSystem) (series : ReconstructedMatrix) : SeriesProductCheck option =
+                let productCheckOpt (group : ObjectGroupSystem) (series : GroupSolve) : SeriesProductCheck option =
                     let ownsOpt =
                         group.items
                         |> List.fold
@@ -1352,13 +1400,22 @@ module StudyEngine =
                     match ownsOpt with
                     | Some (first :: second :: rest) ->
                         let later = rest |> List.fold (fun soFar next -> cascadeProduct next soFar) second
-                        Some ((productCheckOf later first series group.system).storedFor group.items)
+                        let combined : ReconstructedMatrix = { matrix = series.solvedMatrix; rank = series.matrixFit.rank; rmse = series.matrixFit.rmse }
+                        Some ((productCheckOf later first combined group.system).storedFor group.items)
                     | Some [ _ ]
                     | Some []
                     | None -> None
 
+                // One problem per solve made, at the first group it solves; linked lone objects share one.
+                let problems =
+                    groups
+                    |> List.choose (fun group ->
+                        made |> List.tryFindIndex (fun solve -> solve.groupSolves |> List.exists (fun held -> held.matrixFit.items = group.items)))
+                    |> List.distinct
+                    |> List.map (fun index -> problemOf (List.item index made))
+
                 ({
-                    problems = solves |> List.map (fun (group, solved) -> problemOf group solved)
+                    problems = problems
                     runResiduals = this.fittedRuns |> List.choose (fun name -> runResiduals |> List.tryFind (fun residual -> residual.run = name))
                     productChecks = solves |> List.choose (fun (group, solved) -> productCheckOpt group solved)
                 } : EngineProblems))
@@ -1721,9 +1778,9 @@ module StudyEngine =
 
     type StudyFitParam with
 
-        /// One fit: the study staged, its data checked and read, the engine `engineWith` chooses run, and the fit run
-        /// stamped by the clock, read once, holding the runs, the data hashes, every parameter read and the vector used and
-        /// produced; nothing is written (spec 0050 S11.3; 001 §E, §P).
+        /// One fit: the study staged, its data checked and read, the engine `engineWith` chooses run, its results gathered,
+        /// and the fit run stamped by the clock, read once, holding the runs, the data hashes, every parameter read, the
+        /// vector used and produced and the results; nothing is written (spec 0050 S11.3, S11.4; 001 §E, §L, §P).
         member this.runFit (request : StudyFitRequest) (watch : IterationWatch) : Result<FitRun, StudyFitError> =
             let kit = this.forward.kit
 
@@ -1790,8 +1847,12 @@ module StudyEngine =
                                 | LinearStudyEngine, (ObjectStage | JointStage) -> staged.reconstructLinear this.forward prefits data this.linearSolver
                                 | NonlinearStudyEngine, _ -> staged.fitNonlinear this.forward data this.deviates watch
 
+                            // The profile pass re-fits under the fit's own watch, so its cancel writes nothing (step 393).
                             solved
-                            |> Result.map (fun solution ->
+                            |> Result.bind (fun solution ->
+                                staged.resultsWith stagedContext prefits data this.linearSolver solution watch
+                                |> Result.map (fun results -> solution, results))
+                            |> Result.map (fun (solution, results) ->
                                 let at = this.clock.now ()
                                 let starts = solution.layout.startVector
 
@@ -1822,5 +1883,6 @@ module StudyEngine =
                                     entries = entries
                                     members = solution.members
                                     objectMatrices = solution.objectMatrices
+                                    results = results
                                     notes = FitRunNotes.none
                                 } : FitRun)))))
