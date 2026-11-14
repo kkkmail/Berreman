@@ -157,6 +157,155 @@ module FitRuns =
             rmse : ResidualRmse
         }
 
+    /// One entry of the fitted vector, as `FitRunEntry` names it: its parameter and the owner it is shared by
+    /// (spec 0050 S11.4).
+    type FitEntryRef =
+        {
+            parameter : StudyParameterRef
+            owner : UnknownOwner
+        }
+
+    /// What one coordinate of a solve is the value of; stored in the serializer's case form, so it carries no tag
+    /// (spec 0050 S11.4).
+    type FitCoordinate =
+        /// The entries it is the value of: one in the nonlinear and object solves, every entry taking that stage-one
+        /// constant in a calibration fit (spec 0050 S11.4).
+        | EntryCoordinate of entries : FitEntryRef list
+        /// An element of a series' combined matrix, which no entry holds (spec 0050 S11.4).
+        | ElementCoordinate of row : MuellerRowIndex * column : MuellerColumnIndex
+        /// The free visibility of the LP-LP AIR fringe, which stage one fits and no entry holds (spec 0050 S11.4).
+        | FringeVisibilityCoordinate
+
+    /// The solve a quality is read from; stored in the serializer's case form, so it carries no tag (spec 0050 S11.4).
+    type FitProblemSubject =
+        /// The nonlinear fit of the study residual and its priors (spec 0050 S11.4).
+        | StudyEntriesProblem
+        /// One linear object solve, a series' combined matrix when it names more than one item (spec 0050 S11.4).
+        | ObjectSolveProblem of items : ItemId list
+        /// One stage-one AIR fringe fit of those runs (spec 0050 S11.4).
+        | AirFringeProblem of runs : ExperimentName list
+
+    /// A solve's Jacobian column norms, one per coordinate, read whole from the `ResidualJacobian` carrier
+    /// (spec 0050 S11.4).
+    [<Softellect.Sys.NumericCarrier("a solve's Jacobian column norms (R3): one per coordinate, read whole from the ResidualJacobian carrier and recorded whole in the fit run")>]
+    type JacobianColumnNorms =
+        | JacobianColumnNorms of float[]
+
+        member this.value : float[] = let (JacobianColumnNorms norms) = this in norms
+
+    /// A solve's parameter correlation matrix over its coordinates, read whole from the `ResidualJacobian` carrier
+    /// (spec 0050 S11.4).
+    [<Softellect.Sys.NumericCarrier("a solve's parameter correlation matrix (R3): one row and one column per coordinate, read whole from the ResidualJacobian carrier and recorded whole in the fit run")>]
+    type CorrelationMatrix =
+        | CorrelationMatrix of float[][]
+
+        member this.value : float[][] = let (CorrelationMatrix correlation) = this in correlation
+
+    /// One solve's identifiability in its own coordinates (the nonlinear fit's scaled ones); the condition and the
+    /// correlation are present only where its Jacobian has full rank (spec 0050 S11.4; 001 §L).
+    type FitProblemQuality =
+        {
+            subject : FitProblemSubject
+            coordinates : FitCoordinate list
+            rank : MatrixRank
+            conditionOpt : ConditionNumber option
+            columnNorms : JacobianColumnNorms
+            correlationOpt : CorrelationMatrix option
+            chiSquared : FitChiSquared
+            rmse : ResidualRmse
+        }
+
+    /// One fitted value's ± σ, `None` where its solve leaves it undetermined (spec 0050 S11.4; 001 §L).
+    type FitEntrySigma =
+        {
+            entry : FitEntryRef
+            sigmaOpt : ParameterSigma option
+        }
+
+    /// One fitted run's residual entries, in the units of the solve that fitted it, and their root mean square
+    /// (spec 0050 S11.4; 001 §L).
+    type RunResidual =
+        {
+            run : ExperimentName
+            residuals : ResidualVector
+            rmse : ResidualRmse
+        }
+
+    /// Whether some optical element can produce a fitted Mueller matrix. Derived, never stored, so it carries no tag
+    /// (spec 0050 S11.4).
+    type MuellerRealizability =
+        | RealizableMueller
+        | UnrealizableMueller
+
+    /// One black-box object's four Cloude coherency eigenvalues at its fitted values (spec 0050 S11.4; 001 §L).
+    type ObjectRealizability =
+        {
+            item : ItemId
+            eigenvalues : CoherencyEigenvalue list
+        }
+
+        /// Realizable when every eigenvalue is at least −1e-12 times their sum (the coherency trace, m₀₀): a round-off
+        /// allowance on the positive semi-definite test `cloudeEigenvalues` documents (spec 0050 S11.4).
+        member this.realizability : MuellerRealizability =
+            let floor = -1.0e-12 * (this.eigenvalues |> List.sumBy (fun eigenvalue -> eigenvalue.value))
+
+            if this.eigenvalues |> List.forall (fun eigenvalue -> eigenvalue.value >= floor) then RealizableMueller
+            else UnrealizableMueller
+
+    /// A series' combined matrix against the cascade of its objects' own matrices, the cascade's sixteen elements
+    /// row-major, with step 352's readouts (spec 0050 S11.4; 001 §L).
+    type SeriesProductCheck =
+        {
+            items : ItemId list
+            cascade : ParameterValue list
+            difference : MatrixDiff
+            fitRmse : ResidualRmse
+            productRmse : ResidualRmse
+        }
+
+    /// Why a fitted entry is suspect, and so profiled; stored in the serializer's case form, so it carries no tag
+    /// (spec 0050 S11.4).
+    type SuspectReason =
+        /// Its solve leaves its σ undetermined (spec 0050 S11.4).
+        | UndeterminedSigmaReason
+        /// Its σ over its bounds' span, past the study's threshold (spec 0050 S11.4).
+        | WideSigmaReason of fraction : SigmaFraction
+        /// Its correlation with that entry, past the study's threshold (spec 0050 S11.4).
+        | CorrelatedEntryReason of partner : FitEntryRef * correlation : FitCorrelation
+
+    /// Where one profile re-fit ended: its χ², or why it failed; stored in the serializer's case form, so it carries no
+    /// tag (spec 0050 S11.4).
+    type ProfileOutcome =
+        | ProfileConverged of chiSquared : FitChiSquared
+        | ProfileFailed of failure : FitMemberFailure
+
+    /// One re-fit with the profiled parameter held at `value` (spec 0050 S11.4).
+    type ProfilePoint =
+        {
+            value : ParameterValue
+            outcome : ProfileOutcome
+        }
+
+    /// A suspect entry's χ² profile: why it is suspect, and its re-fits (spec 0050 S11.4; 001 §L).
+    type ParameterProfile =
+        {
+            entry : FitEntryRef
+            reasons : SuspectReason list
+            points : ProfilePoint list
+        }
+
+    /// A fit's results: each value's ± σ, each solve's quality, each fitted run's residuals, each black-box object's
+    /// realizability, each series' product check and each suspect entry's profile (spec 0050 S11.4; 001 §L).
+    type FitRunResults =
+        {
+            sigmas : FitEntrySigma list
+            problems : FitProblemQuality list
+            runResiduals : RunResidual list
+            realizability : ObjectRealizability list
+            productChecks : SeriesProductCheck list
+            profiles : ParameterProfile list
+        }
+
     /// One fit, append-only: the runs and data it read, the full parameter vector it used and produced, its members
     /// and its object solves (spec 0050 S11.3; 001 §E, §I).
     type FitRun =

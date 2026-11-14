@@ -1,9 +1,16 @@
 namespace OpticalConstructor.Tests
 
+open System
 open Xunit
+open Berreman.Constants
+open Berreman.Fields
+open Berreman.Geometry
 open Berreman.MathNetNumericsMath
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.FitRuns
 
 /// Spec 0050 S11.4 — a fit's results over their result shapes and synthetic least-squares problems.
 module FitResultsTests =
@@ -37,3 +44,33 @@ module FitResultsTests =
         Assert.Equal(-0.1, residuals.[1], 1e-15)
         Assert.Equal(0.1, residuals.[2], 1e-15)
         Assert.Equal(0.1, (system.residualRmseAt solution).value, 1e-15)
+
+    [<Fact>]
+    let ``a fitted Mueller matrix is realizable when no coherency eigenvalue is negative beyond round-off`` () : unit =
+        let item = ItemId (Guid.Parse "39600000-0000-4000-8000-000000000001")
+
+        let realizabilityOf (eigenvalues : CoherencyEigenvalue list) : MuellerRealizability =
+            ({ item = item; eigenvalues = eigenvalues } : ObjectRealizability).realizability
+
+        let eigenvaluesOf (values : float list) : CoherencyEigenvalue list = values |> List.map CoherencyEigenvalue
+
+        let diagonal =
+            RealMatrix4x4.create
+                [ [ 1.0; 0.0; 0.0; 0.0 ]
+                  [ 0.0; 1.5; 0.0; 0.0 ]
+                  [ 0.0; 0.0; 0.0; 0.0 ]
+                  [ 0.0; 0.0; 0.0; 0.0 ] ]
+            |> MuellerMatrix
+
+        let retarder = retarderMueller (Angle.degree 30.0<deg>) (Retardance.degree 40.0<deg>)
+
+        List.iter2
+            (fun (expected : float) (actual : CoherencyEigenvalue) -> Assert.Equal(expected, actual.value, 1e-12))
+            [ 0.625; 0.625; -0.125; -0.125 ]
+            diagonal.cloudeEigenvalues
+
+        Assert.Equal(RealizableMueller, realizabilityOf Propagation.identityMueller.cloudeEigenvalues)
+        Assert.Equal(RealizableMueller, realizabilityOf retarder.cloudeEigenvalues)
+        Assert.Equal(UnrealizableMueller, realizabilityOf diagonal.cloudeEigenvalues)
+        Assert.Equal(RealizableMueller, realizabilityOf (eigenvaluesOf [ 1.0; 0.0; 0.0; -1e-14 ]))
+        Assert.Equal(UnrealizableMueller, realizabilityOf (eigenvaluesOf [ 1.0; 0.0; 0.0; -1e-6 ]))
