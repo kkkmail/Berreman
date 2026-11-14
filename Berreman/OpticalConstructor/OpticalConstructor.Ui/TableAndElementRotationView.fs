@@ -416,12 +416,11 @@ type ParameterEditField =
         | UpperEditField -> "upper"
         | PriorSigmaEditField -> "prior sigma"
 
-/// The open parameter editor: the item and parameter it edits, the state chosen and the numbers as typed, raw captions
-/// until `tryState` reads them (spec 0050 S7.2; 001 §O).
+/// The open item or material parameter editor, with its chosen state and numbers as typed until `tryState` reads them
+/// (spec 0050 S7.2, S11.5; 001 §O).
 type ParameterEditDraft =
     {
-        itemId : ItemId
-        name : ItemModels.ParameterName
+        parameter : StudyParameterRef
         choice : ParameterStateChoice
         valueText : ControlCaption
         lowerText : ControlCaption
@@ -430,28 +429,26 @@ type ParameterEditDraft =
     }
 
     /// The editor opened on the parameter's state: a calibration opens as known at its value, and a field the state
-    /// has no number for is empty (spec 0050 S7.2).
-    static member ofParameter (itemId : ItemId) (parameter : Parameter) : ParameterEditDraft =
+    /// has no number for is empty (spec 0050 S7.2, S11.5).
+    static member ofParameter (parameter : StudyParameterRef) (current : Parameter) : ParameterEditDraft =
         let written (number : double) : ControlCaption =
             ControlCaption (number.ToString("R", System.Globalization.CultureInfo.InvariantCulture))
         let empty = ControlCaption ""
         let known (value : ItemModels.ParameterValue) : ParameterEditDraft =
             {
-                itemId = itemId
-                name = parameter.name
+                parameter = parameter
                 choice = KnownStateChoice
                 valueText = written value.value
                 lowerText = empty
                 upperText = empty
                 priorSigmaText = empty
             }
-        match parameter.state with
+        match current.state with
         | KnownParameter value -> known value
         | CalibratedParameter calibrated -> known calibrated.value
         | UnknownParameter unknown ->
             {
-                itemId = itemId
-                name = parameter.name
+                parameter = parameter
                 choice = UnknownStateChoice
                 valueText = written unknown.start.value
                 lowerText = written unknown.bounds.lower.value
@@ -471,14 +468,14 @@ type ParameterEditDraft =
         | PriorSigmaEditField -> { this with priorSigmaText = text }
 
     /// The state the editor sets, a prior centred on the start; a needed text that is no number is refused naming the
-    /// field. It checks no rule of the state: `withParameterState` applies `Parameter.validate` (spec 0050 S7.2).
+    /// field. It checks no rule of the state: `withParameterState` applies `Parameter.validate` (spec 0050 S7.2, S11.5).
     member this.tryState : Result<ParameterState, ItemError> =
         let invariant = System.Globalization.CultureInfo.InvariantCulture
         let read (field : ParameterEditField) (text : ControlCaption) : Result<double, ItemError> =
             match System.Double.TryParse(text.value, System.Globalization.NumberStyles.Float, invariant) with
             | true, number -> Ok number
             | false, _ ->
-                Error (InvalidParameterStateErr $"{this.name.value}: the {field.text} '{text.value}' is not a number")
+                Error (InvalidParameterStateErr $"{this.parameter.name.value}: the {field.text} '{text.value}' is not a number")
         let parameterValue (field : ParameterEditField) (text : ControlCaption) : Result<ItemModels.ParameterValue, ItemError> =
             read field text |> Result.map ItemModels.ParameterValue
         match this.choice with
@@ -1096,6 +1093,8 @@ type TableAndElementRotationMsg =
     | SetParameterState of ItemId * ItemModels.ParameterName * ParameterState
     /// A press of a parameter row of the selected item: opens the parameter editor on it (spec 0050 S7.2).
     | EditItemParameter of ItemModels.ParameterName
+    /// A press of a parameter row of the study's unknowns table (spec 0050 S11.5).
+    | EditStudyParameter of StudyParameterRef
     /// Chooses the state the open parameter editor sets (spec 0050 S7.2).
     | SetParameterEditChoice of ParameterStateChoice
     /// Edits one number of the open parameter editor as typed (spec 0050 S7.2).
@@ -2952,8 +2951,29 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         match selectedOpt with
         | Some item ->
             match item.tryFindParameter name with
-            | Some parameter -> { model with parameterEditOpt = Some (ParameterEditDraft.ofParameter item.id parameter) }
+            | Some current ->
+                let parameter = ItemParameterRef (item.id, name)
+                {
+                    model with parameterEditOpt = Some (ParameterEditDraft.ofParameter parameter current)
+                }
             | None -> model
+        | None -> model
+    | EditStudyParameter parameter ->
+        let currentOpt =
+            match parameter with
+            | ItemParameterRef (id, name) ->
+                model.kitItems
+                |> List.tryFind (fun item -> item.id = id)
+                |> Option.bind (fun item -> item.tryFindParameter name)
+            | MaterialParameterRef (version, name) ->
+                model.selectedStudyOpt
+                |> Option.bind (fun study -> study.materials |> List.tryFind (fun material -> material.version = version))
+                |> Option.bind (fun material -> material.parameters |> List.tryFind (fun current -> current.name = name))
+        match currentOpt with
+        | Some current ->
+            {
+                model with parameterEditOpt = Some (ParameterEditDraft.ofParameter parameter current)
+            }
         | None -> model
     | SetParameterEditChoice choice ->
         match model.parameterEditOpt with

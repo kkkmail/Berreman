@@ -9,6 +9,7 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.ItemModels
@@ -23,6 +24,7 @@ open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -415,6 +417,127 @@ module StudyWindowModelTests =
             | Some caption -> Assert.Contains("read-only", caption.value)
             | None -> Assert.Fail "the kit guard must refuse a read-only study write"
             Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+    [<Fact>]
+    let ``the study's parameter editor opens on an item parameter or an opened material component, and a parameter it lacks opens nothing`` () : unit =
+        withWindow ReadWriteKitAccess [ studyOf qzLr; studyOf lr ] [] (fun folder loaded ->
+            // Saving a material and recording its study snapshot must share a database (spec 0050 S11.5).
+            use database = BuiltinCatalogue.freshLibraryDatabase ()
+            let selected =
+                {
+                    loaded with
+                        materials = MaterialProxy.createInDatabase database
+                        catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database)
+                }
+                |> updateTableAndElementRotation (SelectStudy qzLr)
+                |> updateTableAndElementRotation (SelectKitItem cpl2.id)
+            let draftOf (reference : StudyParameterRef) (model : TableAndElementRotationModel) : ParameterEditDraft =
+                let before = folderBytes folder
+                let edited = model |> updateTableAndElementRotation (EditStudyParameter reference)
+                let expected =
+                    {
+                        model with parameterEditOpt = edited.parameterEditOpt
+                    }
+                Assert.Equal<TableAndElementRotationModel>(expected, edited)
+                Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)
+                match edited.parameterEditOpt with
+                | Some draft ->
+                    Assert.Equal<StudyParameterRef>(reference, draft.parameter)
+                    draft
+                | None -> failwith "the study's held parameter must open its editor"
+
+            let itemReference = ItemParameterRef (cpl1.id, retardance)
+            let itemDraft = draftOf itemReference selected
+            Assert.Equal<ParameterStateChoice>(UnknownStateChoice, itemDraft.choice)
+            Assert.Equal<ControlCaption>(ControlCaption "1.5", itemDraft.valueText)
+            Assert.Equal<ControlCaption>(ControlCaption "1", itemDraft.lowerText)
+            Assert.Equal<ControlCaption>(ControlCaption "2", itemDraft.upperText)
+            Assert.Equal<ControlCaption>(ControlCaption "", itemDraft.priorSigmaText)
+            Assert.Equal<Result<ParameterState, ItemError>>(Ok (UnknownParameter polarizerUnknown), itemDraft.tryState)
+
+            let materialId = MaterialId (Guid.Parse "41100000-0000-4000-8000-000000000001")
+            let version = MaterialVersionId.firstOf materialId
+            let crystal = AbsorbingTriclinicCrystal CrystalMaterialFixtures.absorbingTriclinicParameters
+            let entry : MaterialEntry =
+                {
+                    id = materialId
+                    name = EntryName "Study editor absorbing crystal"
+                    category = CategoryIds.crystal
+                    description = None
+                    physics = CrystalParameterPhysics crystal
+                }
+            Assert.Equal<Result<unit, MaterialError>>(Ok (), selected.materials.saveMaterial entry)
+            let opened = selected |> updateTableAndElementRotation (StudyCommand (OpenMaterial (qzLr, version)))
+            Assert.Equal<ControlCaption option>(None, opened.kitStatus)
+            Assert.Equal<StudyName option>(Some qzLr, opened.studySurface.studyOpt)
+            let study = opened.kitStudies |> List.find (fun held -> held.name = qzLr)
+            let material = Assert.Single(study.materials)
+            Assert.Equal<MaterialVersionId>(version, material.version)
+            Assert.Equal<Study list>(opened.kitStudies, opened.kit.proxy.readStudies () |> kitValue)
+
+            let n1 = ParameterName "n1"
+            let materialReference = MaterialParameterRef (version, n1)
+            let n1Value = (crystal.parameterAxes |> List.find (fun axis -> axis.name = n1)).parameterValueOf crystal
+            let materialDraft = draftOf materialReference opened
+            Assert.Equal<ParameterStateChoice>(KnownStateChoice, materialDraft.choice)
+            let n1Text = ControlCaption (n1Value.value.ToString("R", Globalization.CultureInfo.InvariantCulture))
+            Assert.Equal<ControlCaption>(n1Text, materialDraft.valueText)
+            Assert.Equal<Result<ParameterState, ItemError>>(Ok (KnownParameter n1Value), materialDraft.tryState)
+            for empty in [ materialDraft.lowerText; materialDraft.upperText; materialDraft.priorSigmaText ] do
+                Assert.Equal<ControlCaption>(ControlCaption "", empty)
+
+            let readOnly =
+                {
+                    opened with
+                        kit =
+                            {
+                                opened.kit with
+                                    proxy = opened.kit.proxy.readOnlyView
+                                    access = ReadOnlyKitAccess
+                            }
+                }
+            Assert.Equal<ParameterEditDraft>(itemDraft, draftOf itemReference readOnly)
+            Assert.Equal<ParameterEditDraft>(materialDraft, draftOf materialReference readOnly)
+
+            let missingName = ParameterName "absent"
+            let missingItem = ItemId (Guid.Parse "41100000-0000-4000-8000-000000000099")
+            let missingMaterial = MaterialId (Guid.Parse "41100000-0000-4000-8000-000000000099")
+            let missingVersion = MaterialVersionId.firstOf missingMaterial
+            let unopenedVersion =
+                {
+                    version with version = version.version.next
+                }
+            let missingReferences =
+                [
+                    ItemParameterRef (cpl1.id, missingName)
+                    ItemParameterRef (missingItem, retardance)
+                    MaterialParameterRef (version, missingName)
+                    MaterialParameterRef (missingVersion, n1)
+                    MaterialParameterRef (unopenedVersion, n1)
+                ]
+            let beforeMissing = folderBytes folder
+            for reference in missingReferences do
+                let unchanged = opened |> updateTableAndElementRotation (EditStudyParameter reference)
+                Assert.Equal<ParameterEditDraft option>(None, unchanged.parameterEditOpt)
+                Assert.Equal<TableAndElementRotationModel>(opened, unchanged)
+                let editing = opened |> updateTableAndElementRotation (EditStudyParameter itemReference)
+                Assert.Equal<TableAndElementRotationModel>(editing, editing |> updateTableAndElementRotation (EditStudyParameter reference))
+
+            let otherStudy = opened |> updateTableAndElementRotation (SelectStudy lr)
+            let noStudy =
+                {
+                    opened with
+                        studySurface =
+                            {
+                                opened.studySurface with studyOpt = None
+                            }
+                }
+            for model in [ selected; otherStudy; noStudy ] do
+                let unchanged = model |> updateTableAndElementRotation (EditStudyParameter materialReference)
+                Assert.Equal<ParameterEditDraft option>(None, unchanged.parameterEditOpt)
+                Assert.Equal<TableAndElementRotationModel>(model, unchanged)
+            Assert.Equal<ParameterEditDraft>(itemDraft, draftOf itemReference noStudy)
+            Assert.Equal<Map<FileName, FileByteContent>>(beforeMissing, folderBytes folder))
 
     [<Fact>]
     let ``selecting a study shows its own fit runs, oldest first`` () : unit =

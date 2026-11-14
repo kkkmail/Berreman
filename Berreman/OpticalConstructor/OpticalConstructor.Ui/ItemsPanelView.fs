@@ -13,6 +13,7 @@ open Avalonia.FuncUI.Types
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 type ControlCaption with
@@ -250,14 +251,14 @@ let private itemParameterGridView (item : Item) (dispatch : TableAndElementRotat
     |> View.withKey $"{ConstructorUiId.itemParameterGrid.value}_{item.id.value}"
     :> IView
 
-/// The open parameter editor: Known or Unknown, the numbers the state needs, why they do not read as one, then Set and
-/// Cancel on one row, the Set box's right margin parting the pair (spec 0050 S7.2; .spec-md §10.5).
-let private parameterEditRows
+/// The shared item or material editor: Known or Unknown, its numbers and refusals, then Set through `setWith` and
+/// Cancel on one row (spec 0050 S7.2, S11.5; .spec-md §10.5).
+let parameterEditorView
     (model : TableAndElementRotationModel)
-    (item : Item)
     (draft : ParameterEditDraft)
+    (setWith : ParameterState -> TableAndElementRotationMsg)
     (dispatch : TableAndElementRotationMsg -> unit)
-    : IView list =
+    : IView =
     let chosenOpt =
         match draft.choice with
         | KnownStateChoice -> Some ConstructorUiId.parameterEditKnownChoice
@@ -294,7 +295,7 @@ let private parameterEditRows
                     ConstructorUiId.parameterEditSetButton
                     (ControlCaption "Set")
                     MaterialsWindowView.positiveBackground
-                    (fun () -> dispatch (SetParameterState (item.id, draft.name, state)))
+                    (fun () -> dispatch (setWith state))
             ]
         | Ok _, ControlWithheld
         | Error _, _ -> []
@@ -307,38 +308,36 @@ let private parameterEditRows
     // `actionButton` subscribes its press once per key, so the row is keyed by the texts the state is read from.
     let actionsKey =
         let choice = chosenOpt |> Option.map (fun id -> id.value) |> Option.defaultValue ""
-        $"ParameterEditActions_{draft.name.value}_{choice}_{draft.valueText.value}_{draft.lowerText.value}_{draft.upperText.value}_{draft.priorSigmaText.value}"
-    [
-        StackPanel.create [
-            ConstructorUiId.parameterEditPanel.automationAttribute<StackPanel> ()
-            StackPanel.orientation Orientation.Vertical
-            StackPanel.margin (Thickness(0.0, 4.0, 0.0, 4.0))
-            StackPanel.children (
-                [
-                    (ControlCaption $"Edit {draft.name.value}").itemsPanelHeading
-                    WrapPanel.create [
-                        WrapPanel.orientation Orientation.Horizontal
-                        WrapPanel.children [
-                            itemsPanelChoice chosenOpt ConstructorUiId.parameterEditKnownChoice (ControlCaption "Known") (fun () ->
-                                dispatch (SetParameterEditChoice KnownStateChoice))
-                            itemsPanelChoice chosenOpt ConstructorUiId.parameterEditUnknownChoice (ControlCaption "Unknown") (fun () ->
-                                dispatch (SetParameterEditChoice UnknownStateChoice))
-                        ]
+        $"ParameterEditActions_{draft.parameter.name.value}_{choice}_{draft.valueText.value}_{draft.lowerText.value}_{draft.upperText.value}_{draft.priorSigmaText.value}"
+    StackPanel.create [
+        ConstructorUiId.parameterEditPanel.automationAttribute<StackPanel> ()
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.margin (Thickness(0.0, 4.0, 0.0, 4.0))
+        StackPanel.children (
+            [
+                (ControlCaption $"Edit {draft.parameter.name.value}").itemsPanelHeading
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.children [
+                        itemsPanelChoice chosenOpt ConstructorUiId.parameterEditKnownChoice (ControlCaption "Known") (fun () ->
+                            dispatch (SetParameterEditChoice KnownStateChoice))
+                        itemsPanelChoice chosenOpt ConstructorUiId.parameterEditUnknownChoice (ControlCaption "Unknown") (fun () ->
+                            dispatch (SetParameterEditChoice UnknownStateChoice))
                     ]
                 ]
-                @ numbers
-                @ refusal
-                @ [
-                    StackPanel.create [
-                        StackPanel.orientation Orientation.Horizontal
-                        StackPanel.children (set @ [ cancel ])
-                    ]
-                    |> View.withKey actionsKey
-                ])
-        ]
-        |> View.withKey $"{ConstructorUiId.parameterEditPanel.value}_{draft.name.value}"
-        :> IView
+            ]
+            @ numbers
+            @ refusal
+            @ [
+                StackPanel.create [
+                    StackPanel.orientation Orientation.Horizontal
+                    StackPanel.children (set @ [ cancel ])
+                ]
+                |> View.withKey actionsKey
+            ])
     ]
+    |> View.withKey $"{ConstructorUiId.parameterEditPanel.value}_{draft.parameter.name.value}"
+    :> IView
 
 /// The selected item: its label and notes, edited while the kit takes writes, its model, dial and photo, the parameter
 /// grid with its open editor, and its revisions, the current one first (spec 0050 S7.2; 001 §O).
@@ -423,8 +422,12 @@ let private selectedItemRows (model : TableAndElementRotationModel) (item : Item
         | ControlWithheld, _ -> []
     let editor : IView list =
         match model.parameterEditOpt with
-        | Some draft when draft.itemId = item.id -> parameterEditRows model item draft dispatch
-        | Some _
+        | Some draft ->
+            match draft.parameter with
+            | ItemParameterRef (id, name) when id = item.id ->
+                [ parameterEditorView model draft (fun state -> SetParameterState (item.id, name, state)) dispatch ]
+            | ItemParameterRef _
+            | MaterialParameterRef _ -> []
         | None -> []
     let revisionLine (revision : ItemRevision) (caption : ControlCaption) : IView =
         let id = ConstructorUiId.itemRevisionRow revision

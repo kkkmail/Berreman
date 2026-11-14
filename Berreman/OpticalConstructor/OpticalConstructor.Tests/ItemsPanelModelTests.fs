@@ -15,6 +15,7 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
@@ -393,7 +394,7 @@ module ItemsPanelModelTests =
         withScene (fun scene ->
             let added = scene |> updateTableAndElementRotation (AddItem cpl1Draft)
             let editing = added |> updateTableAndElementRotation (EditItemParameter retardance)
-            Assert.Equal<ParameterName>(retardance, (openDraft editing).name)
+            Assert.Equal<ParameterName>(retardance, (openDraft editing).parameter.name)
             let set = editing |> updateTableAndElementRotation (SetParameterState (firstItemId, retardance, retardanceUnknown))
             let expected = cpl1Draft.toItem.withParameterState retardance retardanceUnknown |> itemValue
             Assert.Equal<Item list>([ expected ], set.kitItems)
@@ -457,8 +458,8 @@ module ItemsPanelModelTests =
             let opened = added |> updateTableAndElementRotation (EditItemParameter (ParameterName "c2.retardance"))
             let draft = openDraft opened
             Assert.Equal<TableAndElementRotationModel>({ added with parameterEditOpt = opened.parameterEditOpt }, opened)
-            Assert.Equal<ItemId>(firstItemId, draft.itemId)
-            Assert.Equal<ParameterName>(retardance, draft.name)
+            let reference = ItemParameterRef (firstItemId, retardance)
+            Assert.Equal<StudyParameterRef>(reference, draft.parameter)
             Assert.Equal<ParameterStateChoice>(KnownStateChoice, draft.choice)
             Assert.Equal<double>(Math.PI / 2.0, Double.Parse(draft.valueText.value, NumberStyles.Float, CultureInfo.InvariantCulture))
             for empty in [ draft.lowerText; draft.upperText; draft.priorSigmaText ] do
@@ -518,10 +519,19 @@ module ItemsPanelModelTests =
             Assert.Equal<Result<ParameterState, ItemError>>(Ok noPrior, (unknownDraft.withFieldText PriorSigmaEditField (ControlCaption "")).tryState)
 
             // An unknown opens with its start, bounds and sigma, and reads back as itself.
-            let reopened = ParameterEditDraft.ofParameter firstItemId { name = retardance; state = expected }
+            let current : Parameter =
+                {
+                    name = retardance
+                    state = expected
+                }
+            let reopened = ParameterEditDraft.ofParameter reference current
             Assert.Equal<ParameterEditDraft>(unknownDraft, reopened)
             Assert.Equal<Result<ParameterState, ItemError>>(Ok expected, reopened.tryState)
-            Assert.Equal<ControlCaption>(ControlCaption "", (ParameterEditDraft.ofParameter firstItemId { name = retardance; state = noPrior }).priorSigmaText)
+            let withoutPrior =
+                {
+                    current with state = noPrior
+                }
+            Assert.Equal<ControlCaption>(ControlCaption "", (ParameterEditDraft.ofParameter reference withoutPrior).priorSigmaText)
 
             let calibration : Parameter =
                 {
@@ -534,7 +544,7 @@ module ItemsPanelModelTests =
                                 fitRun = FitRunName "CPL1 study@20261109T120000Z"
                             }
                 }
-            let calibrated = ParameterEditDraft.ofParameter firstItemId calibration
+            let calibrated = ParameterEditDraft.ofParameter reference calibration
             Assert.Equal<ParameterStateChoice>(KnownStateChoice, calibrated.choice)
             Assert.Equal<ControlCaption>(ControlCaption "1.55", calibrated.valueText)
             Assert.Equal<Result<ParameterState, ItemError>>(Ok (KnownParameter (ParameterValue 1.55)), calibrated.tryState)
