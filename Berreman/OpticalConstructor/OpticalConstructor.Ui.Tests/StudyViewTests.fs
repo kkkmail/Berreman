@@ -58,21 +58,26 @@ module StudyViewTests =
         Dispatcher.UIThread.RunJobs()
 
     let private pressStudyBox (window : Window) (id : ConstructorUiId) : unit =
-        window.UpdateLayout()
         let target = SlotBarTests.controlById window id
         target.BringIntoView()
         Dispatcher.UIThread.RunJobs()
-        // Spec 0050 S11.5: settle scrolling and rendering before checking the same centre the pointer helper presses.
-        window.UpdateLayout()
-        AvaloniaHeadlessPlatform.ForceRenderTimerTick()
-        Dispatcher.UIThread.RunJobs()
         let centre = SlotBarTests.topLeftOf window target + Vector(target.Bounds.Width / 2.0, target.Bounds.Height / 2.0)
-        match window.InputHitTest centre with
-        | :? Visual as hit ->
-            Assert.True(
-                obj.ReferenceEquals(target, hit) || target.IsVisualAncestorOf hit,
-                $"{id.value}'s centre ({centre.X}, {centre.Y}) hits {hit.GetType().Name} instead of the control")
-        | _ -> Assert.Fail $"{id.value}'s centre ({centre.X}, {centre.Y}) has no input target"
+        let hitsTarget () : bool =
+            match window.InputHitTest centre with
+            | :? Visual as hit -> obj.ReferenceEquals(target, hit) || target.IsVisualAncestorOf hit
+            | _ -> false
+        // Spec 0050 S11.5: hit testing reads the last rendered frame, which can trail a scroll by a tick or more,
+        // so render until the pressed centre resolves to the control.
+        let rec settle (ticks : int) : unit =
+            if not (hitsTarget ()) then
+                if ticks = 0 then
+                    let hitName = window.InputHitTest centre |> Option.ofObj |> Option.map (fun hit -> hit.GetType().Name)
+                    Assert.Fail $"{id.value}'s centre ({centre.X}, {centre.Y}) still hits {hitName} at bounds {target.Bounds}"
+                else
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick()
+                    Dispatcher.UIThread.RunJobs()
+                    settle (ticks - 1)
+        settle 50
         SlotBarTests.pressBox window id
 
     let private gridOf (window : Window) : Grid =
