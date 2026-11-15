@@ -26,6 +26,7 @@ open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.Placement
@@ -33,6 +34,7 @@ open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.SetupGrids
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.OptimizationInterface
@@ -891,6 +893,11 @@ module KitAcceptanceTests =
         |> Array.sort
         |> List.ofArray
 
+    let private kitContentFiles (folder : KitFolder) : Set<FileName> =
+        relativeFiles folder.value
+        |> List.filter (fun file -> not (file.value.StartsWith($".oc{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+        |> Set.ofList
+
     let private assertSameBytes (expected : FileName) (actual : FileName) : unit =
         let expectedBytes = File.ReadAllBytes expected.value
         let actualBytes = File.ReadAllBytes actual.value
@@ -1080,12 +1087,8 @@ module KitAcceptanceTests =
         let built = buildOpticsMuellerKit run
         try
             let original = committedFolder ()
-            let filesOf (folder : KitFolder) : Set<FileName> =
-                relativeFiles folder.value
-                |> List.filter (fun file -> not (file.value.StartsWith($".oc{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
-                |> Set.ofList
-            let expectedFiles = filesOf original
-            let actualFiles = filesOf built.folder
+            let expectedFiles = kitContentFiles original
+            let actualFiles = kitContentFiles built.folder
             for file in Set.union expectedFiles actualFiles do
                 let diagnostic = $"Built kit: {built.folder.value.value}\n{file.value}"
                 if not (Set.contains file expectedFiles) then
@@ -1252,6 +1255,142 @@ module KitAcceptanceTests =
                 | None -> ()
             finally
                 assertCommittedKitUnchanged ()
+
+    /// Send and reopen the built kit without changing its files or study residual (spec 0050 S12.1; 001 §H, §Q 'Send').
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the optics-mueller kit travels through Send kit and Open kit from zip unchanged, its study's residual at the start point included`` () : unit =
+        let run = FolderName (Guid.NewGuid().ToString("N"))
+        let built = buildOpticsMuellerKit run
+        let runFolder = FolderName (Path.GetDirectoryName built.folder.value.value)
+        let mutable openedOpt : OpenedKit option = None
+        try
+            let studyFile = StudyKitFile.fileNameOf studyName.fileStem
+            let residualAtStart (model : TableAndElementRotationModel) : ResidualVector =
+                let study =
+                    model.kitStudies
+                    |> List.tryFind (fun study -> study.name = studyName)
+                    |> Option.defaultWith (fun () -> failwith $"{studyFile.value}: expected the study in the kit")
+                let forward = model.studyForwardContext
+                let layout = study.parameterLayoutWith forward
+                study.prefitWith forward []
+                |> Result.bind (study.dataWith forward)
+                |> Result.bind (fun data -> study.residualWith forward layout data layout.startVector)
+                |> Result.defaultWith (fun error -> failwith $"{studyFile.value}: expected a start-point residual; actual {error.describe}")
+
+            let builtResidual = residualAtStart built.model
+            Assert.NotEmpty builtResidual.value
+            let expectedFiles = kitContentFiles built.folder
+            let zip = built.model.kit.kitFile.name.zipFileName.combine runFolder
+            let archive = KitArchiveProxy.create ()
+            let sendMessages = ResizeArray<TableAndElementRotationMsg> ()
+            let sending =
+                {
+                    built.model with
+                        kitShell =
+                            {
+                                built.model.kitShell with
+                                    archive = archive
+                                    archiveJobs = KitArchiveJobHost.immediate (SendKitProgressed >> sendMessages.Add) (SendKitEnded >> sendMessages.Add)
+                            }
+                }
+                |> updateTableAndElementRotation (SendKit zip)
+            expect zip "send started" true sending.kitSend.job.isRunning
+            let recordedSend = List.ofSeq sendMessages
+            match List.rev recordedSend with
+            | SendKitEnded (Ok (KitArchiveFinished files)) :: progresses ->
+                expect zip "sent file count" expectedFiles.Count files.value
+                expect zip "one send progress per file" files.value progresses.Length
+                for message in progresses do
+                    match message with
+                    | SendKitProgressed _ -> ()
+                    | _ -> Assert.Fail($"{zip.value}: expected only send progress before the successful end")
+            | SendKitEnded (Error error) :: _ -> Assert.Fail($"{zip.value}: SendKit failed: {error.describe}")
+            | _ -> Assert.Fail($"{zip.value}: expected SendKitEnded with a successfully finished archive")
+            let sent = sending |> apply recordedSend
+            expect zip "send job returned to idle" KitArchiveJobState.idle sent.kitSend
+            expect zip "send completion status"
+                (Some (ControlCaption $"The kit was sent: {expectedFiles.Count} file(s) zipped.")) sent.kitStatus
+            expect zip "zip written outside the kit" true (File.Exists zip.value)
+            let entries =
+                archive.listZipEntries zip
+                |> Result.defaultWith (fun error -> failwith $"{zip.value}: {error.describe}")
+            for entry in entries do
+                match entry.path.pathRole with
+                | KitAppCachePath -> Assert.Fail($"{zip.value}: local cache entry {entry.path.value} must not travel")
+                | KitContentPath -> ()
+
+            let target = KitFolder (FolderName (Path.Combine(runFolder.value, "received", "optics-mueller")))
+            expect zip "fresh extraction target" false (Directory.Exists target.value.value)
+            Directory.CreateDirectory target.value.value |> ignore
+            let openMessages = ResizeArray<KitStartMsg> ()
+            let startContext : KitStartContext =
+                {
+                    kitHistory = KitHistoryProxy.createInMemory [ target ]
+                    limit = KitHistoryLimit.defaultValue
+                    clock = built.clock
+                    kitIds =
+                        {
+                            mintKitId = fun () -> kitId
+                        }
+                    author = kitAuthor
+                    imports = built.context.catalogueImports
+                    picker = TestAppScope.kitPickerOf target
+                    showKit = fun opened -> openedOpt <- Some opened
+                    activateKitWindow = fun _ -> NoKitWindowOpen
+                    zipPicker = KitZipPicker.none
+                    archive = KitArchiveProxy.create ()
+                    archiveJobs = KitArchiveJobHost.immediate (OpenKitZipProgressed >> openMessages.Add) (OpenKitZipEnded >> openMessages.Add)
+                }
+            let opening : KitZipOpening =
+                {
+                    zip = zip
+                    target = target
+                }
+            let extracting = initKitStart startContext InverseConstructor |> updateKitStart (OpenKitZip opening)
+            expect zip "extraction started" true extracting.zipJob.job.isRunning
+            match openedOpt with
+            | None -> ()
+            | Some _ -> Assert.Fail($"{zip.value}: the kit must open only after OpenKitZipEnded is handled")
+            let recordedOpen = List.ofSeq openMessages
+            match List.rev recordedOpen with
+            | OpenKitZipEnded (Ok (KitArchiveFinished files)) :: progresses ->
+                expect zip "extracted file count" expectedFiles.Count files.value
+                expect zip "one extraction progress per file" files.value progresses.Length
+                for message in progresses do
+                    match message with
+                    | OpenKitZipProgressed _ -> ()
+                    | _ -> Assert.Fail($"{zip.value}: expected only extraction progress before the successful end")
+            | OpenKitZipEnded (Error error) :: _ -> Assert.Fail($"{zip.value}: OpenKitZip failed: {error.describe}")
+            | _ -> Assert.Fail($"{zip.value}: expected OpenKitZipEnded with a successfully finished extraction")
+            let ended = recordedOpen |> List.fold (fun model message -> updateKitStart message model) extracting
+            expect zip "open status" None ended.status
+            expect zip "extraction job returned to idle" KitArchiveJobState.idle ended.zipJob
+            expect zip "completed extraction cleared" None ended.zipOpeningOpt
+            expect zip "no unresolved open offer" NoKitStartOffer ended.offer
+            let opened =
+                openedOpt
+                |> Option.defaultWith (fun () -> failwith $"{target.value.value}: OpenKitZip did not open the extracted kit")
+            expect KitFile.fileName "reopened folder" target opened.folder
+            expect KitFile.fileName "reopened access" ReadWriteKitAccess opened.library.kit.access
+            let reopened = TestAppScope.inverseModelOver built.context opened
+            expect KitFile.fileName "all relative kit, library and data paths outside .oc"
+                expectedFiles (kitContentFiles target)
+            for file in expectedFiles do
+                assertSameBytes (file.combine built.folder.value) (file.combine target.value)
+
+            let reopenedResidual = residualAtStart reopened
+            Assert.NotEmpty reopenedResidual.value
+            expect studyFile "start-point residual after SendKit and OpenKitZip, element for element"
+                builtResidual.value reopenedResidual.value
+        finally
+            try
+                match openedOpt with
+                | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+                | None -> ()
+            finally
+                try built.model.kit.close () |> readKitResult KitFile.fileName
+                finally Directory.Delete(runFolder.value, true)
 
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
