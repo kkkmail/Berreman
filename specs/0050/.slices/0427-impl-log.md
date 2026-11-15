@@ -1,5 +1,86 @@
 # Slice 0427 implementation log
 
+## Committed recovery, 2026-11-15
+
+Before source review: read the task, worker/project protocols, AGENTS.md,
+0427, R0001/R0002, the post-mortem and its review, and the applicable arc-origin
+and deadline rulings. HEAD is the operator's repair commit `3fc40c54`, following
+implementation commit `7f4efee8`. The earlier authority block below is historical:
+R0001 and R0002 grant the repairs, which are already committed. Inspect their
+source and saved evidence before replacing the stale state-of-world handoff.
+
+Current planned edits are the three canonical handoff files only. No gate
+execution, Git mutation, checkpoint publication or supervisor-state edit is
+part of this IMPLEMENT worker turn. The initial dirty manifest state and
+supervisor-lock diagnostic belong to the running supervisor and are preserved.
+
+After source review: compared the committed code with the immutable
+S121-AT1-STUDY and S113-ENGINE-CHOICE obligations, as amended by R0001/R0002.
+No remaining implementation defect was identified and no source edit is needed.
+
+- `KitAcceptanceTests.fs` creates the 53-experiment QZ-LR study through the
+  window's messages with the six prescribed gain settings. It uses the posting
+  host, queues progress/completion, waits at most sixty seconds on completion,
+  and replays the messages through the real update. The shared clock produces
+  the two required fit-run names; publication occurs between stages and the
+  first run's stored text remains unchanged.
+- The declared fact reopens the kit through a second KitProxy, checks the
+  study, ordered runs, engines, fixed calibration, all item revisions and the
+  five values with their sigmas/provenance. Reference helpers compare five
+  instrument angles, 48 row-major matrix elements and the sole product-check
+  ratio using MuellerReference.dataMatrixTol. The earlier two facts retain
+  their original assertions at their pre-publication checkpoints.
+- R0001: `engineWith` requires lone-run coverage of each unknown-bearing item
+  in a series, rejects repeated items and links joining its constituents, and
+  retains the other linear-shape guards. Its three authorized existing facts
+  now cover resolved/unresolved series, linked products, double passes and
+  automatic ObjectStage/JointStage dispatch with anchored/interpolated gains.
+  The rank-deficiency refusal assertions remain present.
+- R0002: `runElementAs` applies analyzer roles to compounds using
+  F * (A1 * ... * An) * F, followed by the item's rotation. `compoundPartsAt`
+  reuses the component evaluation extracted from the previous forward law.
+  StudyForward and chartForRun both bind through this shared member; the
+  remaining slot roles keep the existing binding behavior. No stored shape
+  changed and the repair added no test identity.
+
+Before final handoff: replace the obsolete blocked state-of-world with the
+committed recovery status, retain the earlier diagnosis below as history,
+and distinguish the operator's evidence from supervisor verification still
+to run. Current worker changes are limited to `0427-impl-plan.md`, this log
+and `0427-state-of-the-world.md`.
+
+### Recovery testing state
+
+No build, test, analyzer or invariant command was executed by this worker,
+per implement_worker.system-md Invariant 6. `commit_ready: false` means the
+fresh supervisor cycle is pending; implementation is complete, and the old
+scope blocker was resolved by the two rulings and commit `3fc40c54`.
+
+Read the operator's existing `.artifacts/0427-operator-repair/gate-results.json`
+and build/elevation logs. That separate run records all 26 frozen gates plus
+the supplemental constructor gate as passed: build 3.8 s, elevation 221.6 s,
+ui-smoke 264/264 in 235.0 s, selected ui-tests 18/18 in 28.5 s, kit-acceptance
+3/3 in 34.9 s, each of the 21 invariants in 0.2 s, and constructor-unit-tests
+1761/1761 in 157.6 s. Zero failures/skips and no effective deadline overrun
+are recorded. Elevation used origin f395597c071910aaa215518626563f6c784bfb62,
+all 13 projects, ELEV004 excluded and zero new findings. The saved build log
+reports only the exempt NU1902 advisories. These are historical operator
+measurements, not results produced or accepted by this worker.
+
+Normal review and the unchanged 26-gate roster must run after worker exit;
+only the supervisor can publish measured checkpoint 426 on green. Preserve
+profile 1 and the recovery exception forbidding --accept-current-slice.
+No nested supervisor, Git mutation, metadata change or new runtime artifact
+was produced. Existing evidence remains under the supplied artifacts folder.
+
+After handoff: all three canonical outputs now describe the committed recovery
+and pending supervisor cycle. Read-only final diff inspection shows only those
+three worker edits alongside the two pre-existing supervisor-owned files;
+no product or test source is dirty. All three handoffs contain LF only, and
+diff counts are identical with and without ignoring CR at end of line.
+
+## Earlier attempts (historical)
+
 ## Progress
 
 - Attempt 03, before diagnosis: read the supplied kit-acceptance failure and

@@ -1,5 +1,31 @@
 # Slice 0427 implementation plan
 
+## Committed recovery, 2026-11-15
+
+The operator committed the staged acceptance implementation as `7f4efee8` and
+the R0001/R0002 repairs as `3fc40c54`. Review the existing implementation against
+0427 and both binding rulings, including the automatic engine dispatch, shared
+analyzer traversal, preserved regression assertions and reference comparisons.
+Read the operator's saved verification evidence; do not repeat implementation
+that is already present or change test identities, formats or gate contracts.
+
+Update only these three canonical handoff documents unless source inspection
+reveals a concrete remaining defect within the authorized scope. Preserve the
+earlier attempt history below, identifying its blocked diagnosis as historical.
+The IMPLEMENT worker's Invariant 6 reserves gate execution to the supervisor;
+the recovery note's normal review, unchanged 26-gate roster and measured
+checkpoint 426 are the supervisor's continuation after this worker exits.
+Keep inherited baseline YAML unchanged and distinguish operator evidence from
+new supervisor measurements. Do not launch a nested runner or edit its state.
+
+Source review completed: the committed implementation addresses S121-AT1-STUDY
+and both binding rulings. No further source change is needed. The operator's
+saved results cover the frozen 26 gates and supplemental constructor suite;
+normal supervisor verification remains pending. Replace the blocked handoff
+with the current implementation status and attributed historical evidence.
+
+## Earlier attempts (historical)
+
 Extend only `KitAcceptanceTests.fs` for S121-AT1-STUDY. Continue the existing
 message-driven AT-1 builder after its experiment checkpoint: create QZ-LR with
 the 53 experiments in kit order, choose StagedFit and the six reference session
