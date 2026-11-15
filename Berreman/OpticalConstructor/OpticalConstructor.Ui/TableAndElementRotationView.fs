@@ -1248,6 +1248,8 @@ type TableAndElementRotationMsg =
     | SplitByColumn of FileName * ImportProfileName
     /// Ticks creating an offered group's setup and experiment, or unticks it, writing nothing (spec 0050 S9.3).
     | ToggleSplitOffer of DataRowKey
+    /// Offers an unreadable group over a kit setup and ticks its creation, writing nothing (spec 0050 S12.1).
+    | OfferSplitGroupOver of DataRowKey * Kit.SetupName
     /// Forgets the held split, writing nothing (spec 0050 S9.3).
     | CancelDataSplit
     /// Applies the held split: attaches its file once, maps each matched group and creates each ticked offer (spec 0050 S9.3; 001 §P).
@@ -3590,6 +3592,36 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             }
         | Some _
         | None -> model
+    | OfferSplitGroupOver (key, name) ->
+        match model.dataSplitOpt with
+        | None -> model |> refusedWith (ControlCaption "Not offered — no file is being split.")
+        | Some held ->
+            match model.kitSetups |> List.tryFind (fun setup -> setup.name = name) with
+            | None -> model |> refusedWith (ControlCaption $"Not offered — the kit holds no setup {name.value}.")
+            | Some setup ->
+                let kitNames = model.experimentCollection.experiments |> List.map (fun experiment -> experiment.name)
+                let offeredNames =
+                    held.split.groups
+                    |> List.choose (fun group ->
+                        match group.matching with
+                        | SetupOfferForGroup offer when group.key <> key -> Some offer.experiment
+                        | SetupOfferForGroup _
+                        | ExperimentForGroup _
+                        | GroupWithoutMatch _ -> None)
+                match held.split.withGroupOver key setup (kitNames @ offeredNames) with
+                | Error error -> model |> refusedWith (ControlCaption $"Not offered — {error.describe}")
+                | Ok split ->
+                    let creating = if List.contains key held.creating then held.creating else held.creating @ [ key ]
+                    {
+                        model with
+                            dataSplitOpt =
+                                Some
+                                    {
+                                        held with
+                                            split = split
+                                            creating = creating
+                                    }
+                    }
     | CancelDataSplit -> { model with dataSplitOpt = None }
     // Spec 0050 S9.3 (.spec-md §10.3 confirm): one attach, then the groups' writes in order as GenerateSetupGrid writes
     // (step 276), the first failure stopping the run with what was written; the table, the active setup, the draft and

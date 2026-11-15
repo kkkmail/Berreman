@@ -1154,5 +1154,5 @@ module ConstructorUiIdOfDomain =
 
     type DataSplits.DataSplitError with
 
-        /// Why a group matches nothing, as its row of the split panel shows it (spec 0050 S9.3).
+        /// Why a group matches nothing or refuses a manually chosen setup (spec 0050 S9.3, S12.1).
         member this.caption : ControlCaption = ControlCaption this.describe

@@ -15,6 +15,9 @@ open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.DataSplits
+open OpticalConstructor.Storage.LabFileImport
+open OpticalConstructor.Controls
+open OpticalConstructor.Ui
 
 /// One lab file split into groups by its key column, the key column each import profile splits by, and each group
 /// matched to an experiment by the naming template (spec 0050 S9.3; 001 §K).
@@ -356,9 +359,95 @@ module DataSplitTests =
         Assert.Equal<DataRowKey list>([ keys[1]; keys[3] ], keysOf split.unmatched)
 
     [<Fact>]
+    let ``a group the template cannot read is offered over the setup the user names, its experiment named by its key`` () : unit =
+        let darkness = DataRowKey "Darkness"
+        let darknessName = ExperimentName "Darkness"
+        let bench = setupOf (SetupName "Bench") table
+        let profile = BuiltInProfileChoice PhoneRoiCsvProfile
+        let text =
+            KitFileText (
+                "experiment,capture_index,captured_at,description,avg_total\n"
+                + "Darkness,0,2026-07-15T12:00:00+00:00,0,12.5\n"
+                + "CPL-(QZ#0)-CPL,0,2026-07-15T12:01:00+00:00,0,800\n"
+                + "Darkness,1,2026-07-15T12:02:00+00:00,45,13\n"
+            )
+        let groups =
+            profile.mapText text
+            |> Result.bind (fun points -> points.splitGroups)
+            |> Result.defaultWith (fun error -> failwith error.caption.value)
+        let split = DataSplit.ofGroups (paramOver [] [ bench ] table) groups
+        let unmatched = Assert.Single(split.unmatched)
+        let other = Assert.Single(split.offered)
+        match unmatched.matching with
+        | GroupWithoutMatch (SplitKeyNameErr _) -> ()
+        | _ -> Assert.Fail("The unreadable group must have a naming error.")
+        Assert.Equal<DataRowKey>(darkness, unmatched.key)
+        Assert.Equal<MeasuredPointCount>(MeasuredPointCount 2, unmatched.points)
+
+        let assertOffered (expectedName : ExperimentName) (taken : ExperimentName list) : unit =
+            let offered = split.withGroupOver darkness bench taken |> Result.defaultWith (fun error -> failwith error.describe)
+            let expected : SplitGroup =
+                {
+                    unmatched with
+                        matching =
+                            SetupOfferForGroup
+                                {
+                                    setup = bench
+                                    experiment = expectedName
+                                }
+                }
+            Assert.Equal<SplitGroup list>([ expected; other ], offered.groups)
+            Assert.Empty(offered.unmatched)
+            Assert.Equal<SplitGroup list>(offered.groups, offered.offered)
+
+        assertOffered darknessName []
+        assertOffered (ExperimentName "Darkness (2)") [ darknessName ]
+        assertOffered (ExperimentName "Darkness (3)") [ darknessName; ExperimentName "darkness (2)" ]
+
+        let missingSlotKey = DataRowKey "CPL-(QZ#0-LR#0)-CPL"
+        let withoutSecondObject = table |> List.filter (fun slot -> slot.id <> sampleB.id)
+        let unplaced = splitOf (paramOver [] [ bench ] withoutSecondObject) [ missingSlotKey ]
+        match (Assert.Single(unplaced.groups)).matching with
+        | GroupWithoutMatch (SplitKeySetupErr _) -> ()
+        | _ -> Assert.Fail("A key naming the missing second object must have a setup error.")
+        let placed = unplaced.withGroupOver missingSlotKey bench [] |> Result.defaultWith (fun error -> failwith error.describe)
+        let expectedOffer : SplitSetupOffer =
+            {
+                setup = bench
+                experiment = ExperimentName "CPL-(QZ#0-LR#0)-CPL"
+            }
+        Assert.Equal<SplitGroupMatch>(SetupOfferForGroup expectedOffer, (Assert.Single(placed.groups)).matching)
+
+    [<Fact>]
+    let ``only a group without a readable setup is offered by hand, and an unknown key is refused`` () : unit =
+        let bench = setupOf (SetupName "Bench") table
+        let matchedKey = DataRowKey "E2"
+        let offeredKey = DataRowKey "CPL-(QZ#0)-CPL"
+        let invalidKey = DataRowKey " "
+        let duplicateKey = DataRowKey "e2"
+        let darkness = DataRowKey "Darkness"
+        let split =
+            splitOf (paramOver [ experimentOf (ExperimentId 2) e2 ] [ bench ] table)
+                [ matchedKey; offeredKey; invalidKey; duplicateKey; darkness ]
+        match split.groups |> List.map (fun group -> group.matching) with
+        | [ ExperimentForGroup _; SetupOfferForGroup _; GroupWithoutMatch (SplitKeyTextErr _);
+            GroupWithoutMatch (SplitKeyTwiceErr _); GroupWithoutMatch (SplitKeyNameErr _) ] -> ()
+        | _ -> Assert.Fail("The refusal fixture must contain matched, offered, invalid, duplicate and unreadable groups.")
+
+        for key in [ matchedKey; offeredKey; invalidKey; duplicateKey ] do
+            Assert.Equal<Result<DataSplit, DataSplitError>>(Error (SplitKeyReadableErr key.value), split.withGroupOver key bench [])
+
+        let offered = split.withGroupOver darkness bench [] |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<DataSplit, DataSplitError>>(Error (SplitKeyReadableErr darkness.value), offered.withGroupOver darkness bench [])
+        let unknown = DataRowKey "Nothing"
+        Assert.Equal<Result<DataSplit, DataSplitError>>(Error (SplitKeyUnknownErr unknown.value), split.withGroupOver unknown bench [])
+
+    [<Fact>]
     let ``every split error renders its condition and its payload`` () : unit =
         let renders (expected : string) (error : DataSplitError) : string =
+            let expectedCaption = ControlCaption expected
             Assert.Equal(expected, error.describe)
+            Assert.Equal<ControlCaption>(expectedCaption, error.caption)
             error.describe
 
         let texts =
@@ -371,6 +460,10 @@ module DataSplitTests =
                 |> renders "the table cannot hold the key's setup: the table has no such slot: 'Obj 2' of the bench"
                 SplitKeyTwiceErr "'K1' and 'k1' both match 'K1'"
                 |> renders "two groups match one experiment: 'K1' and 'k1' both match 'K1'"
+                SplitKeyUnknownErr "Nothing"
+                |> renders "no group of the split has the key: Nothing"
+                SplitKeyReadableErr "CPL-(QZ#0)-CPL"
+                |> renders "the group's setup comes from its key or its experiment: CPL-(QZ#0)-CPL"
             ]
 
         Assert.Equal(texts.Length, (List.distinct texts).Length)

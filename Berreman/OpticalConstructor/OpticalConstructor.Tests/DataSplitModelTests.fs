@@ -432,6 +432,211 @@ module DataSplitModelTests =
             Assert.Equal<ReviewedData option>(ticked.reviewedDataOpt, applied.reviewedDataOpt))
 
     [<Fact>]
+    let ``offering an unreadable group over a kit setup ticks it, and applying the split records its experiment under the key's name with the key's rows`` () : unit =
+        withSplitKit (fun folder kit ->
+            let darkness = DataRowKey "Darkness"
+            let diagnostic = DataRowKey "BullshitCheck"
+            let benchName = SetupName "Bench"
+            let prepared =
+                kit.committed
+                |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench"))
+                |> updateTableAndElementRotation CreateSetup
+            let bench = prepared.kitSetups |> List.find (fun setup -> setup.name = benchName)
+            let e1 = Assert.Single(prepared.experimentCollection.experiments)
+            let draft = prepared.experimentCollection.draft
+            Assert.Equal<Experiments.ExperimentScan option>(Some e1.scan, draft.scanOpt)
+            let capture = (Assert.Single(e1.scan.blocks)).capture
+            Assert.Equal<Experiments.MeasurementMode option>(Some capture, prepared.draftCapture)
+            let fileText =
+                KitFileText (
+                    "experiment,capture_index,captured_at,description,avg_total\n"
+                    + "Darkness,0,2026-07-15T12:00:00+00:00,0,12.5\n"
+                    + "BullshitCheck,0,2026-07-15T12:01:00+00:00,0,801.5\n"
+                    + "Darkness,1,2026-07-15T12:02:00+00:00,45,13\n"
+                )
+            File.WriteAllBytes(kit.phoneRoiFile.value, Encoding.UTF8.GetBytes fileText.value)
+            let before = kitFileBytes folder
+            let fileBefore = FileByteContent (File.ReadAllBytes kit.phoneRoiFile.value)
+
+            let noSplit = prepared |> updateTableAndElementRotation (OfferSplitGroupOver (darkness, benchName))
+            let noSplitStatus = ControlCaption "Not offered — no file is being split."
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    prepared with kitStatus = Some noSplitStatus
+                }, noSplit)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+
+            let split = prepared |> updateTableAndElementRotation (SplitByColumn (kit.phoneRoiFile, ImportProfileName.phoneRoiCsv))
+            let held = heldSplit split
+            Assert.Equal<DataRowKey list>([ darkness; diagnostic ], held.split.unmatched |> List.map (fun group -> group.key))
+            let unknownSetup = split |> updateTableAndElementRotation (OfferSplitGroupOver (darkness, SetupName "Missing"))
+            let unknownSetupStatus = ControlCaption "Not offered — the kit holds no setup Missing."
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    split with kitStatus = Some unknownSetupStatus
+                }, unknownSetup)
+            let unknownKey = split |> updateTableAndElementRotation (OfferSplitGroupOver (DataRowKey "Nothing", benchName))
+            let unknownKeyStatus = ControlCaption "Not offered — no group of the split has the key: Nothing"
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    split with kitStatus = Some unknownKeyStatus
+                }, unknownKey)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+
+            let offered = split |> updateTableAndElementRotation (OfferSplitGroupOver (darkness, benchName))
+            let offer : SplitSetupOffer =
+                {
+                    setup = bench
+                    experiment = Experiments.ExperimentName "Darkness"
+                }
+            let expectedGroups =
+                held.split.groups
+                |> List.map (fun group ->
+                    if group.key = darkness then
+                        {
+                            group with matching = SetupOfferForGroup offer
+                        }
+                    else group)
+            let expectedHeld : DataSplitState =
+                {
+                    held with
+                        split =
+                            {
+                                groups = expectedGroups
+                            }
+                        creating = [ darkness ]
+                }
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    split with dataSplitOpt = Some expectedHeld
+                }, offered)
+            let repeated = offered |> updateTableAndElementRotation (OfferSplitGroupOver (darkness, benchName))
+            let readableStatus = ControlCaption "Not offered — the group's setup comes from its key or its experiment: Darkness"
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    offered with kitStatus = Some readableStatus
+                }, repeated)
+            let unticked = offered |> updateTableAndElementRotation (ToggleSplitOffer darkness)
+            Assert.Empty((heldSplit unticked).creating)
+            Assert.Equal<TableAndElementRotationModel>(offered, unticked |> updateTableAndElementRotation (ToggleSplitOffer darkness))
+
+            let readOnly =
+                {
+                    split with
+                        kit =
+                            {
+                                split.kit with
+                                    access = ReadOnlyKitAccess
+                                    proxy = split.kit.proxy.readOnlyView
+                            }
+                }
+            let readOnlyOffer = readOnly |> updateTableAndElementRotation (OfferSplitGroupOver (darkness, benchName))
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    readOnly with dataSplitOpt = Some expectedHeld
+                }, readOnlyOffer)
+
+            // A held split reserves names added after splitting and unticked offers too (spec 0050 S12.1).
+            let otherOffer : SplitSetupOffer =
+                {
+                    setup = bench
+                    experiment = Experiments.ExperimentName "Darkness (2)"
+                }
+            let reservedGroups =
+                held.split.groups
+                |> List.map (fun group ->
+                    if group.key = diagnostic then
+                        {
+                            group with matching = SetupOfferForGroup otherOffer
+                        }
+                    else group)
+            let reservedHeld : DataSplitState =
+                {
+                    held with
+                        split =
+                            {
+                                groups = reservedGroups
+                            }
+                }
+            let reserved =
+                {
+                    split with
+                        experimentCollection =
+                            {
+                                split.experimentCollection with
+                                    experiments =
+                                        [
+                                            {
+                                                e1 with name = offer.experiment
+                                            }
+                                        ]
+                            }
+                        dataSplitOpt = Some reservedHeld
+                }
+            let collisionFree = reserved |> updateTableAndElementRotation (OfferSplitGroupOver (darkness, benchName))
+            let collisionOffer =
+                {
+                    offer with experiment = Experiments.ExperimentName "Darkness (3)"
+                }
+            let collisionGroups =
+                reservedGroups
+                |> List.map (fun group ->
+                    if group.key = darkness then
+                        {
+                            group with matching = SetupOfferForGroup collisionOffer
+                        }
+                    else group)
+            let collisionHeld : DataSplitState =
+                {
+                    reservedHeld with
+                        split =
+                            {
+                                groups = collisionGroups
+                            }
+                        creating = [ darkness ]
+                }
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    reserved with dataSplitOpt = Some collisionHeld
+                }, collisionFree)
+            let bothOffered = offered |> updateTableAndElementRotation (OfferSplitGroupOver (diagnostic, benchName))
+            Assert.Equal<DataRowKey list>([ darkness; diagnostic ], (heldSplit bothOffered).creating)
+            Assert.Equal<SplitGroup>(expectedGroups.Head, (heldSplit bothOffered).split.groups.Head)
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+            Assert.Equal<FileByteContent>(fileBefore, FileByteContent (File.ReadAllBytes kit.phoneRoiFile.value))
+
+            let applied = offered |> updateTableAndElementRotation MatchByTemplate
+            let after = kitFileBytes folder
+            let copied = Path.Combine("data", kit.phoneRoiFile.leafName.value)
+            Assert.Equal<string list>([ "Darkness.experiment-json"; copied ], addedFiles before after)
+            Assert.Equal<FileByteContent>(fileBefore, after[copied])
+            for KeyValue(path, bytes) in before do
+                Assert.Equal<FileByteContent>(bytes, after[path])
+            let attachment = copiedAttachment applied kit.phoneRoiFile
+            let created : Experiments.Experiment =
+                {
+                    e1 with
+                        id = prepared.experimentCollection.nextId
+                        name = offer.experiment
+                        setup = bench.reference
+                        dataOpt = Some (keyedBy attachment darkness)
+                }
+            Assert.Equal<Experiments.Experiment list>([ e1; created ], applied.experimentCollection.experiments)
+            Assert.Equal<Experiments.Experiment list>([ e1; created ], applied.kit.proxy.readExperiments () |> kitValue)
+            Assert.Equal<Setups.Setup list>(prepared.kitSetups, applied.kit.proxy.readSetups () |> kitValue)
+            Assert.Equal<Experiments.ExperimentId>(created.id.next, applied.experimentCollection.nextId)
+            Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredPointCount 2), applied.dataBadgeOf created)
+            Assert.Equal<Experiments.ExperimentDraft>(draft, applied.experimentCollection.draft)
+            Assert.Equal<Setups.SetupSlot list>(offered.elements, applied.elements)
+            Assert.Equal<Setups.Setup option>(offered.activeSetupOpt, applied.activeSetupOpt)
+            Assert.Equal<ReviewedData option>(offered.reviewedDataOpt, applied.reviewedDataOpt)
+            Assert.Equal<DataSplitState option>(None, applied.dataSplitOpt)
+            Assert.Equal<ControlCaption option>(
+                Some (ControlCaption "Attached phone-roi.csv to 1 experiment(s): 0 matched, 1 created with 0 new setup(s); 1 group(s) left unattached."),
+                applied.kitStatus)
+            Assert.Equal<FileByteContent>(fileBefore, FileByteContent (File.ReadAllBytes kit.phoneRoiFile.value)))
+
+    [<Fact>]
     let ``a split with a ticked offer and no draft scan, or with no split, writes nothing`` () : unit =
         withSplitKit (fun folder kit ->
             let before = kitFileBytes folder

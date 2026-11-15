@@ -63,13 +63,16 @@ module DataSplits =
         /// The key as a name the naming template reads, as `MuellerExperimentLabel.nameText` is (spec 0050 S9.3, S8.3).
         member this.nameText : NameText = let (DataRowKey text) = this in NameText text
 
-    /// Why a group of a split file matches no experiment: the error that stopped it, or the earlier group that holds
-    /// its experiment (spec 0050 S9.3).
+    /// Why a group cannot match an experiment or be offered over a manually chosen setup (spec 0050 S9.3, S12.1).
     type DataSplitError =
         | SplitKeyTextErr of ExperimentError
         | SplitKeyNameErr of NamingTemplateError
         | SplitKeySetupErr of SetupError
         | SplitKeyTwiceErr of reason : string
+        /// No group has the requested key (spec 0050 S12.1).
+        | SplitKeyUnknownErr of reason : string
+        /// The group cannot take a manually chosen setup (spec 0050 S12.1).
+        | SplitKeyReadableErr of reason : string
 
         member this.describe : string =
             match this with
@@ -77,6 +80,8 @@ module DataSplits =
             | SplitKeyNameErr error -> $"the key does not read through the naming template: {error.describe}"
             | SplitKeySetupErr error -> $"the table cannot hold the key's setup: {error.describe}"
             | SplitKeyTwiceErr reason -> $"two groups match one experiment: {reason}"
+            | SplitKeyUnknownErr reason -> $"no group of the split has the key: {reason}"
+            | SplitKeyReadableErr reason -> $"the group's setup comes from its key or its experiment: {reason}"
 
     /// The setup, held or new, and the new experiment a group would be attached to (spec 0050 S9.3; 001 §K).
     type SplitSetupOffer =
@@ -302,3 +307,31 @@ module DataSplits =
                     earlier @ [ matched ]) []
 
             { groups = made }
+
+    type DataSplit with
+
+        /// Offers an unreadable group's key-named experiment over the chosen setup, leaving other groups unchanged (spec 0050 S12.1).
+        member this.withGroupOver (key : DataRowKey) (setup : Setup) (taken : ExperimentName list) : Result<DataSplit, DataSplitError> =
+            match this.groups |> List.tryFind (fun group -> group.key = key) with
+            | None -> Error (SplitKeyUnknownErr key.value)
+            | Some { matching = GroupWithoutMatch (SplitKeyNameErr _ | SplitKeySetupErr _) } ->
+                key.nameText.toExperimentName
+                |> Result.mapError SplitKeyTextErr
+                |> Result.map (fun name ->
+                    let offer : SplitSetupOffer =
+                        {
+                            setup = setup
+                            experiment = name.nextFreeAmong taken
+                        }
+                    {
+                        this with
+                            groups =
+                                this.groups
+                                |> List.map (fun group ->
+                                    if group.key = key then
+                                        {
+                                            group with matching = SetupOfferForGroup offer
+                                        }
+                                    else group)
+                    })
+            | Some _ -> Error (SplitKeyReadableErr key.value)
