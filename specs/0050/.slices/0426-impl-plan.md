@@ -34,3 +34,18 @@ grid and gain box by their centralized automation IDs in the existing subjects
 collection. Preserve their type and membership assertions, the two screen sizes,
 all test identities and the project compile order. Only the authorized scroll
 test and these handoff documents need changes for this retry.
+
+## Operator recovery, 2026-11-15
+
+Implementation commit 1fae25fb and repair commit 1c5a7f80 already contain the
+complete slice. Review those changes against S121-STUDY-GAIN-VIEW and the
+operator's manual 029; retain the existing SessionName.caption conversion,
+both declared facts, all assertions and manual 028's input-readiness fixes.
+No further product or test edit is indicated.
+
+Refresh only these three handoff documents. Preserve earlier implementation
+history, distinguish the operator's existing gate-results.json from this
+worker's actions, and retain inherited YAML floors. The active supervisor has
+already dispatched this IMPLEMENT recovery at index 425; do not launch another
+supervisor. Return for normal review and the unchanged 27-gate verification
+cycle. Only the supervisor may publish measured checkpoint 425 on green.

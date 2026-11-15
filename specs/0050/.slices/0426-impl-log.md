@@ -90,30 +90,64 @@
   StudyUnknownsView.fs, StudyFitView.fs; Ui.Tests/StudyViewTests.fs,
   ScrollExtentTests.fs and KitWindowTests.fs.
 
+## Operator recovery progress, 2026-11-15
+
+- Before handoff refresh: read the recovery task, both worker prompts, project
+  prompt, manuals 013/015/028/029, both post-mortem documents, the immutable
+  S121-STUDY-GAIN-VIEW obligation and the current source/test changes.
+- Source review confirms implementation 1fae25fb and repair 1c5a7f80 are already
+  committed. The repair's only product change replaces the session-cell
+  call-site construction with session.name.caption. The existing extension
+  returns the same text; no alias, annotation or suppression was added.
+- The seven-file implementation contains the requested IDs/captions, ordered
+  sessions grid, gain choices, empty-session text, fit-mode choices and read-only
+  behavior. Both exact new facts and the three existing-fact extensions remain
+  present. Run-stage commands and the 0414 rendering/scrollbar fixes remain.
+- The supervisor log records this recovery's IMPLEMENT dispatch at index 425
+  and its unchanged 27-gate snapshot. Normal review, gate execution and measured
+  checkpoint publication belong to that existing supervisor after worker exit;
+  launching another instance would duplicate its work.
+- Read the operator's existing .artifacts/0426-operator-repair/gate-results.json
+  as historical evidence only. No worker gate command was executed and no
+  current supervisor acceptance is asserted.
+- Refreshed only the plan, log and state-of-the-world at their supplied paths.
+  Keep the historical attempts above and inherited YAML floors. No product,
+  test, contract, descriptor, counter, checkpoint or supervisor-state edit is
+  needed; the existing manifest and lock-diagnostic edits are supervisor-owned.
+- Final source diff is empty under Berreman/. The handoff diff has no whitespace
+  errors or CR-at-EOL churn. Git's line-ending notice refers only to the
+  pre-existing supervisor-owned .supervisor-lock.diag, which remains untouched.
+  Returning to the active supervisor for its review and verification cycle.
+
 ## Testing state
 
-No worker gates run. Invariant 6 of implement_worker.system-md assigns gate execution
-and verdicts to the supervisor. Exactly two new UI test identities are
-authorized; all other test identities and existing assertions are retained.
+No worker gates run. Invariant 6 of implement_worker.system-md assigns gate
+execution and verdicts to the supervisor. Exactly two new UI test identities
+are authorized; all other test identities and existing assertions are retained.
+The earlier compiler failures and the later ELEV001 failure are historical;
+the operator committed their repairs before this recovery dispatch.
 
-The attempt-03 task supplies the latest supervisor build failure: two FS0039
-errors in ScrollExtentTests.fs, exit code 1, 38.85 seconds against a 600-second
-deadline. The earlier attempt-02 task reported ten compiler errors in 56.03
-seconds. Both are historical supervisor evidence, not results of this repair.
-The forward references are now removed; there is no post-repair gate verdict.
+Manual 029 and the existing operator gate-results.json record a separate
+27-gate run: build 4.0 s; elevation 230.2 s; constructor 1761/1761 in 157.5 s;
+smoke 264/264 in 230.4 s; selected UI 44/44 in 47.9 s; selected kit acceptance
+2/2 in 23.8 s; and each of the 21 invariants in 0.2 s. The record marks all
+passed, with zero failed/skipped test cases. These are operator measurements,
+not worker verdicts or a substitute for the supervisor's recovery verification.
+Every recorded duration is within the task's effective deadline. Manual 029
+records elevation from f395597c across 13 projects, excluding ELEV004 only.
 
-All requested implementation is present. Build, arc-origin elevation, the full
-constructor suite, full ui-smoke, selected KitWindowTests / ScrollExtentTests /
-StudyViewTests, selected KitAcceptanceTests and all twenty-one s41 invariants
-remain for the supervisor. No worker development run or deadline overrun exists
-to report. commit_ready=false reflects pending verification, not missing scope.
-The expected selected UI delta is +2; constructor, smoke and acceptance test
-identities are unchanged. No gate result or measured current count is claimed.
+All requested implementation is committed and source-reviewed. Normal review
+and the same 27-gate roster remain for the active supervisor, followed by
+measured checkpoint 425 only on green. No worker development duration or
+deadline overrun exists. commit_ready=false denotes pending supervisor
+verification; it does not identify missing implementation. Do not use
+--accept-current-slice or change the profile-1 recovery route.
 
 ## Artifacts
 
-No runtime artifacts. Any persistent run output belongs only in the supplied
-specs/0050/.artifacts folder.
+No new runtime artifacts. Existing operator evidence is
+specs/0050/.artifacts/0426-operator-repair/gate-results.json. Any persistent run
+output belongs only in the supplied specs/0050/.artifacts folder.
 
 ## Gotchas
 
