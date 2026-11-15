@@ -30,6 +30,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.PrefitChecks
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -39,7 +40,7 @@ open OpticalConstructor.Ui.JobRunner
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.StudyEngine
 
-/// The study's Unknowns, Fit and Results controls, driven by stable IDs (spec 0050 S11.5).
+/// The study's Unknowns, Fit, Results and Publish controls, driven by stable IDs (spec 0050 S11.5).
 module StudyViewTests =
 
     let private owner = FolderName "StudyViewTests"
@@ -263,10 +264,19 @@ module StudyViewTests =
                 results = results
         }
 
-    let private resultTexts (window : Window) : string list =
-        (SlotBarTests.controlById window ConstructorUiId.fitResultsTable).GetVisualDescendants()
+    let private studyPanelTexts (window : Window) (id : ConstructorUiId) : string list =
+        (SlotBarTests.controlById window id).GetVisualDescendants()
         |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
         |> Seq.toList
+
+    let private resultTexts (window : Window) : string list =
+        studyPanelTexts window ConstructorUiId.fitResultsTable
+
+    let private calibrationViewRunOf (model : TableAndElementRotationModel) : FitRun =
+        let first = itemNamed (ItemLabel "CPL1") model
+        let fitted = ParameterValue 1.55
+        let entry = StudyPublishViewFixture.publicationItemEntry first retardance fitted
+        StudyPublishViewFixture.publicationRunOf model StudyPublishViewFixture.firstPublicationStamp [ entry ]
 
     // Spec 0050 S11.5: isolate status rendering from disk contents while retaining real scan validation.
     let private prefitModelWithData (model : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -332,6 +342,11 @@ module StudyViewTests =
         Assert.Equal("FitResultsProductCheckTab", ConstructorUiId.fitResultsProductCheckTab.value)
         Assert.Equal("FitResultsProfileTab", ConstructorUiId.fitResultsProfileTab.value)
         Assert.Equal("FitResultsTable", ConstructorUiId.fitResultsTable.value)
+        Assert.Equal("FlowPublishStep", ConstructorUiId.flowPublishStep.value)
+        Assert.Equal("StudyPublishPanel", ConstructorUiId.studyPublishPanel.value)
+        Assert.Equal("PublishCalibrationPreview", ConstructorUiId.publishCalibrationPreview.value)
+        Assert.Equal("PublishCalibrationButton", ConstructorUiId.publishCalibrationButton.value)
+        Assert.Equal("PromotionList", ConstructorUiId.promotionList.value)
         Assert.Equal<ConstructorUiId list>(
             [ ConstructorUiId.fitResultsValuesTab; ConstructorUiId.fitResultsCorrelationTab; ConstructorUiId.fitResultsResidualsTab;
               ConstructorUiId.fitResultsRealizabilityTab; ConstructorUiId.fitResultsProductCheckTab; ConstructorUiId.fitResultsProfileTab ],
@@ -347,6 +362,10 @@ module StudyViewTests =
         let version = MaterialVersionId.firstOf material
         let n1 = ParameterName "n1"
         let materialParameter = MaterialParameterRef (version, n1)
+        let materialSubject = MaterialPromotion version
+        let itemSubject = BlackBoxPromotion cpl1
+        Assert.Equal("Promote_41400000-0000-4000-8000-000000000102_v1", (ConstructorUiId.promoteButton materialSubject).value)
+        Assert.Equal("Promote_41400000-0000-4000-8000-000000000011", (ConstructorUiId.promoteButton itemSubject).value)
         Assert.Equal("StudyChoice_QZ-LR", (ConstructorUiId.studyChoice study).value)
         Assert.Equal("NewStudyExperiment_E1", (ConstructorUiId.newStudyExperimentToggle experiment).value)
         Assert.Equal("AddExperimentToStudy_E1", (ConstructorUiId.addExperimentToStudyButton experiment).value)
@@ -691,6 +710,133 @@ module StudyViewTests =
                             | ProductCheckResultsTab -> "CPL1 → CPL2: product RMSE 0.012, fit RMSE 0.01, ratio 1.2, max |ΔM| 0.002"
                             | ProfileResultsTab -> "3: χ² 6.75"
                         Assert.Contains(expected, resultTexts window))
+                Assert.Equal<FitRun list>([ run ], model.kit.proxy.readFitRuns run.study |> SceneTestFixture.kitSuccess)
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``the Publish step previews the chosen run's calibration and lists what it can promote`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            let previousCulture = System.Globalization.CultureInfo.CurrentCulture
+            try
+                System.Globalization.CultureInfo.CurrentCulture <- System.Globalization.CultureInfo.GetCultureInfo "fr-FR"
+                let run = calibrationViewRunOf model
+                model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
+                let loaded =
+                    model
+                    |> updateTableAndElementRotation ReloadKitChanges
+                    |> updateTableAndElementRotation (ShowFlowStep PublishFlowStep)
+                withStudyWindow loaded (fun window ->
+                    Assert.Equal<string list>([ "CPL1 → revision 2: c2.retardance = 1.55 ± 0.002" ],
+                                              studyPanelTexts window ConstructorUiId.publishCalibrationPreview)
+                    Assert.Equal("Publish calibration", SlotBarTests.boxLabelOf window ConstructorUiId.publishCalibrationButton)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window ConstructorUiId.publishCalibrationButton)
+                    Assert.Equal<string list>([ "This fit run fitted no material or black box." ], studyPanelTexts window ConstructorUiId.promotionList)
+                    let texts = studyPanelTexts window ConstructorUiId.studyPublishPanel
+                    Assert.Contains($"Fit run {run.name.value}", texts)
+                    Assert.Contains("Publishing writes each item's next revision; the values it replaces stay in the item's revision history.", texts)
+                    Assert.Contains("Promoting mints a new library version under the fit's provenance; the version the study opened stays as it is.", texts))
+                let invalidRun =
+                    {
+                        run with
+                            results =
+                                {
+                                    run.results with sigmas = []
+                                }
+                    }
+                let invalid =
+                    {
+                        loaded with kitFitRuns = [ invalidRun ]
+                    }
+                let study = List.exactlyOne invalid.kitStudies
+                let error =
+                    match study.calibratedItemsWith invalidRun invalid.kitItems with
+                    | Error error -> error
+                    | Ok _ -> failwith "A missing sigma must refuse publication"
+                withStudyWindow invalid (fun window ->
+                    Assert.Equal<string list>([ error.describe ], studyPanelTexts window ConstructorUiId.publishCalibrationPreview)
+                    let panel = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.publishCalibrationPreview)
+                    let text = Assert.IsType<TextBlock>(Assert.Single panel.Children)
+                    Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(text.Foreground).Color)
+                    SlotBarTests.assertAbsent window ConstructorUiId.publishCalibrationButton)
+                let empty =
+                    {
+                        loaded with kitFitRuns = []
+                    }
+                withStudyWindow empty (fun window ->
+                    Assert.Contains("No fit run yet: run the fit in the Fit step.", studyPanelTexts window ConstructorUiId.studyPublishPanel)
+                    SlotBarTests.assertAbsent window ConstructorUiId.publishCalibrationButton
+                    SlotBarTests.assertAbsent window ConstructorUiId.promotionList)
+                let promoted = StudyPublishViewFixture.publicationModelWithSubjects loaded
+                let second = promoted.selectedFitRunOpt |> Option.defaultWith (fun () -> failwith "The second run must be selected")
+                let opened = List.exactlyOne (List.exactlyOne promoted.kitStudies).materials
+                let blackBox = itemNamed (ItemLabel "QZ") promoted
+                let subjects = [ MaterialPromotion opened.version; BlackBoxPromotion blackBox.id ]
+                let originalMaterial = promoted.materials.resolveVersion opened.version
+                withStudyWindow promoted (fun window ->
+                    let texts = studyPanelTexts window ConstructorUiId.promotionList
+                    Assert.Contains("Study absorbing crystal v1 → its next library version", texts)
+                    Assert.Contains("QZ (black box) → a custom-Mueller polarizer", texts)
+                    for subject in subjects do
+                        let id = ConstructorUiId.promoteButton subject
+                        Assert.Equal("Promote", SlotBarTests.boxLabelOf window id)
+                        Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window id)
+                        pressStudyBox window id
+                        let status = Assert.IsType<TextBlock>(SlotBarTests.controlById window ConstructorUiId.studyStatusLine).Text
+                        Assert.StartsWith("Promoted to the library as ", status))
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(originalMaterial, promoted.materials.resolveVersion opened.version)
+                let envelopes = promoted.kit.proxy.listSnapshots () |> SceneTestFixture.kitSuccess
+                for entryId in [ opened.version.materialId.toLibraryEntryId; blackBox.id.toLibraryEntryId ] do
+                    let envelope = envelopes |> List.filter (fun envelope -> envelope.content.id = entryId) |> List.maxBy _.content.version
+                    Assert.Equal<EntryProvenance>(second.provenanceIn promoted.kit.kitFile.id, envelope.content.provenance)
+                let earlier = promoted |> updateTableAndElementRotation (SelectFitRun run.name)
+                withStudyWindow earlier (fun window ->
+                    Assert.Equal<string list>([ "CPL1 → revision 2: c2.retardance = 1.55 ± 0.002" ],
+                                              studyPanelTexts window ConstructorUiId.publishCalibrationPreview)
+                    Assert.Equal<string list>([ "This fit run fitted no material or black box." ], studyPanelTexts window ConstructorUiId.promotionList))
+                Assert.Equal<FitRun list>([ run; second ], model.kit.proxy.readFitRuns run.study |> SceneTestFixture.kitSuccess)
+            finally
+                System.Globalization.CultureInfo.CurrentCulture <- previousCulture
+                model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing Publish calibration writes the calibrated items' next revisions into the kit`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let run = calibrationViewRunOf model
+                model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
+                let loaded = model |> updateTableAndElementRotation ReloadKitChanges
+                let first = itemNamed (ItemLabel "CPL1") loaded
+                let file = KitRelativePath "CPL1.item-json"
+                let before = model.kit.proxy.readLabFile file |> SceneTestFixture.kitSuccess
+                withStudyWindow loaded (fun window ->
+                    pressStudyBox window ConstructorUiId.flowPublishStep
+                    pressStudyBox window ConstructorUiId.publishCalibrationButton
+                    Assert.Equal("Published the calibration of CPL1 from QZ-LR@20261101T120000Z.",
+                                 Assert.IsType<TextBlock>(SlotBarTests.controlById window ConstructorUiId.studyStatusLine).Text)
+                    SlotBarTests.assertAbsent window ConstructorUiId.publishCalibrationButton)
+                let recorded = model.kit.proxy.readItems () |> SceneTestFixture.kitSuccess
+                let published = recorded |> List.find (fun item -> item.id = first.id)
+                let calibration : CalibratedParameterData =
+                    {
+                        value = ParameterValue 1.55
+                        sigma = ParameterSigma 0.002
+                        fitRun = run.name
+                    }
+                Assert.Equal<ItemRevision>(ItemRevision 2, published.revision)
+                Assert.Equal<ParameterState option>(Some (CalibratedParameter calibration), published.tryFindParameter retardance |> Option.map _.state)
+                let history : ItemRevisionRecord =
+                    {
+                        revision = first.revision
+                        parameters = first.parameters
+                    }
+                Assert.Equal<ItemRevisionRecord list>([ history ], published.history)
+                let after = model.kit.proxy.readLabFile file |> SceneTestFixture.kitSuccess
+                Assert.NotEqual<FileByteContent>(before.content, after.content)
+                Assert.Equal<Item list>(loaded.kitItems |> List.filter (fun item -> item.id <> first.id),
+                                        recorded |> List.filter (fun item -> item.id <> first.id))
                 Assert.Equal<FitRun list>([ run ], model.kit.proxy.readFitRuns run.study |> SceneTestFixture.kitSuccess)
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 

@@ -359,6 +359,10 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
             Border.create [ Border.child (StudyResultsView.studyResultsView model dispatch) ]
             |> Avalonia.FuncUI.DSL.View.withKey "results"
             :> IView
+        | PublishFlowStep ->
+            Border.create [ Border.child (StudyPublishView.studyPublishView model dispatch) ]
+            |> Avalonia.FuncUI.DSL.View.withKey "publish"
+            :> IView
     DockPanel.create [
         DockPanel.children [
             StackPanel.create [

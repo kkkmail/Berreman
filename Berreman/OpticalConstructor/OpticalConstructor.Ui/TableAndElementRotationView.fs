@@ -357,9 +357,11 @@ type ConstructorFlowStep =
     | FitFlowStep
     /// The selected fit run's stored values and diagnostics (spec 0050 S11.5).
     | ResultsFlowStep
+    /// Publishes the selected run's calibration and promotes its library subjects (spec 0050 S11.5).
+    | PublishFlowStep
 
     /// The working steps in 001 §O's order (spec 0050 S7.2, S9.3, S11.5; .spec-md §3.22).
-    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep; ResultsFlowStep ]
+    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep; ResultsFlowStep; PublishFlowStep ]
 
     /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3, S11.5).
     static member stepsOf (mode : ConstructorMode) : ConstructorFlowStep list =
@@ -367,7 +369,7 @@ type ConstructorFlowStep =
         | InverseConstructor -> ConstructorFlowStep.all
         | ForwardConstructor ->
             ConstructorFlowStep.all
-            |> List.filter (function DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep -> false | _ -> true)
+            |> List.filter (function DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep | PublishFlowStep -> false | _ -> true)
 
     /// The strip's caption of the step (spec 0050 S7.2, S11.5).
     member this.caption : ControlCaption =
@@ -379,6 +381,7 @@ type ConstructorFlowStep =
         | UnknownsFlowStep -> ControlCaption "Unknowns"
         | FitFlowStep -> ControlCaption "Fit"
         | ResultsFlowStep -> ControlCaption "Results"
+        | PublishFlowStep -> ControlCaption "Publish"
 
     /// The id of the step's box in the flow strip (spec 0050 S7.2, S11.5).
     member this.flowUiId : ConstructorUiId =
@@ -390,6 +393,7 @@ type ConstructorFlowStep =
         | UnknownsFlowStep -> ConstructorUiId.flowUnknownsStep
         | FitFlowStep -> ConstructorUiId.flowFitStep
         | ResultsFlowStep -> ConstructorUiId.flowResultsStep
+        | PublishFlowStep -> ConstructorUiId.flowPublishStep
 
 /// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
 /// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
@@ -3116,7 +3120,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         { model with flowStep = SetupsFlowStep; ribbon = bay }
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
     // Spec 0050 S9.3, S11.5: the Inverse surfaces keep the open bay for the workbench's return.
-    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep) as step) ->
+    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep | PublishFlowStep) as step) ->
         {
             model with flowStep = step
         }

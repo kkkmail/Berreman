@@ -27,6 +27,8 @@ open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Controls
@@ -72,6 +74,92 @@ module internal StudyFitViewFixture =
                 }
             notes = FitRunNotes.none
         }
+
+// Spec 0050 S11.5: shared by the Publish reachability, read-only and interaction facts compiled after this file.
+module internal StudyPublishViewFixture =
+
+    let firstPublicationStamp : ClockTime =
+        ClockTime (System.DateTime(2026, 11, 1, 12, 0, 0, System.DateTimeKind.Utc))
+
+    let publicationItemEntry (item : Item) (name : ParameterName) (fitted : ParameterValue) : FitRunEntry =
+        let parameter = item.tryFindParameter name |> Option.defaultWith (fun () -> failwith name.value)
+        {
+            parameter = ItemParameterRef (item.id, name)
+            owner = ItemOwner item.id
+            start = parameter.state.currentValue
+            fitted = fitted
+        }
+
+    let publicationRunOf (model : TableAndElementRotationModel) (stamp : ClockTime) (entries : FitRunEntry list) : FitRun =
+        let study = List.exactlyOne model.kitStudies
+        let source = StudyFitViewFixture.fitViewRunOf study stamp
+        let parameters : FitRunParameter list =
+            (model.kitItems |> List.collect (fun item ->
+                item.parameters |> List.map (fun parameter ->
+                    {
+                        parameter = ItemParameterRef (item.id, parameter.name)
+                        state = parameter.state
+                    })))
+            @ (study.materials |> List.collect (fun material ->
+                material.parameters |> List.map (fun parameter ->
+                    {
+                        parameter = MaterialParameterRef (material.version, parameter.name)
+                        state = parameter.state
+                    })))
+        {
+            source with
+                parameters = parameters
+                entries = entries
+                results =
+                    {
+                        source.results with
+                            sigmas = entries |> List.map (fun entry ->
+                                {
+                                    entry =
+                                        {
+                                            parameter = entry.parameter
+                                            owner = entry.owner
+                                        }
+                                    sigmaOpt = Some (ParameterSigma 0.002)
+                                })
+                    }
+        }
+
+    let publicationModelWithSubjects (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let draft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "41800000-0000-4000-8000-000000000001")
+                label = ItemLabel "QZ"
+                model = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.blackBoxMuellerModelId)
+                dial = FixedMounting
+            }
+        let added = model |> TestAppScope.withStudyMaterial |> updateTableAndElementRotation (AddItem draft)
+        Assert.Equal<ControlCaption option>(None, added.kitStatus)
+        let material = List.exactlyOne (List.exactlyOne added.kitStudies).materials
+        let n1 = ParameterName "n1"
+        let materialParameter = material.parameters |> List.find (fun parameter -> parameter.name = n1)
+        let materialEntry : FitRunEntry =
+            {
+                parameter = MaterialParameterRef (material.version, n1)
+                owner = MaterialOwner material.version
+                start = materialParameter.state.currentValue
+                fitted = ParameterValue 1.65
+            }
+        let entries =
+            [ ItemLabel "CPL1"; ItemLabel "CPL2"; draft.label ]
+            |> List.map (fun label ->
+                let item = added.kitItems |> List.find (fun item -> item.label = label)
+                let name, fitted =
+                    if label = draft.label then ParameterName "m00", ParameterValue 0.9
+                    else ParameterName "c2.retardance", ParameterValue 1.56
+                publicationItemEntry item name fitted)
+        let stamp = ClockTime (firstPublicationStamp.value.AddHours 1.0)
+        let run = publicationRunOf added stamp (entries @ [ materialEntry ])
+        added.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
+        added
+        |> updateTableAndElementRotation ReloadKitChanges
+        |> updateTableAndElementRotation (SelectFitRun run.name)
+        |> updateTableAndElementRotation (ShowFlowStep PublishFlowStep)
 
 /// Spec 0046 (operator): "if we put a tall control above another, the window must have enough scroll length
 /// to accommodate both — a simple arithmetic that must hold", in every window. Proven as a LAW over each
@@ -612,6 +700,26 @@ module ScrollExtentTests =
             window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
             window
         assertReachable "KitWindowResults" makeWindow
+
+    [<Fact>]
+    let ``the kit window's Publish step leaves everything reachable`` () : unit =
+        let makeWindow () : Window =
+            let owner = FolderName "ScrollExtentPublish"
+            let model = TestAppScope.studyKitIn owner
+            let shown = StudyPublishViewFixture.publicationModelWithSubjects model
+            let study = List.exactlyOne shown.kitStudies
+            let run = shown.selectedFitRunOpt |> Option.defaultWith (fun () -> failwith "The publication run must be selected")
+            let calibrated = study.calibratedItemsWith run shown.kitItems |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal(3, calibrated.Length)
+            let material = List.exactlyOne study.materials
+            let blackBox = shown.kitItems |> List.find (fun item -> item.label = ItemLabel "QZ")
+            Assert.Equal<PromotionSubject list>(
+                [ MaterialPromotion material.version; BlackBoxPromotion blackBox.id ],
+                run.promotionSubjectsWith study shown.kitItems shown.tryItemModelChoice)
+            let window = viewWindow KitWindowView.kitWindowView shown
+            window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
+            window
+        assertReachable "KitWindowPublish" makeWindow
 
     /// Spec 0050 S9.3: the Inverse kit window on its Data step over the matrix of three experiments, copies of the collected
     /// one of `filledExperiments` over its setup: the first reviewed, three points with one excluded and one setup

@@ -937,6 +937,18 @@ type ConstructorUiId =
     /// The currently shown results tab's table (spec 0050 S11.5).
     static member fitResultsTable : ConstructorUiId = ConstructorUiId "FitResultsTable"
 
+    // --- The study's Publish step (StudyPublishView). ---
+    /// Opens the Inverse constructor's Publish step (spec 0050 S11.5).
+    static member flowPublishStep : ConstructorUiId = ConstructorUiId "FlowPublishStep"
+    /// The selected fit run's publication surface (spec 0050 S11.5).
+    static member studyPublishPanel : ConstructorUiId = ConstructorUiId "StudyPublishPanel"
+    /// The item revisions the selected calibration would publish (spec 0050 S11.5).
+    static member publishCalibrationPreview : ConstructorUiId = ConstructorUiId "PublishCalibrationPreview"
+    /// Publishes the selected fit run's calibration into the kit (spec 0050 S11.5).
+    static member publishCalibrationButton : ConstructorUiId = ConstructorUiId "PublishCalibrationButton"
+    /// The fitted materials and black boxes available for promotion (spec 0050 S11.5).
+    static member promotionList : ConstructorUiId = ConstructorUiId "PromotionList"
+
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).
     static member slotBar : ConstructorUiId = ConstructorUiId "SlotBar"
