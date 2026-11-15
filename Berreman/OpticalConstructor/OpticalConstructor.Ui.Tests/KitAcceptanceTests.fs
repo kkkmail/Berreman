@@ -10,6 +10,9 @@ open BerremanTestSupport
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.DataSplits
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitArchive
@@ -18,7 +21,10 @@ open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MuellerReconstruction
+open OpticalConstructor.Domain.NamingTemplates
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.SetupGrids
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -27,6 +33,7 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
+open OpticalConstructor.Storage.LabFileImport
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
@@ -69,6 +76,19 @@ module KitAcceptanceTests =
             analyzer : ItemLabel
         }
 
+    type private AcceptanceLabGroup =
+        {
+            key : DataRowKey
+            name : ExperimentName
+            captures : MuellerRawRow list
+        }
+
+    type private AcceptanceLabFile =
+        {
+            path : KitRelativePath
+            groups : AcceptanceLabGroup list
+        }
+
     let private kitId = KitId (Guid.Parse "e63c9d6e-7961-4d9f-9c8d-e5a151414e0e")
     let private kitAuthor = KitAuthor "optics-mueller lab"
     let private initialTime = ClockTime (DateTime(2026, 5, 31, 12, 0, 0, DateTimeKind.Utc))
@@ -83,6 +103,52 @@ module KitAcceptanceTests =
     let private detectorRole = DetectorSlotRole (SlotPosition 1)
     let private retardanceName = ParameterName "c2.retardance"
     let private fastAxisOffsetName = ParameterName "c2.fastAxisOffset"
+    let private lpLpFile = KitRelativePath "data/raw/final/lp_lp.csv"
+    let private lpCplFile = KitRelativePath "data/raw/final/lp_cpl.csv"
+    let private cplLpFile = KitRelativePath "data/raw/final/cpl_lp.csv"
+    let private cplCplDay1File = KitRelativePath "data/raw/final/cpl_cpl_day1_main.csv"
+    let private cplCplDay2File = KitRelativePath "data/raw/final/cpl_cpl_day2_corrections.csv"
+    let private darknessFile = KitRelativePath "data/raw/final/darkness_checks.csv"
+    let private diagnosticFile = KitRelativePath "data/raw/final/bullshit_checks.csv"
+    let private finalLabFiles = [ lpLpFile; lpCplFile; cplLpFile; cplCplDay1File; cplCplDay2File; darknessFile; diagnosticFile ]
+    let private calibrationNames : ExperimentName list =
+        [
+            ExperimentName "LP-(AIR#0)-LP-2"
+            ExperimentName "LP-(AIR#0)-LP-2R"
+            ExperimentName "LP-(AIR#0)-CPL-2"
+            ExperimentName "LP-(AIR#0)-CPL-2R"
+            ExperimentName "CPL-(AIR#0)-LP-2"
+            ExperimentName "CPL-(AIR#0)-LP-2R"
+            ExperimentName "CPL-(AIR#0)-CPL"
+            ExperimentName "CPL-(AIR#0)-CPL-BR"
+            ExperimentName "CPL-(AIR#0)-CPL-2"
+        ]
+    let private manualSetups : Map<DataRowKey, SetupName> =
+        [
+            DataRowKey "Darkness", SetupName "CPL-(AIR#0)-CPL"
+            DataRowKey "LP-(Darkness)-CPL2", SetupName "LP-(AIR#0)-CPL"
+            DataRowKey "LP-(Darkness)-LP-2", SetupName "LP-(AIR#0)-LP"
+            DataRowKey "LP-(Darkness)-LP-2R", SetupName "LP-(AIR#0)-LP"
+            DataRowKey "CPL-(Darkness)-LP-2", SetupName "CPL-(AIR#0)-LP"
+            DataRowKey "CPL-(Darkness)-LP-2R", SetupName "CPL-(AIR#0)-LP"
+            DataRowKey "BullshitCheck", SetupName "CPL-(AIR#0)-LP"
+            DataRowKey "BullshitCheck-2", SetupName "CPL-(AIR#0)-LP"
+        ] |> Map.ofList
+    let private correctedSetups : Map<ExperimentName, SetupName> =
+        [
+            ExperimentName "CPL-(LR#90)-CPL", SetupName "CPL-(LR#-90)-CPL"
+            ExperimentName "CPL-(QZ#90-LR#90)-CPL", SetupName "CPL-(QZ#90-LR#-90)-CPL"
+        ] |> Map.ofList
+    let private lrCorrectionNote =
+        ControlCaption "LR was labelled +90 but physically sat at -90 (optics-mueller AGENTS.md, Current Known Caveats)."
+    let private frameExclusionReason =
+        ControlCaption "Likely contaminated frame; keep visible in plots but exclude from harmonic fits."
+    let private analyzerDialRange : VariableRange =
+        {
+            min = SweptValue 0.0
+            max = SweptValue 360.0
+            points = CurvePointCount 19
+        }
     let private muellerNames : ParameterName list =
         let indices = [ ParameterNameIndex 0; ParameterNameIndex 1; ParameterNameIndex 2; ParameterNameIndex 3 ]
         [ for row in indices do for column in indices do ParameterName.muellerElement row column ]
@@ -324,8 +390,155 @@ module KitAcceptanceTests =
         |> correctSetup (SetupName "CPL-(LR#90)-CPL") (SetupName "CPL-(LR#-90)-CPL") firstObjectRole
         |> correctSetup (SetupName "CPL-(QZ#90-LR#90)-CPL") (SetupName "CPL-(QZ#90-LR#-90)-CPL") secondObjectRole
 
-    /// Build only through application messages around the committed lab bytes, with fixed identities and time (spec 0050 S12.1).
-    let private buildOpticsMuellerKit (run : FolderName) : BuiltAcceptanceKit =
+    let private labFileAt (folder : KitFolder) (path : KitRelativePath) : FileName =
+        FileName (Path.Combine(folder.value.value, path.value))
+
+    let private readAcceptanceLabFiles (folder : KitFolder) : AcceptanceLabFile list =
+        finalLabFiles
+        |> List.map (fun path ->
+            let file = labFileAt folder path
+            let content = KitFileText (File.ReadAllText file.value)
+            let mapped =
+                (BuiltInProfileChoice PhoneRoiCsvProfile).mapText content
+                |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.caption.value}")
+            let captures =
+                match mapped with
+                | CapturePoints rows -> rows
+                | _ -> failwith $"{file.value}: expected Phone ROI captures"
+            let groups : AcceptanceLabGroup list =
+                captures
+                |> List.groupBy _.experiment
+                |> List.map (fun (label, rows) ->
+                    let key = label.rowKey
+                    let name =
+                        key.nameText.toExperimentName
+                        |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.describe}")
+                    {
+                        key = key
+                        name = name
+                        captures = rows
+                    })
+            {
+                path = path
+                groups = groups
+            })
+
+    let private restartTimeOf (files : AcceptanceLabFile list) : RowTimestamp =
+        let diagnostic = files |> List.find (fun file -> file.path = diagnosticFile)
+        let firstCheck = diagnostic.groups |> List.find (fun group -> group.key = DataRowKey "BullshitCheck")
+        firstCheck.captures |> List.map (fun row -> RowTimestamp row.capturedAt) |> List.min
+
+    let private roleForGroup (file : AcceptanceLabFile) (group : AcceptanceLabGroup) : ExperimentRole =
+        if file.path = darknessFile then DarkRun
+        elif file.path = diagnosticFile then DiagnosticRun
+        elif List.contains group.name calibrationNames then CalibrationRun
+        else ScienceRun
+
+    let private sessionForGroup (restart : RowTimestamp) (file : AcceptanceLabFile) (group : AcceptanceLabGroup) : SessionName option =
+        if file.path = lpLpFile then Some (SessionName "LP-LP")
+        elif file.path = lpCplFile then Some (SessionName "LP-CPL")
+        elif file.path = cplLpFile then
+            if group.captures |> List.forall (fun row -> row.capturedAt < restart.value) then
+                Some (SessionName "CPL-LP before the restart")
+            else Some (SessionName "CPL-LP after the restart")
+        elif file.path = cplCplDay1File then Some (SessionName "CPL-CPL day 1")
+        elif file.path = cplCplDay2File then Some (SessionName "CPL-CPL day 2")
+        else None
+
+    let private excludedNumbersOf (group : AcceptanceLabGroup) : MappedPointNumber list =
+        MuellerReference.excludedPoints
+        |> List.filter (fun excluded -> excluded.experiment.rowKey = group.key)
+        |> List.map (fun excluded ->
+            group.captures
+            |> List.mapi (fun index row -> MappedPointNumber (index + 1), row)
+            |> List.filter (fun (_, row) -> row.captureIndex = excluded.captureIndex && row.description = excluded.description)
+            |> List.exactlyOne
+            |> fst)
+
+    let private splitOf (file : FileName) (model : TableAndElementRotationModel) : DataSplitState =
+        model.dataSplitOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the split preview")
+
+    let private attachAcceptanceLabFile
+        (folder : KitFolder)
+        (model : TableAndElementRotationModel)
+        (lab : AcceptanceLabFile)
+        : TableAndElementRotationModel =
+        let file = labFileAt folder lab.path
+        let split = model |> updateTableAndElementRotation (SplitByColumn (file, ImportProfileName.phoneRoiCsv))
+        let preview = splitOf file split
+        expect file "split key column" (SplitKeyColumn "experiment") preview.key
+        expect file "split group order" (lab.groups |> List.map _.key) (preview.split.groups |> List.map _.key)
+        let offers =
+            preview.split.groups
+            |> List.map (fun group ->
+                match group.matching with
+                | SetupOfferForGroup offer ->
+                    expect file "template offers an existing grid setup" true (List.contains offer.setup model.kitSetups)
+                    ToggleSplitOffer group.key
+                | GroupWithoutMatch _ ->
+                    let setup =
+                        manualSetups |> Map.tryFind group.key
+                        |> Option.defaultWith (fun () -> failwith $"{file.value}: unexpected unreadable key {group.key.value}")
+                    OfferSplitGroupOver (group.key, setup)
+                | ExperimentForGroup name -> failwith $"{file.value}: {name.value} was already recorded")
+        let offered = split |> apply offers
+        let ready = splitOf file offered
+        expect file "unmatched groups after manual offers" [] ready.split.unmatched
+        expect file "every group selected" (lab.groups |> List.map _.key |> List.sort) (ready.creating |> List.sort)
+        let attached = offered |> updateTableAndElementRotation MatchByTemplate
+        expect file "split completed" None attached.dataSplitOpt
+        let appended = attached.experimentCollection.experiments |> List.skip model.experimentCollection.experiments.Length
+        expect file "created names in file group order" (lab.groups |> List.map _.name) (appended |> List.map _.name)
+        expect file "no setup added by the split" model.kitSetups attached.kitSetups
+        attached
+
+    let private buildAcceptanceExperiments (folder : KitFolder) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let activated = model |> updateTableAndElementRotation (ActivateSetup (SetupName "LP-(AIR#0)-LP"))
+        let analyzer = slotFor analyzerRole activated
+        let analyzerSlot = activated.elements |> List.find (fun slot -> slot.id = analyzer)
+        expect KitFile.fileName "dial reading offered for LP2" true (List.contains VaryDialReading (variablesOfElement activated analyzerSlot))
+        let captures = availableCaptures activated analyzer
+        expect KitFile.fileName "Phone capture" [ CaptureTransmitted ] captures
+        let captureChoice =
+            match List.exactlyOne captures with
+            | CaptureTransmitted -> ExperimentControls.CaptureT
+            | CaptureReflected -> ExperimentControls.CaptureR
+            | CaptureBoth -> ExperimentControls.CaptureBoth
+        let drafted =
+            activated |> apply [ ExpChooseElement analyzer; ExpChooseVariable ExperimentControls.VaryDialReading; ExpChooseMeasurement captureChoice ]
+        expect KitFile.fileName "raw dial draft" (Some VaryDialReading) drafted.experimentCollection.draft.variable
+        expect KitFile.fileName "raw dial range" analyzerDialRange drafted.experimentCollection.draft.range
+        expect KitFile.fileName "draft capture" (Some CaptureTransmitted) drafted.draftCapture
+        let files = readAcceptanceLabFiles folder
+        let restart = restartTimeOf files
+        let attached = files |> List.fold (attachAcceptanceLabFile folder) drafted
+        let edits =
+            [
+                for file in files do
+                    for group in file.groups do
+                        let experiment = attached.experimentCollection.experiments |> List.find (fun held -> held.name = group.name)
+                        match roleForGroup file group with
+                        | ScienceRun -> ()
+                        | role -> yield SetExperimentRole (experiment.id, role)
+                        match sessionForGroup restart file group with
+                        | Some session -> yield SetExperimentSession (experiment.id, session.caption)
+                        | None -> ()
+                        match correctedSetups |> Map.tryFind group.name with
+                        | Some name ->
+                            let setup = attached.kitSetups |> List.find (fun held -> held.name = name)
+                            yield CorrectSetup (experiment.id, setup.reference, lrCorrectionNote)
+                        | None -> ()
+                        for number in excludedNumbersOf group do
+                            yield ReviewExperimentData experiment.id
+                            yield ExcludePoint (experiment.id, number, frameExclusionReason)
+            ]
+        attached |> apply edits
+
+    /// Build through application messages, keeping the setup-only checkpoint available to AT-1 (spec 0050 S12.1).
+    let private buildOpticsMuellerKitWith
+        (finish : KitFolder -> TableAndElementRotationModel -> TableAndElementRotationModel)
+        (run : FolderName)
+        : BuiltAcceptanceKit =
         let runFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitAcceptanceTests", run.value))
         let folder = KitFolder (runFolder.combine (FolderName "optics-mueller"))
         if Directory.Exists runFolder.value then failwith $"{runFolder.value}: expected a fresh run folder; actual already exists"
@@ -382,8 +595,9 @@ module KitAcceptanceTests =
                 |> apply [ SetNamingTemplateText labTemplate; SaveNamingTemplate ]
             let stocked = itemSpecs |> List.fold addAcceptanceItem initial
             expect (FileName "*.item-json") "unused item identities" [] remaining
-            let model = buildAcceptanceSetups stocked
-            expect (FileName "*.setup-json") "setups including both corrections" 42 model.kitSetups.Length
+            let setups = buildAcceptanceSetups stocked
+            expect (FileName "*.setup-json") "setups including both corrections" 42 setups.kitSetups.Length
+            let model = finish folder setups
             {
                 folder = folder
                 context = context
@@ -398,6 +612,9 @@ module KitAcceptanceTests =
             finally
                 if Directory.Exists runFolder.value then Directory.Delete(runFolder.value, true)
             reraise ()
+
+    let private buildOpticsMuellerKit (run : FolderName) : BuiltAcceptanceKit =
+        buildOpticsMuellerKitWith buildAcceptanceExperiments run
 
     let private expectedSetups () : AcceptanceSetup list =
         // Spec 0050 S12.1: the Rotate bay stores -90 degrees in its [0, 360) representation.
@@ -575,11 +792,113 @@ module KitAcceptanceTests =
         expect (FileName copied.value) "lab files" files (relativeFiles copied)
         for file in files do assertSameBytes (file.combine original) (file.combine copied)
 
+    let private hashOfFile (file : FileName) : ContentHash =
+        let bytes = File.ReadAllBytes file.value |> FileByteContent
+        ContentHash.ofBytes bytes
+
+    let private labHashes (folder : KitFolder) : Map<FileName, ContentHash> =
+        let data = folder.value.combine (FolderName "data")
+        relativeFiles data |> List.map (fun file -> file, hashOfFile (file.combine data)) |> Map.ofList
+
+    let private labelledSetupFor (template : NamingTemplate) (group : AcceptanceLabGroup) : SetupName =
+        match manualSetups |> Map.tryFind group.key with
+        | Some name -> name
+        | None ->
+            let reading =
+                template.readName group.key.nameText
+                |> Result.defaultWith (fun error -> failwith $"{group.key.value}: {error.describe}")
+            let withoutNote =
+                {
+                    reading with noteOpt = None
+                }
+            let written =
+                template.writeName withoutNote
+                |> Result.defaultWith (fun error -> failwith $"{group.key.value}: {error.describe}")
+            written.toSetupName |> Result.defaultWith (fun error -> failwith $"{group.key.value}: {error.describe}")
+
+    let private assertStoredExperiments (built : BuiltAcceptanceKit) (reader : KitProxy) (files : AcceptanceLabFile list) : unit =
+        let experimentsFile = FileName "*.experiment-json"
+        let experiments = reader.readExperiments () |> readKitResult experimentsFile
+        let setups = reader.readSetups () |> readKitResult (FileName "*.setup-json")
+        let metadata = reader.readKitFile () |> readKitResult KitFile.fileName
+        let groups = files |> List.collect _.groups
+        expect experimentsFile "lab group count" 53 groups.Length
+        expect experimentsFile "experiment count" 53 experiments.Length
+        expect experimentsFile "experiment order" (groups |> List.map _.name) (experiments |> List.map _.name)
+        expect experimentsFile "ids in file group order" (groups |> List.mapi (fun index _ -> ExperimentId (index + 1))) (experiments |> List.map _.id)
+        expect experimentsFile "stored model" built.model.experimentCollection.experiments experiments
+        expect experimentsFile "Calibration runs" (calibrationNames |> List.sort) (experiments |> List.filter (fun experiment -> experiment.role = CalibrationRun) |> List.map _.name |> List.sort)
+        for role, count in [ ScienceRun, 36; CalibrationRun, 9; DarkRun, 6; DiagnosticRun, 2 ] do
+            expect experimentsFile $"{role.text} count" count (experiments |> List.filter (fun experiment -> experiment.role = role) |> List.length)
+        expect experimentsFile "gain session count" 6 (experiments |> List.choose _.sessionOpt |> List.distinct |> List.length)
+        expect experimentsFile "setup corrections" 2 (experiments |> List.sumBy (fun experiment -> experiment.corrections.Length))
+        expect experimentsFile "excluded frames" 1 (experiments |> List.sumBy (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.exclusions.Length) |> Option.defaultValue 0))
+        let restart = restartTimeOf files
+        let original = committedFolder ()
+        for lab in files do
+            let source = labFileAt original lab.path
+            let attachment : DataAttachment =
+                {
+                    path = lab.path
+                    contentHash = hashOfFile source
+                }
+            for group in lab.groups do
+                let experiment = experiments |> List.find (fun held -> held.name = group.name)
+                let file = ExperimentKitFile.fileNameOf group.name.fileStem
+                let labelledName = labelledSetupFor metadata.namingTemplate group
+                let labelled = setups |> List.find (fun setup -> setup.name = labelledName)
+                let correctedNameOpt = correctedSetups |> Map.tryFind group.name
+                let expectedName = correctedNameOpt |> Option.defaultValue labelledName
+                let expectedSetup = setups |> List.find (fun setup -> setup.name = expectedName)
+                expect file "setup and revision" expectedSetup.reference experiment.setup
+                match correctedNameOpt with
+                | Some _ ->
+                    let correction = experiment.corrections |> List.exactlyOne
+                    expect file "correction's labelled setup" labelled.reference correction.previous
+                    expect file "correction's actual setup" expectedSetup.reference correction.corrected
+                    expect file "correction audit note" lrCorrectionNote.value correction.note.value
+                | None -> expect file "no correction" [] experiment.corrections
+                let analyzer = expectedSetup.lightOrder |> List.find (fun slot -> slot.role = analyzerRole)
+                let axis : ScanAxis =
+                    {
+                        elementId = analyzer.slot.id
+                        label = built.model.experimentCollection.draft.elementLabel
+                        variable = VaryDialReading
+                        range = analyzerDialRange
+                    }
+                let expectedScan = ExperimentScan.oneAxis axis CaptureTransmitted None
+                expect file "analyzer raw-dial sweep and Phone capture" expectedScan experiment.scan
+                let dialReadings = analyzerDialRange.sweptValues |> List.map (fun reading -> Angle.degree (reading.value * 1.0<deg>))
+                for row in group.captures do
+                    expect file $"capture {row.captureIndex.value} at {row.description.degrees} degrees is on the dial sweep" true (List.contains row.description dialReadings)
+                expect file "role" (roleForGroup lab group) experiment.role
+                expect file "session" (sessionForGroup restart lab group) experiment.sessionOpt
+                expect file "notes" ExperimentNotes.none experiment.notes
+                let data = experiment.dataOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its lab attachment")
+                expect file "attachment path and committed SHA-256" attachment data.attachment
+                expect file "import profile" ImportProfileName.phoneRoiCsv data.profile
+                expect file "keyed selection" (KeyedDataRows group.key) data.rows
+                expect file "excluded point numbers in group order" (excludedNumbersOf group) (data.exclusions |> List.map _.point)
+                for exclusion in data.exclusions do expect file "exclusion reason" frameExclusionReason.value exclusion.reason.value
+                let mapped =
+                    built.model.experimentData.readMapped data
+                    |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.caption.value}")
+                expect file "mapped captures, including excluded frames" (CapturePoints group.captures) mapped
+                expect file "all capture descriptions validate against the scan" (Ok mapped) (mapped.validatedFor Intensity experiment.scan)
+                let kept =
+                    group.captures
+                    |> List.filter (fun row ->
+                        MuellerReference.excludedPoints
+                        |> List.exists (fun excluded ->
+                            excluded.experiment = row.experiment && excluded.captureIndex = row.captureIndex && excluded.description = row.description)
+                        |> not)
+                expect file "keptBy removes only the reference's contaminated frame" (CapturePoints kept) (mapped.keptBy data.exclusions)
+
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-1 builds the optics-mueller kit's items and setups through the app's messages`` () : unit =
         let run = FolderName (Guid.NewGuid().ToString("N"))
-        let built = buildOpticsMuellerKit run
+        let built = buildOpticsMuellerKitWith (fun _ model -> model) run
         try
             let reader = KitProxy.create built.folder
             let metadata = reader.readKitFile () |> readKitResult KitFile.fileName
@@ -599,6 +918,27 @@ module KitAcceptanceTests =
             assertStoredSetups reader
             assertLibrarySnapshots built reader
             assertLabBytes built.folder
+        finally
+            try built.model.kit.close () |> readKitResult KitFile.fileName
+            finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-1 attaches every lab group of the final data files through the Phone ROI CSV profile, with its role, session, correction and exclusion`` () : unit =
+        let original = committedFolder ()
+        let originalHashes = labHashes original
+        let files = readAcceptanceLabFiles original
+        let run = FolderName (Guid.NewGuid().ToString("N"))
+        let built = buildOpticsMuellerKit run
+        try
+            let reader = KitProxy.create built.folder
+            assertStoredExperiments built reader files
+            assertStoredItems built reader
+            assertStoredSetups reader
+            assertLibrarySnapshots built reader
+            assertLabBytes built.folder
+            expect (FileName "data/*") "built lab file inventory and SHA-256 unchanged" originalHashes (labHashes built.folder)
+            expect (FileName "data/optics-mueller/data/*") "committed lab file inventory and SHA-256 unchanged" originalHashes (labHashes original)
         finally
             try built.model.kit.close () |> readKitResult KitFile.fileName
             finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
