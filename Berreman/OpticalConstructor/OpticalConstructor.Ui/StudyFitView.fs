@@ -1,6 +1,7 @@
 /// The study's pre-fit checks, joint and staged fits, progress and history (spec 0050 S11.5).
 module OpticalConstructor.Ui.StudyFitView
 
+open Avalonia
 open Avalonia.Controls
 open Avalonia.Automation
 open Avalonia.Controls.Primitives
@@ -12,6 +13,7 @@ open Avalonia.FuncUI.Types
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.PrefitChecks
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -27,7 +29,7 @@ let private namedFitActionButton
     |> View.withAttrs [ AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone) ]
     :> IView
 
-/// Runs the selected study through the shell's fit host and shows its checks and history (spec 0050 S11.5).
+/// Chooses the fit mode, runs the study through the shell's host and shows checks and history (spec 0050 S11.5; S12.1).
 let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let selected : IView list =
         match model.selectedStudyOpt with
@@ -65,6 +67,31 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                             | Error _ -> TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                             | Ok _ -> ()
                         ] :> IView)
+            let modeChoices : IView =
+                match model.kitWrites with
+                | ControlWithheld -> TextBlock.create [ TextBlock.text $"Fit mode: {study.settings.mode.text}" ] :> IView
+                | ControlOffered ->
+                    WrapPanel.create [
+                        WrapPanel.children (
+                            [
+                                TextBlock.create [
+                                    TextBlock.text "Fit mode:"
+                                    TextBlock.verticalAlignment VerticalAlignment.Center
+                                    TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                                ] :> IView
+                            ]
+                            @ (FitMode.all |> List.map (fun mode ->
+                                let id = ConstructorUiId.studyFitModeChoice mode
+                                let caption = ControlCaption mode.text
+                                let select () = dispatch (StudyCommand (SetFitMode (study.name, mode)))
+                                if mode = study.settings.mode then
+                                    namedFitActionButton id caption MaterialsWindowView.positiveBackground select
+                                else
+                                    MaterialsWindowView.verbButton id caption select)))
+                    ]
+                    // Spec 0050 S12.1: actionButton retains its handler, so another study needs a fresh closure.
+                    |> View.withKey $"StudyFitModes_{study.name.fileStem.value}"
+                    :> IView
             let runButtons : IView list =
                 match model.kitWrites with
                 | ControlWithheld -> []
@@ -158,6 +185,7 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                     StackPanel.children prefits
                 ]
             ]
+            @ [ modeChoices ]
             @ runButtons
             @ [ TextBlock.create [ TextBlock.text "Stage 2 holds the calibration:" ]; calibration ]
             @ progress

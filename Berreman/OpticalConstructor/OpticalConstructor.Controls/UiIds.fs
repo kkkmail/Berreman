@@ -884,6 +884,8 @@ type ConstructorUiId =
     static member studyExperimentsText : ConstructorUiId = ConstructorUiId "StudyExperimentsText"
     /// The study's parameter owners, states, scopes and links (spec 0050 S11.5).
     static member studyUnknownsGrid : ConstructorUiId = ConstructorUiId "StudyUnknownsGrid"
+    /// The study's sessions, experiments and gain choices (spec 0050 S12.1).
+    static member studySessionGrid : ConstructorUiId = ConstructorUiId "StudySessionGrid"
 
     // --- The study's Fit step (StudyFitView). ---
     /// Opens the Inverse constructor's Fit step (spec 0050 S11.5).

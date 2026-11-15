@@ -3,6 +3,7 @@
 module OpticalConstructor.Ui.StudyUnknownsView
 
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Controls.Primitives
 open Avalonia.Layout
@@ -255,7 +256,74 @@ let private studyParameterGrid
     |> View.withKey $"StudyGrid_{study.name.fileStem.value}"
     :> IView
 
-/// The selected study's ordered parameter grid and editor, with writes offered only by writable kits (spec 0050 S11.5).
+let private studySessionRows
+    (model : TableAndElementRotationModel)
+    (study : Study)
+    (dispatch : TableAndElementRotationMsg -> unit)
+    : IView list =
+    let sessions = study.sessionsIn model.experimentCollection.experiments
+    let contents : IView =
+        match sessions with
+        | [] -> TextBlock.create [ TextBlock.text "This study's experiments form no session." ] :> IView
+        | _ ->
+            let textRows =
+                [ [ ControlCaption "Session"; ControlCaption "Experiments"; ControlCaption "Gain" ] ]
+                @ (sessions |> List.map (fun session ->
+                    let names = session.experiments |> List.map _.value |> String.concat ", " |> ControlCaption
+                    [ ControlCaption $"{session.name.value}"; names ]))
+            let cells =
+                textRows
+                |> List.mapi (fun row captions ->
+                    captions |> List.mapi (fun column caption ->
+                        TextBlock.create [
+                            TextBlock.row row
+                            TextBlock.column column
+                            TextBlock.fontWeight (if row = 0 then FontWeight.SemiBold else FontWeight.Normal)
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                            TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
+                            TextBlock.text caption.value
+                        ] :> IView))
+                |> List.concat
+            let gains =
+                sessions |> List.mapi (fun index session ->
+                    let offers = session.gainModelOffers model.experimentCollection.experiments
+                    let selected = study.gainModelOf session.name
+                    ComboBox.create [
+                        (ConstructorUiId.studySessionGainChoice session.name).automationAttribute<ComboBox> ()
+                        AttrBuilder<ComboBox>.CreateProperty<string>(AutomationProperties.NameProperty, $"Gain model for {session.name.value}", ValueNone)
+                        ComboBox.row (index + 1)
+                        ComboBox.column 2
+                        ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
+                        ComboBox.isEnabled model.kitWrites.isEnabled
+                        ComboBox.dataItems (offers |> List.map _.caption.value)
+                        ComboBox.selectedIndex (offers |> List.tryFindIndex ((=) selected) |> Option.defaultValue -1)
+                        ComboBox.onSelectedIndexChanged ((fun selectedIndex ->
+                            match offers |> List.tryItem selectedIndex with
+                            | Some gainModel when gainModel <> selected ->
+                                let setting : SessionGainSetting =
+                                    {
+                                        session = session.name
+                                        model = gainModel
+                                    }
+                                dispatch (StudyCommand (SetSessionGainModel (study.name, setting)))
+                            | _ -> ()), SubPatchOptions.Always)
+                    ] :> IView)
+            Grid.create [
+                ConstructorUiId.studySessionGrid.automationAttribute<Grid> ()
+                AttrBuilder<Grid>.CreateProperty<string>(AutomationProperties.NameProperty, "Sessions and gains", ValueNone)
+                Grid.margin (Thickness(0.0, 6.0, 0.0, 4.0))
+                Grid.columnDefinitions "Auto,Auto,Auto"
+                Grid.rowDefinitions (List.replicate (sessions.Length + 1) "Auto" |> String.concat ",")
+                Grid.children (cells @ gains)
+            ]
+            |> View.withKey $"StudySessions_{study.name.fileStem.value}"
+            :> IView
+    [
+        TextBlock.create [ TextBlock.text "Sessions and gains:"; TextBlock.fontWeight FontWeight.SemiBold ]
+        contents
+    ]
+
+/// The selected study's parameters, editor and session gains, writable only in writable kits (spec 0050 S11.5; S12.1).
 let studyUnknownsView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let selected : IView list =
         match model.selectedStudyOpt with
@@ -298,6 +366,7 @@ let studyUnknownsView (model : TableAndElementRotationModel) (dispatch : TableAn
             ]
             @ studyOfferRows model study used dispatch
             @ [ studyParameterGrid model study rows dispatch ]
+            @ studySessionRows model study dispatch
             @ editor
     ScrollViewer.create [
         // Spec 0050 S11.5: reserve scrollbar space so a row brought to the viewport edge remains clickable.

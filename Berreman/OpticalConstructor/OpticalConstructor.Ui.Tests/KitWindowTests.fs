@@ -331,6 +331,10 @@ module KitWindowTests =
                     for experiment in readOnly.experimentCollection.experiments do
                         Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.addExperimentToStudyButton experiment.name))
                         Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.newStudyExperimentToggle experiment.name))
+                    let session = SessionName "Session 1"
+                    let gain = Assert.IsType<ComboBox>(controlById window (ConstructorUiId.studySessionGainChoice session))
+                    Assert.False gain.IsEnabled
+                    Assert.Equal("Free", Assert.IsType<string> gain.SelectedItem)
                     let unknowns = subset.unknownsWith (readOnly.studyContext.itemsUsedBy subset)
                     Assert.NotEmpty unknowns
                     for unknown in unknowns do
@@ -340,6 +344,10 @@ module KitWindowTests =
                         Assert.False(link.IsEnabled))
                 withKitWindow (readOnly |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)) (fun window ->
                     controlById window ConstructorUiId.studyFitPanel |> ignore
+                    for mode in FitMode.all do
+                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.studyFitModeChoice mode))
+                    let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
+                    Assert.Contains($"Fit mode: {subset.settings.mode.text}", texts)
                     for id in [ ConstructorUiId.studyRunFitButton; ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ] do
                         Assert.Equal<Control option>(None, tryControlById window id))
                 let publishing = StudyPublishViewFixture.publicationModelWithSubjects studyModel

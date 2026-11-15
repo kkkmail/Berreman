@@ -49,9 +49,16 @@ module StudyViewTests =
     let private itemNamed (label : ItemLabel) (model : TableAndElementRotationModel) : Item =
         model.kitItems |> List.find (fun item -> item.label = label)
 
-    let private withStudyWindow (model : TableAndElementRotationModel) (check : Window -> unit) : unit =
+    let private withRecordingStudyWindow
+        (model : TableAndElementRotationModel)
+        (record : TableAndElementRotationMsg -> unit)
+        (check : Window -> unit)
+        : unit =
+        let update (message : TableAndElementRotationMsg) (state : TableAndElementRotationModel) : TableAndElementRotationModel =
+            record message
+            updateTableAndElementRotation message state
         let window = HostWindow()
-        Program.mkSimple (fun () -> model) updateTableAndElementRotation KitWindowView.kitWindowView
+        Program.mkSimple (fun () -> model) update KitWindowView.kitWindowView
         |> Program.withHost window
         |> Program.run
         window.Width <- 1000.0
@@ -63,6 +70,17 @@ module StudyViewTests =
         finally
             window.Close()
             Dispatcher.UIThread.RunJobs()
+
+    let private withStudyWindow (model : TableAndElementRotationModel) (check : Window -> unit) : unit =
+        withRecordingStudyWindow model ignore check
+
+    let private withGainCalibrationRuns (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        [ ExperimentName "E1"; ExperimentName "E3" ]
+        |> List.fold (fun (state : TableAndElementRotationModel) name ->
+            let experiment = state.experimentCollection.experiments |> List.find (fun experiment -> experiment.name = name)
+            let changed = state |> updateTableAndElementRotation (SetExperimentRole (experiment.id, CalibrationRun))
+            Assert.Equal<ControlCaption option>(None, changed.kitStatus)
+            changed) model
 
     let private typeField (window : Window) (id : ConstructorUiId) (text : string) : unit =
         let field = Assert.IsType<TextBox>(SlotBarTests.controlById window id)
@@ -318,6 +336,10 @@ module StudyViewTests =
         Assert.Equal("CreateStudyButton", ConstructorUiId.createStudyButton.value)
         Assert.Equal("StudyExperimentsText", ConstructorUiId.studyExperimentsText.value)
         Assert.Equal("StudyUnknownsGrid", ConstructorUiId.studyUnknownsGrid.value)
+        Assert.Equal("StudySessionGrid", ConstructorUiId.studySessionGrid.value)
+        let session = SessionName "Session 1"
+        Assert.Equal("StudySessionGain_Session 1", (ConstructorUiId.studySessionGainChoice session).value)
+        Assert.Equal("StudyFitMode_2", (ConstructorUiId.studyFitModeChoice StagedFit).value)
         Assert.Equal("FlowFitStep", ConstructorUiId.flowFitStep.value)
         Assert.Equal("StudyFitPanel", ConstructorUiId.studyFitPanel.value)
         Assert.Equal("StudyPrefitList", ConstructorUiId.studyPrefitList.value)
@@ -376,6 +398,111 @@ module StudyViewTests =
             Assert.Equal($"StudyParameterRow_{suffix}", (ConstructorUiId.studyParameterRow reference).value)
             Assert.Equal($"StudyParameterScope_{suffix}", (ConstructorUiId.studyParameterScopeChoice reference).value)
             Assert.Equal($"StudyParameterLink_{suffix}", (ConstructorUiId.studyParameterLinkChoice reference).value)
+
+    [<Fact>]
+    let ``each session of the study offers its gain models, and choosing one sends SetSessionGainModel`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let shown = model |> withGainCalibrationRuns |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep)
+                let study = StudyName "QZ-LR"
+                let session = SessionName "Session 1"
+                let e1 = ExperimentName "E1"
+                let e3 = ExperimentName "E3"
+                let repeats : AirRepeatPair =
+                    {
+                        opening = e1
+                        closing = e3
+                    }
+                let messages = ResizeArray<StudyMsg> ()
+                let record (message : TableAndElementRotationMsg) : unit =
+                    match message with
+                    | StudyCommand command -> messages.Add command
+                    | _ -> ()
+                withRecordingStudyWindow shown record (fun window ->
+                    let grid = Assert.IsType<Grid>(SlotBarTests.controlById window ConstructorUiId.studySessionGrid)
+                    Assert.Equal("Sessions and gains", AutomationProperties.GetName grid)
+                    Assert.Equal(3, grid.ColumnDefinitions.Count)
+                    Assert.All(grid.ColumnDefinitions, fun column -> Assert.Equal<GridUnitType>(GridUnitType.Auto, column.Width.GridUnitType))
+                    Assert.Equal(2, grid.RowDefinitions.Count)
+                    Assert.Equal<string list>([ "Session"; "Experiments"; "Gain" ], [ for column in 0 .. 2 -> cellText grid 0 column ])
+                    for column in 0 .. 2 do
+                        Assert.Equal<FontWeight>(FontWeight.SemiBold, Assert.IsType<TextBlock>(cellAt grid 0 column).FontWeight)
+                    Assert.Equal("Session 1", cellText grid 1 0)
+                    Assert.Equal("E1, E2, E3", cellText grid 1 1)
+                    let gain = Assert.IsType<ComboBox>(SlotBarTests.controlById window (ConstructorUiId.studySessionGainChoice session))
+                    Assert.Same(cellAt grid 1 2, gain)
+                    Assert.False(System.String.IsNullOrWhiteSpace(AutomationProperties.GetName gain))
+                    Assert.True gain.IsEffectivelyEnabled
+                    Assert.Equal<string list>([ "Free"; "Anchored to E1, E3"; "Interpolated from E1 to E3" ], gain.Items |> Seq.cast<string> |> Seq.toList)
+                    Assert.Equal("Free", Assert.IsType<string> gain.SelectedItem)
+                    Assert.Empty messages
+                    for index, expected in [ 1, AnchoredSessionGain [ e1; e3 ]; 2, InterpolatedSessionGain repeats; 0, FreeSessionGain ] do
+                        messages.Clear()
+                        gain.SelectedIndex <- index
+                        Dispatcher.UIThread.RunJobs()
+                        match Assert.Single messages with
+                        | SetSessionGainModel (name, setting) ->
+                            Assert.Equal<StudyName>(study, name)
+                            Assert.Equal<SessionName>(session, setting.session)
+                            Assert.Equal<SessionGainModel>(expected, setting.model)
+                        | _ -> Assert.Fail "The gain choice must send SetSessionGainModel"
+                        let recorded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.exactlyOne
+                        Assert.Equal<SessionGainModel>(expected, recorded.gainModelOf session)
+                        Assert.Equal(expected.caption.value, Assert.IsType<string> gain.SelectedItem))
+                let emptyStudy =
+                    {
+                        List.exactlyOne shown.kitStudies with experiments = []
+                    }
+                let empty =
+                    {
+                        shown with kitStudies = [ emptyStudy ]
+                    }
+                withStudyWindow empty (fun window ->
+                    Assert.Contains("This study's experiments form no session.", studyPanelTexts window ConstructorUiId.studyUnknownsPanel)
+                    SlotBarTests.assertAbsent window (ConstructorUiId.studySessionGainChoice session))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``the Fit step's mode choice sends SetFitMode`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let shown = model |> withGainCalibrationRuns |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)
+                let study = StudyName "QZ-LR"
+                let messages = ResizeArray<StudyMsg> ()
+                let record (message : TableAndElementRotationMsg) : unit =
+                    match message with
+                    | StudyCommand command -> messages.Add command
+                    | _ -> ()
+                withRecordingStudyWindow shown record (fun window ->
+                    let joint = ConstructorUiId.studyFitModeChoice JointFit
+                    let staged = ConstructorUiId.studyFitModeChoice StagedFit
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window joint)
+                    Assert.NotEqual(MaterialsWindowView.positiveBackground, fitBoxColor window staged)
+                    for mode in FitMode.all do
+                        let id = ConstructorUiId.studyFitModeChoice mode
+                        Assert.Equal(mode.text, SlotBarTests.boxLabelOf window id)
+                        Assert.Equal(mode.text, AutomationProperties.GetName(SlotBarTests.controlById window id))
+                    Assert.Contains("Fit mode:", studyPanelTexts window ConstructorUiId.studyFitPanel)
+                    let modeBox = SlotBarTests.controlById window staged
+                    let runBox = SlotBarTests.controlById window ConstructorUiId.studyRunFitButton
+                    Assert.True((SlotBarTests.topLeftOf window modeBox).Y + modeBox.Bounds.Height <= (SlotBarTests.topLeftOf window runBox).Y)
+                    Assert.Empty messages
+                    for mode in [ StagedFit; JointFit ] do
+                        messages.Clear()
+                        pressStudyBox window (ConstructorUiId.studyFitModeChoice mode)
+                        match Assert.Single messages with
+                        | SetFitMode (name, chosen) ->
+                            Assert.Equal<StudyName>(study, name)
+                            Assert.Equal<FitMode>(mode, chosen)
+                        | _ -> Assert.Fail "The mode choice must send SetFitMode"
+                        let recorded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.exactlyOne
+                        Assert.Equal<FitMode>(mode, recorded.settings.mode)
+                        Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window (ConstructorUiId.studyFitModeChoice mode))
+                        for other in FitMode.all |> List.filter ((<>) mode) do
+                            Assert.NotEqual(MaterialsWindowView.positiveBackground, fitBoxColor window (ConstructorUiId.studyFitModeChoice other)))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
     let ``the Unknowns step lists the study's item parameters and opened material components with their owner, state, bounds, sigma, scope and link`` () : unit =

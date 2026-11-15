@@ -38,6 +38,18 @@ module ConstructorUiIdOfDomain =
         /// The name shown by the new study's experiment choices (spec 0050 S11.5).
         member this.caption : ControlCaption = ControlCaption this.value
 
+    type SessionGainModel with
+
+        /// The gain choice with its anchor or interpolation run names (spec 0050 S12.1).
+        member this.caption : ControlCaption =
+            match this with
+            | FreeSessionGain -> ControlCaption "Free"
+            | AnchoredSessionGain anchors ->
+                let names = anchors |> List.map _.value |> String.concat ", "
+                ControlCaption $"Anchored to {names}"
+            | InterpolatedSessionGain repeats ->
+                ControlCaption $"Interpolated from {repeats.opening.value} to {repeats.closing.value}"
+
     type StudyParameterRef with
 
         member private this.studyParameterUiKey : ConstructorUiKey =
@@ -80,6 +92,15 @@ module ConstructorUiIdOfDomain =
         /// Opens the parameter editor for this owner and parameter (spec 0050 S11.5).
         static member studyParameterRow (parameter : StudyParameterRef) : ConstructorUiId =
             ConstructorUiId $"StudyParameterRow_{parameter.studyParameterUiKey.value}"
+
+        /// Chooses a session's gain model under its shared file-stem identity (spec 0050 S12.1).
+        static member studySessionGainChoice (session : SessionName) : ConstructorUiId =
+            let stem = FileStem.ofText session.value
+            ConstructorUiId $"StudySessionGain_{stem.value}"
+
+        /// Chooses the study's fit mode under its integer tag (spec 0050 S12.1).
+        static member studyFitModeChoice (mode : FitMode) : ConstructorUiId =
+            ConstructorUiId $"StudyFitMode_{mode.value}"
 
         /// Chooses the unknown's sharing scope (spec 0050 S11.5).
         static member studyParameterScopeChoice (parameter : StudyParameterRef) : ConstructorUiId =

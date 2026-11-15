@@ -577,7 +577,7 @@ module ScrollExtentTests =
     let ``the kit window's Items step leaves everything reachable`` () : unit =
         assertReachable "KitWindowItems" itemsStepKitWindow
 
-    /// The study grid and its open editor remain reachable at both small screen sizes (spec 0050 S11.5).
+    /// The study grids and open editor remain reachable at both small screen sizes (spec 0050 S11.5; S12.1).
     [<Fact>]
     let ``the kit window's Unknowns step leaves everything reachable`` () : unit =
         let makeWindow () : Window =
@@ -595,6 +595,21 @@ module ScrollExtentTests =
             | None -> Assert.Fail "The study parameter editor must be open"
             Assert.Equal(15, (List.exactlyOne (List.exactlyOne edited.kitStudies).materials).parameters.Length)
             let window = viewWindow KitWindowView.kitWindowView edited
+            window.Opened.Add(fun _ ->
+                Dispatcher.UIThread.RunJobs()
+                let scrollSubjects = subjects window
+                let grid =
+                    Assert.Single<Control>(scrollSubjects, fun control ->
+                        AutomationProperties.GetAutomationId control = ConstructorUiId.studySessionGrid.value)
+                    |> Assert.IsType<Grid>
+                let session = OpticalConstructor.Domain.Experiments.SessionName "Session 1"
+                let gainId = ConstructorUiId.studySessionGainChoice session
+                let gain =
+                    Assert.Single<Control>(scrollSubjects, fun control ->
+                        AutomationProperties.GetAutomationId control = gainId.value)
+                    |> Assert.IsType<ComboBox>
+                Assert.Contains<Control>(grid, subjects window)
+                Assert.Contains<Control>(gain, subjects window))
             window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
             window
         assertReachable "KitWindowUnknowns" makeWindow
