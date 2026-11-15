@@ -16,13 +16,17 @@ open Elmish
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.ExperimentData
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MeasuredData
+open OpticalConstructor.Domain.PrefitChecks
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Tests
@@ -134,6 +138,36 @@ module StudyViewTests =
 
     let private fitBoxColor (window : Window) (id : ConstructorUiId) : Color =
         Assert.IsType<SolidColorBrush>(Assert.IsType<Border>(SlotBarTests.controlById window id).Background).Color
+
+    // Spec 0050 S11.5: isolate status rendering from disk contents while retaining real scan validation.
+    let private prefitModelWithData (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let loaded = fitModelWith [] model
+        let pointsByPath =
+            [
+                ExperimentName "E1", DataFileText "x,y\n0,1\n45,0.6\n90,0.2\n"
+                ExperimentName "E3", DataFileText "x,y\n0,1\n120,0.5\n"
+            ]
+            |> List.map (fun (name, text) ->
+                let experiment : Experiment = loaded.experimentCollection.experiments |> List.find (fun experiment -> experiment.name = name)
+                let data = experiment.dataOpt |> Option.defaultWith (fun () -> failwith $"{name.value} must have an attachment")
+                let points =
+                    text.parseIntensitySeries
+                    |> Result.map (IntensityData >> SeriesPoints)
+                    |> Result.defaultWith (fun _ -> failwith $"The pre-fit fixture for {name.value} must parse")
+                data.attachment.path, points)
+            |> Map.ofList
+        let dataProxy : ExperimentDataProxy =
+            {
+                loaded.experimentData with
+                    attachmentStatus = fun _ -> Ok AttachedDataUnchanged
+                    readMapped = fun data ->
+                        match pointsByPath |> Map.tryFind data.attachment.path with
+                        | Some points -> Ok points
+                        | None -> Error (MalformedDataFileErr $"No pre-fit fixture data for '{data.attachment.path.value}'")
+            }
+        {
+            loaded with experimentData = dataProxy
+        }
 
     [<Fact>]
     let ``the study view UiIds are the stable intent-named ids`` () : unit =
@@ -312,6 +346,70 @@ module StudyViewTests =
                     let grid = gridOf window
                     Assert.Equal("Unknown", cellText grid (rowNumber window reference) 2)
                     Assert.Equal("[-1, 1]", cellText grid (rowNumber window reference) 4))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``the Fit step checks every run the fit reads, in study order, under the chosen study`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let shown = prefitModelWithData model
+                let expectedStudy = StudyName "QZ-LR"
+                let expectedRuns = [ ExperimentName "E1"; ExperimentName "E2"; ExperimentName "E3" ]
+                let expectedPoints = MeasuredPointCount 3
+                let study = shown.selectedStudyOpt |> Option.defaultWith (fun () -> failwith "The study must be selected")
+                Assert.Equal<StudyName>(expectedStudy, study.name)
+                Assert.Equal<ExperimentName list>(expectedRuns, study.experiments)
+                match shown.studyPrefitsOpt with
+                | Some (Ok [ ready; missing; inconsistent ]) ->
+                    Assert.Equal<ExperimentName list>(expectedRuns, [ ready.experiment.name; missing.experiment.name; inconsistent.experiment.name ])
+                    match ready.check with
+                    | Ok points -> Assert.Equal<MeasuredPointCount>(expectedPoints, points.pointCount)
+                    | Error error -> Assert.Fail $"E1 must be ready: {error.describe}"
+                    match missing.check with
+                    | Error (MissingDataErr _) -> ()
+                    | _ -> Assert.Fail "E2 must report MissingDataErr"
+                    match inconsistent.check with
+                    | Error (InconsistentDataErr _) -> ()
+                    | _ -> Assert.Fail "E3 must report InconsistentDataErr"
+                | _ -> Assert.Fail "The study must return exactly three pre-fit checks"
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Fit step mounts its pre-fit list with one row per run the fit reads`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let shown = prefitModelWithData model
+                let expectedRuns = [ ExperimentName "E1"; ExperimentName "E2"; ExperimentName "E3" ]
+                Assert.Equal<ConstructorFlowStep>(FitFlowStep, shown.flowStep)
+                withStudyWindow shown (fun window ->
+                    Assert.Single(SlotBarTests.controlsUnder window ConstructorUiId.studyFitPanel) |> ignore
+                    let prefits = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.studyPrefitList)
+                    Assert.Equal<string list>(
+                        expectedRuns |> List.map (fun name -> (ConstructorUiId.studyPrefitRow name).value),
+                        prefits.Children |> Seq.map AutomationProperties.GetAutomationId |> List.ofSeq)
+                    for name in expectedRuns do
+                        let row = Assert.Single(SlotBarTests.controlsUnder window (ConstructorUiId.studyPrefitRow name))
+                        Assert.Same(prefits, row.Parent))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a ready run shows its point count, and a run without data or out of range shows its typed message`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                withStudyWindow (prefitModelWithData model) (fun window ->
+                    let textOf (name : ExperimentName) : string =
+                        Assert.IsType<TextBlock>(SlotBarTests.controlById window (ConstructorUiId.studyPrefitRow name)).Text
+                    let ready = ExperimentName "E1"
+                    let missing = ExperimentName "E2"
+                    let inconsistent = ExperimentName "E3"
+                    Assert.Equal("E1: ready, 3 point(s)", textOf ready)
+                    Assert.Contains("no data is attached", textOf missing)
+                    Assert.Contains("the data does not fit the scan", textOf inconsistent))
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]

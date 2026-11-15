@@ -263,11 +263,6 @@ module ConstructorUiIdOfDomain =
         static member elementMenuPlaceOnReflectedOf (elementId : ElementId) : ConstructorUiId =
             ConstructorUiId $"ElementMenuPlaceOnReflectedOf_{elementId.value}"
 
-        /// A collected experiment's summary block and its typed validation-status line (`SolverHandoffView`).
-        static member solverHandoffRow (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"SolverHandoffRow_{experimentId.value}"
-
-        static member solverHandoffStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"SolverHandoffStatus_{experimentId.value}"
-
         /// A collected experiment's "Attach data file…" verb and its inline parse / validation status (the Inverse
         /// constructor's Data step, spec 0050 S9.3).
         static member attachDataFile (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"AttachDataFile_{experimentId.value}"

@@ -10,8 +10,8 @@ open OpticalConstructor.Domain.MeasuredData            // MeasuredPointCount / E
 open OpticalConstructor.Domain.ImportProfiles          // MappedPoints
 open OpticalConstructor.Domain.ExperimentData          // ExperimentDataProxy
 
-/// Loads a kit attachment through its import profile and validates its points against the detector the experiment's setup
-/// slots hold and its scan, through injected proxies (spec 0038 Part L step 037; spec 0050 S4.2, S8.2, S9.1, S9.2).
+/// Loads and validates a kit attachment against its profile, detector and scan for the study's pre-fit checks
+/// through injected proxies (spec 0038 Part L step 037; spec 0050 S4.2, S8.2, S9.1, S9.2, S11.5).
 module ExperimentDataLoad =
 
     /// The detector kind the first `Detector` slot's binding resolves to through the Library, which fixes the expected

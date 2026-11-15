@@ -289,13 +289,6 @@ type ConstructorUiId =
     static member chartWindowExportCsv : ConstructorUiId = ConstructorUiId "ChartWindowExportCsv"
     static member chartWindowDescription : ConstructorUiId = ConstructorUiId "ChartWindowDescription"
 
-    // --- The SolverHandoffWindow terminal summary (`SolverHandoffView`). ---
-    static member solverHandoffWindow : ConstructorUiId = ConstructorUiId "SolverHandoffWindow"
-    static member solverHandoffCollectionName : ConstructorUiId = ConstructorUiId "SolverHandoffCollectionName"
-    static member solverHandoffSolverMessage : ConstructorUiId = ConstructorUiId "SolverHandoffSolverMessage"
-    static member solverHandoffSummaryList : ConstructorUiId = ConstructorUiId "SolverHandoffSummaryList"
-    static member solverHandoffCloseButton : ConstructorUiId = ConstructorUiId "SolverHandoffCloseButton"
-
     // --- The combined table + element rotation scene (`TableAndElementRotationView`). ---
     static member tableElementCanvas : ConstructorUiId = ConstructorUiId "TableElementCanvas"
     static member teRotateR1MinusButton : ConstructorUiId = ConstructorUiId "TeRotateR1MinusButton"

@@ -319,8 +319,7 @@ module ScrollExtentTests =
         assertReachable "SourceEditor" (fun () -> LightSourceEditorWindow(SourceProxy.createInMemory (), LightSourceEditorView.NewSource (Placement.ElementValueId "src-x")))
 
     [<Fact>]
-    let ``the chart and solver-handoff windows leave everything reachable`` () =
-        let _, _, _, library = stores ()
+    let ``the chart window leaves everything reachable`` () =
         let chart : ExperimentChart.ExperimentChart =
             {
                 series =
@@ -336,23 +335,7 @@ module ScrollExtentTests =
                 description = ControlCaption "d"
                 xAxisKind = ExperimentChart.AngularXAxis
             }
-        let noData : ExperimentData.ExperimentDataProxy =
-            {
-                readPickedFile = fun _ -> Error (Kit.KitIoErr "no picked files in the layout fixture")
-                attachDataFile = fun _ -> Error (Kit.KitIoErr "no data files in the layout fixture")
-                attachmentStatus = fun _ -> Ok Kit.AttachedDataMissing
-                readMapped = fun _ -> Error (MeasuredData.MalformedDataFileErr "none")
-            }
         assertReachable "Chart" (fun () -> ChartWindow(chart))
-        assertReachable "Handoff" (fun () ->
-            let filled = filledExperiments ()
-            let collection : ExperimentCollectionStore.ExperimentCollectionSnapshot =
-                {
-                    name = ExperimentCollectionStore.CollectionName "run"
-                    experiments = filled.experimentCollection.experiments
-                    setups = filled.kitSetups
-                }
-            SolverHandoffWindow(library, noData, collection))
 
     /// Forty kits in memory, every fifth folder missing and every seventh kit starred, so the start screen's list is
     /// longer than the screen (spec 0050 S5.2).

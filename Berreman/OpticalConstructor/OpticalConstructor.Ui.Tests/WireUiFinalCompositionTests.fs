@@ -22,14 +22,6 @@ module WireUiFinalCompositionTests =
 
     let private owner = FolderName "WireUiFinalCompositionTests"
 
-    /// The SolverHandoff summary snapshot the root factory hands the window — an EMPTY collection, so
-    /// the terminal screen renders its summary + solver-comes-later message with no per-experiment
-    /// row and NO measured-data load against the real file-backed proxy (the rich per-file validation
-    /// is proven by `SolverHandoffWindowTests`). The point here is that the window COMPOSES over the
-    /// root-wired `library` + `experimentData` proxies and renders one frame without throwing.
-    let private handoffSnapshot : ExperimentCollectionStore.ExperimentCollectionSnapshot =
-        { name = ExperimentCollectionStore.CollectionName "wire-ui-sweep"; experiments = []; setups = [] }
-
     /// The ONE composition-root window factory: every `WindowKey` maps to its window built over the
     /// app-scope proxies — the "construct the WindowLauncher with every window factory" seam. The two
     /// editor keys carry the entity id minted at open (an Add opens a `NewMaterial` / `NewBlankSample`
@@ -41,10 +33,6 @@ module WireUiFinalCompositionTests =
             MaterialsWindow(ctx.materials, ctx.categories, ctx.catalogueImports) :> Window |> Ok
         | LibraryWindowKey ->
             LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports) :> Window |> Ok
-        | SolverHandoffWindowKey ->
-            let kit = KitOpening.scratchKit () |> SceneTestFixture.kitSuccess
-            let data = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked kit.proxy
-            SolverHandoffWindow(ctx.library, data, handoffSnapshot) :> Window |> Ok
         | CategoryEditorKey ->
             CategoryEditorWindow(ctx.categories) :> Window |> Ok
         | DataLocationsWindowKey ->
@@ -109,7 +97,7 @@ module WireUiFinalCompositionTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the root window-launcher factory opens and renders Materials, Library, the three editors, and the SolverHandoff`` () =
+    let ``the root window-launcher factory opens and renders Materials, Library, the three editors and Data locations`` () =
         HeadlessSession.run (fun () ->
             let ctx = TestAppScope.freshAppContext owner
             // ONE factory covering every WindowKey, driven through the REAL launcher over the shared
@@ -121,7 +109,6 @@ module WireUiFinalCompositionTests =
               SampleEditorKey (Library.newSampleId ())
               SourceEditorKey (Library.newSourceId ())
               CategoryEditorKey
-              SolverHandoffWindowKey
               DataLocationsWindowKey ]
             |> List.iter (openThroughLauncher ctx))
 
