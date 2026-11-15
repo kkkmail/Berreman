@@ -49,6 +49,7 @@ type KitStartWindow(context : AppContext, mode : ConstructorMode, pickerFor : To
                 kitHistory = context.kitHistory
                 limit = context.settings.kitHistoryLimit
                 clock = ClockProvider.system
+                kitIds = KitIdProvider.system
                 author = KitAuthor System.Environment.UserName
                 imports = context.catalogueImports
                 picker = pickerFor this

@@ -33,6 +33,8 @@ type KitStartContext =
         limit : KitHistoryLimit
         /// The clock a bump reads (spec 0050 S5.2).
         clock : ClockProvider
+        /// Supplies an identity only when CreateKit initializes a new kit (spec 0050 S12.1).
+        kitIds : KitIdProvider
         /// The author a new kit records (spec 0050 S5.2).
         author : KitAuthor
         /// The library's import seam an opened kit's snapshot resolves against (spec 0050 S5.2).
@@ -240,7 +242,7 @@ let updateKitStart (msg : KitStartMsg) (m : KitStartModel) : KitStartModel =
                 rows = kitStartRows m.context m.history filter
         }
     | CreateKit folder ->
-        m |> kitStartChosen folder (fun () -> openKitAt folder ReadWriteKitAccess m.context.clock m.context.author m.context.imports)
+        m |> kitStartChosen folder (fun () -> openKitWith m.context.kitIds folder ReadWriteKitAccess m.context.clock m.context.author m.context.imports)
     | OpenKit folder -> m |> kitStartOpenExisting folder
     | OpenKitReadOnly folder ->
         m |> kitStartChosen folder (fun () -> openKitAt folder ReadOnlyKitAccess m.context.clock m.context.author m.context.imports)

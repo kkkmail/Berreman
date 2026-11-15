@@ -41,6 +41,15 @@ type ItemIdProvider with
             mintItemId = fun () -> ItemId (Guid.NewGuid ())
         }
 
+/// Supplies new kits' identities at the constructor's composition boundary (spec 0050 S12.1).
+type KitIdProvider with
+
+    /// Mints a fresh `KitId` from a new GUID on every invocation (spec 0050 S12.1).
+    static member system : KitIdProvider =
+        {
+            mintKitId = fun () -> KitId (Guid.NewGuid ())
+        }
+
 /// A constructor session's opened kit, content and unconfirmed snapshot decisions (spec 0050 S4.3).
 [<ReferenceEquality>]
 type OpenedKit =
@@ -154,8 +163,10 @@ let private openedOver (folder : KitFolder) (context : KitContext) (imports : Ca
         Error error
 
 /// Opens or initializes a picked kit, reads its content and resolves snapshots without importing (spec 0050 S4.3).
+/// Mints an identity through the provider only when initializing a new kit (spec 0050 S12.1).
 /// Any failure after opening releases the kit and returns the original failure.
-let openKitAt
+let openKitWith
+    (kitIds : KitIdProvider)
     (folder : KitFolder)
     (access : KitAccess)
     (clock : ClockProvider)
@@ -166,12 +177,21 @@ let openKitAt
     let opened =
         match access with
         | ReadWriteKitAccess ->
-            let kitId = KitId (Guid.NewGuid ())
-            KitContext.openOrInitialise proxy clock (folder.namedKitFile kitId author)
+            KitContext.openOrInitialise proxy clock (fun now -> folder.namedKitFile (kitIds.mintKitId ()) author now)
         | ReadOnlyKitAccess -> KitContext.openKit proxy ReadOnlyKitAccess clock
     opened
     |> Result.mapError KitLibraryKitErr
     |> Result.bind (fun context -> openedOver folder context imports)
+
+/// Opens or initializes a kit using the system identity provider (spec 0050 S4.3; S12.1).
+let openKitAt
+    (folder : KitFolder)
+    (access : KitAccess)
+    (clock : ClockProvider)
+    (author : KitAuthor)
+    (imports : CatalogueImportContext)
+    : Result<OpenedKit, KitLibraryError> =
+    openKitWith KitIdProvider.system folder access clock author imports
 
 /// Opens a folder that is already a kit read-write and never initialises one, so Open kit… can offer Make this a kit (spec 0050 S5.2).
 /// A folder without .kit-json is NotAKitFolderErr and a kit open elsewhere KitLockedErr; neither writes anything.

@@ -19,6 +19,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.JobRunner
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
@@ -90,6 +91,7 @@ module KitStartTests =
             kitHistory = kitHistory
             limit = KitHistoryLimit.defaultValue
             clock = steppingClock firstOpen
+            kitIds = KitIdProvider.system
             author = kitStartAuthor
             imports = CatalogueImportContext.create stores.proxy
             picker = { pickKitFolder = fun () -> async { return None } }
@@ -400,6 +402,85 @@ module KitStartTests =
 
             Assert.Equal<KitStartOffer>(NoKitStartOffer, created.offer)
             Assert.Equal<ControlCaption option>(None, created.status))
+
+    [<Fact>]
+    let ``a new kit takes its id from the start screen's kit-id provider`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let folder = kitIn root "Optics QZ"
+            let store = historyOver [ folder ] KitHistory.empty
+            let expectedId = KitId (Guid.Parse "e63c9d6e-7961-4d9f-9c8d-e5a151414e0e")
+            let minted = ResizeArray<KitId> ()
+            let kitIds : KitIdProvider =
+                {
+                    mintKitId = fun () ->
+                        minted.Add expectedId
+                        expectedId
+                }
+            let context =
+                {
+                    contextOver store shown with kitIds = kitIds
+                }
+            Assert.False(Directory.Exists folder.value.value)
+
+            let created = updateKitStart (CreateKit folder) (initKitStart context ForwardConstructor)
+
+            let kit = Assert.Single<OpenedKit>(shown)
+            Assert.Equal<KitId>(expectedId, kit.library.kit.kitFile.id)
+            Assert.Equal<KitId>(expectedId, Assert.Single<KitId>(minted))
+            Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access)
+            let persisted =
+                (KitProxy.create folder).readKitFile ()
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            Assert.Equal<KitId>(expectedId, persisted.id)
+            Assert.Equal<KitFile>(kit.library.kit.kitFile, persisted)
+            Assert.Equal<KitStartOffer>(NoKitStartOffer, created.offer)
+            Assert.Equal<ControlCaption option>(None, created.status))
+
+    [<Fact>]
+    let ``opening an existing kit, read-write or read-only, mints no kit id`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let folder = kitIn root "Optics QZ"
+            let store = historyOver [ folder ] KitHistory.empty
+            let originalContext = contextOver store shown
+            let storedKit = madeKitAt folder originalContext.imports
+            let minted = ResizeArray<KitId> ()
+            let kitIds : KitIdProvider =
+                {
+                    mintKitId = fun () ->
+                        minted.Add storedKit.id
+                        storedKit.id
+                }
+            let context =
+                {
+                    originalContext with kitIds = kitIds
+                }
+
+            for message, access in
+                [
+                    OpenKit folder, ReadWriteKitAccess
+                    OpenKitReadOnly folder, ReadOnlyKitAccess
+                    CreateKit folder, ReadWriteKitAccess
+                ] do
+                let reopened = updateKitStart message (initKitStart context ForwardConstructor)
+                let kit = Assert.Single<OpenedKit>(shown)
+                Assert.Equal<KitAccess>(access, kit.library.kit.access)
+                Assert.Equal<KitFile>(storedKit, kit.library.kit.kitFile)
+                Assert.Empty minted
+                Assert.Equal<KitStartOffer>(NoKitStartOffer, reopened.offer)
+                Assert.Equal<ControlCaption option>(None, reopened.status)
+                closeHeld kit
+                shown.Clear ()
+
+            for access in [ ReadWriteKitAccess; ReadOnlyKitAccess ] do
+                let kit =
+                    openKitWith kitIds folder access context.clock context.author context.imports
+                    |> Result.defaultWith (fun error -> failwith error.describe)
+                shown.Add kit
+                Assert.Equal<KitAccess>(access, kit.library.kit.access)
+                Assert.Equal<KitFile>(storedKit, kit.library.kit.kitFile)
+                Assert.Empty minted
+                closeHeld kit
+                shown.Clear ())
 
     [<Fact>]
     let ``Open kit opens an existing kit and bumps it above the others`` () : unit =

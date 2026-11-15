@@ -785,6 +785,13 @@ module Kit =
             mintItemId : unit -> ItemId
         }
 
+    /// Mints a new kit's identity; the composition root chooses the provider (spec 0050 S12.1).
+    [<ReferenceEquality>]
+    type KitIdProvider =
+        {
+            mintKitId : unit -> KitId
+        }
+
     /// The lab's name for a piece (`LP1`, `CPL2`, `QZ`), kept as given; its `<label>.item-json` stem follows the
     /// shared name rule (spec 0050 S7.1; 001 §A).
     type ItemLabel =

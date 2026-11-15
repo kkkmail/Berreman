@@ -104,6 +104,7 @@ module KitStartWindowTests =
             kitHistory = kitHistory
             limit = KitHistoryLimit.defaultValue
             clock = kitStartClock
+            kitIds = KitIdProvider.system
             author = kitStartAuthor
             imports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
             picker = picker
