@@ -337,6 +337,10 @@ module KitWindowTests =
                         Assert.False(scope.IsEnabled)
                         let link = controlById window (ConstructorUiId.studyParameterLinkChoice unknown.parameter)
                         Assert.False(link.IsEnabled))
+                withKitWindow (readOnly |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)) (fun window ->
+                    controlById window ConstructorUiId.studyFitPanel |> ignore
+                    for id in [ ConstructorUiId.studyRunFitButton; ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ] do
+                        Assert.Equal<Control option>(None, tryControlById window id))
             finally studyModel.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
@@ -1171,8 +1175,9 @@ module KitWindowTests =
     let private flowStepIds : ConstructorUiId list =
         [ ConstructorUiId.flowItemsStep; ConstructorUiId.flowSetupsStep; ConstructorUiId.flowExperimentsStep ]
 
-    /// The Inverse strip adds Data and Unknowns below Main's steps (spec 0050 S9.3, S11.5).
-    let private inverseFlowStepIds : ConstructorUiId list = flowStepIds @ [ ConstructorUiId.flowDataStep; ConstructorUiId.flowUnknownsStep ]
+    /// The Inverse strip adds Data, Unknowns and Fit below Main's steps (spec 0050 S9.3, S11.5).
+    let private inverseFlowStepIds : ConstructorUiId list =
+        flowStepIds @ [ ConstructorUiId.flowDataStep; ConstructorUiId.flowUnknownsStep; ConstructorUiId.flowFitStep ]
 
     /// The Experiments bay's pane, which carries its id as its `Name` (`Ribbon.ribbonView`).
     let private experimentsPane : ConstructorUiId = ConstructorUiId.ribbonPane BayNames.experiments.uiKey
@@ -1200,6 +1205,7 @@ module KitWindowTests =
         Assert.Equal("FlowExperimentsStep", ConstructorUiId.flowExperimentsStep.value)
         Assert.Equal("FlowDataStep", ConstructorUiId.flowDataStep.value)
         Assert.Equal("FlowUnknownsStep", ConstructorUiId.flowUnknownsStep.value)
+        Assert.Equal("FlowFitStep", ConstructorUiId.flowFitStep.value)
         Assert.Equal("DataStepPanel", ConstructorUiId.dataStepPanel.value)
         Assert.Equal("DataSplitFileButton", ConstructorUiId.dataSplitFileButton.value)
         Assert.Equal<ConstructorUiId list>(inverseFlowStepIds, ConstructorFlowStep.all |> List.map _.flowUiId)
@@ -1210,6 +1216,7 @@ module KitWindowTests =
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowExperimentsStep, ExperimentsFlowStep.flowUiId)
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowDataStep, DataFlowStep.flowUiId)
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowUnknownsStep, UnknownsFlowStep.flowUiId)
+        Assert.Equal<ConstructorUiId>(ConstructorUiId.flowFitStep, FitFlowStep.flowUiId)
 
     [<Fact>]
     let ``the flow strip shows Items, Setups and Experiments left of the surface its step shows`` () : unit =
@@ -1232,7 +1239,7 @@ module KitWindowTests =
                     let stripIds, labels =
                         match model.constructorMode with
                         | ForwardConstructor -> flowStepIds, [ "Items"; "Setups"; "Experiments" ]
-                        | InverseConstructor -> inverseFlowStepIds, [ "Items"; "Setups"; "Experiments"; "Data"; "Unknowns" ]
+                        | InverseConstructor -> inverseFlowStepIds, [ "Items"; "Setups"; "Experiments"; "Data"; "Unknowns"; "Fit" ]
                     withKitWindow (model |> updateTableAndElementRotation (ShowFlowStep step)) (fun window ->
                         let strip = Assert.IsType<Border>(Assert.Single(controlsById window ConstructorUiId.flowStrip))
                         let boxes = stripIds |> List.map (controlById window)
@@ -1258,6 +1265,7 @@ module KitWindowTests =
                 let noDataBox (window : Window) : unit =
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowDataStep)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowUnknownsStep)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowFitStep)
                 onStep SetupsFlowStep (fun window -> namedControl window ConstructorUiId.tableElementCanvas) (fun window ->
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
                     Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
@@ -1276,6 +1284,8 @@ module KitWindowTests =
                     Assert.True(experimentsBox.Bottom <= dataBox.Top, $"Data {dataBox} must stand below Experiments {experimentsBox}")
                     let unknownsBox = windowRectOf window (controlById window ConstructorUiId.flowUnknownsStep)
                     Assert.True(dataBox.Bottom <= unknownsBox.Top, $"Unknowns {unknownsBox} must stand below Data {dataBox}")
+                    let fitBox = windowRectOf window (controlById window ConstructorUiId.flowFitStep)
+                    Assert.True(unknownsBox.Bottom <= fitBox.Top, $"Fit {fitBox} must stand below Unknowns {unknownsBox}")
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel))
                 onStepOf inverse DataFlowStep (fun window -> controlById window ConstructorUiId.dataStepPanel) (fun window ->
                     Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
@@ -1284,6 +1294,10 @@ module KitWindowTests =
                 onStepOf inverse UnknownsFlowStep (fun window -> controlById window ConstructorUiId.studyUnknownsPanel) (fun window ->
                     Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
+                onStepOf inverse FitFlowStep (fun window -> controlById window ConstructorUiId.studyFitPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyUnknownsPanel)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 

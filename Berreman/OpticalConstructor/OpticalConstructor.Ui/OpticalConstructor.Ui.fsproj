@@ -125,6 +125,7 @@
         <Compile Include="FlowStripView.fs" />
         <Compile Include="DataStepView.fs" />
     <Compile Include="StudyUnknownsView.fs" />
+    <Compile Include="StudyFitView.fs" />
         <Compile Include="KitWindowView.fs" />
         <Compile Include="ImportWizardWindow.fs" />
         <Compile Include="DataLocationsView.fs" />

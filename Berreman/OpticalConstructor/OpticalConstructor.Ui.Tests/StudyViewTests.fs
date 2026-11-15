@@ -8,6 +8,8 @@ open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Avalonia.Headless
 open Avalonia.Input
+open Avalonia.Media
+open Avalonia.Layout
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Elmish
@@ -15,6 +17,9 @@ open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MaterialLibrary
@@ -23,8 +28,12 @@ open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.StudyFitJob
+open OpticalConstructor.Ui.JobRunner
+open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.StudyEngine
 
-/// The Unknowns step's controls and persisted study edits, driven by stable IDs (spec 0050 S11.5).
+/// The study's Unknowns and Fit controls, driven by stable IDs (spec 0050 S11.5).
 module StudyViewTests =
 
     let private owner = FolderName "StudyViewTests"
@@ -98,6 +107,34 @@ module StudyViewTests =
     let private cellText (grid : Grid) (row : int) (column : int) : string =
         Assert.IsType<TextBlock>(cellAt grid row column).Text
 
+    let private fitModelWith (runs : FitRun list) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        for run in runs do model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
+        for setup in model.kitSetups do
+            let specified =
+                {
+                    setup with
+                        slots = setup.slots |> List.map (fun slot ->
+                            if slot.placement.catalogueKind = OpticalConstructor.Domain.Placement.LightSource then
+                                {
+                                    slot with
+                                        placement =
+                                            {
+                                                slot.placement with valueId = Some PresetIds.heNe633
+                                            }
+                                }
+                            else slot)
+                }
+            model.kit.proxy.writeSetup specified |> SceneTestFixture.kitSuccess
+        let loaded =
+            model
+            |> updateTableAndElementRotation ReloadKitChanges
+            |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)
+        Assert.Equal<ControlCaption option>(None, loaded.kitStatus)
+        loaded
+
+    let private fitBoxColor (window : Window) (id : ConstructorUiId) : Color =
+        Assert.IsType<SolidColorBrush>(Assert.IsType<Border>(SlotBarTests.controlById window id).Background).Color
+
     [<Fact>]
     let ``the study view UiIds are the stable intent-named ids`` () : unit =
         Assert.Equal("FlowUnknownsStep", ConstructorUiId.flowUnknownsStep.value)
@@ -108,8 +145,24 @@ module StudyViewTests =
         Assert.Equal("CreateStudyButton", ConstructorUiId.createStudyButton.value)
         Assert.Equal("StudyExperimentsText", ConstructorUiId.studyExperimentsText.value)
         Assert.Equal("StudyUnknownsGrid", ConstructorUiId.studyUnknownsGrid.value)
+        Assert.Equal("FlowFitStep", ConstructorUiId.flowFitStep.value)
+        Assert.Equal("StudyFitPanel", ConstructorUiId.studyFitPanel.value)
+        Assert.Equal("StudyPrefitList", ConstructorUiId.studyPrefitList.value)
+        Assert.Equal("StudyRunFitButton", ConstructorUiId.studyRunFitButton.value)
+        Assert.Equal("StudyRunStageOneButton", ConstructorUiId.studyRunStageOneButton.value)
+        Assert.Equal("StudyRunStageTwoButton", ConstructorUiId.studyRunStageTwoButton.value)
+        Assert.Equal("StudyCalibrationFixedChoice", ConstructorUiId.studyCalibrationFixedChoice.value)
+        Assert.Equal("StudyCalibrationPriorChoice", ConstructorUiId.studyCalibrationPriorChoice.value)
+        Assert.Equal("StudyFitProgressBar", ConstructorUiId.studyFitProgressBar.value)
+        Assert.Equal("StudyFitProgressText", ConstructorUiId.studyFitProgressText.value)
+        Assert.Equal("StudyFitCancelButton", ConstructorUiId.studyFitCancelButton.value)
+        Assert.Equal("StudyFitErrorText", ConstructorUiId.studyFitErrorText.value)
+        Assert.Equal("FitRunHistory", ConstructorUiId.fitRunHistory.value)
         let study = StudyName "QZ-LR"
         let experiment = ExperimentName "E1"
+        let fitRun = FitRunName "QZ-LR@20261101T120000Z"
+        Assert.Equal("StudyPrefitRow_E1", (ConstructorUiId.studyPrefitRow experiment).value)
+        Assert.Equal("FitRunRow_QZ-LR@20261101T120000Z", (ConstructorUiId.fitRunRow fitRun).value)
         let cpl1 = ItemId (System.Guid.Parse "41400000-0000-4000-8000-000000000011")
         let itemParameter = ItemParameterRef (cpl1, retardance)
         let material = MaterialId (System.Guid.Parse "41400000-0000-4000-8000-000000000102")
@@ -259,4 +312,215 @@ module StudyViewTests =
                     let grid = gridOf window
                     Assert.Equal("Unknown", cellText grid (rowNumber window reference) 2)
                     Assert.Equal("[-1, 1]", cellText grid (rowNumber window reference) 4))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``the Fit step offers Run joint and the two stages on one row and lists the study's fit runs, oldest first`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let study = List.exactlyOne model.kitStudies
+                let first = StudyFitViewFixture.fitViewRunOf study StudyFitViewFixture.firstFitViewRunStamp
+                let secondStamp = ClockTime (first.stamp.value.AddHours 1.0)
+                let second = StudyFitViewFixture.fitViewRunOf study secondStamp
+                let shown = fitModelWith [ second; first ] model
+                withStudyWindow shown (fun window ->
+                    let ids = [ ConstructorUiId.studyRunFitButton; ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ]
+                    let buttons = ids |> List.map (SlotBarTests.controlById window)
+                    let row = Assert.IsType<StackPanel>(buttons.Head.Parent)
+                    Assert.Equal<Orientation>(Orientation.Horizontal, row.Orientation)
+                    Assert.Equal<Control list>(buttons, row.Children |> Seq.toList)
+                    Assert.Equal<string list>([ "Run joint"; "Run stage 1 (calibration)"; "Run stage 2 (objects)" ], ids |> List.map (SlotBarTests.boxLabelOf window))
+                    Assert.Equal<string list>([ "Run joint"; "Run stage 1 (calibration)"; "Run stage 2 (objects)" ], buttons |> List.map AutomationProperties.GetName)
+                    for button in buttons do
+                        Assert.Same(row, button.Parent)
+                        Assert.True button.IsEffectivelyEnabled
+                    for left, right in List.pairwise buttons do
+                        Assert.True(left.Bounds.Right < right.Bounds.Left, "Fit verbs must run left to right with a gap")
+                        Assert.Equal(left.Bounds.Y, right.Bounds.Y)
+                    Assert.Equal("fixed", SlotBarTests.boxLabelOf window ConstructorUiId.studyCalibrationFixedChoice)
+                    Assert.Equal("as priors", SlotBarTests.boxLabelOf window ConstructorUiId.studyCalibrationPriorChoice)
+                    let fixedBox = SlotBarTests.controlById window ConstructorUiId.studyCalibrationFixedChoice
+                    let priorBox = SlotBarTests.controlById window ConstructorUiId.studyCalibrationPriorChoice
+                    Assert.Same(fixedBox.Parent, priorBox.Parent)
+                    Assert.True(fixedBox.Bounds.Right < priorBox.Bounds.Left)
+                    Assert.True((SlotBarTests.topLeftOf window fixedBox).Y >= (SlotBarTests.topLeftOf window buttons.Head).Y + buttons.Head.Bounds.Height)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window ConstructorUiId.studyCalibrationFixedChoice)
+                    Assert.NotEqual(MaterialsWindowView.positiveBackground, fitBoxColor window ConstructorUiId.studyCalibrationPriorChoice)
+                    let history = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.fitRunHistory)
+                    Assert.Equal<string list>(
+                        [ (ConstructorUiId.fitRunRow first.name).value; (ConstructorUiId.fitRunRow second.name).value ],
+                        history.Children |> Seq.map AutomationProperties.GetAutomationId |> List.ofSeq)
+                    for run in [ first; second ] do
+                        Assert.Equal($"{run.name.value} — {run.stage.text}, {run.engine.text}, {run.runs.Length} run(s)",
+                                     SlotBarTests.boxLabelOf window (ConstructorUiId.fitRunRow run.name))
+                    let prefits = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.studyPrefitList)
+                    Assert.Equal<string list>(study.experiments |> List.map (fun name -> (ConstructorUiId.studyPrefitRow name).value),
+                                             prefits.Children |> Seq.map AutomationProperties.GetAutomationId |> List.ofSeq)
+                    Assert.Equal("E1: ready, 4 point(s)", Assert.IsType<TextBlock>(prefits.Children[0]).Text)
+                    Assert.Contains("E2: no data is attached:", Assert.IsType<TextBlock>(prefits.Children[1]).Text)
+                    Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(Assert.IsType<TextBlock>(prefits.Children[1]).Foreground).Color)
+                    Assert.Equal("E3: ready, 4 point(s)", Assert.IsType<TextBlock>(prefits.Children[2]).Text)
+                    pressStudyBox window (ConstructorUiId.fitRunRow first.name)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window (ConstructorUiId.fitRunRow first.name))
+                    pressStudyBox window (ConstructorUiId.fitRunRow second.name)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window (ConstructorUiId.fitRunRow second.name))
+                    Assert.NotEqual(MaterialsWindowView.positiveBackground, fitBoxColor window (ConstructorUiId.fitRunRow first.name)))
+                let attachment =
+                    (model.experimentCollection.experiments |> List.find (fun experiment -> experiment.name = ExperimentName "E1")).dataOpt
+                    |> Option.map _.attachment
+                    |> Option.defaultWith (fun () -> failwith "E1 must be attached")
+                let olderData =
+                    {
+                        attachment with contentHash = ContentHash (String.replicate 64 "0")
+                    }
+                let latestWithOlderData =
+                    {
+                        second with dataRead = [ olderData ]
+                    }
+                let changed =
+                    {
+                        shown with kitFitRuns = [ first; latestWithOlderData ]
+                    }
+                withStudyWindow changed (fun window ->
+                    let e1 = ExperimentName "E1"
+                    let text = Assert.IsType<TextBlock>(SlotBarTests.controlById window (ConstructorUiId.studyPrefitRow e1)).Text
+                    Assert.Equal("E1: ready, 4 point(s) — data changed since the last fit run", text))
+                let emptyStudy =
+                    {
+                        study with experiments = []
+                    }
+                let empty =
+                    {
+                        shown with
+                            kitFitRuns = []
+                            kitStudies = [ emptyStudy ]
+                    }
+                withStudyWindow empty (fun window ->
+                    let prefits = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.studyPrefitList)
+                    Assert.Equal("The study holds no run a fit reads.", Assert.IsType<TextBlock>(Assert.Single prefits.Children).Text)
+                    let history = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.fitRunHistory)
+                    Assert.Equal("No fit run yet.", Assert.IsType<TextBlock>(Assert.Single history.Children).Text))
+                let missing = ExperimentName "Absent"
+                let invalidStudy =
+                    {
+                        study with experiments = [ missing ]
+                    }
+                let invalid =
+                    {
+                        shown with kitStudies = [ invalidStudy ]
+                    }
+                withStudyWindow invalid (fun window ->
+                    let prefits = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.studyPrefitList)
+                    let text = Assert.IsType<TextBlock>(Assert.Single prefits.Children)
+                    Assert.Contains(missing.value, text.Text)
+                    Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(text.Foreground).Color))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing Run joint starts one fit through the shell's host, and Cancel cancels it`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let study = List.exactlyOne model.kitStudies
+                let first = StudyFitViewFixture.fitViewRunOf study StudyFitViewFixture.firstFitViewRunStamp
+                let secondStamp = ClockTime (first.stamp.value.AddHours 1.0)
+                let second = StudyFitViewFixture.fitViewRunOf study secondStamp
+                let loaded = fitModelWith [ second; first ] model
+                let jobs = ResizeArray<IterationWatch -> Result<FitRun, StudyFitError>> ()
+                let cancels = ResizeArray<unit> ()
+                let host : StudyFitJobHost =
+                    {
+                        startStudyFit = fun job ->
+                            jobs.Add job
+                            {
+                                cancelStudyFit = fun () -> cancels.Add ()
+                            }
+                    }
+                let initial =
+                    {
+                        loaded with
+                            kitShell =
+                                {
+                                    loaded.kitShell with studyFits = host
+                                }
+                    }
+                let messages = ResizeArray<TableAndElementRotationMsg> ()
+                let mutable send : TableAndElementRotationMsg -> unit = ignore
+                let update (message : TableAndElementRotationMsg) (state : TableAndElementRotationModel) : TableAndElementRotationModel =
+                    messages.Add message
+                    updateTableAndElementRotation message state
+                let view (state : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : Avalonia.FuncUI.Types.IView =
+                    send <- dispatch
+                    KitWindowView.kitWindowView state dispatch
+                let window = HostWindow()
+                Program.mkSimple (fun () -> initial) update view |> Program.withHost window |> Program.run
+                window.Width <- 1000.0
+                window.Height <- 700.0
+                let report (message : StudyFitMsg) : unit =
+                    send (StudyFit message)
+                    Dispatcher.UIThread.RunJobs()
+                let assertRequest (stage : FitStage) (calibrationUse : CalibrationUse) : unit =
+                    let request =
+                        messages |> Seq.choose (function StudyFit (RunFit request) -> Some request | _ -> None) |> Seq.last
+                    Assert.Equal<StudyName>(study.name, request.study)
+                    Assert.Equal<FitStage>(stage, request.stage)
+                    Assert.Equal<CalibrationUse>(calibrationUse, request.calibrationUse)
+                try
+                    window.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    pressStudyBox window ConstructorUiId.studyCalibrationPriorChoice
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window ConstructorUiId.studyCalibrationPriorChoice)
+                    pressStudyBox window ConstructorUiId.studyRunFitButton
+                    Assert.Single jobs |> ignore
+                    assertRequest JointStage CalibrationAsPrior
+                    Assert.True(Assert.IsType<ProgressBar>(SlotBarTests.controlById window ConstructorUiId.studyFitProgressBar).IsIndeterminate)
+                    SlotBarTests.controlById window ConstructorUiId.studyFitCancelButton |> ignore
+                    for id in [ ConstructorUiId.studyRunFitButton; ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ] do
+                        Assert.False((SlotBarTests.controlById window id).IsEffectivelyEnabled)
+                    let progress : JobProgress =
+                        {
+                            completed = JobStepCount 3
+                            total = None
+                            elapsed = JobElapsed (System.TimeSpan.FromSeconds 0.2)
+                        }
+                    report (StudyFitProgressed progress)
+                    Assert.Contains("3 iterations", Assert.IsType<TextBlock>(SlotBarTests.controlById window ConstructorUiId.studyFitProgressText).Text)
+                    pressStudyBox window ConstructorUiId.studyFitCancelButton
+                    Assert.Single cancels |> ignore
+                    Assert.Single jobs |> ignore
+                    report (StudyFitEnded (Error (FitCancelledErr "cancelled by the test host")))
+                    SlotBarTests.assertAbsent window ConstructorUiId.studyFitProgressBar
+                    SlotBarTests.assertAbsent window ConstructorUiId.studyFitCancelButton
+                    Assert.Equal<FitRun list>([ first; second ], model.kit.proxy.readFitRuns study.name |> SceneTestFixture.kitSuccess)
+                    pressStudyBox window ConstructorUiId.studyCalibrationFixedChoice
+                    pressStudyBox window ConstructorUiId.studyRunStageOneButton
+                    Assert.Equal(2, jobs.Count)
+                    assertRequest CalibrationStage CalibrationHeldFixed
+                    let completedStamp = ClockTime (second.stamp.value.AddHours 1.0)
+                    let completed : FitRun =
+                        {
+                            StudyFitViewFixture.fitViewRunOf study completedStamp with stage = CalibrationStage
+                        }
+                    report (StudyFitEnded (Ok completed))
+                    let history = Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.fitRunHistory)
+                    Assert.Equal(3, history.Children.Count)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window (ConstructorUiId.fitRunRow completed.name))
+                    Assert.Equal<FitRun list>([ first; second; completed ], model.kit.proxy.readFitRuns study.name |> SceneTestFixture.kitSuccess)
+                    SlotBarTests.assertAbsent window ConstructorUiId.studyFitProgressBar
+                    pressStudyBox window ConstructorUiId.studyCalibrationPriorChoice
+                    pressStudyBox window ConstructorUiId.studyRunStageTwoButton
+                    Assert.Equal(3, jobs.Count)
+                    assertRequest ObjectStage CalibrationAsPrior
+                    let error = FitRunRaisedErr "recorded fit failed"
+                    report (StudyFitEnded (Error error))
+                    let errorText = Assert.IsType<TextBlock>(SlotBarTests.controlById window ConstructorUiId.studyFitErrorText)
+                    Assert.Equal(error.describe, errorText.Text)
+                    Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(errorText.Foreground).Color)
+                    SlotBarTests.assertAbsent window ConstructorUiId.studyFitCancelButton
+                    Assert.Equal(3, Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.fitRunHistory).Children.Count)
+                finally
+                    window.Close()
+                    Dispatcher.UIThread.RunJobs()
             finally model.kit.close () |> SceneTestFixture.kitSuccess)

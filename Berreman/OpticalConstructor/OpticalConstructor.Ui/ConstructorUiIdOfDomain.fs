@@ -18,6 +18,8 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.FitRuns
 
 /// The Controls values derived from a Domain value: the automation ids (spec 0048 R1) and a control's
 /// keys, counts and captions. Controls references no Domain type, so they are extension members here,
@@ -44,6 +46,14 @@ module ConstructorUiIdOfDomain =
                 ConstructorUiKey $"{version.materialId.value}_v{version.version.value}_{name.value}"
 
     type ConstructorUiId with
+
+        /// The pre-fit check of the experiment named by its file stem (spec 0050 S11.5).
+        static member studyPrefitRow (name : ExperimentName) : ConstructorUiId =
+            ConstructorUiId $"StudyPrefitRow_{name.fileStem.value}"
+
+        /// Selects the fit run named by its file stem (spec 0050 S11.5).
+        static member fitRunRow (name : FitRunName) : ConstructorUiId =
+            ConstructorUiId $"FitRunRow_{name.fileStem.value}"
 
         /// Chooses the study by its file stem (spec 0050 S11.5).
         static member studyChoice (name : StudyName) : ConstructorUiId = ConstructorUiId $"StudyChoice_{name.fileStem.value}"

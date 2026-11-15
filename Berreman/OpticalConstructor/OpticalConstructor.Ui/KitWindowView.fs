@@ -351,6 +351,10 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
             Border.create [ Border.child (StudyUnknownsView.studyUnknownsView model dispatch) ]
             |> Avalonia.FuncUI.DSL.View.withKey "unknowns"
             :> IView
+        | FitFlowStep ->
+            Border.create [ Border.child (StudyFitView.studyFitView model dispatch) ]
+            |> Avalonia.FuncUI.DSL.View.withKey "fit"
+            :> IView
     DockPanel.create [
         DockPanel.children [
             StackPanel.create [

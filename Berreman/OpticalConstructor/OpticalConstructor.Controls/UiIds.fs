@@ -892,6 +892,34 @@ type ConstructorUiId =
     /// The study's parameter owners, states, scopes and links (spec 0050 S11.5).
     static member studyUnknownsGrid : ConstructorUiId = ConstructorUiId "StudyUnknownsGrid"
 
+    // --- The study's Fit step (StudyFitView). ---
+    /// Opens the Inverse constructor's Fit step (spec 0050 S11.5).
+    static member flowFitStep : ConstructorUiId = ConstructorUiId "FlowFitStep"
+    /// The study's Fit surface (spec 0050 S11.5).
+    static member studyFitPanel : ConstructorUiId = ConstructorUiId "StudyFitPanel"
+    /// The checks of every run the fit reads (spec 0050 S11.5).
+    static member studyPrefitList : ConstructorUiId = ConstructorUiId "StudyPrefitList"
+    /// Runs every unknown jointly (spec 0050 S11.5; 001 §O).
+    static member studyRunFitButton : ConstructorUiId = ConstructorUiId "StudyRunFitButton"
+    /// Runs the calibration stage (spec 0050 S11.5).
+    static member studyRunStageOneButton : ConstructorUiId = ConstructorUiId "StudyRunStageOneButton"
+    /// Runs the object stage (spec 0050 S11.5).
+    static member studyRunStageTwoButton : ConstructorUiId = ConstructorUiId "StudyRunStageTwoButton"
+    /// Holds stage two's calibration fixed (spec 0050 S11.5).
+    static member studyCalibrationFixedChoice : ConstructorUiId = ConstructorUiId "StudyCalibrationFixedChoice"
+    /// Uses stage two's calibration as priors (spec 0050 S11.5).
+    static member studyCalibrationPriorChoice : ConstructorUiId = ConstructorUiId "StudyCalibrationPriorChoice"
+    /// Indicates a fit running without a known iteration total (spec 0050 S11.5).
+    static member studyFitProgressBar : ConstructorUiId = ConstructorUiId "StudyFitProgressBar"
+    /// Reports the fit's iterations and elapsed time (spec 0050 S11.5).
+    static member studyFitProgressText : ConstructorUiId = ConstructorUiId "StudyFitProgressText"
+    /// Cancels the running fit (spec 0050 S11.5).
+    static member studyFitCancelButton : ConstructorUiId = ConstructorUiId "StudyFitCancelButton"
+    /// Explains the last fit's refusal (spec 0050 S11.5).
+    static member studyFitErrorText : ConstructorUiId = ConstructorUiId "StudyFitErrorText"
+    /// The selected study's fit runs, oldest first (spec 0050 S11.5).
+    static member fitRunHistory : ConstructorUiId = ConstructorUiId "FitRunHistory"
+
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).
     static member slotBar : ConstructorUiId = ConstructorUiId "SlotBar"

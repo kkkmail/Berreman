@@ -353,9 +353,11 @@ type ConstructorFlowStep =
     | DataFlowStep
     /// The study's parameters, scopes and links, in the Inverse constructor alone (spec 0050 S11.5).
     | UnknownsFlowStep
+    /// The study's pre-fit checks, run controls and fit history (spec 0050 S11.5).
+    | FitFlowStep
 
     /// The working steps in 001 §O's order (spec 0050 S7.2, S9.3, S11.5; .spec-md §3.22).
-    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep ]
+    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep ]
 
     /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3, S11.5).
     static member stepsOf (mode : ConstructorMode) : ConstructorFlowStep list =
@@ -363,7 +365,7 @@ type ConstructorFlowStep =
         | InverseConstructor -> ConstructorFlowStep.all
         | ForwardConstructor ->
             ConstructorFlowStep.all
-            |> List.filter (function DataFlowStep | UnknownsFlowStep -> false | _ -> true)
+            |> List.filter (function DataFlowStep | UnknownsFlowStep | FitFlowStep -> false | _ -> true)
 
     /// The strip's caption of the step (spec 0050 S7.2, S11.5).
     member this.caption : ControlCaption =
@@ -373,6 +375,7 @@ type ConstructorFlowStep =
         | ExperimentsFlowStep -> ControlCaption "Experiments"
         | DataFlowStep -> ControlCaption "Data"
         | UnknownsFlowStep -> ControlCaption "Unknowns"
+        | FitFlowStep -> ControlCaption "Fit"
 
     /// The id of the step's box in the flow strip (spec 0050 S7.2, S11.5).
     member this.flowUiId : ConstructorUiId =
@@ -382,6 +385,7 @@ type ConstructorFlowStep =
         | ExperimentsFlowStep -> ConstructorUiId.flowExperimentsStep
         | DataFlowStep -> ConstructorUiId.flowDataStep
         | UnknownsFlowStep -> ConstructorUiId.flowUnknownsStep
+        | FitFlowStep -> ConstructorUiId.flowFitStep
 
 /// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
 /// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
@@ -559,6 +563,7 @@ type StudySurfaceState =
     {
         studyOpt : StudyName option
         fitRunOpt : FitRunName option
+        calibrationUse : CalibrationUse
         newStudyName : ControlCaption
         newStudyExperiments : Experiments.ExperimentName list
     }
@@ -568,6 +573,7 @@ type StudySurfaceState =
         {
             studyOpt = None
             fitRunOpt = None
+            calibrationUse = CalibrationHeldFixed
             newStudyName = ControlCaption ""
             newStudyExperiments = []
         }
@@ -1039,6 +1045,10 @@ type TableAndElementRotationMsg =
     | PromoteToLibrary of FitRunName * PromotionSubject
     /// Shows a held study and its latest fit run without writing (spec 0050 S11.5).
     | SelectStudy of StudyName
+    /// Selects a fit run held by the chosen study without writing (spec 0050 S11.5).
+    | SelectFitRun of FitRunName
+    /// Chooses how stage two holds the calibration without writing (spec 0050 S11.5).
+    | SetStudyCalibrationUse of CalibrationUse
     /// Sets the New study form's typed name without writing (spec 0050 S11.5).
     | SetNewStudyName of ControlCaption
     /// Toggles an experiment in the New study form without writing (spec 0050 S11.5).
@@ -2189,6 +2199,13 @@ type TableAndElementRotationModel with
             |> List.filter (fun run -> run.study = study.name)
             |> List.sortBy _.stamp
 
+    /// Checks the study's fit inputs against the latest fit's data, regardless of the selected run (spec 0050 S11.5).
+    member model.studyPrefitsOpt : Result<ExperimentPrefit list, StudyForwardError> option =
+        model.selectedStudyOpt
+        |> Option.map (fun study ->
+            let fitted = model.studyFitRuns |> List.tryLast |> Option.map _.dataRead |> Option.defaultValue []
+            study.prefitWith model.studyForwardContext fitted)
+
     /// The item's model as the window's stores resolve it: its stored version through `itemModels`, its form checked
     /// against the instance, and only then its preset or sample version; `None` when any of them is unresolved, an
     /// error or of another form (spec 0050 S7.2, S8.2).
@@ -2933,6 +2950,24 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             selected.studySurface with fitRunOpt = selected.studyFitRuns |> List.tryLast |> Option.map _.name
                         }
             }
+    | SelectFitRun name ->
+        if model.studyFitRuns |> List.exists (fun run -> run.name = name) then
+            {
+                model with
+                    studySurface =
+                        {
+                            model.studySurface with fitRunOpt = Some name
+                        }
+            }
+        else model
+    | SetStudyCalibrationUse calibrationUse ->
+        {
+            model with
+                studySurface =
+                    {
+                        model.studySurface with calibrationUse = calibrationUse
+                    }
+        }
     | SetNewStudyName name ->
         {
             model with
@@ -3011,7 +3046,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         { model with flowStep = SetupsFlowStep; ribbon = bay }
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
     // Spec 0050 S9.3, S11.5: the Inverse surfaces keep the open bay for the workbench's return.
-    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep) as step) ->
+    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | FitFlowStep) as step) ->
         {
             model with flowStep = step
         }

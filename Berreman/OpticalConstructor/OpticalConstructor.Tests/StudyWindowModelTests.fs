@@ -14,6 +14,10 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Domain.MeasuredData
+open OpticalConstructor.Domain.PrefitChecks
+open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -1217,4 +1221,88 @@ module StudyWindowModelTests =
             Assert.Equal<FitRunName option>(Some qzSecond.name, other.studySurface.fitRunOpt)
             let unknown = other |> updateTableAndElementRotation (SelectStudy (StudyName "Absent"))
             Assert.Equal<TableAndElementRotationModel>(other, unknown)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+
+    [<Fact>]
+    let ``the chosen fit run and the calibration use choose what the Fit step shows and runs`` () : unit =
+        withWindow ReadWriteKitAccess [ studyOf qzLr ] [ qzRun ] (fun folder loaded ->
+            let specified =
+                {
+                    bench with
+                        slots = bench.slots |> List.map (fun slot ->
+                            if slot.placement.catalogueKind = LightSource then
+                                {
+                                    slot with
+                                        placement =
+                                            {
+                                                slot.placement with valueId = Some PresetIds.heNe633
+                                            }
+                                }
+                            else slot)
+                }
+            loaded.kit.proxy.writeSetup specified |> kitValue
+            let file = FileName "e1.csv"
+            let content = FileByteContent (System.Text.Encoding.UTF8.GetBytes "x,y\n0,1\n30,0.75\n60,0.25\n90,0\n")
+            let attached = loaded.kit.proxy.copyInFile KitDataFolder.root file content |> kitValue
+            let mapping : MappedAttachment =
+                {
+                    attachment = attached.attachment
+                    profile = ImportProfileName.intensitySeries
+                    rows = AllDataRows
+                    exclusions = []
+                }
+            let first : Experiment =
+                {
+                    List.find (fun (experiment : Experiment) -> experiment.name = e1) experiments with dataOpt = Some mapping
+                }
+            loaded.kit.proxy.writeExperiment first |> kitValue
+            let priorData =
+                {
+                    attached.attachment with contentHash = ContentHash (String.replicate 64 "0")
+                }
+            let laterStamp = ClockTime (qzRun.stamp.value.AddHours 1.0)
+            let second =
+                {
+                    FitRunFileFixtures.fitRunOf qzLr laterStamp with dataRead = [ priorData ]
+                }
+            loaded.kit.proxy.writeFitRun second |> kitValue
+            let ready = loaded |> updateTableAndElementRotation ReloadKitChanges
+            Assert.Equal<ControlCaption option>(None, ready.kitStatus)
+            Assert.Equal<FitRun list>([ qzRun; second ], ready.studyFitRuns)
+            Assert.Equal<CalibrationUse>(CalibrationHeldFixed, ready.studySurface.calibrationUse)
+            let before = folderBytes folder
+            let selected = ready |> updateTableAndElementRotation (SelectFitRun qzRun.name)
+            Assert.Equal<FitRunName option>(Some qzRun.name, selected.studySurface.fitRunOpt)
+            let absent = FitRunName "Absent@20261101T120000Z"
+            Assert.Equal<TableAndElementRotationModel>(selected, selected |> updateTableAndElementRotation (SelectFitRun absent))
+            let prior = selected |> updateTableAndElementRotation (SetStudyCalibrationUse CalibrationAsPrior)
+            Assert.Equal<CalibrationUse>(CalibrationAsPrior, prior.studySurface.calibrationUse)
+            Assert.Equal<FitRunName option>(Some qzRun.name, prior.studySurface.fitRunOpt)
+            match prior.studyPrefitsOpt with
+            | Some (Ok [ firstCheck; secondCheck ]) ->
+                Assert.Equal<ExperimentName list>([ e1; e2 ], [ firstCheck.experiment.name; secondCheck.experiment.name ])
+                match firstCheck.check with
+                | Ok points -> Assert.Equal<MeasuredPointCount>(MeasuredPointCount 4, points.pointCount)
+                | Error error -> Assert.Fail $"E1 must be ready: {error.describe}"
+                Assert.Equal<DataChangeFlag option>(Some (ChangedSinceFitFlag attached.attachment.contentHash), firstCheck.changeOpt)
+                match secondCheck.check with
+                | Error (MissingDataErr reason) -> Assert.Contains("no measured-data file", reason)
+                | Error error -> Assert.Fail $"E2 must report missing data: {error.describe}"
+                | Ok _ -> Assert.Fail "E2 has no data"
+                Assert.Equal<DataChangeFlag option>(None, secondCheck.changeOpt)
+            | Some (Error error) -> Assert.Fail error.describe
+            | _ -> Assert.Fail "The Fit step must check E1 then E2"
+            let beforeFirstFit =
+                {
+                    prior with kitFitRuns = []
+                }
+            match beforeFirstFit.studyPrefitsOpt with
+            | Some (Ok (firstCheck :: _)) -> Assert.Equal<DataChangeFlag option>(Some DataUnchangedFlag, firstCheck.changeOpt)
+            | _ -> Assert.Fail "The study must also check its inputs before its first fit"
+            let unselected =
+                {
+                    prior with studySurface = StudySurfaceState.initial
+                }
+            Assert.Equal<Result<ExperimentPrefit list, StudyForwardError> option>(None, unselected.studyPrefitsOpt)
+            Assert.Equal<TableAndElementRotationModel>(unselected, unselected |> updateTableAndElementRotation (SelectFitRun qzRun.name))
             Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))

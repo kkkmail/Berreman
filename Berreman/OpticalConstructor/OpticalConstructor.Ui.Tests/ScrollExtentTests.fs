@@ -26,13 +26,52 @@ open OpticalConstructor.Domain.KitFolders
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Storage.KitContentFiles
+open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ImportDialogView
 open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Ui.KitArchiveJob
+open OpticalConstructor.Ui.JobRunner
+open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.TableAndElementRotationView
+
+// Spec 0050 S11.5: this file compiles before StudyViewTests, so both UI fixtures share one history constructor.
+module internal StudyFitViewFixture =
+
+    let firstFitViewRunStamp : ClockTime =
+        ClockTime (System.DateTime(2026, 11, 14, 12, 0, 0, System.DateTimeKind.Utc))
+
+    let fitViewRunOf (study : Study) (at : ClockTime) : FitRun =
+        {
+            schemaVersion = FitRun.currentSchemaVersion
+            name = study.name.fitRunNameAt at
+            study = study.name
+            stamp = at
+            mode = study.settings.mode
+            stage = JointStage
+            calibrationUse = CalibrationHeldFixed
+            engine = NonlinearStudyEngine
+            runs = study.experiments
+            dataRead = []
+            parameters = []
+            entries = []
+            members = []
+            objectMatrices = []
+            results =
+                {
+                    sigmas = []
+                    problems = []
+                    runResiduals = []
+                    realizability = []
+                    productChecks = []
+                    profiles = []
+                }
+            notes = FitRunNotes.none
+        }
 
 /// Spec 0046 (operator): "if we put a tall control above another, the window must have enough scroll length
 /// to accommodate both — a simple arithmetic that must hold", in every window. Proven as a LAW over each
@@ -488,6 +527,62 @@ module ScrollExtentTests =
             window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
             window
         assertReachable "KitWindowUnknowns" makeWindow
+
+    /// The Fit step's run controls, live progress and history remain reachable on small screens (spec 0050 S11.5).
+    [<Fact>]
+    let ``the kit window's Fit step leaves everything reachable`` () : unit =
+        let makeWindow () : Window =
+            let owner = FolderName "ScrollExtentFit"
+            let model = TestAppScope.studyKitIn owner
+            let study = List.exactlyOne model.kitStudies
+            for hour in [ 2.0; 0.0; 1.0 ] do
+                let stamp = ClockTime (StudyFitViewFixture.firstFitViewRunStamp.value.AddHours hour)
+                let run = StudyFitViewFixture.fitViewRunOf study stamp
+                model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
+            let loaded = model |> updateTableAndElementRotation ReloadKitChanges
+            Assert.Equal<ControlCaption option>(None, loaded.kitStatus)
+            Assert.Equal(3, loaded.studyFitRuns.Length)
+            let mutable started = false
+            let host : StudyFitJobHost =
+                {
+                    startStudyFit = fun _ ->
+                        started <- true
+                        {
+                            cancelStudyFit = ignore
+                        }
+                }
+            let ready =
+                {
+                    loaded with
+                        kitShell =
+                            {
+                                loaded.kitShell with studyFits = host
+                            }
+                }
+            let request : StudyFitRequest =
+                {
+                    study = study.name
+                    stage = JointStage
+                    calibrationUse = ready.studySurface.calibrationUse
+                }
+            let progress : JobProgress =
+                {
+                    completed = JobStepCount 12
+                    total = None
+                    elapsed = JobElapsed (System.TimeSpan.FromSeconds 2.0)
+                }
+            let running =
+                ready
+                |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)
+                |> updateTableAndElementRotation (StudyFit (RunFit request))
+                |> updateTableAndElementRotation (StudyFit (StudyFitProgressed progress))
+            Assert.True started
+            Assert.True running.studyFit.job.isRunning
+            Assert.Equal<JobProgress option>(Some progress, running.studyFit.job.progress)
+            let window = viewWindow KitWindowView.kitWindowView running
+            window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
+            window
+        assertReachable "KitWindowFit" makeWindow
 
     /// Spec 0050 S9.3: the Inverse kit window on its Data step over the matrix of three experiments, copies of the collected
     /// one of `filledExperiments` over its setup: the first reviewed, three points with one excluded and one setup
