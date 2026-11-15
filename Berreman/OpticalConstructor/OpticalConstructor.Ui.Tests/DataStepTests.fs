@@ -83,6 +83,8 @@ module DataStepTests =
 
     let private k3 : DataRowKey = DataRowKey "K3"
 
+    let private darkness : DataRowKey = DataRowKey "Darkness"
+
     let private circularPolarizerChoice : ItemModelChoice =
         LibraryModelChoice (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.circularPolarizerModelId)
 
@@ -451,6 +453,9 @@ module DataStepTests =
         Assert.Equal<ConstructorUiKey>(ConstructorUiKey "K1", k1.uiKey)
         Assert.Equal("DataSplitGroup_K1", (ConstructorUiId.dataSplitGroupRow k1).value)
         Assert.Equal("DataSplitOffer_K2", (ConstructorUiId.dataSplitOfferToggle k2).value)
+        Assert.Equal("DataSplitGroupSetup_Darkness", (ConstructorUiId.dataSplitGroupSetupChoice darkness).value)
+        let captureKey = DataRowKey "Dark/capture:1"
+        Assert.Equal("DataSplitGroupSetup_Dark_capture_1", (ConstructorUiId.dataSplitGroupSetupChoice captureKey).value)
         Assert.Equal("DataReviewPanel", ConstructorUiId.dataReviewPanel.value)
         Assert.Equal("DataExclusionReasonField", ConstructorUiId.dataExclusionReasonField.value)
         Assert.Equal("DataPointsChart", ConstructorUiId.dataPointsChart.value)
@@ -483,14 +488,19 @@ module DataStepTests =
                         [ "K2 — 1 point(s) — "; "Create K2 over 'Bench B' (new setup)" ],
                         textsUnder window (ConstructorUiId.dataSplitGroupRow k2))
                     match textsUnder window (ConstructorUiId.dataSplitGroupRow k3) with
-                    | [ label; reason ] ->
+                    | label :: reason :: recordOver :: _ ->
                         Assert.Equal("K3 — 1 point(s) — ", label)
                         Assert.StartsWith("unmatched —", reason)
                         Assert.Equal($"unmatched — {k3Problem.describe}", reason)
-                    | texts -> Assert.Fail $"K3's row must read its label and its reason, not {List.length texts} text(s)"
+                        Assert.Equal("Record over:", recordOver)
+                    | texts -> Assert.Fail $"K3's row must read its label, reason and setup prompt, not {List.length texts} text(s)"
+                    let setupChoice = Assert.IsType<ComboBox>(SlotBarTests.controlById window (ConstructorUiId.dataSplitGroupSetupChoice k3))
+                    Assert.Contains<Visual>(setupChoice, (SlotBarTests.controlById window (ConstructorUiId.dataSplitGroupRow k3)).GetVisualDescendants())
+                    Assert.Equal<string list>([ darkSetup.name.value ], setupChoice.Items |> Seq.cast<string> |> List.ofSeq)
+                    Assert.Equal(-1, setupChoice.SelectedIndex)
                     let reasonText =
                         (SlotBarTests.controlById window (ConstructorUiId.dataSplitGroupRow k3)).GetVisualDescendants()
-                        |> Seq.choose (function :? TextBlock as text when text.Text.StartsWith "unmatched" -> Some text | _ -> None)
+                        |> Seq.choose (function :? TextBlock as text when text.Text = $"unmatched — {k3Problem.describe}" -> Some text | _ -> None)
                         |> Seq.exactlyOne
                     Assert.Equal(MaterialsWindowView.messageColor, Assert.IsAssignableFrom<ISolidColorBrush>(reasonText.Foreground).Color)
                     let rowTops =
@@ -526,6 +536,98 @@ module DataStepTests =
                 withDataStepWindow readOnly (fun window _ ->
                     Assert.False((SlotBarTests.controlById window ConstructorUiId.dataSplitApplyButton).IsEffectivelyEnabled, "Apply split must be disabled while the kit takes no writes")
                     Assert.True((SlotBarTests.controlById window ConstructorUiId.dataSplitCancelButton).IsEffectivelyEnabled, "Cancel must stay enabled"))))
+
+    /// Unreadable groups choose a held setup through the same message the model handles (spec 0050 S12.1).
+    [<Fact>]
+    let ``an unreadable group's row offers the kit's setups, and choosing one sends OfferSplitGroupOver`` () : unit =
+        HeadlessSession.run (fun () ->
+            withDataStepKit (fun kit ->
+                let bench : Setup =
+                    {
+                        darkSetup with name = SetupName "Bench"
+                    }
+                let bench2 : Setup =
+                    {
+                        bench with name = SetupName "Bench (2)"
+                    }
+                let held = phoneSplitOf kit.phoneFile
+                let modelFor (problem : DataSplitError) : TableAndElementRotationModel =
+                    let groups =
+                        held.split.groups
+                        |> List.map (fun group ->
+                            if group.key = k3 then
+                                {
+                                    group with key = darkness; matching = GroupWithoutMatch problem
+                                }
+                            else group)
+                    let split : DataSplit =
+                        {
+                            groups = groups
+                        }
+                    {
+                        kit.loaded with
+                            kitSetups = [ bench; bench2 ]
+                            dataSplitOpt =
+                                Some
+                                    {
+                                        held with split = split
+                                    }
+                    }
+                let nameProblem = SplitKeyNameErr (NameMismatchErr "'Darkness' does not read as the template writes")
+                let setupProblem = SplitKeySetupErr (UnknownSetupSlotErr "the capture's object slot")
+                let choiceId = ConstructorUiId.dataSplitGroupSetupChoice darkness
+                let rowId = ConstructorUiId.dataSplitGroupRow darkness
+                for problem in [ nameProblem; setupProblem ] do
+                    withRecordingWindow (modelFor problem) (fun window messages ->
+                        let choice = Assert.IsType<ComboBox>(SlotBarTests.controlById window choiceId)
+                        Assert.Equal("DataSplitGroupSetup_Darkness", AutomationProperties.GetAutomationId choice)
+                        Assert.Equal("Record Darkness over setup", AutomationProperties.GetName choice)
+                        Assert.Contains<Visual>(choice, (SlotBarTests.controlById window rowId).GetVisualDescendants())
+                        Assert.Contains($"unmatched — {problem.describe}", textsUnder window rowId)
+                        Assert.Contains("Record over:", textsUnder window rowId)
+                        Assert.Equal<string list>([ "Bench"; "Bench (2)" ], choice.Items |> Seq.cast<string> |> List.ofSeq)
+                        Assert.Equal(-1, choice.SelectedIndex)
+                        Assert.Null(choice.SelectedItem)
+                        for key in [ k1; k2 ] do
+                            SlotBarTests.assertAbsent window (ConstructorUiId.dataSplitGroupSetupChoice key)
+                        Assert.Empty messages
+                        choice.SelectedIndex <- 1
+                        Dispatcher.UIThread.RunJobs()
+                        match Assert.Single messages with
+                        | OfferSplitGroupOver (key, setupName) ->
+                            Assert.Equal<DataRowKey>(darkness, key)
+                            Assert.Equal<SetupName>(bench2.name, setupName)
+                        | _ -> Assert.Fail "Choosing Bench (2) must send OfferSplitGroupOver")
+
+                let model = modelFor nameProblem
+                withDataStepWindow model (fun window answered ->
+                    let choice = Assert.IsType<ComboBox>(SlotBarTests.controlById window choiceId)
+                    choice.SelectedIndex <- 1
+                    Dispatcher.UIThread.RunJobs()
+                    SlotBarTests.assertAbsent window choiceId
+                    let toggle = ConstructorUiId.dataSplitOfferToggle darkness
+                    Assert.Equal("Create Darkness over 'Bench (2)'", SlotBarTests.boxLabelOf window toggle)
+                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window toggle)
+                    match (SlotBarTests.latestOf model answered).dataSplitOpt with
+                    | Some split -> Assert.Equal<DataRowKey list>([ darkness ], split.creating)
+                    | None -> Assert.Fail "Choosing a setup must keep the split"
+                    SlotBarTests.pressBox window toggle
+                    Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window toggle)
+                    match (SlotBarTests.latestOf model answered).dataSplitOpt with
+                    | Some split -> Assert.Empty split.creating
+                    | None -> Assert.Fail "Unticking an offer must keep the split"
+                    SlotBarTests.assertAbsent window choiceId)
+
+                let noSetups =
+                    {
+                        model with kitSetups = []
+                    }
+                withRecordingWindow noSetups (fun window messages ->
+                    SlotBarTests.assertAbsent window choiceId
+                    Assert.Equal<string list>(
+                        [ "Darkness — 1 point(s) — "; $"unmatched — {nameProblem.describe}" ],
+                        textsUnder window rowId)
+                    Assert.Empty messages)))
 
     [<Fact>]
     let ``pressing an offer ticks it, and Cancel forgets the split`` () : unit =

@@ -95,6 +95,7 @@ let private dataFileRow (model : TableAndElementRotationModel) (dispatch : Table
 
 /// One group of the held split: its key and point count, then the experiment it matched, its offer's toggle (on the
 /// positive fill while ticked, `(new setup)` when the kit lacks the setup) or why it matches nothing (spec 0050 S9.3).
+/// An unreadable name or setup also offers the kit's setups for manual recording (spec 0050 S12.1).
 let private splitGroupRow
     (model : TableAndElementRotationModel)
     (dispatch : TableAndElementRotationMsg -> unit)
@@ -122,20 +123,45 @@ let private splitGroupRow
                 TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
             ]
             :> IView
+    let setupChoice : IView list =
+        match group.matching, model.kitSetups with
+        | GroupWithoutMatch (SplitKeyNameErr _ | SplitKeySetupErr _), _ :: _ ->
+            let choiceId = ConstructorUiId.dataSplitGroupSetupChoice group.key
+            let accessibleName = ControlCaption $"Record {group.key.value} over setup"
+            [
+                TextBlock.create [
+                    TextBlock.text "Record over:"
+                    TextBlock.margin (Thickness(8.0, 0.0, 6.0, 0.0))
+                    TextBlock.verticalAlignment VerticalAlignment.Center
+                ]
+                ComboBox.create [
+                    choiceId.automationAttribute<ComboBox> ()
+                    AttrBuilder<ComboBox>.CreateProperty<string>(AutomationProperties.NameProperty, accessibleName.value, ValueNone)
+                    ComboBox.dataItems (model.kitSetups |> List.map (fun setup -> setup.name.value))
+                    ComboBox.selectedIndex -1
+                    ComboBox.verticalAlignment VerticalAlignment.Center
+                    ComboBox.onSelectedIndexChanged ((fun picked ->
+                        model.kitSetups
+                        |> List.tryItem picked
+                        |> Option.iter (fun setup -> dispatch (OfferSplitGroupOver (group.key, setup.name)))), SubPatchOptions.Always)
+                ]
+                |> Avalonia.FuncUI.DSL.View.withKey choiceId.value
+            ]
+        | _ -> []
     let id = ConstructorUiId.dataSplitGroupRow group.key
     // The label docked beside its wrapping reason (AGENTS.md); no fill, so a toggle keeps its caption's width.
     DockPanel.create [
         id.automationAttribute<DockPanel> ()
         DockPanel.lastChildFill false
         DockPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-        DockPanel.children [
+        DockPanel.children ([
             TextBlock.create [
                 TextBlock.dock Dock.Left
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.text $"{group.key.value} — {group.points.value} point(s) — "
             ]
             matching
-        ]
+        ] @ setupChoice)
     ]
     |> Avalonia.FuncUI.DSL.View.withKey id.value
     :> IView

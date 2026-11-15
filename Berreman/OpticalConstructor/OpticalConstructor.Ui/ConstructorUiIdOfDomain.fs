@@ -1110,6 +1110,11 @@ module ConstructorUiIdOfDomain =
         /// An offered group's toggle, ticking its setup and experiment for creation: `DataSplitOffer_<key>` (spec 0050 S9.3).
         static member dataSplitOfferToggle (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitOffer_{key.uiKey.value}"
 
+        /// An unmatched group's setup choice: `DataSplitGroupSetup_<key stem>` (spec 0050 S12.1).
+        static member dataSplitGroupSetupChoice (key : Kit.DataRowKey) : ConstructorUiId =
+            let stem = FileStem.ofText key.value
+            ConstructorUiId $"DataSplitGroupSetup_{stem.value}"
+
         /// A data-file row's Review, showing the experiment's points in the Data step: `DataReview_<id>` (spec 0050 S9.3).
         static member dataReviewButton (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataReview_{experimentId.value}"
 
