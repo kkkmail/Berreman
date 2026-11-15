@@ -621,6 +621,19 @@ type StudySurfaceState =
             newStudyExperiments = []
         }
 
+/// Mints an added table slot's identity; the composition root chooses how (spec 0050 S12.1, `.manual/033`).
+[<ReferenceEquality>]
+type ElementIdProvider =
+    {
+        mintElementId : unit -> Library.ElementId
+    }
+
+    /// Mints a fresh GUID-based `ElementId` on every invocation (spec 0050 S12.1).
+    static member system : ElementIdProvider =
+        {
+            mintElementId = fun () -> System.Guid.NewGuid().ToString() |> Library.ElementId
+        }
+
 type TableAndElementRotationModel =
     {
         table : OpticalTable
@@ -751,6 +764,8 @@ type TableAndElementRotationModel =
         itemModels : ItemModels.ItemModelProxy
         /// Mints the id of the item the add form opens for (spec 0050 S7.2).
         itemIds : ItemIdProvider
+        /// Mints the id of every slot added to the table (spec 0050 S12.1, `.manual/033`).
+        elementIds : ElementIdProvider
         /// The item the Items panel shows, `None` while no row is pressed (spec 0050 S7.2).
         selectedItemOpt : ItemId option
         /// The open "Add item from library model…" form, `None` while it is closed (spec 0050 S7.2).
@@ -808,13 +823,9 @@ module BayNames =
 
 let defaultElementZoom : BeamLayout.ElementZoom = BeamLayout.ElementZoom 5.0
 
-/// Mint a fresh, serializable element id (spec §1/§5). Added elements get a GUID; the seeded
-/// source/detector get deterministic ids (see `initMain`) so wiring/experiment tests can name them.
-let private freshId () : Library.ElementId = System.Guid.NewGuid().ToString() |> Library.ElementId
-
 let private mkElement (point : TablePoint) (kind : CatalogueKind) : Setups.SetupSlot =
     {
-        id = freshId ()
+        id = ElementIdProvider.system.mintElementId ()
         placement = ElementPlacement.create kind point
         zoom = defaultElementZoom
         beam = BeamLayout.OnMainBeam
@@ -931,6 +942,7 @@ let initWith
         studyFit = StudyFitJobState.idle
         itemModels = ItemModels.ItemModelProxy.createInMemory ()
         itemIds = ItemIdProvider.system
+        elementIds = ElementIdProvider.system
         selectedItemOpt = None
         addItemFormOpt = None
         parameterEditOpt = None
@@ -1719,7 +1731,7 @@ let private addElement (kind : CatalogueKind) (prebind : ElementValueId option) 
         |> withBoundSampleEmission m
     let e : Setups.SetupSlot =
         {
-            id = freshId ()
+            id = m.elementIds.mintElementId ()
             placement = placement
             zoom = defaultElementZoom
             beam = host

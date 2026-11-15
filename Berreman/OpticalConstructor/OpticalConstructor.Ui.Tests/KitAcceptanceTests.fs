@@ -108,6 +108,13 @@ module KitAcceptanceTests =
     let private sourceSlot = ElementId "src"
     let private firstObjectSlot = ElementId "sample"
     let private detectorSlot = ElementId "det"
+    // The prep, second-object and analyzer slots `buildAcceptanceSetups` adds, fixed so builds are byte-equal (`.manual/033`).
+    let private addedSlotIds =
+        [
+            ElementId "7b44e06c-795f-4513-99ac-b60dc124d026"
+            ElementId "bf29d8a6-8986-4ab9-898e-d6084d4bc767"
+            ElementId "97b4178c-8eee-42f9-8f2d-23499a64f3eb"
+        ]
     let private prepRole = PrepSlotRole (SlotPosition 1)
     let private firstObjectRole = ObjectSlotRole (SlotPosition 1)
     let private secondObjectRole = ObjectSlotRole (SlotPosition 2)
@@ -701,14 +708,25 @@ module KitAcceptanceTests =
                             next
                         | [] -> failwith "*.item-json: expected nine item-id requests; actual an extra request"
                 }
+            let mutable remainingSlots = addedSlotIds
+            let elementIds : ElementIdProvider =
+                {
+                    mintElementId = fun () ->
+                        match remainingSlots with
+                        | next :: rest ->
+                            remainingSlots <- rest
+                            next
+                        | [] -> failwith "*.setup-json: expected three added-slot id requests; actual an extra request"
+                }
             let initial =
                 {
-                    TestAppScope.inverseModelOver context opened with itemIds = itemIds
+                    TestAppScope.inverseModelOver context opened with itemIds = itemIds; elementIds = elementIds
                 }
                 |> apply [ SetNamingTemplateText labTemplate; SaveNamingTemplate ]
             let stocked = itemSpecs |> List.fold addAcceptanceItem initial
             expect (FileName "*.item-json") "unused item identities" [] remaining
             let setups = buildAcceptanceSetups stocked
+            expect (FileName "*.setup-json") "unused added-slot identities" [] remainingSlots
             expect (FileName "*.setup-json") "setups including both corrections" 42 setups.kitSetups.Length
             let model = finish (fun at -> now <- at) folder setups
             {
@@ -1052,6 +1070,34 @@ module KitAcceptanceTests =
         expect file "product check objects in light order" [ qz; lr ] check.items
         let ratio = ControlCaption $"{file.value}: QZ then LR product-check RMSE ratio"
         expectReferenceValue ratio MuellerReference.productCheckRmseRatio.value check.rmseRatio.value
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the built optics-mueller kit equals the committed kit file by file`` () : unit =
+        let run = FolderName (Guid.NewGuid().ToString("N"))
+        let built = buildOpticsMuellerKit run
+        try
+            let original = committedFolder ()
+            let filesOf (folder : KitFolder) : Set<FileName> =
+                relativeFiles folder.value
+                |> List.filter (fun file -> not (file.value.StartsWith($".oc{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+                |> Set.ofList
+            let expectedFiles = filesOf original
+            let actualFiles = filesOf built.folder
+            for file in Set.union expectedFiles actualFiles do
+                let diagnostic = $"Built kit: {built.folder.value.value}\n{file.value}"
+                if not (Set.contains file expectedFiles) then
+                    Assert.Fail($"{diagnostic}: missing from the committed kit (extra in the built kit).")
+                elif not (Set.contains file actualFiles) then
+                    Assert.Fail($"{diagnostic}: extra in the committed kit (missing from the built kit).")
+                else
+                    try assertSameBytes (file.combine original.value) (file.combine built.folder.value)
+                    with :? Xunit.Sdk.XunitException as error ->
+                        Assert.Fail($"{diagnostic}: different bytes.\n{error.Message}")
+        finally
+            built.model.kit.close () |> readKitResult KitFile.fileName
+        // Spec 0050 S12.1 / step 0428: a failed comparison retains the named kit for regeneration.
+        Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
 
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]

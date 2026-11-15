@@ -1,0 +1,99 @@
+{
+  "item": {
+    "dial": {
+      "Case": "DialMounted",
+      "Fields": [
+        "DialNegative"
+      ]
+    },
+    "history": [
+      {
+        "parameters": [
+          {
+            "name": "extinctionRatio",
+            "state": {
+              "Case": "KnownParameter",
+              "Fields": [
+                0
+              ]
+            }
+          },
+          {
+            "name": "axisOffset",
+            "state": {
+              "Case": "KnownParameter",
+              "Fields": [
+                0
+              ]
+            }
+          },
+          {
+            "name": "dialZero",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": 0,
+                    "upper": 6.283185307179586
+                  },
+                  "priorOpt": null,
+                  "start": 2.652900463031381
+                }
+              ]
+            }
+          }
+        ],
+        "revision": 1
+      }
+    ],
+    "id": "72d0505d-8685-4884-89ad-ea13694c8693",
+    "label": "LP2",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "940bda4e-db9c-4103-b59c-dab2f3ee5875",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "extinctionRatio",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "axisOffset",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "dialZero",
+        "state": {
+          "Case": "CalibratedParameter",
+          "Fields": [
+            {
+              "fitRun": "QZ-LR@20260531T120100Z",
+              "sigma": 0.01667272012361086,
+              "value": 2.7129418540435832
+            }
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 2
+  },
+  "schemaVersion": 1
+}

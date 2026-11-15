@@ -1,0 +1,49 @@
+{
+  "experiment": {
+    "corrections": [],
+    "dataOpt": {
+      "attachment": {
+        "contentHash": "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2",
+        "path": "data/raw/final/darkness_checks.csv"
+      },
+      "exclusions": [],
+      "profile": "Phone ROI CSV",
+      "rows": {
+        "Case": "KeyedDataRows",
+        "Fields": [
+          "LP-(Darkness)-CPL2"
+        ]
+      }
+    },
+    "id": 49,
+    "name": "LP-(Darkness)-CPL2",
+    "notes": "",
+    "role": 3,
+    "scan": {
+      "blocks": [
+        {
+          "axes": [
+            {
+              "elementId": "9ae0725e-7431-4092-9544-b5d347716ff8",
+              "label": "Linear polarizer #6",
+              "range": {
+                "max": 360,
+                "min": 0,
+                "points": 19
+              },
+              "variable": "VaryDialReading"
+            }
+          ],
+          "capture": "CaptureTransmitted"
+        }
+      ],
+      "sourceWaveLengthOpt": null
+    },
+    "sessionOpt": null,
+    "setup": {
+      "name": "LP-(AIR#0)-CPL",
+      "revision": 1
+    }
+  },
+  "schemaVersion": 1
+}

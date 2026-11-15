@@ -1,0 +1,49 @@
+{
+  "experiment": {
+    "corrections": [],
+    "dataOpt": {
+      "attachment": {
+        "contentHash": "fcace7c401940d6b4a84347acd2b2afb925f5ea9c2c57e64fcc6d88e4ad26b2e",
+        "path": "data/raw/final/cpl_cpl_day2_corrections.csv"
+      },
+      "exclusions": [],
+      "profile": "Phone ROI CSV",
+      "rows": {
+        "Case": "KeyedDataRows",
+        "Fields": [
+          "CPL-(QZ#45-LR#45)-CPL-2"
+        ]
+      }
+    },
+    "id": 45,
+    "name": "CPL-(QZ#45-LR#45)-CPL-2",
+    "notes": "",
+    "role": 1,
+    "scan": {
+      "blocks": [
+        {
+          "axes": [
+            {
+              "elementId": "9ae0725e-7431-4092-9544-b5d347716ff8",
+              "label": "Linear polarizer #6",
+              "range": {
+                "max": 360,
+                "min": 0,
+                "points": 19
+              },
+              "variable": "VaryDialReading"
+            }
+          ],
+          "capture": "CaptureTransmitted"
+        }
+      ],
+      "sourceWaveLengthOpt": null
+    },
+    "sessionOpt": "CPL-CPL day 2",
+    "setup": {
+      "name": "CPL-(QZ#45-LR#45)-CPL",
+      "revision": 1
+    }
+  },
+  "schemaVersion": 1
+}

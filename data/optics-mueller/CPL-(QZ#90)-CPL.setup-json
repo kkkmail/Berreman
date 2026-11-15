@@ -1,0 +1,303 @@
+{
+  "schemaVersion": 1,
+  "setup": {
+    "history": [],
+    "name": "CPL-(QZ#90)-CPL",
+    "revision": 1,
+    "slots": [
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "d4d8dfc0-3d43-4a24-853c-369479de4f5d",
+            "PlacementTurn"
+          ]
+        },
+        "id": "src",
+        "placement": {
+          "box": {
+            "a1": 0.025,
+            "a2": 0.025,
+            "b": 0.08,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "LightSource",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveLocked",
+            "yLock": "MoveLocked",
+            "zLock": "MoveLocked"
+          },
+          "placementPoint": {
+            "x": -1,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": true,
+          "r2": 0,
+          "r2Locked": true,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": "a77786fe-f38e-4af3-8cfc-bd94be27567e"
+        },
+        "zoom": 5
+      },
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "436f47ea-a1c4-47ed-8c5c-f09eae8098b1",
+            "PlacementTurn"
+          ]
+        },
+        "id": "sample",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "Sample",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": 0,
+            "y": 0
+          },
+          "r1": 1.5707963267948966,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": null
+        },
+        "zoom": 5
+      },
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "93fae6cc-d838-45b7-b5f0-949f7a759e91",
+            "PlacementTurn"
+          ]
+        },
+        "id": "det",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "Detector",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": 1,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": null
+        },
+        "zoom": 5
+      },
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+            "PlacementTurn"
+          ]
+        },
+        "id": "78966178-1534-40cf-9f05-8f68be8a8827",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "LinearPolarizer",
+          "displayUnit": "Millimeter",
+          "emission": "EmitTransmittedOnly",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": -0.4,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": "f1d38e6a-16e7-405d-9678-45c990f5a155"
+        },
+        "zoom": 5
+      },
+      {
+        "beam": "OnMainBeam",
+        "content": "EmptySlotContent",
+        "id": "d6b7da61-d626-43ac-a20a-809a61ecca50",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "Sample",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": 0.25,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": null
+        },
+        "zoom": 5
+      },
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+            {
+              "Case": "DialTurn",
+              "Fields": [
+                1.3962634015954636
+              ]
+            }
+          ]
+        },
+        "id": "9ae0725e-7431-4092-9544-b5d347716ff8",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "LinearPolarizer",
+          "displayUnit": "Millimeter",
+          "emission": "EmitTransmittedOnly",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": 0.5,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": "f1d38e6a-16e7-405d-9678-45c990f5a155"
+        },
+        "zoom": 5
+      }
+    ]
+  }
+}
