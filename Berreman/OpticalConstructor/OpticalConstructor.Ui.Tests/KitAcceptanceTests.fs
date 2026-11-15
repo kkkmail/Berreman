@@ -34,6 +34,8 @@ open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.SetupGrids
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.KitArchiveStore
@@ -1098,6 +1100,158 @@ module KitAcceptanceTests =
             built.model.kit.close () |> readKitResult KitFile.fileName
         // Spec 0050 S12.1 / step 0428: a failed comparison retains the named kit for regeneration.
         Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
+
+    /// Reconstruct from committed snapshots and lab bytes without changing the kit (spec 0050 S12.1; 001 §Q 'Open').
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the committed optics-mueller kit opens read-only against an empty library, writes nothing, and its study reproduces the reference reconstruction`` () : unit =
+        let original = committedFolder ()
+        let originalFiles = relativeFiles original.value
+        let originalBytes : Map<FileName, FileByteContent> =
+            originalFiles
+            |> List.map (fun file -> file, FileByteContent (File.ReadAllBytes (file.combine original.value).value))
+            |> Map.ofList
+        let directoriesInCommittedKit () : FolderName list =
+            Directory.GetDirectories(original.value.value, "*", SearchOption.AllDirectories)
+            |> Array.map (fun directory -> FolderName (Path.GetRelativePath(original.value.value, directory)))
+            |> Array.sort
+            |> List.ofArray
+        let originalDirectories = directoriesInCommittedKit ()
+        let assertCommittedKitUnchanged () : unit =
+            let folderFile = FileName original.value.value
+            expect folderFile "every relative file path unchanged, including .oc" originalFiles (relativeFiles original.value)
+            expect folderFile "every directory unchanged, including empty cache folders" originalDirectories (directoriesInCommittedKit ())
+            for KeyValue(file, expected) in originalBytes do
+                let actual = File.ReadAllBytes (file.combine original.value).value |> FileByteContent
+                expect file "committed bytes unchanged by the read-only session" expected.value actual.value
+        let mutable openedOpt : OpenedKit option = None
+        try
+            let context = TestAppScope.emptyLibraryAppContext (FolderName "KitAcceptanceTests")
+            let assertEmptyLibrary () : unit =
+                expect KitFile.fileName "empty item-model database" (Ok []) (context.itemModels.listItemModels ())
+                expect KitFile.fileName "empty live library" (Ok [ LibraryTree.byKind [] ]) (context.library.libraryTrees ())
+            assertEmptyLibrary ()
+            let refitTime = ClockTime (DateTime(2026, 5, 31, 12, 3, 0, DateTimeKind.Utc))
+            let clock : ClockProvider =
+                {
+                    now = fun () -> refitTime
+                }
+            let startContext : KitStartContext =
+                {
+                    kitHistory = KitHistoryProxy.createInMemory [ original ]
+                    limit = KitHistoryLimit.defaultValue
+                    clock = clock
+                    kitIds = KitIdProvider.system
+                    author = kitAuthor
+                    imports = context.catalogueImports
+                    picker = TestAppScope.kitPickerOf original
+                    showKit = fun opened -> openedOpt <- Some opened
+                    activateKitWindow = fun _ -> NoKitWindowOpen
+                    zipPicker = KitZipPicker.none
+                    archive = KitArchiveProxy.create ()
+                    archiveJobs = KitArchiveJobHost.inert
+                }
+            let started = initKitStart startContext InverseConstructor |> updateKitStart (OpenKitReadOnly original)
+            expect KitFile.fileName "OpenKitReadOnly status" None started.status
+            let opened =
+                openedOpt
+                |> Option.defaultWith (fun () -> failwith $"{original.value.value}: OpenKitReadOnly did not open the committed kit")
+            expect KitFile.fileName "opened folder" original opened.folder
+            expect KitFile.fileName "read-only access" ReadOnlyKitAccess opened.library.kit.access
+            expect KitFile.fileName "experiment count" 53 opened.experiments.Length
+            expect KitFile.fileName "setup count" 42 opened.setups.Length
+            expect KitFile.fileName "item count" 9 opened.items.Length
+            let studyFile = StudyKitFile.fileNameOf studyName.fileStem
+            expect studyFile "study names" [ studyName ] (opened.studies |> List.map _.name)
+            let study = List.exactlyOne opened.studies
+            expect studyFile "all experiments in the study" (opened.experiments |> List.map _.name) study.experiments
+            expect studyFile "staged fit" StagedFit study.settings.mode
+            let fitFile = FileName "QZ-LR@*.fitrun-json"
+            expect fitFile "two stored fit runs" [ calibrationRunName; objectRunName ] (opened.fitRuns |> List.map _.name)
+            expect fitFile "stored fit stages" [ CalibrationStage; ObjectStage ] (opened.fitRuns |> List.map _.stage)
+
+            let model = TestAppScope.inverseModelOver context opened
+            expect KitFile.fileName "window's read-only access" ReadOnlyKitAccess model.kit.access
+            expect KitFile.fileName "window's experiments" opened.experiments model.experimentCollection.experiments
+            expect KitFile.fileName "window's setups" opened.setups model.kitSetups
+            expect KitFile.fileName "window's items" opened.items model.kitItems
+            expect studyFile "window's studies" opened.studies model.kitStudies
+            expect fitFile "window's fit runs" opened.fitRuns model.kitFitRuns
+            expect (FileName "*.item-json") "all nine item identities"
+                (itemSpecs |> List.map _.id |> List.sort) (model.kitItems |> List.map _.id |> List.sort)
+            assertCommittedKitUnchanged ()
+            assertEmptyLibrary ()
+            for item in model.kitItems do
+                let file = ItemKitFile.fileNameOf item.label.fileStem
+                let choice =
+                    model.tryItemModelChoice item
+                    |> Option.defaultWith (fun () -> failwith $"{file.value}: the kit snapshots did not resolve its stored model")
+                expect file "resolved stored model and binding" item.model choice.instance
+                let version =
+                    match choice with
+                    | LibraryModelChoice version
+                    | SourcePresetChoice (version, _)
+                    | PolarizerPresetChoice (version, _)
+                    | StackSampleChoice (version, _, _) -> version
+                expect file "model absent from the database" (Ok None) (context.itemModels.resolveItemModelVersion version.versionId)
+                expect file "model present in the snapshot overlay" (Ok (Some version)) (model.itemModels.resolveItemModelVersion version.versionId)
+                match item.model with
+                | PresetInstance (_, preset) ->
+                    expect file "bound preset absent from the database" (Ok None) (context.library.tryGetEntry preset)
+                | ItemModelVersionInstance _
+                | SampleInstance _ -> ()
+
+            let labFiles = readAcceptanceLabFiles original
+            for experiment in model.experimentCollection.experiments do
+                let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
+                let data =
+                    experiment.dataOpt
+                    |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its lab attachment")
+                let lab = labFiles |> List.find (fun lab -> lab.path = data.attachment.path)
+                let group = lab.groups |> List.find (fun group -> group.name = experiment.name)
+                expect file "recorded attachment hash unchanged" (Ok AttachedDataUnchanged)
+                    (model.experimentData.attachmentStatus data.attachment)
+                expect file "Phone ROI CSV profile" ImportProfileName.phoneRoiCsv data.profile
+                expect file "attachment's own group" (KeyedDataRows group.key) data.rows
+                let mapped =
+                    model.experimentData.readMapped data
+                    |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.caption.value}")
+                expect file "all mapped group points" (CapturePoints group.captures) mapped
+            assertReferenceInstruments model.kitItems
+
+            let seed = NoiseSeed 1
+            let fit : StudyFitParam =
+                {
+                    forward = model.studyForwardContext
+                    clock = clock
+                    linearSolver = createMathNetSvd ()
+                    deviates = UniformDeviateProvider.fromSeed seed
+                    fitRuns = model.kitFitRuns
+                }
+            let request : StudyFitRequest =
+                {
+                    study = studyName
+                    stage = ObjectStage
+                    calibrationUse = CalibrationHeldFixed
+                }
+            let run =
+                fit.runFit request UnwatchedIterations
+                |> Result.defaultWith (fun error -> failwith $"{studyFile.value}: {error.describe}")
+            expect fitFile "refit study" studyName run.study
+            expect fitFile "refit stamp" refitTime run.stamp
+            expect fitFile "refit stage" ObjectStage run.stage
+            expect fitFile "fixed calibrations" CalibrationHeldFixed run.calibrationUse
+            expect fitFile "linear reconstruction" LinearStudyEngine run.engine
+            assertReferenceObjects run
+            assertEmptyLibrary ()
+            assertCommittedKitUnchanged ()
+        finally
+            try
+                match openedOpt with
+                | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+                | None -> ()
+            finally
+                assertCommittedKitUnchanged ()
 
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]

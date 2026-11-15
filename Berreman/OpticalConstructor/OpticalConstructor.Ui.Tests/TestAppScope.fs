@@ -78,6 +78,19 @@ module TestAppScope =
         settlePendingImports context
         context
 
+    /// Open against an empty library and a fresh empty shipped-catalogue folder (spec 0050 S12.1; 001 §Q 'Open').
+    let emptyLibraryAppContext (owner : FolderName) : AppContext =
+        let instance = FolderName (System.Guid.NewGuid().ToString("N"))
+        let locations = testLocations owner
+        let shipped = locations.cataloguesFolder.combine instance
+        Directory.CreateDirectory shipped.value |> ignore
+        let emptyLocations =
+            {
+                locations with shippedCatalogueFolder = shipped
+            }
+        AppContext.create emptyLocations WorkbenchSettings.defaults
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
     /// Returns an uncreated GUID-named kit folder under the owner's test output (spec 0050 .spec-md §3.10).
     let freshKitFolder (owner : FolderName) : KitFolder =
         let instance = FolderName (System.Guid.NewGuid().ToString("N"))
