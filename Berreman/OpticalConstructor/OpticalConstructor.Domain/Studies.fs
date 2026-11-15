@@ -223,6 +223,26 @@ module Studies =
             | [] -> darkRuns
             | own -> own
 
+    type StudySession with
+
+        /// Free, anchored and interpolated gains allowed by this session's Calibration runs, in its order (spec 0050 S12.1).
+        member this.gainModelOffers (experiments : Experiment list) : SessionGainModel list =
+            let anchors =
+                this.experiments
+                |> List.filter (fun run ->
+                    experiments |> List.exists (fun experiment -> experiment.name = run && experiment.role = CalibrationRun))
+
+            match anchors with
+            | [] -> [ FreeSessionGain ]
+            | [ anchor ] -> [ FreeSessionGain; AnchoredSessionGain [ anchor ] ]
+            | opening :: remaining ->
+                let repeats : AirRepeatPair =
+                    {
+                        opening = opening
+                        closing = List.last remaining
+                    }
+                [ FreeSessionGain; AnchoredSessionGain anchors; InterpolatedSessionGain repeats ]
+
     /// A study's name, kept as given; its `<name>.study-json` stem follows the shared name rule (spec 0050 S11.1; 001 §A).
     type StudyName =
         | StudyName of string
@@ -1023,9 +1043,13 @@ module Studies =
         | LinkParameters of study : StudyName * link : ParameterLink
         /// Set one component's state in an opened material's study-local working copy (spec 0050 S11.5).
         | SetOpenedMaterialParameter of study : StudyName * material : MaterialVersionId * parameter : Parameter
+        /// Set a session's gain model, refusing an unknown session or an anchor outside it (spec 0050 S12.1).
+        | SetSessionGainModel of study : StudyName * setting : SessionGainSetting
+        /// Set whether the study is fitted jointly or in stages (spec 0050 S12.1).
+        | SetFitMode of study : StudyName * mode : FitMode
 
         /// The study the message creates or changes through its pure update, which the caller records and replaces in its
-        /// list; a refusal answers its error and changes nothing (spec 0050 S11.1, S11.5; 001 §P).
+        /// list; a refusal answers its error and changes nothing (spec 0050 S11.1, S11.5, S12.1; 001 §P).
         member this.applyTo (context : StudyContext) : Result<Study, StudyError> =
             let studyNamed (name : StudyName) : Result<Study, StudyError> =
                 match context.studies |> List.tryFind (fun study -> study.name = name) with
@@ -1045,3 +1069,7 @@ module Studies =
                 studyNamed study |> Result.bind (fun held -> held.withLink link (context.itemsUsedBy held))
             | SetOpenedMaterialParameter (study, material, parameter) ->
                 studyNamed study |> Result.bind (fun held -> held.withMaterialParameterState material parameter.name parameter.state)
+            | SetSessionGainModel (study, setting) ->
+                studyNamed study |> Result.bind (fun held -> held.withSessionGainModel setting.session setting.model context.experiments)
+            | SetFitMode (study, mode) ->
+                studyNamed study |> Result.map (fun held -> held.withFitMode mode)

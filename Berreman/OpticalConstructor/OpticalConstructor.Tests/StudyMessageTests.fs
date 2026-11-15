@@ -255,6 +255,89 @@ module StudyMessageTests =
         Assert.Equal({ created with experiments = [ e1; e2 ] }, stored)
         Assert.Equal(added, stored)
 
+    /// Gain and mode edits use the study recording path, with no writes on refusal (spec 0050 S12.1).
+    [<Fact>]
+    let ``setting a session's gain model and the study's fit mode are study messages, and a refused one records nothing`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = studyKit database
+        let day1 = SessionName "Day 1"
+        let day2 = SessionName "Day 2"
+
+        for experiment in fixture.library.kit.proxy.readExperiments () |> expectKitOk do
+            let session = if experiment.name = e3 then day2 else day1
+            let role = if experiment.name = e2 then ScienceRun else CalibrationRun
+            let changed = experiment.withSessionOpt (Some session) |> fun held -> held.withRole role
+            fixture.library.recordExperiment changed |> expectRecordOk
+
+        let created = recorded fixture (CreateStudy (qzLr, [ e1; e2; e3 ]))
+        let setting : SessionGainSetting =
+            {
+                session = day1
+                model = AnchoredSessionGain [ e1 ]
+            }
+
+        let anchored = recorded fixture (SetSessionGainModel (qzLr, setting))
+        let expectedAnchored =
+            {
+                created with sessionGains = [ setting ]
+            }
+        Assert.Equal(setting.model, (storedStudy fixture).gainModelOf day1)
+        Assert.Equal(expectedAnchored, storedStudy fixture)
+        Assert.Equal(anchored, storedStudy fixture)
+
+        let staged = recorded fixture (SetFitMode (qzLr, StagedFit))
+        let stored = storedStudy fixture
+        let expectedStaged =
+            {
+                anchored with
+                    settings =
+                        {
+                            anchored.settings with mode = StagedFit
+                        }
+            }
+        Assert.Equal(StagedFit, stored.settings.mode)
+        Assert.Equal(setting.model, stored.gainModelOf day1)
+        Assert.Equal(expectedStaged, stored)
+        Assert.Equal(staged, stored)
+
+        let paths = fixture.folder.paths ()
+        let bytes = kitFileBytes fixture
+        let assertUnchanged () : unit =
+            Assert.Equal<KitRelativePath list>(paths, fixture.folder.paths ())
+            Assert.Equal<Map<KitRelativePath, FileByteContent>>(bytes, kitFileBytes fixture)
+            Assert.Equal(stored, storedStudy fixture)
+
+        let missingStudy = StudyName "LR"
+        for message in [ SetSessionGainModel (missingStudy, setting); SetFitMode (missingStudy, JointFit) ] do
+            match sent fixture message with
+            | Error (UnknownStudyErr reason) -> Assert.Contains(missingStudy.value, reason)
+            | Error error -> Assert.Fail($"expected UnknownStudyErr, got {error.describe}")
+            | Ok _ -> Assert.Fail("an absent study must be refused")
+            assertUnchanged ()
+
+        let missingSession = SessionName "Day 9"
+        let unknownSetting =
+            {
+                setting with session = missingSession
+            }
+        match sent fixture (SetSessionGainModel (qzLr, unknownSetting)) with
+        | Error (UnknownStudySessionErr reason) -> Assert.Contains(missingSession.value, reason)
+        | Error error -> Assert.Fail($"expected UnknownStudySessionErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("an absent session must be refused")
+        assertUnchanged ()
+
+        let outsideSetting =
+            {
+                setting with model = AnchoredSessionGain [ e1; e3 ]
+            }
+        match sent fixture (SetSessionGainModel (qzLr, outsideSetting)) with
+        | Error (GainAnchorOutsideSessionErr reason) ->
+            Assert.Contains(e3.value, reason)
+            Assert.Contains(day1.value, reason)
+        | Error error -> Assert.Fail($"expected GainAnchorOutsideSessionErr, got {error.describe}")
+        | Ok _ -> Assert.Fail("an AIR anchor in another session must be refused")
+        assertUnchanged ()
+
     /// The material edit uses the same message and recording path as the study view (spec 0050 S11.5).
     [<Fact>]
     let ``SetOpenedMaterialParameter frees an opened component in the stored study, and a refused one records nothing`` () : unit =

@@ -237,6 +237,58 @@ module StudySessionTests =
 
         Assert.Equal<StudySession list>([], StudySession.splitAll [ run d1 DiagnosticRun None; run d2 DiagnosticRun None ])
 
+    /// AIR offers follow session order and exclude other sessions and roles (spec 0050 S12.1).
+    [<Fact>]
+    let ``a session offers a free gain, a gain anchored to its AIR runs, and one interpolated between its first and last`` () : unit =
+        let experiments =
+            [
+                run e4 CalibrationRun (Some day2)
+                run e3 CalibrationRun (Some session1)
+                run e2 ScienceRun (Some session1)
+                run e1 CalibrationRun (Some session1)
+                run e5 DarkRun (Some session1)
+                run d1 DiagnosticRun None
+            ]
+        let twoAnchors = sessionOf session1 [ e1; e2; e3 ]
+        let repeats : AirRepeatPair =
+            {
+                opening = e1
+                closing = e3
+            }
+        Assert.Equal<SessionGainModel list>(
+            [ FreeSessionGain; AnchoredSessionGain [ e1; e3 ]; InterpolatedSessionGain repeats ],
+            twoAnchors.gainModelOffers experiments)
+
+        let oneAnchor = sessionOf session1 [ e1; e2 ]
+        Assert.Equal<SessionGainModel list>(
+            [ FreeSessionGain; AnchoredSessionGain [ e1 ] ],
+            oneAnchor.gainModelOffers experiments)
+
+        let noAnchor = sessionOf session1 [ e2; e5; d1 ]
+        Assert.Equal<SessionGainModel list>([ FreeSessionGain ], noAnchor.gainModelOffers experiments)
+
+        let emptySession = sessionOf session1 []
+        Assert.Equal<SessionGainModel list>([ FreeSessionGain ], emptySession.gainModelOffers experiments)
+        Assert.Equal<SessionGainModel list>([ FreeSessionGain ], twoAnchors.gainModelOffers [])
+
+        let reversed = sessionOf session1 [ e3; e2; e1 ]
+        let reversedRepeats : AirRepeatPair =
+            {
+                opening = e3
+                closing = e1
+            }
+        Assert.Equal<SessionGainModel list>(
+            [ FreeSessionGain; AnchoredSessionGain [ e3; e1 ]; InterpolatedSessionGain reversedRepeats ],
+            reversed.gainModelOffers experiments)
+
+        let threeAnchors = sessionOf session1 [ e1; e2; e3 ]
+        let allCalibration =
+            experiments
+            |> List.map (fun experiment -> if experiment.name = e2 then experiment.withRole CalibrationRun else experiment)
+        Assert.Equal<SessionGainModel list>(
+            [ FreeSessionGain; AnchoredSessionGain [ e1; e2; e3 ]; InterpolatedSessionGain repeats ],
+            threeAnchors.gainModelOffers allCalibration)
+
     [<Fact>]
     let ``a session's dark comes from its own dark runs, or else from every dark run of the study`` () : unit =
         let darkRunsOf (experiments : Experiment list) (session : SessionName) : ExperimentName list =
