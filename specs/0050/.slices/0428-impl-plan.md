@@ -1,5 +1,30 @@
 # Implementation plan
 
+## Recovery after the operator's commits (2026-11-15)
+
+The active task is the resumed 0428 attempt 01. R0003 resolves the previous
+effects conflict. Preserve commits 926d4cbd (implementation and identity
+provider) and 0931367d (regenerated reference kit); do not regenerate or
+rewrite their already-completed work without a concrete defect.
+
+Review the committed provider, its three per-build fixture identities, the
+exact-file comparison, the reference-file provenance and the AGENTS.md
+bullet against S121-COMMITTED-KIT and R0001-R0003. Read the operator's saved
+verification evidence separately from this worker's activities. Update only
+the canonical plan, implementation log and state-of-the-world if that review
+finds no missing implementation. Preserve earlier entries as historical
+evidence, with the current recovery status clearly superseding the blocker.
+
+IMPLEMENT Invariant 6 reserves review orchestration, gate execution and
+checkpoint publication to the supervisor. Run no build, test, builder or
+gate in this worker round. Hand back the unchanged 26-gate roster for normal
+profile-1 verification and measured checkpoint 427, without direct
+acceptance, a nested supervisor launch or any supervisor-metadata edit.
+Record inherited baselines without replacing them with operator run counts.
+Carry R0003's same-provider requirement for AT-2 at 0432 into the handoff.
+
+## Original implementation plan (historical)
+
 Implement S121-COMMITTED-KIT in the existing KitAcceptanceTests module. Reuse
 buildOpticsMuellerKit, relativeFiles and assertSameBytes to compare the union
 of both folders' relative file paths in sorted order, excluding only the

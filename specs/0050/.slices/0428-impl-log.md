@@ -1,5 +1,99 @@
 # Implementation log
 
+## Current recovery status (2026-11-15)
+
+The resumed attempt 01 starts at 0931367d. The operator committed the original
+implementation and R0003 identity-provider repair in 926d4cbd, then committed
+the regenerated reference in 0931367d. The earlier attempt-02 authority
+blocker below is historical and resolved by R0003. No new product change is
+planned unless source review identifies an unmet obligation.
+
+### Recovery progress
+
+- Read the active task, both worker protocols, project instructions, AGENTS.md,
+  naming conventions, the slice and gate snapshot, manuals 013/015 and all
+  three binding rulings. Read the 0428 post-mortem and its review.
+- Before source review: preserve both operator commits and all test identities;
+  trace the provider through initialization and both add messages, review the
+  comparison and reference provenance, then replace the stale blocked handoff.
+- Existing dirty files on entry are .manifest.state.json and
+  .supervisor-lock.diag. They belong to the active supervisor and are untouched.
+- Follow IMPLEMENT Invariant 6: no build, tests, builder invocation or gates
+  in this worker round. Normal review, the unchanged 26 gates and measured
+  checkpoint 427 belong to the supervising process after this worker exits.
+- Source review confirms the one mint at TableAndElementRotationView.fs:634,
+  the production default at :945, mkElement's use at :828 and addElement's
+  injected use at :1734. Both add messages converge at :3106-3110. The old
+  freshId declaration is deleted in the operator's commit.
+- KitAcceptanceTests.fs:112 declares three distinct elevated slot identities;
+  :711 creates a fresh consumption list inside each build, :719 refuses a
+  fourth request and :729 asserts full consumption. The three AddElement
+  messages in buildAcceptanceSetups remain unchanged.
+- The comparison at KitAcceptanceTests.fs:1076 uses the existing builder,
+  recursive inventory and byte reader. It compares the sorted union of all
+  paths, excludes only root .oc/, reports the built absolute path and first
+  missing/extra/different file, closes the kit in finally and retains failed
+  output. No identity normalization or alternate construction path was added.
+- Read S121-COMMITTED-KIT in the immutable oracle and manual 001 section Q.
+  The committed four-line AGENTS.md bullet and the implementation satisfy the
+  source obligations. Read operator manual 034 for the regeneration and
+  independent subsequent comparison provenance.
+- Commit 0931367d updates exactly the 42 setup and 53 experiment files that
+  carry the three identities. The operator's recorded generation copied all
+  116 root/library files; unchanged files naturally have no second diff.
+  Git history shows no lab-data changes since accepted 0427 and no changes
+  to StudyEngine.fs, ItemEvaluation.fs or StudyForward.fs, preserving R0001/R0002.
+- Read the existing operator gate-results.json and saved build, elevation and
+  kit-acceptance logs. These are prior operator measurements, not new worker
+  gate results. They corroborate the recovery note; no contradiction or
+  remaining implementation defect was found.
+- Before final handoff: replace the obsolete blocked state-of-the-world with
+  the committed recovery status, historical evidence, unchanged inherited
+  baseline block and supervisor verification requirement. Keep the original
+  failed-attempt log below as history.
+- Wrote the canonical state-of-the-world with all required sections. Final
+  diff review shows only the three intended worker documents alongside the
+  two pre-existing supervisor edits; normal and ignore-CR-at-EOL numstats
+  agree. The committed repair and reference data remain untouched.
+
+### Recovery testing state
+
+No gate, build, test or builder was executed in this worker recovery. All
+implementation obligations are present in the operator's commits; no scope
+question remains. The unchanged 26-gate roster is pending the supervisor's
+normal review and measurement. commit_ready=false means that this worker
+does not certify gate success; it is not the old implementation blocker.
+
+Historical operator evidence: .artifacts/0428-operator-repair/gate-results.json
+records build 79.7 s, elevation 218.1 s, ui-smoke 264/264 in 240.0 s, selected
+ui-tests 18/18 in 28.4 s, kit-acceptance 4/4 in 46.5 s and all 21 invariants
+in 0.2 s each. All records passed, within the active task's deadlines, with
+zero test failures/skips. Elevation's saved log uses immutable arc origin
+f395597c071910aaa215518626563f6c784bfb62, analyzes 13 projects and reports no
+new finding with ELEV004 excluded. The saved build has only NU1902 advisories
+and the two SYSLIB0051 warnings in vendored MathNet; no owned-code warning.
+These records do not publish checkpoint 427 or replace the supervisor's run.
+
+### Recovery architecture and gotchas
+
+The only production addition is the injected identity provider already
+committed under R0003; stored shapes and messages are unchanged. Normal app
+additions still mint fresh GUIDs. AT-1's deterministic identities enter before
+its existing semantic messages. At 0432, AT-2 must use the same provider for
+its added reflected detector, preserving the injection through 0494.
+
+The operator note's normal review/verification instruction addresses the
+supervisor lifecycle. IMPLEMENT's act-only protocol still governs this worker;
+do not launch a nested supervisor, use --accept-current-slice, edit checkpoints
+or replace the immutable arc origin with an operator commit. Preserve profile 1.
+
+### Recovery files
+
+Only 0428-impl-plan.md, 0428-impl-log.md and
+0428-state-of-the-world.md are intended worker edits in this recovery.
+
+## Historical implementation and failed attempts
+
 ## Progress
 
 - Read the task, worker/project protocols, slice, frozen gate snapshot,
