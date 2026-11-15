@@ -1,27 +1,38 @@
 # Where we are
 
-Slice 0414 implements the study's Unknowns step for spec 0050 S11.5. The Inverse constructor now places Unknowns after Data; Main keeps Items, Setups and Experiments. Attempt 03 addresses the repeated missing-editor smoke failure by reserving scrollbar space on the Unknowns surface and checking the rendered hit target before pointer input. All requested implementation and authorized test changes are present; verification of the repaired tree is pending.
+Slice 0414 implements the Inverse constructor's Unknowns step for spec 0050 S11.5. The implementation is committed as `a8678177`, followed by the render-until-hit repair in `c92d8b87`. This normal-resume worker reviewed the committed source and updated the three assigned handoff documents; no further product or test change was indicated. Formal review and the unchanged 25-gate verification remain pending with the active supervisor.
 
 ## What's working
 
-- Added study selection, creation, experiment additions and referenced-material opening to the Unknowns surface.
-- Rendered ordered item and material parameters with state, value, bounds, sigma, scope, links and the shared editor.
-- Added stable automation IDs and guarded Inverse-only flow navigation with read-only controls.
-- Added the shared reopened study-kit fixture, two smoke facts, two structure facts and one scroll-reachability fact; extended existing flow and read-only coverage.
-- Reserved scrollbar space on the Unknowns surface so bars cannot cover rows brought to the viewport edge.
-- Added rendered hit-target checks before study smoke pointer presses; retained immediate editor and persistence assertions.
+- Added Inverse-only Unknowns navigation after Data, preserving the open bay and Main's existing flow.
+- Added study selection, creation, experiment additions, material opening and the ordered parameter grid with the shared editor.
+- Preserved stable automation IDs, stored model resolution, read-only guards and the authorized model/UI coverage.
+- Preserved reserved scrollbar space and the bounded render-until-hit wait before every study smoke pointer press.
+- Reviewed the committed repair without changing source, test identities, assertions or supervisor metadata.
+
+These describe the delivered source; they are not fresh runtime-pass claims.
 
 ## Tests
 
-No build, tests, elevation or invariant gates were run by this worker. The IMPLEMENT protocol's Invariant 6 assigns execution to the supervisor after worker exit. Commit readiness remains false pending verification of the repaired tree.
+This IMPLEMENT worker ran no build, tests, elevation or invariant command. The role protocol's Invariant 6 assigns those phases to the supervisor after worker exit. `commit_ready=false` reflects the absence of fresh verification, not unfinished implementation.
 
-Historical supervisor evidence for attempt 01: build and review passed; elevation passed in 235.6 seconds (600-second deadline), and constructor-unit-tests passed in 158.6 seconds (180-second deadline). ui-smoke failed with exit 2, 259 succeeded / 1 failed / 260 total in 230.025 seconds reported by MTP (600-second deadline). The failure was ParameterEditUnknownChoice absent after pressing Phone.darkOffset. These are supplied supervisor results, not worker runs or results of the repair. No supplied duration exceeded its allowance; selected ui-tests and the twenty invariants were not reached.
+The active supervisor has already launched with `--executability-profile 1` and `.manual/028-step-0414-operator-reply.md`, completed its boot checks and dispatched this worker at index 413. Its log records the 25-gate snapshot and immutable arc origin `f395597c071910aaa215518626563f6c784bfb62`. Do not launch a second supervisor or use `--accept-current-slice`.
 
-The attempt 03 task supplies the supervisor's result over attempt 02: review/build passed; ui-smoke again failed with exit 2, 259 succeeded / 1 failed / 260 total, MTP duration 234.015 seconds against the 600-second deadline. The failure moved to the added immediate ParameterEditPanel assertion at StudyViewTests.fs:229, after the same row press; the case took 41.932 seconds. Those results do not validate the new repair. No supplied gate duration exceeds its deadline, and no worker-measured counts or passes are claimed.
+Required supervisor verification is unchanged:
 
-The resolved roster is build, elevation, whole constructor-unit-tests, whole ui-smoke, selected ui-tests (KitWindowTests, ScrollExtentTests, StudyViewTests), and all twenty s40 invariants. The authorized census additions are two ui-smoke identities and three ui-tests identities; constructor identities are unchanged. The smoke facts type through actual controls and reread persisted study/item files. Structure coverage also exercises scope persistence and study experiment additions.
+- Build and elevation from the immutable arc origin: 600-second deadlines each.
+- Whole constructor-unit-tests: 180 seconds; constructor identities unchanged.
+- Whole ui-smoke: 600 seconds; two authorized additions imply 260 expected cases from the historical 258, not a measured result.
+- Selected ui-tests over KitWindowTests, ScrollExtentTests and StudyViewTests: 360 seconds; three authorized additions.
+- All twenty `invariant-s40-*` gates in `0414.gates`: 300 seconds each.
 
-Historical floors below are inherited, not measured this round: checkpoint 412 supplies 1,752 constructor and 258 smoke cases; the 0413 handoff supplies 16 ui_tests for its KitWindowTests selection. This slice expands the selected classes, so 16 is not a claimed total for the new selection. No checkpoint, census, deadline, oracle or gate descriptor was changed.
+Require the exact authorized census, zero failures/skips and no owned warnings. Only a successful full supervisor cycle may publish measured checkpoint 413. No gate allowance, acceptance condition, baseline or checkpoint was changed by this worker.
+
+Historical evidence is distinct from verification of the committed repair. The post-mortem records three pre-repair smoke failures, each 259 passed / 1 failed / 260 total and zero skips. MTP durations were 230.025, 234.015 and 232.052 seconds against 600 seconds; the last stopped because the centre hit ScrollContentPresenter. The last preceding build, elevation and constructor runs took 4.0, 221.4 and 160.5 seconds against 600, 600 and 180 seconds. No supplied historical duration exceeded its deadline; selected ui-tests and the twenty invariants were not reached.
+
+Operator reply 028 reports reproducing the overlay-scrollbar obstruction and stale hit-test frame independently, and 1–2 ticks to converge after the bounded-wait repair. That is operator evidence, not a worker-run test result or a full-roster pass.
+
+The YAML retains inherited floors only: checkpoint 412 supplies constructor 1,752 and smoke 258; the prior handoff supplies ui_tests 16 for its narrower KitWindowTests selection. Sixteen is not the expected total of this slice's expanded selection.
 
 ```yaml
 gates:
@@ -32,31 +43,28 @@ gates:
 
 ## Architecture
 
-StudyUnknownsView projects the existing model and sends the existing study and parameter messages. StudyContext.itemsUsedBy owns item selection/order; opened materials retain study order; Parameter.gridCells and ItemsPanelView.parameterEditorView own parameter formatting and editing. No new domain or storage behavior is introduced. Material offers resolve stored item-model versions through model.tryItemModelChoice.
+StudyUnknownsView projects the existing model and sends the existing study and parameter messages. StudyContext.itemsUsedBy owns item order; opened materials retain study order; Parameter.gridCells and ItemsPanelView.parameterEditorView own formatting and editing. Material offers use stored item-model versions through model.tryItemModelChoice. The fixture writes canonical kit content, closes and reopens the kit, and creates its study through StudyCommand.
 
-Study actions and editor wrappers carry keys that preserve their current study and parameter owner. Scope/link callbacks refresh on each patch. Writable controls follow model.kitWrites; the underlying command guards remain authoritative. The fixture records canonical item/setup/experiment files, copies real data through KitProxy, closes and reopens the kit, and creates QZ-LR through StudyCommand.
+The Unknowns ScrollViewer keeps AllowAutoHide=false so visible scrollbars reserve space. StudyViewTests.pressStudyBox brings the identified control into view, then advances render ticks and dispatcher jobs until the centre hits that control or a descendant, bounded at 50 ticks. Failure includes the hit type, centre and target bounds. Actual input still comes from SlotBarTests.pressBox; no fixed sleep, resized window or semantic-command substitute was introduced. Immediate editor checks and persisted Phone.darkOffset start/bounds assertions remain.
 
-Attempt 03 changes StudyUnknownsView and the study test interaction fixture. The view sets AllowAutoHide=false on its own ScrollViewer; horizontal and vertical visibility remain Auto. This reserves layout space for the bars instead of allowing them to cover the viewport's edge. The test helper completes scrolling and rendering, asserts that the computed centre hits the identified control or its descendant, and reuses SlotBarTests.pressBox for the actual pointer input. Standard window size, test identities and stored-result assertions are preserved; domain and storage behavior are unchanged.
-
-The interception diagnosis follows the repeated supervisor failure and the pinned Avalonia 12.1.4 source: the [Fluent template](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Themes.Fluent/Controls/ScrollViewer.xaml#L67) spans the scrollbar row and column when auto-hide is enabled, while [BringDescendantIntoView](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Controls/Presenters/ScrollContentPresenter.cs#L213) can align the target with that viewport edge. It is a source-based inference, not a reproduced runtime diagnosis; supervisor verification must confirm the repair.
+No domain, storage, durable-format or architectural change was made during this resume. The committed product and fixture already contain the required repairs.
 
 ## Deferred
 
-No requested implementation is deferred. Supervisor verification is pending by the worker protocol.
+No requested implementation is deferred. The supervisor must complete its normal formal review and all 25 gates after this worker exits; the worker cannot publish its checkpoint.
 
 ## Gotchas
 
-- The shared parameter editor's own key uses the parameter name; the new wrapper also keys by study and owner so equal names on different items cannot retain a stale Set handler.
-- Referenced material versions are a Set; offers enumerate it before deduplication across study items.
-- Runtime fixtures belong under test output. This worker generated no runtime artifacts.
-- The pre-existing change to specs/0050/.manifest.state.json was preserved. Product/test edits stay within the twelve authorized paths.
-- Attempt 02 also preserves the supervisor-owned `.expected-red-observed-json` change. Its only source edit is StudyViewTests.fs; the shared pointer helper remains outside this slice's effects.
-- Attempt 02's layout-only repair was insufficient. Attempt 03 reserves scrollbar space in the product and checks the hit target; it changes only StudyUnknownsView.fs, StudyViewTests.fs and the three assigned worker documents.
-- A control can be effectively visible and laid out yet have its centre covered by a scrollbar. The smoke helper now reports the hit control's type and centre if that occurs, without fixed sleeps or bypassing the UI handler.
-- All authored text uses LF. No notebooks, version locks, analyzer configuration, external repositories or git history were changed.
+- Keep both repairs together: reserving scrollbar space does not settle stale hit data, and rendering does not remove a scrollbar obstruction.
+- Steps 0415–0418, 0426 and 0460 must retain the bounded wait for every study press and AllowAutoHide=false when editing the study source/tests.
+- The post-mortem's original uncommitted-tree and proposed-repair text is historical. Operator reply 028 establishes the current committed state and normal-resume route.
+- The editor wrapper includes study and owner identity so equal parameter names cannot retain another owner's Set handler.
+- Entry changes to `.executability-json`, `.manifest.state.json` and `.supervisor-lock.diag` belong to the active supervisor and were left untouched. Published contracts, descriptors, census effects, consumed counters and checkpoints were preserved.
+- Only the three assigned worker Markdown files were edited. No Git mutation, version bump, external-repository write or product/test modification was performed.
 
 ## Changelog
 
-- 2026-11-14: Implemented the Inverse Unknowns step, stable IDs, shared disk-backed study fixture and authorized UI/model coverage; handed verification to the supervisor.
-- 2026-11-14, attempt 02: Repaired study smoke scroll-layout preparation, retained all acceptance assertions and added immediate editor checks; handed the repaired tree to supervisor verification.
-- 2026-11-14, attempt 03: Reserved scrollbar space on Unknowns and added rendered hit-target assertions after the repeated missing-editor failure; retained the full acceptance surface and left runtime verification to the supervisor.
+- 2026-11-14: Implemented the Inverse Unknowns surface, IDs, shared disk-backed fixture and authorized UI/model coverage.
+- 2026-11-14, attempts 02–03: Added layout preparation, then reserved scrollbar space and a single-frame hit assertion; supervisor smoke verification still failed.
+- 2026-11-14, operator repair: Committed the bounded render-until-hit wait as c92d8b87 after reproducing the two stacked causes.
+- 2026-11-14, normal resume: Reviewed the committed implementation and repair, preserved source and test contracts, and refreshed the worker handoff for the active profile-1 supervisor's full verification.

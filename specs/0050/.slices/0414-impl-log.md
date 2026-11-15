@@ -2,6 +2,10 @@
 
 ## Progress
 
+- Normal resume, 2026-11-14, before review: read the current task, both worker protocols, project guidance, slice and operator reply 028. The active supervisor log records successful profile-1 boot, arc origin `f395597c071910aaa215518626563f6c784bfb62`, the unchanged 25-gate snapshot and this IMPLEMENT dispatch at index 413. Its launch already satisfies the operator's normal-resume instruction; do not launch another supervisor or run its gates from this act-only worker.
+- Normal resume source review in progress: the operator committed the implementation as `a8678177` and the bounded render-until-hit wait as `c92d8b87`. Subsequent commits change operator notes/coordination data, not source. `pressStudyBox` retains real `SlotBarTests.pressBox` input after at most 50 render ticks, with hit-type/centre/bounds diagnostics; every study smoke press uses it. Unknowns retains `AllowAutoHide=false`. Review the remaining fixture, navigation and read-only coverage before handing back; no source edit is currently indicated.
+- Normal resume review completed: the committed source contains the fixed/derived IDs, guarded Inverse-only navigation, ordered eight-column grid, study commands, stored-model material offers and shared editor. The fixture records through canonical stores and reopens its kit with supplied stores; the authorized model, read-only and reachability assertions remain. All four StudyViewTests retain their identities and traits, and all study smoke presses use the bounded helper. No unmet source obligation was identified and no product/test edit was needed. Updated only the three worker documents for this resume; formal review and runtime verification remain with the active supervisor.
+
 - Attempt 03, before repair: read the task, worker protocols, slice and existing source/handoffs. The supervisor reports the same smoke fact failing at the new immediate ParameterEditPanel assertion (StudyViewTests.fs:229): 259 succeeded / 1 failed / 260 total, MTP duration 234.015 seconds against 600 seconds. Attempt 02's UpdateLayout preparation was insufficient. Trace the control geometry and event delivery before editing; preserve all existing assertions, identities and supervisor metadata. No worker gate execution.
 - Attempt 03 source diagnosis, before edit: the row sends EditStudyParameter with the stored Phone id/name, and its draft is included by the existing editor projection. The Unknowns scroller leaves AllowAutoHide at Avalonia's true default. In the package-pinned Fluent template that makes the content presenter span the scrollbar row/column; BringDescendantIntoView aligns a lower offscreen control with the viewport bottom. Thus completing layout still permits the horizontal scrollbar to intercept the row-centre press. Reserve scrollbar space in StudyUnknownsView and assert the rendered hit target before each study smoke press, preserving the shared real-pointer helper. This is a source-based diagnosis requiring supervisor runtime verification.
 - Attempt 03 repair completed: StudyUnknownsView sets AllowAutoHide=false on its own ScrollViewer, keeping both bars Auto but reserving their layout space when present. StudyViewTests.pressStudyBox advances the headless render after layout and asserts that the centre resolves to the identified control or its descendant, then delegates the click to SlotBarTests.pressBox. All existing editor, persistence, start-value, bounds, file and grid assertions remain. No windows were enlarged and no semantic model command replaced the pointer input.
@@ -21,11 +25,17 @@
 
 ## Files modified
 
+This normal-resume worker changed only `0414-impl-plan.md`, `0414-impl-log.md` and `0414-state-of-the-world.md` at the task's assigned paths. The product/test changes listed below belong to the already committed implementation and repairs.
+
 - Controls/UiIds.fs; Ui/ConstructorUiIdOfDomain.fs, TableAndElementRotationView.fs, StudyUnknownsView.fs, KitWindowView.fs and OpticalConstructor.Ui.fsproj.
 - Ui.Tests/TestAppScope.fs, StudyViewTests.fs, KitWindowTests.fs, ScrollExtentTests.fs and OpticalConstructor.Ui.Tests.fsproj; Tests/KitWindowModelTests.fs.
 - Planning and handoff files at the task's exact paths.
 
 ## Testing state
+
+Current normal resume: no build, tests, analyzer or invariant command was executed. The operator's requested review and complete unchanged 25-gate verification are the next supervisor phases after this IMPLEMENT worker exits, as required by Invariant 6. The supervisor already launched normally with profile 1 and operator reply 028; no second launch or `--accept-current-slice` is needed or permitted here. Return `commit_ready=false` because this worker has no fresh full-roster result, not because implementation is missing. Only successful supervisor verification may publish measured checkpoint 413.
+
+The operator reports reproduced overlay interception and stale hit-test frames, with convergence in 1–2 ticks after the bounded-wait repair. Source review agrees with the committed repair, but that report is not a new worker test measurement. The post-mortem adds the third pre-repair failure to the history below: 259/260 smoke cases passed, zero skips, MTP duration 232.052 seconds (600-second deadline), with the centre hitting ScrollContentPresenter. Its preceding build/elevation/constructor gates took 4.0/221.4/160.5 seconds, within 600/600/180 seconds. None of those pre-repair results validates `c92d8b87`.
 
 No gates or checks run. IMPLEMENT Invariant 6 assigns execution to the supervisor after worker exit. The authorized additions are two ui-smoke and three ui-tests identities; existing tests retain their identities.
 
@@ -37,6 +47,8 @@ Attempt 03 received the supervisor's result over attempt 02: review/build passed
 
 ## Artifacts
 
+Normal resume source references: `.manual/028-step-0414-operator-reply.md`, `.slices/0414-01.postmortem-md`, commits `a8678177` and `c92d8b87`, and the supervisor's 2026-11-15 00:52–00:55 UTC boot/dispatch records. No new runtime artifacts were produced. Existing historical artifact paths below remain evidence of the earlier attempts only.
+
 Persistent artifacts, if needed, belong only in `specs/0050/.artifacts`.
 No runtime artifacts were generated because this worker did not execute gates.
 
@@ -45,6 +57,10 @@ Diagnostic sources: the supplied `0414-attempt-02-task.txt`, the existing superv
 Attempt 03 sources: `0414-attempt-03-task.txt`, the local Avalonia 12.1.4 nuspec confirming that same commit, [Fluent ScrollViewer template](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Themes.Fluent/Controls/ScrollViewer.xaml#L67), [AllowAutoHide default](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Controls/ScrollViewer.cs#L106), and [BringDescendantIntoView](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Controls/Presenters/ScrollContentPresenter.cs#L213). No runtime evidence of the new repair is claimed.
 
 ## Gotchas
+
+Normal resume supersedes the earlier single-tick handoff: the operator reproduced two stacked defects, and committed both required remedies. Keep `AllowAutoHide=false` and the 50-tick condition-based render wait together; 0415–0418, 0426 and 0460 must preserve them when editing these files. The post-mortem's uncommitted-tree/proposed-repair wording is historical; operator reply 028 supplies the current committed state and normal-resume route.
+
+The entry worktree already had supervisor-owned changes to `.executability-json`, `.manifest.state.json` and `.supervisor-lock.diag`; this worker leaves them untouched, along with contracts, census/effect metadata, consumed counters, descriptors and checkpoints. The supervisor's bootstrap log confirms the immutable arc origin; do not narrow elevation to the operator commits.
 
 The worker-specific act-only protocol supersedes the shared protocol's legacy self-check path. Gate results and measured baselines remain supervisor-owned.
 

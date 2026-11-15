@@ -1,5 +1,15 @@
 # Implementation plan — 0414
 
+## Normal resume after the operator's commits
+
+Preserve the Unknowns implementation in `a8678177` and the render-until-hit repair in `c92d8b87`. Review their source against the slice and `.manual/028-step-0414-operator-reply.md`, including the existing test identities, real pointer input, reserved scrollbar space and read-only behavior. Change product or test code only if that review identifies an unmet obligation.
+
+The active supervisor has already launched with `--executability-profile 1` and the operator reply, and dispatched this IMPLEMENT worker at index 413. Return the required handoff to that process for normal review and the unchanged 25 gates; do not launch a second supervisor. IMPLEMENT Invariant 6 assigns gate execution and measured checkpoint publication to the supervisor. Preserve the immutable arc origin, historical floors and all supervisor metadata; do not claim a measured pass or publish checkpoint 413 from this worker.
+
+Update only the three assigned worker documents unless the source review finds a required repair. Preserve the earlier attempt history below and distinguish its superseded single-tick diagnosis from the operator's reproduced stale-frame defect and committed bounded wait.
+
+## Original implementation and repair plan
+
 Implement the Inverse constructor's Unknowns flow step using the existing study commands, stored item-model resolution, parameter grid formatting and shared parameter editor. Add intent-based automation IDs and route the surface through the kit window. Keep Main's strip limited to Items, Setups and Experiments and preserve the existing bay when entering Unknowns.
 
 Add the shared disk-backed study fixture in TestAppScope, the four authorized StudyViewTests, and the authorized scroll-reachability fact. Extend the existing flow/model/read-only tests without removing their assertions. Changes stay within the twelve source/project files authorized by the slice.
