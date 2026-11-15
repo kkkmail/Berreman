@@ -555,18 +555,22 @@ module StudyForward =
                 let slots = recorded |> List.map (fun slot -> slot.drawnWith items)
                 let layout = slots |> List.map (fun slot -> slot.layoutElement) |> BeamLayout.layout
 
-                let placedOf (id : Library.ElementId) : (SetupSlot * BeamLayout.PlacedElement) option =
-                    slots
-                    |> List.tryFind (fun slot -> slot.id = id)
-                    |> Option.bind (fun slot ->
-                        layout.elements |> List.tryFind (fun placed -> placed.id = id) |> Option.map (fun placed -> slot, placed))
+                let lightOrder = SetupSlot.inLightOrder slots
+
+                let placedOf (id : Library.ElementId) : (RoledSlot * BeamLayout.PlacedElement) option =
+                    lightOrder
+                    |> List.tryFind (fun roled -> roled.slot.id = id)
+                    |> Option.bind (fun roled ->
+                        layout.elements |> List.tryFind (fun placed -> placed.id = id) |> Option.map (fun placed -> roled, placed))
 
                 // A source, detector, mirror or lens, or an unbound slot, is no run element (spec 0050 S11.2; step 368).
                 let boundStepOf (step : BeamLayout.PathStep) : Result<BoundPathStep option, StudyForwardError> =
                     match placedOf step.element with
                     | None -> Ok None
-                    | Some (slot, placed) ->
-                        slot.runElementWith param
+                    | Some (roled, placed) ->
+                        let slot = roled.slot
+
+                        slot.runElementAs roled.role param
                         |> Result.mapError ForwardSlotErr
                         |> Result.bind (fun elementOpt ->
                             match elementOpt with

@@ -774,6 +774,44 @@ module StudyEngineTests =
         for stage in objectStages do
             Assert.Equal(NonlinearStudyEngine, engineOver (instrumentsWith [ qzAllFree; lrFree ]) [ e9; e10; k1 ] stage)
 
+        // With QZ and LR each fitted by its own runs, the series' rows only give its combined matrix: linear, as AT-1's
+        // QZ, LR and QZ then LR stage is (.manual/030). QZ's own runs alone still leave LR unresolved.
+        let lrBehindCpl = benchOf "CPL-LR-LP" cpl1 [ Some lrFree ] lp2 phone
+        let lrBehindLp = benchOf "LP-LR-LP" lp1 [ Some lrFree ] lp2 phone
+        let l1 = capturedOver lrBehindCpl "L1" ScienceRun (capturesOf "CPL-(LR#0)-LP" circularSource lpAnalyzer lrTruth)
+        let l2 = capturedOver lrBehindLp "L2" ScienceRun (capturesOf "LP-(LR#0)-LP" LpSource lpAnalyzer lrTruth)
+        let seriesItems = instrumentsWith [ qzAllFree; lrFree ]
+
+        let seriesEngine (runs : AttachedRun list) (stage : FitStage) : StudyEngineKind =
+            let study = studyOver "Series" runs
+            engineOf (contextWithin (benches @ [ lrBehindCpl; lrBehindLp ]) seriesItems runs study) study stage
+
+        for stage in objectStages do
+            Assert.Equal(LinearStudyEngine, seriesEngine [ e1; e2; l1; l2; e9; e10; k1 ] stage)
+            Assert.Equal(NonlinearStudyEngine, seriesEngine [ e1; e2; e9; e10; k1 ] stage)
+
+        // Each of these stays nonlinear even beside its objects' own runs: a link joining two matrices on one path, and
+        // a double pass.
+        let qz2KnownBehindCpl = benchOf "CPL-QZ2K-LP" cpl1 [ Some qz2Known ] lp2 phone
+        let qz2KnownBehindLp = benchOf "LP-QZ2K-LP" lp1 [ Some qz2Known ] lp2 phone
+        let q1 = capturedOver qz2KnownBehindCpl "Q1" ScienceRun (capturesOf "CPL-(QZ2#0)-LP" circularSource lpAnalyzer qz2Truth)
+        let q2 = capturedOver qz2KnownBehindLp "Q2" ScienceRun (capturesOf "LP-(QZ2#0)-LP" LpSource lpAnalyzer qz2Truth)
+        let e11Beside = capturedOver qzThenQz2 "E11" ScienceRun (capturesOf "LP-(QZ#0-QZ2#0)-LP" LpSource lpAnalyzer (qz2Truth * qzTruth))
+        let besideRuns = [ e1; e2; q1; q2; e11Beside; k1 ]
+        let besideItems = instrumentsWith [ qzAllFree; qz2Known ]
+        let besideContext (study : Study) : StudyForwardContext = contextWithin (benches @ [ qz2KnownBehindCpl; qz2KnownBehindLp ]) besideItems besideRuns study
+
+        let coupledBeside =
+            let study = studyOver "Coupled beside" besideRuns
+            let link : ParameterLink = { follower = ItemParameterRef (qz2Known.id, coefficient 0 0); leader = ItemParameterRef (qzAllFree.id, coefficient 0 0) }
+            studyOf (study.withLink link ((besideContext study).kit.itemsUsedBy study))
+
+        let twiceRuns = [ e1; e2; capturedOver qzTwice "E12" ScienceRun (capturesOf "LP-(QZ#0-QZ#0)-LP" LpSource lpAnalyzer (qzTruth * qzTruth)); k1 ]
+
+        for stage in objectStages do
+            Assert.Equal(NonlinearStudyEngine, engineOf (besideContext coupledBeside) coupledBeside stage)
+            Assert.Equal(NonlinearStudyEngine, engineOver (instrumentsWith [ qzAllFree ]) twiceRuns stage)
+
         // A link coupling two matrices on one path: QZ2, behind QZ, has its m00 follow QZ's free m00.
         let e11 = capturedOver qzThenQz2 "E11" ScienceRun (capturesOf "LP-(QZ#0-QZ2#0)-LP" LpSource lpAnalyzer (qz2Truth * qzTruth))
         let coupledRuns = [ e11; k1 ]
@@ -1888,6 +1926,9 @@ module StudyEngineTests =
         let setups, runs, study, seriesObserved = seriesFixture ()
         let staged, context, prefits, data = objectStageOf setups (objectInstruments @ [ qzAllFree; lrFree ]) runs study
         let recorded = ResizeArray<LeastSquaresSystem>()
+
+        // Automatic dispatch takes this path: QZ and LR are each fitted by their own runs (.manual/030).
+        Assert.Equal(LinearStudyEngine, staged.engineWith context prefits)
         let solution = solutionOf (staged.reconstructLinear context prefits data (recordingSvd recorded))
 
         // QZ's and LR's own runs fit their coefficients; the series' rows give only its combined matrix.
@@ -3173,6 +3214,66 @@ module StudyEngineTests =
             Assert.Contains(({ parameter = m33; state = m33Known } : FitRunParameter), m33Run.parameters)
             Assert.Equal(MatrixRank 15, (List.exactlyOne m33Run.objectMatrices).rank)
             Assert.Equal<float>(qzTruth.element 3 3, (List.item (placeOf 3 3) (List.exactlyOne m33Run.objectMatrices).elements).value)
+
+        // AT-1's shape through automatic dispatch: the session fixture's QZ runs above, LR's own runs on Day 1 anchored to A1,
+        // and the series' of QZ then LR on Day 2 interpolated from A2 to A3. The nonlinear engine refuses those gains, so
+        // only the linear path answers: each object by its own runs, then the series' combined matrix (.manual/030).
+        let lrBenches = phis |> List.collect (familyBenches "LR" [ lrFree ])
+        let seriesBenches = phis |> List.collect (familyBenches "QL" [ qzAllFree; lrFree ])
+
+        let plannedIn
+            (session : SessionName)
+            (prefix : string)
+            (segment : Item list)
+            (truth : MuellerMatrix)
+            (timeOf : int -> int -> DateTimeOffset)
+            (gainAt : DateTimeOffset -> float)
+            (benches : Setup list)
+            : PlannedRun list =
+            benches
+            |> List.mapi (fun k bench ->
+                {
+                    plannedRun = sweptRunOver bench $"{prefix}{k + 1}" ScienceRun (Some session)
+                    segment = segment |> List.map (fun item -> item.id)
+                    segmentTruth = truth
+                    timeOf = timeOf k
+                    gainAt = gainAt
+                })
+
+        let nineOClock = DateTimeOffset(2026, 11, 13, 9, 0, 0, TimeSpan.Zero)
+        let lrPlanned = plannedIn day1 "L" [ lrFree ] lrTruth (fun k reading -> nineOClock.AddMinutes(float (2 * k)).AddSeconds(float (10 * reading))) (fun _ -> 1000.0) lrBenches
+
+        let seriesPlanned =
+            plannedIn day2 "S" [ qzAllFree; lrFree ] seriesTruth (fun k reading -> tenOClock.AddMinutes(float (5 + 7 * k)).AddSeconds(float (20 * reading))) day2GainAt seriesBenches
+
+        let seriesSetups = setups @ lrBenches @ seriesBenches
+        let seriesItems = objectInstruments @ [ qzAllFree; lrFree ]
+        let seriesRuns = runs @ (observedOver seriesSetups seriesItems (lrPlanned @ seriesPlanned) |> List.map (fun run -> run.observed))
+        let seriesKitRuns = seriesRuns |> List.map (fun run -> run.attachedRun)
+
+        let seriesStudy =
+            (studyOver "QZ-LR" seriesRuns).withSessionGainModel day1 (AnchoredSessionGain [ ExperimentName "A1" ]) seriesKitRuns
+            |> Result.bind (fun study ->
+                study.withSessionGainModel day2 (InterpolatedSessionGain { opening = ExperimentName "A2"; closing = ExperimentName "A3" }) seriesKitRuns)
+            |> studyOf
+
+        for stage in objectStages do
+            let solves = ResizeArray<LeastSquaresSystem>()
+            let seriesRun = linearFitRunOf seriesSetups seriesItems seriesItems seriesRuns seriesStudy stage solves
+
+            // Three object solves, each made again for the run's results.
+            Assert.Equal(6, solves.Count)
+            assertValuesWithin 1e-9 (elementsAt qzTruth coefficientPlaces) (fittedInRun seriesRun qzAllFree coefficientPlaces)
+            assertValuesWithin 1e-9 (elementsAt lrTruth coefficientPlaces) (fittedInRun seriesRun lrFree coefficientPlaces)
+
+            Assert.Equal<ItemId list list>(
+                [ [ qzAllFree.id ]; [ lrFree.id ]; [ qzAllFree.id; lrFree.id ] ],
+                seriesRun.objectMatrices |> List.map (fun fit -> fit.items))
+
+            for fit, truth in List.zip seriesRun.objectMatrices [ qzTruth; lrTruth; seriesTruth ] do
+                assertValuesWithin 1e-9 (truth.rowMajorValues |> List.map (fun value -> value.value)) fit.elements
+
+            Assert.NotEmpty(seriesRun.results.productChecks)
 
         // (a) m00 alone free behind a fixed ideal CP of either handedness: rank 1, one entry.
         let qzM00 = qzHolding m00Free

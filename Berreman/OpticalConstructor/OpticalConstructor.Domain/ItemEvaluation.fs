@@ -276,12 +276,14 @@ module ItemEvaluation =
         }
 
     /// What an element evaluates from, its parameters bound: a polarizer preset, which publishes no parameter, an
-    /// empty slot, the calibration reference, an optical form with a value for each of its axes, a stack sample at
-    /// its thicknesses, its materials resolved, or a cut plate of a chosen crystal (spec 0050 S8.1; 001 §I).
+    /// empty slot, the calibration reference, an optical form with a value for each of its axes, a compound held as an
+    /// analyzer and so seen from behind (.manual/031), a stack sample at its thicknesses, its materials resolved, or a
+    /// cut plate of a chosen crystal (spec 0050 S8.1; 001 §I).
     type BoundOpticalElement =
         | BoundPolarizerPreset of PolarizerBehavior
         | BoundEmptySlot
         | BoundOpticalForm of form : OpticalForm * values : ParameterValues
+        | BoundAnalyzingCompound of components : CompoundComponent list * values : ParameterValues
         | BoundStackSample of ResolvedStackSample
         | BoundCutPlate of CutPlate
 
@@ -366,22 +368,18 @@ module ItemEvaluation =
                         |> MuellerMatrix
                         |> Propagation.rotateMueller rotation))
             | BoundOpticalForm (CompoundModel components, values), Propagation.BranchTransmitted ->
-                // Each component at rotation 0 and its own offset, in light order; a nested compound recurses here.
-                let atReference = ElementOrientation.transmittingAt Angle.zero
-
-                components
-                |> List.mapi (fun k part ->
-                    let position = ParameterNameIndex (k + 1)
-
-                    values.forComponent position part.form.parameterAxes
-                    |> Result.bind (fun componentValues ->
-                        let bound : BoundOpticalElement = BoundOpticalForm (part.form, componentValues)
-                        bound.muellerAt atReference w)
-                    |> Result.map (fun matrix ->
-                        let evaluated : MuellerComponent = { matrix = matrix; offset = part.offset }
-                        evaluated))
-                |> sequenced
+                BoundOpticalElement.compoundPartsAt components values w
                 |> Result.map (fun parts -> Propagation.rotateMueller rotation (Propagation.compoundMueller parts))
+            | BoundAnalyzingCompound (components, values), Propagation.BranchTransmitted ->
+                // Seen from behind: light meets the last component first, every azimuth mirrored, F · (A₁ · … · Aₙ) · F
+                // (.manual/031).
+                let mirror =
+                    [ [ 1.0; 0.0; 0.0; 0.0 ]; [ 0.0; 1.0; 0.0; 0.0 ]; [ 0.0; 0.0; -1.0; 0.0 ]; [ 0.0; 0.0; 0.0; -1.0 ] ]
+                    |> RealMatrix4x4.create
+                    |> MuellerMatrix
+
+                BoundOpticalElement.compoundPartsAt components values w
+                |> Result.map (fun parts -> Propagation.rotateMueller rotation (mirror * Propagation.compoundMueller (List.rev parts) * mirror))
             | BoundStackSample stack, Propagation.BranchTransmitted
             | BoundStackSample stack, Propagation.BranchReflected ->
                 Ok (Propagation.sampleMuellerSpun orientation.branch stack.resolved w orientation.incidence rotation)
@@ -405,8 +403,31 @@ module ItemEvaluation =
                 Error (UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits")
             | BoundEmptySlot, Propagation.BranchReflected ->
                 Error (UnmodelledBranchErr "the reflected branch of an empty slot, which only transmits")
-            | BoundOpticalForm _, Propagation.BranchReflected ->
+            | BoundOpticalForm _, Propagation.BranchReflected
+            | BoundAnalyzingCompound _, Propagation.BranchReflected ->
                 Error (UnmodelledBranchErr "the reflected branch of an optical form, which only transmits")
+
+        /// A compound's components, each at rotation 0 and its own offset, in light order; a nested compound recurses
+        /// through `muellerAt` (spec 0050 S8.1).
+        static member private compoundPartsAt
+            (components : CompoundComponent list)
+            (values : ParameterValues)
+            (w : WaveLength)
+            : Result<MuellerComponent list, ItemEvaluationError> =
+            let atReference = ElementOrientation.transmittingAt Angle.zero
+
+            components
+            |> List.mapi (fun k part ->
+                let position = ParameterNameIndex (k + 1)
+
+                values.forComponent position part.form.parameterAxes
+                |> Result.bind (fun componentValues ->
+                    let bound : BoundOpticalElement = BoundOpticalForm (part.form, componentValues)
+                    bound.muellerAt atReference w)
+                |> Result.map (fun matrix ->
+                    let evaluated : MuellerComponent = { matrix = matrix; offset = part.offset }
+                    evaluated))
+            |> sequenced
 
     type ItemModelChoice with
 
@@ -500,6 +521,16 @@ module ItemEvaluation =
                     |> Result.map Some
                 | _, Some (PolarizerItem _ | SampleItem _ | SourceItem _ | DetectorItem _)
                 | _, None -> Ok None
+
+        /// The slot bound for a run in the role the light gives it: `runElementWith`, but a compound held as an analyzer
+        /// is seen from behind, as stage 1's circular analyzer is an LP behind its retarder (spec 0050 S11.2, S11.3;
+        /// .manual/031). Every run path binds its slots here.
+        member this.runElementAs (role : SlotRole) (param : SlotRunParam) : Result<BoundOpticalElement option, SlotRunError> =
+            this.runElementWith param
+            |> Result.map (Option.map (fun element ->
+                match role, element with
+                | AnalyzerSlotRole _, BoundOpticalForm (CompoundModel components, values) -> BoundAnalyzingCompound (components, values)
+                | (SourceSlotRole | PrepSlotRole _ | ObjectSlotRole _ | AnalyzerSlotRole _ | DetectorSlotRole _), _ -> element))
 
         /// The slot's Mueller matrix as its run step: a sample slot holds an object, any other slot an element (spec
         /// 0050 S11.2).

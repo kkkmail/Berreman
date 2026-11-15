@@ -5135,6 +5135,7 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
     let layout = model.sceneLayout
     let w0 = operatingWaveLength model scan.sourceWaveLengthOpt
     let indexOf (id : Library.ElementId) : int option = model.elements |> List.tryFindIndex (fun e -> e.id = id)
+    let lightOrder = SetupSlot.inLightOrder model.elements
     let boundOf (e : Setups.SetupSlot) : Library.LibraryEntry option =
         match e.placement.valueId with
         | Some id ->
@@ -5199,8 +5200,14 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                     | None -> incidence0
                 if touched then Ok (SweptStep (fun settings -> stepAt (incidenceAt settings) (rotationAt settings) (waveLengthAt settings)))
                 else stepAt incidence0 e.placement.r1 w0 |> Result.map FixedStep
-            // Bound once per path step, so a sample's materials resolve once for the whole block.
-            e.runElementWith runParam
+            // Bound once per path step in its role, so a sample's materials resolve once for the whole block; every slot
+            // has a role (`SetupSlot.inLightOrder`), so the fallback is never taken.
+            let bound : Result<BoundOpticalElement option, SlotRunError> =
+                match lightOrder |> List.tryFind (fun roled -> roled.slot.id = e.id) with
+                | Some roled -> e.runElementAs roled.role runParam
+                | None -> Ok None
+
+            bound
             |> Result.bind (fun boundOpt ->
                 match boundOpt with
                 | Some bound -> sweptOrFixed bound |> Result.map Some |> Result.mapError SlotEvaluationErr

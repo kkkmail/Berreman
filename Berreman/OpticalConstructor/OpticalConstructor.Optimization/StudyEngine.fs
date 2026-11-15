@@ -251,8 +251,9 @@ module StudyEngine =
 
     type StagedStudy with
 
-        /// Linear for the reference AIR calibration under stage 1, or for sixteen-element black boxes, one per fitted path,
-        /// behind fixed optics under stage 2 or joint; nonlinear otherwise. Structural: no score, threshold or rank is read
+        /// Linear for the reference AIR calibration under stage 1, or for sixteen-element black boxes behind fixed optics
+        /// under stage 2 or joint, one per fitted path or a series of ones each fitted by its own lone runs; nonlinear
+        /// otherwise. Structural: no score, threshold or rank is read
         /// (spec 0050 S11.3; 001 §L).
         member this.engineWith (context : StudyForwardContext) (prefits : ExperimentPrefit list) : StudyEngineKind =
             let kit = { context.kit with items = this.items }
@@ -334,18 +335,41 @@ module StudyEngine =
                 | ItemParameterRef _
                 | MaterialParameterRef _ -> false
 
-            // (b) Black-box coefficients, linked or not, each fitted path bearing at most one unknown matrix: every other
-            // element on it, its gain included, is fixed.
+            // (b) Black-box coefficients, linked or not, every other element on a fitted path, its gain included, fixed. A
+            // path bearing several unknown matrices only gives its series' combined matrix, so each of them must be fitted
+            // by its own lone runs, none held twice (a double pass) and no link joining two (spec 0050 S11.3, S11.4;
+            // .manual/030).
             let blackBoxShape () : bool =
                 // Counted per slot: one free item held in two slots is a double pass, quadratic in its coefficients.
-                let oneUnknownMatrix (held : (SlotRole * Item * ItemModelChoice) list) : bool =
-                    let bearing = bearersAmong (fittedParameters @ fittedFollowers) (held |> List.map (fun (_, item, _) -> item.id))
-                    bearing.Length <= 1
+                let bearings : ItemId list list =
+                    fitted
+                    |> List.map (fun (_, held) -> bearersAmong (fittedParameters @ fittedFollowers) (held |> List.map (fun (_, item, _) -> item.id)))
+
+                let lone = bearings |> List.choose (fun bearing -> match bearing with | [ item ] -> Some item | _ -> None)
+
+                let ownerOf (parameter : StudyParameterRef) : ItemId option =
+                    match parameter with
+                    | ItemParameterRef (owner, _) -> Some owner
+                    | MaterialParameterRef _ -> None
+
+                let linkJoins (series : ItemId list) : bool =
+                    this.study.links
+                    |> List.exists (fun link ->
+                        match ownerOf link.follower, ownerOf link.leader with
+                        | Some follower, Some leader -> follower <> leader && List.contains follower series && List.contains leader series
+                        | _ -> false)
+
+                let resolved (bearing : ItemId list) : bool =
+                    match bearing with
+                    | []
+                    | [ _ ] -> true
+                    | series -> List.distinct series = series && series |> List.forall (fun item -> List.contains item lone) && not (linkJoins series)
 
                 everyRunResolves
                 && entries |> List.forall (fun entry -> itemOwned entry && isCoefficient entry.unknown.parameter)
                 && fittedFollowers |> List.forall isCoefficient
-                && fitted |> List.forall (fun (run, held) -> readsCapturesByIntensity (run, held) && oneUnknownMatrix held)
+                && fitted |> List.forall readsCapturesByIntensity
+                && bearings |> List.forall resolved
 
             let linear =
                 match this.stage with
