@@ -1,10 +1,14 @@
 namespace OpticalConstructor.Ui.Tests
 
 open System
+open System.Collections.Concurrent
 open System.IO
+open System.Threading
 open Xunit
+open Softellect.Sys
 open Softellect.Sys.Primitives
 open Berreman.Constants
+open Berreman.Fields
 open Berreman.Geometry
 open BerremanTestSupport
 open OpticalConstructor.Controls
@@ -12,6 +16,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.DataSplits
 open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -27,6 +32,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.SetupGrids
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Storage.CatalogueFolderStore
@@ -38,6 +44,7 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.KitStartView
+open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// AT-1 and AT-2 build the reference kits through the app's messages and prove them against the committed kits
@@ -92,6 +99,11 @@ module KitAcceptanceTests =
     let private kitId = KitId (Guid.Parse "e63c9d6e-7961-4d9f-9c8d-e5a151414e0e")
     let private kitAuthor = KitAuthor "optics-mueller lab"
     let private initialTime = ClockTime (DateTime(2026, 5, 31, 12, 0, 0, DateTimeKind.Utc))
+    let private calibrationTime = ClockTime (DateTime(2026, 5, 31, 12, 1, 0, DateTimeKind.Utc))
+    let private objectTime = ClockTime (DateTime(2026, 5, 31, 12, 2, 0, DateTimeKind.Utc))
+    let private studyName = StudyName "QZ-LR"
+    let private calibrationRunName = FitRunName "QZ-LR@20260531T120100Z"
+    let private objectRunName = FitRunName "QZ-LR@20260531T120200Z"
     let private labTemplate = ControlCaption "{source:LP1=LP,CPL1=CPL}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer:LP2=LP,CPL2=CPL}-{note}"
     let private sourceSlot = ElementId "src"
     let private firstObjectSlot = ElementId "sample"
@@ -111,18 +123,45 @@ module KitAcceptanceTests =
     let private darknessFile = KitRelativePath "data/raw/final/darkness_checks.csv"
     let private diagnosticFile = KitRelativePath "data/raw/final/bullshit_checks.csv"
     let private finalLabFiles = [ lpLpFile; lpCplFile; cplLpFile; cplCplDay1File; cplCplDay2File; darknessFile; diagnosticFile ]
-    let private calibrationNames : ExperimentName list =
+    let private sessionGainSettings : SessionGainSetting list =
         [
-            ExperimentName "LP-(AIR#0)-LP-2"
-            ExperimentName "LP-(AIR#0)-LP-2R"
-            ExperimentName "LP-(AIR#0)-CPL-2"
-            ExperimentName "LP-(AIR#0)-CPL-2R"
-            ExperimentName "CPL-(AIR#0)-LP-2"
-            ExperimentName "CPL-(AIR#0)-LP-2R"
-            ExperimentName "CPL-(AIR#0)-CPL"
-            ExperimentName "CPL-(AIR#0)-CPL-BR"
-            ExperimentName "CPL-(AIR#0)-CPL-2"
+            {
+                session = SessionName "LP-LP"
+                model = AnchoredSessionGain [ ExperimentName "LP-(AIR#0)-LP-2"; ExperimentName "LP-(AIR#0)-LP-2R" ]
+            }
+            {
+                session = SessionName "LP-CPL"
+                model = AnchoredSessionGain [ ExperimentName "LP-(AIR#0)-CPL-2"; ExperimentName "LP-(AIR#0)-CPL-2R" ]
+            }
+            {
+                session = SessionName "CPL-LP before the restart"
+                model = AnchoredSessionGain [ ExperimentName "CPL-(AIR#0)-LP-2" ]
+            }
+            {
+                session = SessionName "CPL-LP after the restart"
+                model = AnchoredSessionGain [ ExperimentName "CPL-(AIR#0)-LP-2R" ]
+            }
+            {
+                session = SessionName "CPL-CPL day 1"
+                model =
+                    InterpolatedSessionGain
+                        {
+                            opening = ExperimentName "CPL-(AIR#0)-CPL"
+                            closing = ExperimentName "CPL-(AIR#0)-CPL-BR"
+                        }
+            }
+            {
+                session = SessionName "CPL-CPL day 2"
+                model = AnchoredSessionGain [ ExperimentName "CPL-(AIR#0)-CPL-2" ]
+            }
         ]
+    let private calibrationNames : ExperimentName list =
+        sessionGainSettings
+        |> List.collect (fun setting ->
+            match setting.model with
+            | AnchoredSessionGain anchors -> anchors
+            | InterpolatedSessionGain repeats -> [ repeats.opening; repeats.closing ]
+            | FreeSessionGain -> [])
     let private manualSetups : Map<DataRowKey, SetupName> =
         [
             DataRowKey "Darkness", SetupName "CPL-(AIR#0)-CPL"
@@ -534,9 +573,83 @@ module KitAcceptanceTests =
             ]
         attached |> apply edits
 
-    /// Build through application messages, keeping the setup-only checkpoint available to AT-1 (spec 0050 S12.1).
+    let private runAcceptanceFit
+        (stage : FitStage)
+        (expectedName : FitRunName)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        let file = FitRunKitFile.fileNameOf expectedName.fileStem
+        use ended = new ManualResetEventSlim (false)
+        let messages = ConcurrentQueue<TableAndElementRotationMsg> ()
+        let host =
+            StudyFitJobHost.posting
+                (fun action -> action ())
+                (fun progress -> messages.Enqueue (StudyFit (StudyFitProgressed progress)))
+                (fun result ->
+                    messages.Enqueue (StudyFit (StudyFitEnded result))
+                    ended.Set ())
+        let ready =
+            {
+                model with
+                    kitShell =
+                        {
+                            model.kitShell with studyFits = host
+                        }
+            }
+        let request : StudyFitRequest =
+            {
+                study = studyName
+                stage = stage
+                calibrationUse = CalibrationHeldFixed
+            }
+        let running = ready |> updateTableAndElementRotation (StudyFit (RunFit request))
+        expect file "fit started" true running.studyFit.job.isRunning
+        Assert.True(ended.Wait(TimeSpan.FromSeconds 60.0), $"{file.value}: expected fit completion within sixty seconds; actual no completion")
+        let recorded = messages.ToArray () |> Array.toList
+        let completions = recorded |> List.choose (function StudyFit (StudyFitEnded result) -> Some result | _ -> None)
+        expect file "completion message count" 1 completions.Length
+        let finished = running |> apply recorded
+        match finished.studyFit.errorOpt with
+        | Some error -> Assert.Fail($"{file.value}: expected a successful fit; actual {error.describe}")
+        | None -> ()
+        expect file "fit finished" false finished.studyFit.job.isRunning
+        expect file "fit handle released" None finished.studyFit.handleOpt
+        expect file "committed fit run" (Some expectedName) finished.studyFit.job.committedResults
+        expect file "appended fit run names" ((model.kitFitRuns |> List.map _.name) @ [ expectedName ]) (finished.kitFitRuns |> List.map _.name)
+        {
+            finished with kitShell = model.kitShell
+        }
+
+    let private buildAcceptanceStudy
+        (setTime : ClockTime -> unit)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        let file = StudyKitFile.fileNameOf studyName.fileStem
+        let experiments = model.experimentCollection.experiments |> List.map _.name
+        expect file "study experiment count" 53 experiments.Length
+        let configured =
+            model
+            |> apply
+                ([ StudyCommand (CreateStudy (studyName, experiments)); StudyCommand (SetFitMode (studyName, StagedFit)) ]
+                 @ (sessionGainSettings |> List.map (fun setting -> StudyCommand (SetSessionGainModel (studyName, setting)))))
+        expect file "study configuration status" None configured.kitStatus
+        setTime calibrationTime
+        let calibrated = configured |> runAcceptanceFit CalibrationStage calibrationRunName
+        let calibrationFile = FitRunKitFile.fileNameOf calibrationRunName.fileStem
+        let calibrationText = calibrated.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> readKitResult calibrationFile
+        let published = calibrated |> updateTableAndElementRotation (PublishCalibration calibrationRunName)
+        for label in [ ItemLabel "LP2"; ItemLabel "CPL1"; ItemLabel "CPL2" ] do
+            let item = published.kitItems |> List.find (fun held -> held.label = label)
+            expect (ItemKitFile.fileNameOf label.fileStem) "published revision" (ItemRevision 2) item.revision
+        setTime objectTime
+        let reconstructed = published |> runAcceptanceFit ObjectStage objectRunName
+        expect calibrationFile "calibration run unchanged after publication and stage two" calibrationText
+            (reconstructed.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> readKitResult calibrationFile)
+        reconstructed
+
+    /// Build through application messages, retaining the setup and experiment checkpoints (spec 0050 S12.1).
     let private buildOpticsMuellerKitWith
-        (finish : KitFolder -> TableAndElementRotationModel -> TableAndElementRotationModel)
+        (finish : (ClockTime -> unit) -> KitFolder -> TableAndElementRotationModel -> TableAndElementRotationModel)
         (run : FolderName)
         : BuiltAcceptanceKit =
         let runFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitAcceptanceTests", run.value))
@@ -597,7 +710,7 @@ module KitAcceptanceTests =
             expect (FileName "*.item-json") "unused item identities" [] remaining
             let setups = buildAcceptanceSetups stocked
             expect (FileName "*.setup-json") "setups including both corrections" 42 setups.kitSetups.Length
-            let model = finish folder setups
+            let model = finish (fun at -> now <- at) folder setups
             {
                 folder = folder
                 context = context
@@ -614,7 +727,7 @@ module KitAcceptanceTests =
             reraise ()
 
     let private buildOpticsMuellerKit (run : FolderName) : BuiltAcceptanceKit =
-        buildOpticsMuellerKitWith buildAcceptanceExperiments run
+        buildOpticsMuellerKitWith (fun setTime folder model -> model |> buildAcceptanceExperiments folder |> buildAcceptanceStudy setTime) run
 
     let private expectedSetups () : AcceptanceSetup list =
         // Spec 0050 S12.1: the Rotate bay stores -90 degrees in its [0, 360) representation.
@@ -894,11 +1007,57 @@ module KitAcceptanceTests =
                         |> not)
                 expect file "keptBy removes only the reference's contaminated frame" (CapturePoints kept) (mapped.keptBy data.exclusions)
 
+    let private referenceInstrumentAngles : (ItemLabel * ParameterName * BarDegrees) list =
+        [
+            ItemLabel "LP2", ParameterName.dialZero, BarDegrees MuellerReference.lpAnalyzerZero.degrees
+            ItemLabel "CPL2", ParameterName.dialZero, BarDegrees MuellerReference.cplAnalyzerZero.degrees
+            ItemLabel "CPL2", retardanceName, BarDegrees MuellerReference.cplAnalyzerRetardance.degrees
+            ItemLabel "CPL1", retardanceName, BarDegrees MuellerReference.cplSourceRetardance.degrees
+            ItemLabel "CPL1", fastAxisOffsetName, BarDegrees ((MuellerReference.cplSourceAxisOffset - Angle.degree 45.0<deg>).degrees)
+        ]
+
+    [<ElevationBoundary(nameof InteropBoundary, "xUnit's scalar tolerance assertion consumes doubles")>]
+    let private expectReferenceValue (quantity : ControlCaption) (expected : float) (actual : float) : unit =
+        try Assert.Equal(expected, actual, MuellerReference.dataMatrixTol)
+        with :? Xunit.Sdk.XunitException as error ->
+            Assert.Fail($"{quantity.value}: expected {expected:G17}; actual {actual:G17}; tolerance {MuellerReference.dataMatrixTol:G17}\n{error.Message}")
+
+    let private assertReferenceInstruments (items : Item list) : unit =
+        for label, name, expected in referenceInstrumentAngles do
+            let quantity = ControlCaption $"{label.value}.{name.value} (degrees)"
+            let parameterOpt =
+                items |> List.tryFind (fun item -> item.label = label) |> Option.bind (fun item -> item.tryFindParameter name)
+            match parameterOpt |> Option.map _.state with
+            | Some (CalibratedParameter calibrated) ->
+                expectReferenceValue quantity expected.value calibrated.value.angle.degrees
+            | _ -> Assert.Fail($"{quantity.value}: expected a calibrated value of {expected.value:G17}; actual no calibrated parameter")
+
+    let private assertReferenceObjects (run : FitRun) : unit =
+        let file = FitRunKitFile.fileNameOf run.name.fileStem
+        let qz = itemIdOf (ItemLabel "QZ")
+        let lr = itemIdOf (ItemLabel "LR")
+        let references : (ItemId list * MuellerMatrix) list =
+            [ [ qz ], MuellerReference.qzMatrix; [ lr ], MuellerReference.lrMatrix; [ qz; lr ], MuellerReference.combinedMatrix ]
+        expect file "object matrix groups" (references |> List.map fst |> List.sort) (run.objectMatrices |> List.map _.items |> List.sort)
+        for ids, reference in references do
+            let labels = ids |> List.map (fun id -> (itemSpecs |> List.find (fun item -> item.id = id)).label.value) |> String.concat " then "
+            let fitted = run.objectMatrices |> List.find (fun matrix -> matrix.items = ids)
+            expect file $"{labels} matrix element count" 16 fitted.elements.Length
+            let expectedElements = reference.rowMajorValues
+            fitted.elements |> List.iteri (fun index actual ->
+                let quantity = ControlCaption $"{file.value}: {labels}.{muellerNames.[index].value}"
+                expectReferenceValue quantity expectedElements.[index].value actual.value)
+        expect file "product check count" 1 run.results.productChecks.Length
+        let check = List.exactlyOne run.results.productChecks
+        expect file "product check objects in light order" [ qz; lr ] check.items
+        let ratio = ControlCaption $"{file.value}: QZ then LR product-check RMSE ratio"
+        expectReferenceValue ratio MuellerReference.productCheckRmseRatio.value check.rmseRatio.value
+
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-1 builds the optics-mueller kit's items and setups through the app's messages`` () : unit =
         let run = FolderName (Guid.NewGuid().ToString("N"))
-        let built = buildOpticsMuellerKitWith (fun _ model -> model) run
+        let built = buildOpticsMuellerKitWith (fun _ _ model -> model) run
         try
             let reader = KitProxy.create built.folder
             let metadata = reader.readKitFile () |> readKitResult KitFile.fileName
@@ -929,7 +1088,7 @@ module KitAcceptanceTests =
         let originalHashes = labHashes original
         let files = readAcceptanceLabFiles original
         let run = FolderName (Guid.NewGuid().ToString("N"))
-        let built = buildOpticsMuellerKit run
+        let built = buildOpticsMuellerKitWith (fun _ folder model -> buildAcceptanceExperiments folder model) run
         try
             let reader = KitProxy.create built.folder
             assertStoredExperiments built reader files
@@ -939,6 +1098,108 @@ module KitAcceptanceTests =
             assertLabBytes built.folder
             expect (FileName "data/*") "built lab file inventory and SHA-256 unchanged" originalHashes (labHashes built.folder)
             expect (FileName "data/optics-mueller/data/*") "committed lab file inventory and SHA-256 unchanged" originalHashes (labHashes original)
+        finally
+            try built.model.kit.close () |> readKitResult KitFile.fileName
+            finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-1's staged study calibrates the instruments on the AIR runs, publishes them and reconstructs QZ, LR and QZ then LR as the reference does`` () : unit =
+        let run = FolderName (Guid.NewGuid().ToString("N"))
+        let built = buildOpticsMuellerKit run
+        try
+            let reader = KitProxy.create built.folder
+            let studyFile = StudyKitFile.fileNameOf studyName.fileStem
+            let studies = reader.readStudies () |> readKitResult studyFile
+            expect studyFile "study names" [ studyName ] (studies |> List.map _.name)
+            let study = List.exactlyOne studies
+            let experiments = reader.readExperiments () |> readKitResult (FileName "*.experiment-json")
+            expect studyFile "experiment count" 53 study.experiments.Length
+            expect studyFile "experiments in kit order" (experiments |> List.map _.name) study.experiments
+            expect studyFile "fit mode" StagedFit study.settings.mode
+            expect studyFile "six session gain settings" sessionGainSettings study.sessionGains
+            let sessions = study.sessionsIn experiments
+            let darkRuns = experiments |> List.filter (fun experiment -> experiment.role = DarkRun) |> List.map _.name
+            expect studyFile "shared dark run count" 6 darkRuns.Length
+            for setting in sessionGainSettings do
+                let session = sessions |> List.find (fun session -> session.name = setting.session)
+                expect studyFile $"{setting.session.value} gain is offered" true (List.contains setting.model (session.gainModelOffers experiments))
+                expect studyFile $"{setting.session.value} has no own dark run" [] (session.experiments |> List.filter (fun name -> List.contains name darkRuns))
+                expect studyFile $"{setting.session.value} uses all dark runs" darkRuns (session.darkRunsIn experiments)
+
+            let fitFile = FileName "QZ-LR@*.fitrun-json"
+            let runs = reader.readFitRuns studyName |> readKitResult fitFile
+            expect fitFile "fit runs in stamp order" [ calibrationRunName; objectRunName ] (runs |> List.map _.name)
+            expect fitFile "fit stamps" [ calibrationTime; objectTime ] (runs |> List.map _.stamp)
+            expect fitFile "fit stages" [ CalibrationStage; ObjectStage ] (runs |> List.map _.stage)
+            expect fitFile "stored fit runs match completed window jobs" built.model.kitFitRuns runs
+            for fitted in runs do
+                let file = FitRunKitFile.fileNameOf fitted.name.fileStem
+                expect file "study" studyName fitted.study
+                expect file "fit mode" StagedFit fitted.mode
+                expect file "engine" LinearStudyEngine fitted.engine
+                expect file "calibration use" CalibrationHeldFixed fitted.calibrationUse
+            let calibration = List.head runs
+            let reconstructed = List.last runs
+            let expectedEntries : FitEntryRef list =
+                referenceInstrumentAngles
+                |> List.map (fun (label, name, _) ->
+                    let id = itemIdOf label
+                    {
+                        parameter = ItemParameterRef (id, name)
+                        owner = ItemOwner id
+                    })
+            let actualEntries : FitEntryRef list =
+                calibration.entries |> List.map (fun entry ->
+                    {
+                        parameter = entry.parameter
+                        owner = entry.owner
+                    })
+            expect fitFile "five instrument unknowns" (expectedEntries |> List.sort) (actualEntries |> List.sort)
+            expect fitFile "five instrument sigma entries" (expectedEntries |> List.sort) (calibration.results.sigmas |> List.map _.entry |> List.sort)
+            expect fitFile "calibration AIR runs in kit order"
+                (experiments |> List.filter (fun experiment -> experiment.role = CalibrationRun) |> List.map _.name) calibration.runs
+            expect fitFile "object Science runs in kit order"
+                (experiments |> List.filter (fun experiment -> experiment.role = ScienceRun) |> List.map _.name) reconstructed.runs
+
+            let itemsFile = FileName "*.item-json"
+            let items = reader.readItems () |> readKitResult itemsFile
+            expect itemsFile "item identities" (itemSpecs |> List.map _.id |> List.sort) (items |> List.map _.id |> List.sort)
+            let calibratedIds = referenceInstrumentAngles |> List.map (fun (label, _, _) -> itemIdOf label) |> List.distinct
+            for item in items do
+                let file = ItemKitFile.fileNameOf item.label.fileStem
+                let expectedRevision = if List.contains item.id calibratedIds then ItemRevision 2 else ItemRevision.first
+                expect file "revision after calibration publication" expectedRevision item.revision
+            for label, name, _ in referenceInstrumentAngles do
+                let item = items |> List.find (fun item -> item.label = label)
+                let file = ItemKitFile.fileNameOf label.fileStem
+                let parameter = ItemParameterRef (item.id, name)
+                let entry = calibration.entries |> List.find (fun entry -> entry.parameter = parameter && entry.owner = ItemOwner item.id)
+                let reference : FitEntryRef =
+                    {
+                        parameter = entry.parameter
+                        owner = entry.owner
+                    }
+                let sigma =
+                    calibration.results.sigmas
+                    |> List.find (fun held -> held.entry = reference)
+                    |> _.sigmaOpt
+                    |> Option.defaultWith (fun () -> failwith $"{file.value}: {name.value} expected a fitted sigma; actual none")
+                let expected : CalibratedParameterData =
+                    {
+                        value = entry.fitted
+                        sigma = sigma
+                        fitRun = calibrationRunName
+                    }
+                expect file $"{name.value} fitted value, sigma and fit-run provenance"
+                    (Some (CalibratedParameter expected)) (item.tryFindParameter name |> Option.map _.state)
+                let heldByStageTwo = reconstructed.parameters |> List.find (fun held -> held.parameter = parameter)
+                expect file $"{name.value} held by stage two" (CalibratedParameter expected) heldByStageTwo.state
+
+            expect KitFile.fileName "clock after the object fit" objectTime (built.clock.now ())
+            assertReferenceInstruments items
+            assertReferenceObjects reconstructed
+            assertLabBytes built.folder
         finally
             try built.model.kit.close () |> readKitResult KitFile.fileName
             finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
