@@ -355,9 +355,11 @@ type ConstructorFlowStep =
     | UnknownsFlowStep
     /// The study's pre-fit checks, run controls and fit history (spec 0050 S11.5).
     | FitFlowStep
+    /// The selected fit run's stored values and diagnostics (spec 0050 S11.5).
+    | ResultsFlowStep
 
     /// The working steps in 001 §O's order (spec 0050 S7.2, S9.3, S11.5; .spec-md §3.22).
-    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep ]
+    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep; ResultsFlowStep ]
 
     /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3, S11.5).
     static member stepsOf (mode : ConstructorMode) : ConstructorFlowStep list =
@@ -365,7 +367,7 @@ type ConstructorFlowStep =
         | InverseConstructor -> ConstructorFlowStep.all
         | ForwardConstructor ->
             ConstructorFlowStep.all
-            |> List.filter (function DataFlowStep | UnknownsFlowStep | FitFlowStep -> false | _ -> true)
+            |> List.filter (function DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep -> false | _ -> true)
 
     /// The strip's caption of the step (spec 0050 S7.2, S11.5).
     member this.caption : ControlCaption =
@@ -376,6 +378,7 @@ type ConstructorFlowStep =
         | DataFlowStep -> ControlCaption "Data"
         | UnknownsFlowStep -> ControlCaption "Unknowns"
         | FitFlowStep -> ControlCaption "Fit"
+        | ResultsFlowStep -> ControlCaption "Results"
 
     /// The id of the step's box in the flow strip (spec 0050 S7.2, S11.5).
     member this.flowUiId : ConstructorUiId =
@@ -386,6 +389,7 @@ type ConstructorFlowStep =
         | DataFlowStep -> ConstructorUiId.flowDataStep
         | UnknownsFlowStep -> ConstructorUiId.flowUnknownsStep
         | FitFlowStep -> ConstructorUiId.flowFitStep
+        | ResultsFlowStep -> ConstructorUiId.flowResultsStep
 
 /// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
 /// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
@@ -558,11 +562,45 @@ type DataSplitState =
         creating : DataRowKey list
     }
 
+/// The selected fit run's result categories; window state only, never stored (spec 0050 S11.5).
+type FitResultsTab =
+    | ValuesResultsTab
+    | CorrelationResultsTab
+    | ResidualsResultsTab
+    | RealizabilityResultsTab
+    | ProductCheckResultsTab
+    | ProfileResultsTab
+
+    /// The result categories in 001 §O's order (spec 0050 S11.5).
+    static member all : FitResultsTab list =
+        [ ValuesResultsTab; CorrelationResultsTab; ResidualsResultsTab; RealizabilityResultsTab; ProductCheckResultsTab; ProfileResultsTab ]
+
+    /// The tab's visible label (spec 0050 S11.5).
+    member this.caption : ControlCaption =
+        match this with
+        | ValuesResultsTab -> ControlCaption "Values"
+        | CorrelationResultsTab -> ControlCaption "Correlation"
+        | ResidualsResultsTab -> ControlCaption "Residuals"
+        | RealizabilityResultsTab -> ControlCaption "Realizability"
+        | ProductCheckResultsTab -> ControlCaption "Product check"
+        | ProfileResultsTab -> ControlCaption "Profile likelihood"
+
+    /// The stable intent ID of the tab's box (spec 0050 S11.5).
+    member this.tabUiId : ConstructorUiId =
+        match this with
+        | ValuesResultsTab -> ConstructorUiId.fitResultsValuesTab
+        | CorrelationResultsTab -> ConstructorUiId.fitResultsCorrelationTab
+        | ResidualsResultsTab -> ConstructorUiId.fitResultsResidualsTab
+        | RealizabilityResultsTab -> ConstructorUiId.fitResultsRealizabilityTab
+        | ProductCheckResultsTab -> ConstructorUiId.fitResultsProductCheckTab
+        | ProfileResultsTab -> ConstructorUiId.fitResultsProfileTab
+
 /// The study surfaces' selections and New study draft; window state only, never stored (spec 0050 S11.5).
 type StudySurfaceState =
     {
         studyOpt : StudyName option
         fitRunOpt : FitRunName option
+        resultsTab : FitResultsTab
         calibrationUse : CalibrationUse
         newStudyName : ControlCaption
         newStudyExperiments : Experiments.ExperimentName list
@@ -573,6 +611,7 @@ type StudySurfaceState =
         {
             studyOpt = None
             fitRunOpt = None
+            resultsTab = ValuesResultsTab
             calibrationUse = CalibrationHeldFixed
             newStudyName = ControlCaption ""
             newStudyExperiments = []
@@ -1047,6 +1086,8 @@ type TableAndElementRotationMsg =
     | SelectStudy of StudyName
     /// Selects a fit run held by the chosen study without writing (spec 0050 S11.5).
     | SelectFitRun of FitRunName
+    /// Chooses the stored results category without writing to the kit (spec 0050 S11.5).
+    | ShowResultsTab of FitResultsTab
     /// Chooses how stage two holds the calibration without writing (spec 0050 S11.5).
     | SetStudyCalibrationUse of CalibrationUse
     /// Sets the New study form's typed name without writing (spec 0050 S11.5).
@@ -2163,16 +2204,30 @@ type TableAndElementRotationModel with
                 | Error error -> Error (MaterialUnavailableErr error.caption.value)
         }
 
-    /// The parameter's item label or resolved material name and version, then its name (spec 0050 S11.5).
-    member model.studyParameterCaption (parameter : StudyParameterRef) : ControlCaption =
-        match parameter with
-        | ItemParameterRef (item, name) -> ControlCaption $"{(item.labelAmong model.kitItems).value} {name.value}"
-        | MaterialParameterRef (version, name) ->
+    /// The owner's item label, material name and version, session or run name (spec 0050 S11.5).
+    member model.ownerCaption (owner : UnknownOwner) : ControlCaption =
+        match owner with
+        | ItemOwner item -> item.labelAmong model.kitItems
+        | MaterialOwner version ->
             let owner =
                 match model.materials.resolveVersion version with
                 | Ok (Some entry) -> entry.name.value
                 | Ok None | Error _ -> string version.materialId.value
-            ControlCaption $"{owner} v{version.version.value} {name.value}"
+            ControlCaption $"{owner} v{version.version.value}"
+        | SessionOwner session -> ControlCaption $"session {session.value}"
+        | ExperimentOwner run -> ControlCaption $"run {run.value}"
+
+    /// The parameter's item label or resolved material name and version, then its name (spec 0050 S11.5).
+    member model.studyParameterCaption (parameter : StudyParameterRef) : ControlCaption =
+        let owner =
+            match parameter with
+            | ItemParameterRef (item, _) -> ItemOwner item
+            | MaterialParameterRef (version, _) -> MaterialOwner version
+        ControlCaption $"{(model.ownerCaption owner).value} {parameter.name.value}"
+
+    /// The fitted entry's owner caption followed by its parameter name (spec 0050 S11.5).
+    member model.fitEntryCaption (entry : FitEntryRef) : ControlCaption =
+        ControlCaption $"{(model.ownerCaption entry.owner).value} {entry.parameter.name.value}"
 
     /// The study fit's forward model over this window's kit, stores and stored item-model versions (spec 0050 S11.5).
     member model.studyForwardContext : StudyForwardContext =
@@ -2198,6 +2253,13 @@ type TableAndElementRotationModel with
             model.kitFitRuns
             |> List.filter (fun run -> run.study = study.name)
             |> List.sortBy _.stamp
+
+    /// The study's selected fit run, falling back to its latest run when no held run is named (spec 0050 S11.5).
+    member model.selectedFitRunOpt : FitRun option =
+        let runs = model.studyFitRuns
+        model.studySurface.fitRunOpt
+        |> Option.bind (fun name -> runs |> List.tryFind (fun run -> run.name = name))
+        |> Option.orElseWith (fun () -> runs |> List.tryLast)
 
     /// Checks the study's fit inputs against the latest fit's data, regardless of the selected run (spec 0050 S11.5).
     member model.studyPrefitsOpt : Result<ExperimentPrefit list, StudyForwardError> option =
@@ -2960,6 +3022,14 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         }
             }
         else model
+    | ShowResultsTab tab ->
+        {
+            model with
+                studySurface =
+                    {
+                        model.studySurface with resultsTab = tab
+                    }
+        }
     | SetStudyCalibrationUse calibrationUse ->
         {
             model with
@@ -3046,7 +3116,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         { model with flowStep = SetupsFlowStep; ribbon = bay }
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
     // Spec 0050 S9.3, S11.5: the Inverse surfaces keep the open bay for the workbench's return.
-    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | FitFlowStep) as step) ->
+    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep) as step) ->
         {
             model with flowStep = step
         }

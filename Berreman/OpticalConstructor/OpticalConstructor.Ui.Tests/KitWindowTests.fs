@@ -1177,7 +1177,7 @@ module KitWindowTests =
 
     /// The Inverse strip adds Data, Unknowns and Fit below Main's steps (spec 0050 S9.3, S11.5).
     let private inverseFlowStepIds : ConstructorUiId list =
-        flowStepIds @ [ ConstructorUiId.flowDataStep; ConstructorUiId.flowUnknownsStep; ConstructorUiId.flowFitStep ]
+        flowStepIds @ [ ConstructorUiId.flowDataStep; ConstructorUiId.flowUnknownsStep; ConstructorUiId.flowFitStep; ConstructorUiId.flowResultsStep ]
 
     /// The Experiments bay's pane, which carries its id as its `Name` (`Ribbon.ribbonView`).
     let private experimentsPane : ConstructorUiId = ConstructorUiId.ribbonPane BayNames.experiments.uiKey
@@ -1206,6 +1206,7 @@ module KitWindowTests =
         Assert.Equal("FlowDataStep", ConstructorUiId.flowDataStep.value)
         Assert.Equal("FlowUnknownsStep", ConstructorUiId.flowUnknownsStep.value)
         Assert.Equal("FlowFitStep", ConstructorUiId.flowFitStep.value)
+        Assert.Equal("FlowResultsStep", ConstructorUiId.flowResultsStep.value)
         Assert.Equal("DataStepPanel", ConstructorUiId.dataStepPanel.value)
         Assert.Equal("DataSplitFileButton", ConstructorUiId.dataSplitFileButton.value)
         Assert.Equal<ConstructorUiId list>(inverseFlowStepIds, ConstructorFlowStep.all |> List.map _.flowUiId)
@@ -1217,6 +1218,7 @@ module KitWindowTests =
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowDataStep, DataFlowStep.flowUiId)
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowUnknownsStep, UnknownsFlowStep.flowUiId)
         Assert.Equal<ConstructorUiId>(ConstructorUiId.flowFitStep, FitFlowStep.flowUiId)
+        Assert.Equal<ConstructorUiId>(ConstructorUiId.flowResultsStep, ResultsFlowStep.flowUiId)
 
     [<Fact>]
     let ``the flow strip shows Items, Setups and Experiments left of the surface its step shows`` () : unit =
@@ -1239,7 +1241,7 @@ module KitWindowTests =
                     let stripIds, labels =
                         match model.constructorMode with
                         | ForwardConstructor -> flowStepIds, [ "Items"; "Setups"; "Experiments" ]
-                        | InverseConstructor -> inverseFlowStepIds, [ "Items"; "Setups"; "Experiments"; "Data"; "Unknowns"; "Fit" ]
+                        | InverseConstructor -> inverseFlowStepIds, [ "Items"; "Setups"; "Experiments"; "Data"; "Unknowns"; "Fit"; "Results" ]
                     withKitWindow (model |> updateTableAndElementRotation (ShowFlowStep step)) (fun window ->
                         let strip = Assert.IsType<Border>(Assert.Single(controlsById window ConstructorUiId.flowStrip))
                         let boxes = stripIds |> List.map (controlById window)
@@ -1266,6 +1268,7 @@ module KitWindowTests =
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowDataStep)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowUnknownsStep)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowFitStep)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowResultsStep)
                 onStep SetupsFlowStep (fun window -> namedControl window ConstructorUiId.tableElementCanvas) (fun window ->
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
                     Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
@@ -1286,6 +1289,8 @@ module KitWindowTests =
                     Assert.True(dataBox.Bottom <= unknownsBox.Top, $"Unknowns {unknownsBox} must stand below Data {dataBox}")
                     let fitBox = windowRectOf window (controlById window ConstructorUiId.flowFitStep)
                     Assert.True(unknownsBox.Bottom <= fitBox.Top, $"Fit {fitBox} must stand below Unknowns {unknownsBox}")
+                    let resultsBox = windowRectOf window (controlById window ConstructorUiId.flowResultsStep)
+                    Assert.True(fitBox.Bottom <= resultsBox.Top, $"Results {resultsBox} must stand below Fit {fitBox}")
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel))
                 onStepOf inverse DataFlowStep (fun window -> controlById window ConstructorUiId.dataStepPanel) (fun window ->
                     Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
@@ -1298,6 +1303,10 @@ module KitWindowTests =
                 onStepOf inverse FitFlowStep (fun window -> controlById window ConstructorUiId.studyFitPanel) (fun window ->
                     Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyUnknownsPanel)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
+                onStepOf inverse ResultsFlowStep (fun window -> controlById window ConstructorUiId.studyResultsPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyFitPanel)
                     Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 

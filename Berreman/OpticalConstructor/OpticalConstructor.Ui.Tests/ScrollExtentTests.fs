@@ -567,6 +567,52 @@ module ScrollExtentTests =
             window
         assertReachable "KitWindowFit" makeWindow
 
+    /// A full Mueller correlation table remains reachable at both small screen sizes (spec 0050 S11.5).
+    [<Fact>]
+    let ``the kit window's Results step leaves everything reachable`` () : unit =
+        let makeWindow () : Window =
+            let owner = FolderName "ScrollExtentResults"
+            let model = TestAppScope.studyKitIn owner
+            let study = List.exactlyOne model.kitStudies
+            let source = StudyFitViewFixture.fitViewRunOf study StudyFitViewFixture.firstFitViewRunStamp
+            let problem : FitProblemQuality =
+                {
+                    subject = StudyEntriesProblem
+                    coordinates =
+                        [ for row in 0 .. 3 do
+                            for column in 0 .. 3 do
+                                let rowIndex = MuellerReconstruction.MuellerRowIndex row
+                                let columnIndex = MuellerReconstruction.MuellerColumnIndex column
+                                yield ElementCoordinate (rowIndex, columnIndex) ]
+                    rank = MuellerReconstruction.MatrixRank 16
+                    conditionOpt = Some (MuellerInverse.ConditionNumber 12.5)
+                    columnNorms = JacobianColumnNorms (Array.create 16 1.0)
+                    correlationOpt = Some (CorrelationMatrix (Array.init 16 (fun row ->
+                        Array.init 16 (fun column -> if row = column then 1.0 else 0.125))))
+                    chiSquared = FitChiSquared 0.5
+                    rmse = MuellerReconstruction.ResidualRmse 0.01
+                }
+            let run =
+                {
+                    source with
+                        results =
+                            {
+                                source.results with problems = [ problem ]
+                            }
+                }
+            model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
+            let shown =
+                model
+                |> updateTableAndElementRotation ReloadKitChanges
+                |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep)
+                |> updateTableAndElementRotation (ShowResultsTab CorrelationResultsTab)
+            Assert.Equal<ControlCaption option>(None, shown.kitStatus)
+            Assert.Equal<FitRun option>(Some run, shown.selectedFitRunOpt)
+            let window = viewWindow KitWindowView.kitWindowView shown
+            window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
+            window
+        assertReachable "KitWindowResults" makeWindow
+
     /// Spec 0050 S9.3: the Inverse kit window on its Data step over the matrix of three experiments, copies of the collected
     /// one of `filledExperiments` over its setup: the first reviewed, three points with one excluded and one setup
     /// correction, under a pending split of three groups.

@@ -1224,6 +1224,67 @@ module StudyWindowModelTests =
             Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
 
     [<Fact>]
+    let ``a results tab and a fit run choose what the Results step shows, the study's latest run by default`` () : unit =
+        let laterStamp = ClockTime (qzRun.stamp.value.AddHours 1.0)
+        let later = FitRunFileFixtures.fitRunOf qzLr laterStamp
+        withWindow ReadWriteKitAccess [ studyOf qzLr; studyOf lr ] [ later; qzRun ] (fun folder loaded ->
+            let ready =
+                {
+                    loaded with
+                        studySurface =
+                            {
+                                loaded.studySurface with studyOpt = Some qzLr; fitRunOpt = None
+                            }
+                }
+            let before = folderBytes folder
+            Assert.Equal<FitResultsTab>(ValuesResultsTab, ready.studySurface.resultsTab)
+            Assert.Equal<FitRun option>(Some later, ready.selectedFitRunOpt)
+            let selected = ready |> updateTableAndElementRotation (SelectFitRun qzRun.name)
+            Assert.Equal<FitRun option>(Some qzRun, selected.selectedFitRunOpt)
+            let shown = selected |> updateTableAndElementRotation (ShowResultsTab CorrelationResultsTab)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    selected with
+                        studySurface =
+                            {
+                                selected.studySurface with resultsTab = CorrelationResultsTab
+                            }
+                }, shown)
+            Assert.Equal<FitRun option>(Some qzRun, shown.selectedFitRunOpt)
+            let stale =
+                {
+                    ready with
+                        studySurface =
+                            {
+                                ready.studySurface with fitRunOpt = Some (FitRunName "absent")
+                            }
+                }
+            Assert.Equal<FitRun option>(Some later, stale.selectedFitRunOpt)
+            let empty = ready |> updateTableAndElementRotation (SelectStudy lr)
+            Assert.Equal<FitRun option>(None, empty.selectedFitRunOpt)
+            let unselected =
+                {
+                    ready with studySurface = StudySurfaceState.initial
+                }
+            Assert.Equal<FitRun option>(None, unselected.selectedFitRunOpt)
+            Assert.Equal<ControlCaption>(cpl1.label.caption, ready.ownerCaption (ItemOwner cpl1.id))
+            Assert.Equal<ControlCaption>(ControlCaption "session morning", ready.ownerCaption (SessionOwner (SessionName "morning")))
+            Assert.Equal<ControlCaption>(ControlCaption "run E1", ready.ownerCaption (ExperimentOwner e1))
+            let reference : FitEntryRef =
+                {
+                    parameter = calibrationEntry.parameter
+                    owner = calibrationEntry.owner
+                }
+            Assert.Equal<ControlCaption>(ControlCaption "CPL1 c2.retardance", ready.fitEntryCaption reference)
+            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+        Assert.Equal<FitResultsTab list>(
+            [ ValuesResultsTab; CorrelationResultsTab; ResidualsResultsTab; RealizabilityResultsTab; ProductCheckResultsTab; ProfileResultsTab ],
+            FitResultsTab.all)
+        Assert.Equal<ControlCaption list>(
+            [ ControlCaption "Values"; ControlCaption "Correlation"; ControlCaption "Residuals"; ControlCaption "Realizability"; ControlCaption "Product check"; ControlCaption "Profile likelihood" ],
+            FitResultsTab.all |> List.map _.caption)
+
+    [<Fact>]
     let ``the chosen fit run and the calibration use choose what the Fit step shows and runs`` () : unit =
         withWindow ReadWriteKitAccess [ studyOf qzLr ] [ qzRun ] (fun folder loaded ->
             let specified =

@@ -913,6 +913,30 @@ type ConstructorUiId =
     /// The selected study's fit runs, oldest first (spec 0050 S11.5).
     static member fitRunHistory : ConstructorUiId = ConstructorUiId "FitRunHistory"
 
+    // --- The study's Results step (StudyResultsView). ---
+    /// Opens the Inverse constructor's Results step (spec 0050 S11.5).
+    static member flowResultsStep : ConstructorUiId = ConstructorUiId "FlowResultsStep"
+    /// The selected fit run's Results surface (spec 0050 S11.5).
+    static member studyResultsPanel : ConstructorUiId = ConstructorUiId "StudyResultsPanel"
+    /// The shown fit run's name, stage and engine (spec 0050 S11.5).
+    static member fitResultsRunText : ConstructorUiId = ConstructorUiId "FitResultsRunText"
+    /// The six stored result categories (spec 0050 S11.5).
+    static member fitResultsTabStrip : ConstructorUiId = ConstructorUiId "FitResultsTabStrip"
+    /// Shows fitted values and their uncertainties (spec 0050 S11.5).
+    static member fitResultsValuesTab : ConstructorUiId = ConstructorUiId "FitResultsValuesTab"
+    /// Shows solve quality and correlation matrices (spec 0050 S11.5).
+    static member fitResultsCorrelationTab : ConstructorUiId = ConstructorUiId "FitResultsCorrelationTab"
+    /// Shows each run's residual summary (spec 0050 S11.5).
+    static member fitResultsResidualsTab : ConstructorUiId = ConstructorUiId "FitResultsResidualsTab"
+    /// Shows fitted objects' Mueller realizability (spec 0050 S11.5).
+    static member fitResultsRealizabilityTab : ConstructorUiId = ConstructorUiId "FitResultsRealizabilityTab"
+    /// Shows the series product checks (spec 0050 S11.5).
+    static member fitResultsProductCheckTab : ConstructorUiId = ConstructorUiId "FitResultsProductCheckTab"
+    /// Shows suspect parameters' profile likelihoods (spec 0050 S11.5).
+    static member fitResultsProfileTab : ConstructorUiId = ConstructorUiId "FitResultsProfileTab"
+    /// The currently shown results tab's table (spec 0050 S11.5).
+    static member fitResultsTable : ConstructorUiId = ConstructorUiId "FitResultsTable"
+
     // --- The slot bar over the table (SlotBarView). ---
     /// The slot bar above the table: a chip per slot in light order, then Record experiment (spec 0050 S8.4; 001 §J).
     static member slotBar : ConstructorUiId = ConstructorUiId "SlotBar"

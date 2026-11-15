@@ -26,6 +26,8 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MeasuredData
+open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.PrefitChecks
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage.KitContentFiles
@@ -37,7 +39,7 @@ open OpticalConstructor.Ui.JobRunner
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.StudyEngine
 
-/// The study's Unknowns and Fit controls, driven by stable IDs (spec 0050 S11.5).
+/// The study's Unknowns, Fit and Results controls, driven by stable IDs (spec 0050 S11.5).
 module StudyViewTests =
 
     let private owner = FolderName "StudyViewTests"
@@ -139,6 +141,133 @@ module StudyViewTests =
     let private fitBoxColor (window : Window) (id : ConstructorUiId) : Color =
         Assert.IsType<SolidColorBrush>(Assert.IsType<Border>(SlotBarTests.controlById window id).Background).Color
 
+    let private resultsRunOf (model : TableAndElementRotationModel) : FitRun =
+        let study = List.exactlyOne model.kitStudies
+        let source = StudyFitViewFixture.fitViewRunOf study StudyFitViewFixture.firstFitViewRunStamp
+        let first = itemNamed (ItemLabel "CPL1") model
+        let second = itemNamed (ItemLabel "CPL2") model
+        let firstRef : FitEntryRef =
+            {
+                parameter = ItemParameterRef (first.id, retardance)
+                owner = ItemOwner first.id
+            }
+        let secondRef : FitEntryRef =
+            {
+                parameter = ItemParameterRef (second.id, retardance)
+                owner = ItemOwner second.id
+            }
+        let entries : FitRunEntry list =
+            [ firstRef; secondRef ] |> List.map (fun entry ->
+                {
+                    parameter = entry.parameter
+                    owner = entry.owner
+                    start = ParameterValue 1.0
+                    fitted = ParameterValue 0.98
+                })
+        let studyProblem : FitProblemQuality =
+            {
+                subject = StudyEntriesProblem
+                coordinates = [ EntryCoordinate [ firstRef ]; EntryCoordinate [ secondRef ] ]
+                rank = MatrixRank 2
+                conditionOpt = Some (ConditionNumber 12.5)
+                columnNorms = JacobianColumnNorms [| 3.0; 0.25 |]
+                correlationOpt = Some (CorrelationMatrix [| [| 1.0; -0.5 |]; [| -0.5; 1.0 |] |])
+                chiSquared = FitChiSquared 0.5
+                rmse = ResidualRmse 0.01
+            }
+        let objectProblem : FitProblemQuality =
+            {
+                studyProblem with
+                    subject = ObjectSolveProblem [ first.id; second.id ]
+                    coordinates = [ ElementCoordinate (MuellerRowIndex 1, MuellerColumnIndex 2); ElementCoordinate (MuellerRowIndex 3, MuellerColumnIndex 0) ]
+                    rank = MatrixRank 1
+                    conditionOpt = None
+                    columnNorms = JacobianColumnNorms [| 2.0; 0.0 |]
+                    correlationOpt = None
+                    chiSquared = FitChiSquared 0.125
+                    rmse = ResidualRmse 0.02
+            }
+        let fringeProblem : FitProblemQuality =
+            {
+                studyProblem with
+                    subject = AirFringeProblem [ ExperimentName "A1"; ExperimentName "A2" ]
+                    coordinates = [ EntryCoordinate [ secondRef ]; FringeVisibilityCoordinate ]
+                    conditionOpt = Some (ConditionNumber 4.0)
+                    columnNorms = JacobianColumnNorms [| 1.5; 0.75 |]
+                    correlationOpt = Some (CorrelationMatrix [| [| 1.0; 0.25 |]; [| 0.25; 1.0 |] |])
+                    chiSquared = FitChiSquared 0.0625
+                    rmse = ResidualRmse 0.005
+            }
+        let residual : RunResidual =
+            {
+                run = ExperimentName "E1"
+                residuals = ResidualVector [| 0.01; -0.02 |]
+                rmse = ResidualRmse 0.0158
+            }
+        let realizability : ObjectRealizability =
+            {
+                item = first.id
+                eigenvalues = [ CoherencyEigenvalue 0.97; CoherencyEigenvalue 0.01; CoherencyEigenvalue 0.002; CoherencyEigenvalue -1.0e-14 ]
+            }
+        let product : SeriesProductCheck =
+            {
+                items = [ first.id; second.id ]
+                cascade = List.init 16 (fun index -> if index % 5 = 0 then ParameterValue 0.97 else ParameterValue 0.001)
+                difference =
+                    {
+                        frobenius = MatrixDeviation 0.003
+                        meanAbs = MatrixDeviation 0.0005
+                        maxAbs = MatrixDeviation 0.002
+                        argMax = (MuellerRowIndex 3, MuellerColumnIndex 2)
+                    }
+                fitRmse = ResidualRmse 0.01
+                productRmse = ResidualRmse 0.012
+            }
+        let profile : ParameterProfile =
+            {
+                entry = secondRef
+                reasons = [ UndeterminedSigmaReason; WideSigmaReason (SigmaFraction 0.25); CorrelatedEntryReason (firstRef, FitCorrelation -0.97) ]
+                points = List.init 7 (fun index ->
+                    {
+                        value = ParameterValue (1.5 + 0.25 * float index)
+                        outcome =
+                            if index = 1 then
+                                ProfileFailed (FitMemberFailure "the solver did not converge: 100 iterations")
+                            else ProfileConverged (FitChiSquared (0.75 + float index))
+                    })
+            }
+        let results : FitRunResults =
+            {
+                sigmas =
+                    [
+                        {
+                            entry = firstRef
+                            sigmaOpt = Some (ParameterSigma 0.002)
+                        }
+                        {
+                            entry = secondRef
+                            sigmaOpt = None
+                        }
+                    ]
+                problems = [ studyProblem; objectProblem; fringeProblem ]
+                runResiduals = [ residual ]
+                realizability = [ realizability ]
+                productChecks = [ product ]
+                profiles = [ profile ]
+            }
+        {
+            source with
+                stage = ObjectStage
+                engine = LinearStudyEngine
+                entries = entries
+                results = results
+        }
+
+    let private resultTexts (window : Window) : string list =
+        (SlotBarTests.controlById window ConstructorUiId.fitResultsTable).GetVisualDescendants()
+        |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
+        |> Seq.toList
+
     // Spec 0050 S11.5: isolate status rendering from disk contents while retaining real scan validation.
     let private prefitModelWithData (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let loaded = fitModelWith [] model
@@ -192,6 +321,21 @@ module StudyViewTests =
         Assert.Equal("StudyFitCancelButton", ConstructorUiId.studyFitCancelButton.value)
         Assert.Equal("StudyFitErrorText", ConstructorUiId.studyFitErrorText.value)
         Assert.Equal("FitRunHistory", ConstructorUiId.fitRunHistory.value)
+        Assert.Equal("FlowResultsStep", ConstructorUiId.flowResultsStep.value)
+        Assert.Equal("StudyResultsPanel", ConstructorUiId.studyResultsPanel.value)
+        Assert.Equal("FitResultsRunText", ConstructorUiId.fitResultsRunText.value)
+        Assert.Equal("FitResultsTabStrip", ConstructorUiId.fitResultsTabStrip.value)
+        Assert.Equal("FitResultsValuesTab", ConstructorUiId.fitResultsValuesTab.value)
+        Assert.Equal("FitResultsCorrelationTab", ConstructorUiId.fitResultsCorrelationTab.value)
+        Assert.Equal("FitResultsResidualsTab", ConstructorUiId.fitResultsResidualsTab.value)
+        Assert.Equal("FitResultsRealizabilityTab", ConstructorUiId.fitResultsRealizabilityTab.value)
+        Assert.Equal("FitResultsProductCheckTab", ConstructorUiId.fitResultsProductCheckTab.value)
+        Assert.Equal("FitResultsProfileTab", ConstructorUiId.fitResultsProfileTab.value)
+        Assert.Equal("FitResultsTable", ConstructorUiId.fitResultsTable.value)
+        Assert.Equal<ConstructorUiId list>(
+            [ ConstructorUiId.fitResultsValuesTab; ConstructorUiId.fitResultsCorrelationTab; ConstructorUiId.fitResultsResidualsTab;
+              ConstructorUiId.fitResultsRealizabilityTab; ConstructorUiId.fitResultsProductCheckTab; ConstructorUiId.fitResultsProfileTab ],
+            FitResultsTab.all |> List.map _.tabUiId)
         let study = StudyName "QZ-LR"
         let experiment = ExperimentName "E1"
         let fitRun = FitRunName "QZ-LR@20261101T120000Z"
@@ -410,6 +554,144 @@ module StudyViewTests =
                     Assert.Equal("E1: ready, 3 point(s)", textOf ready)
                     Assert.Contains("no data is attached", textOf missing)
                     Assert.Contains("the data does not fit the scan", textOf inconsistent))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    let ``the Results step shows the chosen fit run's six tabs and each tab's table`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner |> TestAppScope.withStudyMaterial
+            let previousCulture = System.Globalization.CultureInfo.CurrentCulture
+            try
+                System.Globalization.CultureInfo.CurrentCulture <- System.Globalization.CultureInfo.GetCultureInfo "fr-FR"
+                let run = resultsRunOf model
+                let study = List.exactlyOne model.kitStudies
+                let laterStamp = ClockTime (run.stamp.value.AddHours 1.0)
+                let later = StudyFitViewFixture.fitViewRunOf study laterStamp
+                let loaded = fitModelWith [ later; run ] model |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep)
+                Assert.Equal<FitRun option>(Some later, loaded.selectedFitRunOpt)
+                let selected = loaded |> updateTableAndElementRotation (SelectFitRun run.name)
+                let material = List.exactlyOne study.materials
+                Assert.Equal<ControlCaption>(
+                    ControlCaption $"{material.name.value} v{material.version.version.value}",
+                    selected.ownerCaption (MaterialOwner material.version))
+                for tab in FitResultsTab.all do
+                    let shown = selected |> updateTableAndElementRotation (ShowResultsTab tab)
+                    withStudyWindow shown (fun window ->
+                        let title = Assert.IsType<TextBlock>(SlotBarTests.controlById window ConstructorUiId.fitResultsRunText)
+                        Assert.Equal($"Fit run {run.name.value} — Stage 2 (objects), linear", title.Text)
+                        let strip = Assert.IsType<WrapPanel>(SlotBarTests.controlById window ConstructorUiId.fitResultsTabStrip)
+                        Assert.Equal(6, strip.Children.Count)
+                        for choice in FitResultsTab.all do
+                            let box = SlotBarTests.controlById window choice.tabUiId
+                            Assert.Contains<Visual>(strip, box.GetVisualAncestors())
+                            Assert.Equal(choice.caption.value, AutomationProperties.GetName box)
+                            if choice = tab then Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window choice.tabUiId)
+                            else Assert.NotEqual(MaterialsWindowView.positiveBackground, fitBoxColor window choice.tabUiId)
+                        let texts = resultTexts window
+                        let table = SlotBarTests.controlById window ConstructorUiId.fitResultsTable
+                        Assert.Equal(tab.caption.value, AutomationProperties.GetName table)
+                        let grids = table.GetVisualDescendants() |> Seq.choose (function :? Grid as grid -> Some grid | _ -> None) |> Seq.toList
+                        match tab with
+                        | ValuesResultsTab ->
+                            let grid = Assert.Single grids
+                            Assert.Equal<string list>([ "Parameter"; "Start"; "Fitted"; "σ" ], [ for column in 0 .. 3 -> cellText grid 0 column ])
+                            Assert.Equal<string list>([ "CPL1 c2.retardance"; "1"; "0.98"; "0.002" ], [ for column in 0 .. 3 -> cellText grid 1 column ])
+                            Assert.Equal("CPL2 c2.retardance", cellText grid 2 0)
+                            Assert.Equal("undetermined", cellText grid 2 3)
+                        | CorrelationResultsTab ->
+                            Assert.Contains("Study residual: rank 2, condition 12.5, χ² 0.5, RMSE 0.01", texts)
+                            Assert.Contains("Object CPL1, CPL2: rank 1, condition —, χ² 0.125, RMSE 0.02", texts)
+                            Assert.Contains("no correlation: the Jacobian is rank-deficient", texts)
+                            Assert.Contains("AIR fringe A1, A2: rank 2, condition 4, χ² 0.0625, RMSE 0.005", texts)
+                            Assert.Equal(2, grids.Length)
+                            let grid = grids.Head
+                            Assert.Equal(3, grid.RowDefinitions.Count)
+                            Assert.Equal(3, grid.ColumnDefinitions.Count)
+                            Assert.Equal("CPL1 c2.retardance", cellText grid 0 1)
+                            Assert.Equal("CPL2 c2.retardance", cellText grid 0 2)
+                            Assert.Equal("CPL1 c2.retardance", cellText grid 1 0)
+                            Assert.Equal("CPL2 c2.retardance", cellText grid 2 0)
+                            Assert.Equal<string list>([ "1.000"; "-0.500"; "-0.500"; "1.000" ], [ for row in 1 .. 2 do for column in 1 .. 2 -> cellText grid row column ])
+                            Assert.Equal("fringe visibility", cellText grids.[1] 0 2)
+                        | ResidualsResultsTab ->
+                            Assert.Equal<string list>([ "E1: RMSE 0.0158 over 2 residual(s)" ], texts)
+                        | RealizabilityResultsTab ->
+                            Assert.Equal<string list>([ "CPL1: realizable; eigenvalues 0.97, 0.01, 0.002, -1E-14" ], texts)
+                        | ProductCheckResultsTab ->
+                            Assert.Equal<string list>([ "CPL1 → CPL2: product RMSE 0.012, fit RMSE 0.01, ratio 1.2, max |ΔM| 0.002" ], texts)
+                        | ProfileResultsTab ->
+                            Assert.Equal<string list>(
+                                [ "CPL2 c2.retardance (σ undetermined; σ is 0.25 of its bounds; correlated with CPL1 c2.retardance (ρ = -0.97))"
+                                  "1.5: χ² 0.75"; "1.75: the solver did not converge: 100 iterations"; "2: χ² 2.75"
+                                  "2.25: χ² 3.75"; "2.5: χ² 4.75"; "2.75: χ² 5.75"; "3: χ² 6.75" ], texts))
+                    withStudyWindow (loaded |> updateTableAndElementRotation (ShowResultsTab tab)) (fun window ->
+                        Assert.Equal<string list>([ "Nothing to show for this fit run." ], resultTexts window))
+                let objectProblem = run.results.problems.[1]
+                let elementProblem =
+                    {
+                        objectProblem with correlationOpt = run.results.problems.Head.correlationOpt
+                    }
+                let unrealizable =
+                    {
+                        run.results.realizability.Head with
+                            eigenvalues = [ CoherencyEigenvalue 0.9; CoherencyEigenvalue 0.2; CoherencyEigenvalue 0.1; CoherencyEigenvalue -0.1 ]
+                    }
+                let variant =
+                    {
+                        run with
+                            results =
+                                {
+                                    run.results with problems = [ elementProblem ]; realizability = [ unrealizable ]; sigmas = []
+                                }
+                    }
+                let variantModel =
+                    {
+                        selected with kitFitRuns = [ variant ]
+                    }
+                withStudyWindow (variantModel |> updateTableAndElementRotation (ShowResultsTab CorrelationResultsTab)) (fun window ->
+                    Assert.Contains("m12", resultTexts window)
+                    Assert.Contains("m30", resultTexts window))
+                withStudyWindow (variantModel |> updateTableAndElementRotation (ShowResultsTab RealizabilityResultsTab)) (fun window ->
+                    Assert.Equal<string list>([ "CPL1: not realizable; eigenvalues 0.9, 0.2, 0.1, -0.1" ], resultTexts window))
+                withStudyWindow (variantModel |> updateTableAndElementRotation (ShowResultsTab ValuesResultsTab)) (fun window ->
+                    Assert.Equal(2, resultTexts window |> List.filter ((=) "undetermined") |> List.length))
+                let empty =
+                    {
+                        loaded with kitFitRuns = []
+                    }
+                withStudyWindow empty (fun window ->
+                    let panel = SlotBarTests.controlById window ConstructorUiId.studyResultsPanel
+                    let texts = panel.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
+                    Assert.Contains("No fit run yet: run the fit in the Fit step.", texts)
+                    Assert.Empty(SlotBarTests.controlsUnder window ConstructorUiId.fitResultsTabStrip))
+            finally
+                System.Globalization.CultureInfo.CurrentCulture <- previousCulture
+                model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing each results tab shows its table`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.studyKitIn owner
+            try
+                let run = resultsRunOf model
+                let shown = fitModelWith [ run ] model |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep)
+                withStudyWindow shown (fun window ->
+                    for tab in FitResultsTab.all @ [ ValuesResultsTab ] do
+                        pressStudyBox window tab.tabUiId
+                        let table = SlotBarTests.controlById window ConstructorUiId.fitResultsTable
+                        Assert.Equal(tab.caption.value, AutomationProperties.GetName table)
+                        Assert.Equal(MaterialsWindowView.positiveBackground, fitBoxColor window tab.tabUiId)
+                        let expected =
+                            match tab with
+                            | ValuesResultsTab -> "CPL1 c2.retardance"
+                            | CorrelationResultsTab -> "Study residual: rank 2, condition 12.5, χ² 0.5, RMSE 0.01"
+                            | ResidualsResultsTab -> "E1: RMSE 0.0158 over 2 residual(s)"
+                            | RealizabilityResultsTab -> "CPL1: realizable; eigenvalues 0.97, 0.01, 0.002, -1E-14"
+                            | ProductCheckResultsTab -> "CPL1 → CPL2: product RMSE 0.012, fit RMSE 0.01, ratio 1.2, max |ΔM| 0.002"
+                            | ProfileResultsTab -> "3: χ² 6.75"
+                        Assert.Contains(expected, resultTexts window))
+                Assert.Equal<FitRun list>([ run ], model.kit.proxy.readFitRuns run.study |> SceneTestFixture.kitSuccess)
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]

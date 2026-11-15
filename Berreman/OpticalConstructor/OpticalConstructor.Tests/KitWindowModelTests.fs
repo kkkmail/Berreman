@@ -1554,9 +1554,9 @@ module KitWindowModelTests =
 
     [<Fact>]
     let ``the flow strip's steps follow 001's order and a window opens on Setups`` () : unit =
-        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep ], ConstructorFlowStep.all)
+        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep; ResultsFlowStep ], ConstructorFlowStep.all)
         Assert.Equal<ControlCaption list>(
-            [ ControlCaption "Items"; ControlCaption "Setups"; ControlCaption "Experiments"; ControlCaption "Data"; ControlCaption "Unknowns"; ControlCaption "Fit" ],
+            [ ControlCaption "Items"; ControlCaption "Setups"; ControlCaption "Experiments"; ControlCaption "Data"; ControlCaption "Unknowns"; ControlCaption "Fit"; ControlCaption "Results" ],
             ConstructorFlowStep.all |> List.map _.caption)
         let scene = initMain () |> kitValue
         try
@@ -1572,7 +1572,7 @@ module KitWindowModelTests =
     let ``the Data step is the Inverse constructor's alone, and leaving the Inverse constructor leaves it`` () : unit =
         Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ], ConstructorFlowStep.stepsOf ForwardConstructor)
         Assert.Equal<ConstructorFlowStep list>(
-            [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep ],
+            [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep; ResultsFlowStep ],
             ConstructorFlowStep.stepsOf InverseConstructor)
         let stores = BuiltinCatalogue.freshStores ()
         let library = Library.liveLibrary stores.libraryEntries stores.samples (Library.SourceProxy.createInMemory ())
@@ -1615,6 +1615,20 @@ module KitWindowModelTests =
                         ribbon = BayNames.experiments
                 }, fromFit)
             Assert.Equal<TableAndElementRotationModel>(fromFit, fromFit |> updateTableAndElementRotation (ShowFlowStep FitFlowStep))
+            let results = details |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    details with flowStep = ResultsFlowStep
+                }, results)
+            let fromResults = results |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
+            Assert.Equal<TableAndElementRotationModel>(
+                {
+                    results with
+                        constructorMode = ForwardConstructor
+                        flowStep = ExperimentsFlowStep
+                        ribbon = BayNames.experiments
+                }, fromResults)
+            Assert.Equal<TableAndElementRotationModel>(fromResults, fromResults |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep))
             let forward = data |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
             Assert.Equal<TableAndElementRotationModel>(
                 {
