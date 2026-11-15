@@ -270,7 +270,7 @@ let private studySessionRows
                 [ [ ControlCaption "Session"; ControlCaption "Experiments"; ControlCaption "Gain" ] ]
                 @ (sessions |> List.map (fun session ->
                     let names = session.experiments |> List.map _.value |> String.concat ", " |> ControlCaption
-                    [ ControlCaption $"{session.name.value}"; names ]))
+                    [ session.name.caption; names ]))
             let cells =
                 textRows
                 |> List.mapi (fun row captions ->
