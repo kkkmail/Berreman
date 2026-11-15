@@ -239,6 +239,7 @@
         <Compile Include="SetupGridPanelTests.fs" />
         <Compile Include="DataStepTests.fs" />
         <Compile Include="StudyViewTests.fs" />
+        <Compile Include="KitAcceptanceTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

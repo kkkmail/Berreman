@@ -96,6 +96,27 @@ module TestAppScope =
         KitOpening.openKitAt (freshKitFolder owner) ReadWriteKitAccess ClockProvider.system author imports
         |> Result.defaultWith (fun error -> failwith error.describe)
 
+    /// Compose the Inverse window over its opened kit and snapshot-backed app stores (spec 0050 S12.1).
+    let inverseModelOver (context : AppContext) (opened : OpenedKit) : TableAndElementRotationModel =
+        let stores : KitLibraryStores =
+            {
+                library = context.library
+                materials = context.materials
+                samples = context.samples
+                categories = context.categories
+            }
+        let overlaid = stores.overlaidWith opened.overlay
+        let initial =
+            {
+                initInverseWithKit overlaid.library context.experiments overlaid.materials overlaid.samples overlaid.categories opened.library.kit with
+                    catalogueImports = context.catalogueImports
+                    itemModels = context.itemModels.overlaidWith opened.overlay
+                    sources = context.sources
+                    libraryBackups = context.libraryBackups
+                    experimentExport = context.experimentExport
+            }
+        initial.loadKit opened
+
     /// A reopened folder kit holding CPL1, CPL2, Phone and three Science scans in the study QZ-LR (spec 0050 S11.5).
     let studyKitIn (owner : FolderName) : TableAndElementRotationModel =
         let context = freshAppContext owner
@@ -231,15 +252,8 @@ module TestAppScope =
         let reopened =
             openKitAt opened.folder ReadWriteKitAccess ClockProvider.system author context.catalogueImports
             |> Result.defaultWith (fun error -> failwith error.describe)
-        let initial =
-            {
-                initInverseWithKit context.library context.experiments context.materials context.samples context.categories reopened.library.kit with
-                    catalogueImports = context.catalogueImports
-                    itemModels = context.itemModels
-                    sources = context.sources
-            }
         let studyName = StudyName "QZ-LR"
-        let model = initial.loadKit reopened |> updateTableAndElementRotation (StudyCommand (CreateStudy (studyName, names)))
+        let model = inverseModelOver context reopened |> updateTableAndElementRotation (StudyCommand (CreateStudy (studyName, names)))
         match model.kitStatus with
         | None -> model
         | Some error ->
