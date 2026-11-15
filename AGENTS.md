@@ -572,6 +572,12 @@ This is a spec-driven, gated repository.
   in `.kit-json`, never replaced once saved; `ChosenImportProfile.mapText` is the one read and `MappedPoints.validatedFor`
   the one validation; the app writes only observation files (`KeyedObservation.observationFileText`); Attach data file…
   opens the wizard, whose Attach sends `SaveImportProfile` then `AttachDataFile`.
+- **The Inverse flow ends at the study** (`Studies.fs`, `StudyEngine.fs`, `StudyPublishing.fs`, spec 0050 S11):
+  the Inverse flow adds Unknowns → Fit → Results → Publish after Data (S14 inserts Plan before Fit);
+  a study fits experiments of one kit, running on `JobRunner` through the shell's `StudyFitJobHost` and writing
+  one append-only `<study>@<stamp>.fitrun-json` on completion. Publish calibration writes each item's next revision
+  (`CalibratedParameter`); Promote to library mints the entry's next library version under `FitProvenance` and
+  snapshots it into the kit. There is no hand-off window.
 - **The Data step never edits a lab file** (`DataSplits.fs`, `ExperimentMatrices.fs`, `DataStepView.fs`, spec 0050 S9.3): an
   exclusion numbers a point of its mapped attachment (`MappedPointNumber`, one per point, with its reason) and a new
   attachment starts with none; `MappedPoints.keptBy` is the one rule from exclusions to the points validated and fitted; a

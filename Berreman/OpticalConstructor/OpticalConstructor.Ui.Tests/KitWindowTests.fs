@@ -2050,3 +2050,46 @@ module KitWindowTests =
                         mounted.latest().experimentCollection.experiments |> List.tryFind (fun held -> held.id = e1Id))
                     assertLabFileKept ())
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the Inverse constructor creates a study in its kit and runs its fit off the UI thread, telling why it ended`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let opened = TestAppScope.openedKitIn owner ctx.catalogueImports
+            let window = InverseConstructorWindow(ctx, opened)
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                pressBox window ConstructorUiId.flowUnknownsStep
+                let nameField = Assert.IsType<TextBox>(controlById window ConstructorUiId.newStudyNameField)
+                nameField.Text <- "Empty"
+                Dispatcher.UIThread.RunJobs()
+                pressBox window ConstructorUiId.createStudyButton
+                Assert.Equal<string list>([ "Empty.study-json" ], kitFilesIn opened.folder "*.study-json")
+
+                pressBox window ConstructorUiId.flowFitStep
+                Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyFitErrorText)
+                let timeout = System.TimeSpan.FromSeconds 10.0
+                let elapsed = System.Diagnostics.Stopwatch.StartNew()
+                pressBox window ConstructorUiId.studyRunFitButton
+                let fitErrorText () : string option =
+                    match tryControlById window ConstructorUiId.studyFitErrorText with
+                    | Some control ->
+                        let text = Assert.IsType<TextBlock>(control).Text
+                        if System.String.IsNullOrWhiteSpace text then None else Some text
+                    | None -> None
+                while elapsed.Elapsed < timeout && fitErrorText () = None do
+                    Dispatcher.UIThread.RunJobs()
+
+                match fitErrorText () with
+                | Some text ->
+                    Assert.Contains("the stage has no run to fit", text)
+                    Assert.Contains("'Empty'", text)
+                    Assert.True((controlById window ConstructorUiId.studyFitErrorText).IsEffectivelyVisible)
+                | None -> Assert.Fail "the real fit host must report its end in the Fit step within ten seconds"
+                Assert.Equal<string list>([ "Empty.study-json" ], kitFilesIn opened.folder "*.study-json")
+                Assert.Empty(kitFilesIn opened.folder "*.fitrun-json")
+            finally
+                window.Close()
+                Dispatcher.UIThread.RunJobs())
