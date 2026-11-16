@@ -75,6 +75,8 @@ module KitAcceptanceTests =
             context : OpticalConstructor.Ui.AppContext
             model : TableAndElementRotationModel
             clock : ClockProvider
+            /// Moves `clock` to the instant: the build's fits, and AT-2's ensemble after its build (spec 0050 S12.2).
+            setTime : ClockTime -> unit
         }
 
     type private AcceptanceObjects =
@@ -307,6 +309,11 @@ module KitAcceptanceTests =
         }
     let private absorbingFitTime = ClockTime (DateTime(2026, 6, 1, 12, 1, 0, DateTimeKind.Utc))
     let private absorbingFitRunName = FitRunName "AbsorbingTriclinic@20260601T120100Z"
+
+    /// Each seed of `noisySeeds` and the instant its fit runs, the k-th at 12:0k, so seed 1's is `absorbingFitTime` (spec 0050 S12.2).
+    let private ensembleFitTimes : (NoiseSeed * ClockTime) list =
+        AbsorbingBiaxialSample.noisySeeds
+        |> List.mapi (fun index seed -> seed, ClockTime (DateTime(2026, 6, 1, 12, index + 1, 0, DateTimeKind.Utc)))
 
     /// The 100 µm plate of that material every AT-2 plate item binds; each observation carries its cut (spec 0050 S12.2).
     let private absorbingPlate : Library.Sample =
@@ -809,14 +816,14 @@ module KitAcceptanceTests =
             (reconstructed.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> readKitResult calibrationFile)
         reconstructed
 
-    /// A clock reading `instant` and the cell only a build sets to move it (spec 0050 S12.1, S12.2).
-    let private testClockAt (instant : ClockTime) : ClockProvider * ClockTime ref =
+    /// A clock reading `instant` and the setter that moves it, held by the build it serves (spec 0050 S12.1, S12.2).
+    let private testClockAt (instant : ClockTime) : ClockProvider * (ClockTime -> unit) =
         let time = ref instant
         let clock : ClockProvider =
             {
                 now = fun () -> time.Value
             }
-        clock, time
+        clock, fun at -> time.Value <- at
 
     /// The Inverse start screen over `folder` and the cell its `showKit` keeps the opened kit in (spec 0050 S12.1, S12.2).
     let private kitStartOver
@@ -876,7 +883,7 @@ module KitAcceptanceTests =
             for file in Directory.EnumerateFiles(sourceData, "*", SearchOption.AllDirectories) do
                 File.Copy(file, Path.Combine(targetData, Path.GetRelativePath(sourceData, file)))
             let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
-            let clock, time = testClockAt initialTime
+            let clock, setTime = testClockAt initialTime
             let start, shown = kitStartOver context clock kitId kitAuthor folder
             let started = start |> updateKitStart (CreateKit folder)
             openedOpt <- shown.Value
@@ -902,12 +909,13 @@ module KitAcceptanceTests =
             let setups = buildAcceptanceSetups stocked
             expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
             expect (FileName "*.setup-json") "setups including both corrections" 42 setups.kitSetups.Length
-            let model = finish (fun at -> time.Value <- at) folder setups
+            let model = finish setTime folder setups
             {
                 folder = folder
                 context = context
                 model = model
                 clock = clock
+                setTime = setTime
             }
         with _ ->
             try
@@ -1939,13 +1947,9 @@ module KitAcceptanceTests =
     /// The seed whose file the build attaches; the other files wait in `data/` for the ensemble (spec 0050 S12.2).
     let private attachedSeed : NoiseSeed = List.head AbsorbingBiaxialSample.noisySeeds
 
-    /// Writes each seed's observation file into `data/`, then splits seed 1's by `sample` and attaches it in place (spec 0050 S12.2; 001 §K).
-    let private attachNoisyObservations (folder : KitFolder) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
-        for seed in AbsorbingBiaxialSample.noisySeeds do
-            let written = labFileAt folder (noisyObservationsFile seed)
-            Directory.CreateDirectory(Path.GetDirectoryName written.value) |> ignore
-            File.WriteAllText(written.value, (observationFileOf seed).value, System.Text.UTF8Encoding(false))
-        let file = labFileAt folder (noisyObservationsFile attachedSeed)
+    /// Splits seed `seed`'s file in `data/` by `sample` and attaches it in place, each plate's experiment taking its key's rows (spec 0050 S12.2; 001 §K).
+    let private attachSeedObservations (folder : KitFolder) (seed : NoiseSeed) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let file = labFileAt folder (noisyObservationsFile seed)
         let split = model |> updateTableAndElementRotation (SplitByColumn (file, ImportProfileName.muellerObservations))
         let statusOf (current : TableAndElementRotationModel) : string = current.kitStatus |> Option.map _.value |> Option.defaultValue "none"
         let preview = splitOf file split
@@ -1967,7 +1971,18 @@ module KitAcceptanceTests =
         expect file "no setup added by the split" model.kitSetups attached.kitSetups
         let profiles = attached.experimentCollection.experiments |> List.map (fun experiment -> experiment.dataOpt |> Option.map _.profile)
         expect file "every experiment attached through the profile" (plates |> List.map (fun _ -> Some ImportProfileName.muellerObservations)) profiles
+        let attachments = attached.experimentCollection.experiments |> List.map (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.attachment.path, data.rows))
+        let keyedRows = plates |> List.map (fun plate -> Some (noisyObservationsFile seed, KeyedDataRows (DataRowKey plate.label.value)))
+        expect file "each experiment holding this file's rows of its key" keyedRows attachments
         attached
+
+    /// Writes each seed's observation file into `data/`, then attaches seed 1's (spec 0050 S12.2; 001 §K).
+    let private attachNoisyObservations (folder : KitFolder) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        for seed in AbsorbingBiaxialSample.noisySeeds do
+            let written = labFileAt folder (noisyObservationsFile seed)
+            Directory.CreateDirectory(Path.GetDirectoryName written.value) |> ignore
+            File.WriteAllText(written.value, (observationFileOf seed).value, System.Text.UTF8Encoding(false))
+        attachSeedObservations folder attachedSeed model
 
     /// Each generated axis of `crystal` freed from `perturbedStart` within ± `searchBox.halfWidth` × the harness's scale on the record axis at its position (spec 0050 S12.2).
     let private perturbedStartUnknownsOf (crystal : CrystalPhysics.CrystalParameters) : Parameter list =
@@ -2020,7 +2035,7 @@ module KitAcceptanceTests =
         Directory.CreateDirectory folder.value.value |> ignore
         Directory.CreateDirectory entries.value |> ignore
         let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
-        let clock, time = testClockAt absorbingStartTime
+        let clock, setTime = testClockAt absorbingStartTime
         let material = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance absorbingMaterial
         let sample = LibraryEntryContent.ofSample VersionNumber.first UserProvenance absorbingPlate
         dropOnLibraryWindow context [ writeEntryFile entries material; writeEntryFile entries sample ] [ material.id; sample.id ]
@@ -2061,7 +2076,7 @@ module KitAcceptanceTests =
             let recorded = buildAbsorbingGrids table
             let attached = attachNoisyObservations folder recorded
             let studied = buildAbsorbingStudy attached
-            time.Value <- absorbingFitTime
+            setTime absorbingFitTime
             let fitted = runStudyFitThroughShell studied absorbingFitRequest (TimeSpan.FromSeconds 1800.0)
             expect (FitRunKitFile.fileNameOf absorbingFitRunName.fileStem) "committed fit run" (Some absorbingFitRunName) fitted.studyFit.job.committedResults
             {
@@ -2069,6 +2084,7 @@ module KitAcceptanceTests =
                 context = context
                 model = fitted
                 clock = clock
+                setTime = setTime
             }
         with _ ->
             match openedOpt with
@@ -2480,16 +2496,20 @@ module KitAcceptanceTests =
             | MemberFailed failure -> Assert.Fail($"{file.value}: expected its one member to converge; actual {failure.value}")
         | members -> Assert.Fail($"{file.value}: expected one member, the study's single start; actual {members.Length}")
 
+    /// The absorbing triclinic crystal `run` promotes the study's material to (spec 0050 S12.2; 001 §Q AT-2).
+    let private recoveredCrystalOf (study : Study) (run : FitRun) : CrystalPhysics.AbsorbingTriclinicParameters =
+        let file = FitRunKitFile.fileNameOf run.name.fileStem
+        match study.promotedMaterialWith run absorbingMaterialVersion absorbingMaterial with
+        | Ok promoted ->
+            match promoted.physics with
+            | CrystalParameterPhysics (CrystalPhysics.AbsorbingTriclinicCrystal p) -> p
+            | other -> failwith $"{file.value}: expected the promoted material's absorbing triclinic crystal; actual %A{other}"
+        | Error error -> failwith $"{file.value}: expected the study to promote its material; actual {error.describe}"
+
     /// The crystal `run` promotes the study's material to holds every reported quantity within the noisy suite's bands, each by its relative error to `absorbing` (spec 0050 S12.2; 001 §Q AT-2).
     let private assertAbsorbingRecovery (study : Study) (run : FitRun) : unit =
         let file = FitRunKitFile.fileNameOf run.name.fileStem
-        let recovered =
-            match study.promotedMaterialWith run absorbingMaterialVersion absorbingMaterial with
-            | Ok promoted ->
-                match promoted.physics with
-                | CrystalParameterPhysics (CrystalPhysics.AbsorbingTriclinicCrystal p) -> p
-                | other -> failwith $"{file.value}: expected the promoted material's absorbing triclinic crystal; actual %A{other}"
-            | Error error -> failwith $"{file.value}: expected the study to promote its material; actual {error.describe}"
+        let recovered = recoveredCrystalOf study run
         let truth = AbsorbingBiaxialSample.absorbing
         let breaches =
             AbsorbingBiaxialSample.absorbingBandBreaches (fun q -> MuellerFitting.RelativeError.between (q.valueIn recovered) (q.valueIn truth))
@@ -2504,6 +2524,14 @@ module KitAcceptanceTests =
                 |> String.concat ", "
             let listed = breaches |> List.map _.describe |> String.concat "; "
             Assert.Fail($"{file.value}: {breaches.Length} reported quantities out of the noisy suite's bands, chi-squared {chiSquared}: {listed}")
+
+    /// The kit's stored `AbsorbingTriclinic` study as `reader` reads it, the one each fit run's crystal is promoted through (spec 0050 S12.2).
+    let private storedAbsorbingStudy (reader : KitProxy) : Study =
+        let studyFile = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+        reader.readStudies ()
+        |> readKitResult studyFile
+        |> List.tryFind (fun held -> held.name = absorbingStudyName)
+        |> Option.defaultWith (fun () -> failwith $"{studyFile.value}: expected the stored study; actual none")
 
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
@@ -2561,10 +2589,43 @@ module KitAcceptanceTests =
             | held -> failwith $"{fitFile.value}: expected exactly one fit run; actual {held.Length}"
         expect fitFile "the stored fit run, the window's completed job" built.model.kitFitRuns runs
         assertAbsorbingFitRun run
-        let studyFile = StudyKitFile.fileNameOf absorbingStudyName.fileStem
-        let study =
-            reader.readStudies ()
-            |> readKitResult studyFile
-            |> List.tryFind (fun held -> held.name = absorbingStudyName)
-            |> Option.defaultWith (fun () -> failwith $"{studyFile.value}: expected the stored study; actual none")
-        assertAbsorbingRecovery study run
+        assertAbsorbingRecovery (storedAbsorbingStudy reader) run
+
+    /// Seeds 2 to 5 re-attached to the plates and fitted through the shell after seed 1's, on demand only, as xUnit v3 runs an `Explicit` fact (spec 0050 S12.2).
+    [<Fact(Explicit = true)>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-2's five-seed ensemble through the study engine keeps every reported quantity's scatter within the noisy suite's bands`` () : unit =
+        let built = buildAbsorbingKit (FolderName "AT-2-ensemble")
+        try
+            let refit (model : TableAndElementRotationModel) (seed : NoiseSeed, at : ClockTime) : TableAndElementRotationModel =
+                built.setTime at
+                let attached = attachSeedObservations built.folder seed model
+                assertAbsorbingStudyData attached (byPlate (noisyObservationsOf seed))
+                let fitted = runStudyFitThroughShell attached absorbingFitRequest (TimeSpan.FromSeconds 1800.0)
+                let name = absorbingStudyName.fitRunNameAt at
+                expect (FitRunKitFile.fileNameOf name.fileStem) "committed fit run" (Some name) fitted.studyFit.job.committedResults
+                fitted
+            let fitted = ensembleFitTimes |> List.tail |> List.fold refit built.model
+            let reader = KitProxy.create built.folder
+            let fitFile = FileName $"{absorbingStudyName.fileStem.value}@*.fitrun-json"
+            let runs = reader.readFitRuns absorbingStudyName |> readKitResult fitFile
+            expect fitFile "the five seeds' fit runs in seed order" (ensembleFitTimes |> List.map (fun (_, at) -> absorbingStudyName.fitRunNameAt at)) (runs |> List.map _.name)
+            expect fitFile "the stored fit runs, the window's completed jobs" fitted.kitFitRuns runs
+            let study = storedAbsorbingStudy reader
+            let crystals = runs |> List.map (recoveredCrystalOf study)
+            let table =
+                AbsorbingBiaxialSample.absorbingReportedQuantities
+                |> List.map (RecoveryEnsembles.statisticsFor AbsorbingBiaxialSample.absorbing crystals)
+            let report = table |> List.map _.describe |> String.concat "; "
+            let unscattered = table |> List.filter (fun row -> row.scatter.value <= 0.0) |> List.map _.quantity.name
+            expect fitFile $"quantities whose seed-to-seed scatter is zero, the noise never reaching the fit ({report})" [] unscattered
+            let scatterOf (quantity : RecoveryEnsembles.RecoveredQuantity<CrystalPhysics.AbsorbingTriclinicParameters>) : MuellerFitting.RelativeError =
+                match RecoveryEnsembles.rowFor table quantity.name with
+                | Ok row -> row.scatter
+                | Error error -> failwith $"{fitFile.value}: expected the ensemble row of {quantity.name.value}; actual %A{error}"
+            let breaches = AbsorbingBiaxialSample.absorbingBandBreaches scatterOf
+            if not breaches.IsEmpty then
+                let listed = breaches |> List.map _.describe |> String.concat "; "
+                Assert.Fail($"{fitFile.value}: {breaches.Length} reported quantities scatter out of the noisy suite's bands: {listed} ({report})")
+        finally
+            built.model.kit.close () |> readKitResult KitFile.fileName
