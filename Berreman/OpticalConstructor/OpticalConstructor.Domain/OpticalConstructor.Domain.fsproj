@@ -140,6 +140,7 @@
              decideVersioning rule from Lifecycle.fs above. Mirrors
              MaterialStore.fs. -->
         <Compile Include="SampleStore.fs" />
+        <Compile Include="MaterialSources.fs" />
         <Compile Include="CatalogueImport.fs" />
         <Compile Include="KitLibrary.fs" />
         <!-- Spec 0038: snap mode, pure data. -->
