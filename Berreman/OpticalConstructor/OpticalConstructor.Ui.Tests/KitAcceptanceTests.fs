@@ -1846,6 +1846,74 @@ module KitAcceptanceTests =
         |> generatePlateGrid azimuthsInT [ otherOpticAxisCutPlate ]
         |> generatePlateGrid principalCutScan [ zCutPlate; xCutPlate; yCutPlate ]
 
+    /// Seed `seed`'s noisy observations of the 44 configurations, drawn as `AbsorbingBiaxialNoisyTests` draws them (spec 0050 S12.2).
+    let private noisyObservationsOf (seed : NoiseSeed) : MuellerObservation list =
+        let forward =
+            MuellerInverse.createBerremanForward
+                (fun (p : CrystalPhysics.AbsorbingTriclinicParameters) -> p.opticalProperties)
+                BiaxialSample.solverParameters
+        noisyObserveAbsoluteWith forward AbsorbingBiaxialSample.absorbing NoiseParam.decentLab seed AbsorbingBiaxialSample.fullConfigurations
+        |> Result.defaultWith (fun error -> failwith $"noise seed {seed.value}: expected its noisy observations; actual %A{error}")
+
+    /// The label of the plate cut as `cut`, by `absorbingPlateCuts` read from cut to plate (spec 0050 S12.2).
+    let private plateLabelOf (cut : SampleCut) : ItemLabel =
+        match absorbingPlateCuts |> List.tryFind (fun (_, plateCut) -> plateCut = cut) with
+        | Some (plate, _) -> plate.label
+        | None -> failwith $"*.item-json: expected a plate of the cut %A{cut}; actual none"
+
+    /// Seed `seed`'s noisy observations in the harness's order, each keyed by its plate's label (spec 0050 S12.2).
+    let private plateKeyedObservationsOf (seed : NoiseSeed) : KeyedObservation list =
+        noisyObservationsOf seed
+        |> List.map (fun observation ->
+            let keyed : KeyedObservation =
+                {
+                    key = DataRowKey (plateLabelOf observation.configuration.cut).value
+                    observation = observation
+                }
+            keyed)
+
+    /// Seed `seed`'s observation file, written by `KeyedObservation.observationFileText` (spec 0050 S12.2).
+    let private observationFileOf (seed : NoiseSeed) : KitFileText =
+        KeyedObservation.observationFileText (plateKeyedObservationsOf seed)
+        |> Result.defaultWith (fun error -> failwith $"noise seed {seed.value}: expected its observation file; actual {error.caption.value}")
+
+    /// Where the build writes seed `seed`'s observation file in the kit (spec 0050 S12.2).
+    let private noisyObservationsFile (seed : NoiseSeed) : KitRelativePath =
+        KitRelativePath $"data/noisy-observations-seed-{seed.value}.csv"
+
+    /// The seed whose file the build attaches; the other files wait in `data/` for the ensemble (spec 0050 S12.2).
+    let private attachedSeed : NoiseSeed = List.head AbsorbingBiaxialSample.noisySeeds
+
+    /// Writes each seed's observation file into `data/`, then splits seed 1's by `sample` and attaches it in place (spec 0050 S12.2; 001 §K).
+    let private attachNoisyObservations (folder : KitFolder) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        for seed in AbsorbingBiaxialSample.noisySeeds do
+            let written = labFileAt folder (noisyObservationsFile seed)
+            Directory.CreateDirectory(Path.GetDirectoryName written.value) |> ignore
+            File.WriteAllText(written.value, (observationFileOf seed).value, System.Text.UTF8Encoding(false))
+        let file = labFileAt folder (noisyObservationsFile attachedSeed)
+        let split = model |> updateTableAndElementRotation (SplitByColumn (file, ImportProfileName.muellerObservations))
+        let statusOf (current : TableAndElementRotationModel) : string = current.kitStatus |> Option.map _.value |> Option.defaultValue "none"
+        let preview = splitOf file split
+        let plates = absorbingPlateCuts |> List.map fst
+        let experimentForEach : (DataRowKey * ExperimentName option) list =
+            plates |> List.map (fun plate -> DataRowKey plate.label.value, Some (ExperimentName plate.label.value))
+        let matched =
+            preview.split.groups
+            |> List.map (fun group ->
+                match group.matching with
+                | ExperimentForGroup name -> group.key, Some name
+                | SetupOfferForGroup _
+                | GroupWithoutMatch _ -> group.key, None)
+        expect file "split key column" (SplitKeyColumn "sample") preview.key
+        expect file $"groups in file order, each matched to the experiment its key names (status: {statusOf split})" experimentForEach matched
+        let attached = split |> updateTableAndElementRotation MatchByTemplate
+        expect file $"split completed (status: {statusOf attached})" None attached.dataSplitOpt
+        expect file "experiments after the split" (model.experimentCollection.experiments |> List.map _.name) (attached.experimentCollection.experiments |> List.map _.name)
+        expect file "no setup added by the split" model.kitSetups attached.kitSetups
+        let profiles = attached.experimentCollection.experiments |> List.map (fun experiment -> experiment.dataOpt |> Option.map _.profile)
+        expect file "every experiment attached through the profile" (plates |> List.map (fun _ -> Some ImportProfileName.muellerObservations)) profiles
+        attached
+
     /// AT-2's kit, built through the Library drop, the import dialog, the start screen and the kit window's messages alone (spec 0050 S12.2; 001 §Q).
     let private buildAbsorbingKit (run : FolderName) : BuiltAcceptanceKit =
         let runFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitAcceptanceTests", run.value))
@@ -1895,10 +1963,11 @@ module KitAcceptanceTests =
             let table = buildAbsorbingTable stocked
             expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
             let recorded = buildAbsorbingGrids table
+            let attached = attachNoisyObservations folder recorded
             {
                 folder = folder
                 context = context
-                model = recorded
+                model = attached
                 clock = clock
             }
         with _ ->
@@ -2117,6 +2186,63 @@ module KitAcceptanceTests =
         | Ok source -> expect laserFile "wavelength" AbsorbingBiaxialSample.waveLength source.waveLength
         | Error error -> Assert.Fail($"{laserFile.value}: expected a source preset; actual {error.describe}")
 
+    /// `actual` is `expected` in order: every key, every configuration and every `measured.element i j` exactly (spec 0050 S12.2).
+    let private assertSameObservations (file : FileName) (expected : KeyedObservation list) (actual : KeyedObservation list) : unit =
+        expect file "observation count" expected.Length actual.Length
+        List.zip expected actual
+        |> List.iteri (fun index (wanted, read) ->
+            let row = index + 1
+            expect file $"observation {row}: key" wanted.key read.key
+            expect file $"observation {row}: configuration" wanted.observation.configuration read.observation.configuration
+            for i in 0 .. 3 do
+                for j in 0 .. 3 do
+                    expect file $"observation {row}: m{i}{j}" (wanted.observation.measured.element i j) (read.observation.measured.element i j))
+
+    /// `data/` holds exactly the five seeds' files, each regenerated byte for byte and parsed back to its observations (spec 0050 S12.2).
+    let private assertNoisyObservationFiles (folder : KitFolder) : unit =
+        let data = folder.value.combine (FolderName "data")
+        let seeds = AbsorbingBiaxialSample.noisySeeds
+        expect (FileName data.value) "data files" (seeds |> List.map (fun seed -> (noisyObservationsFile seed).leafName) |> List.sort) (relativeFiles data)
+        for seed in seeds do
+            let file = labFileAt folder (noisyObservationsFile seed)
+            let regenerated = observationFileOf seed
+            let bytes = File.ReadAllBytes file.value
+            expect file "bytes against the regenerated observation file" (System.Text.UTF8Encoding(false).GetBytes regenerated.value) bytes
+            match (FileByteContent bytes).kitFileText.parseMuellerObservations with
+            | Ok readBack -> assertSameObservations file (plateKeyedObservationsOf seed) readBack
+            | Error error -> Assert.Fail($"{file.value}: expected the observation profile to read it; actual {error.caption.value}")
+
+    /// Each experiment holds seed 1's file in place, keyed by its name, and reads to its plate's observations in file order (spec 0050 S12.2).
+    let private assertNoisyObservationAttachments (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
+        let experimentsFile = FileName "*.experiment-json"
+        let experiments = reader.readExperiments () |> readKitResult experimentsFile
+        let seedOne = NoiseSeed 1
+        let attachment : DataAttachment =
+            {
+                path = KitRelativePath "data/noisy-observations-seed-1.csv"
+                contentHash = ContentHash.ofBytes (FileByteContent (System.Text.UTF8Encoding(false).GetBytes (observationFileOf seedOne).value))
+            }
+        let seedOneObservations = plateKeyedObservationsOf seedOne
+        expect experimentsFile "stored model" built.model.experimentCollection.experiments experiments
+        expect experimentsFile "experiments" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) (experiments |> List.map _.name)
+        for experiment in experiments do
+            let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
+            let key = DataRowKey experiment.name.value
+            let expected : MappedAttachment =
+                {
+                    attachment = attachment
+                    profile = ImportProfileName.muellerObservations
+                    rows = KeyedDataRows key
+                    exclusions = []
+                }
+            expect file "data attachment" (Some expected) experiment.dataOpt
+            let data = experiment.dataOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its data attachment; actual none")
+            match built.model.experimentData.readMapped data with
+            | Ok (ObservationPoints observations) ->
+                assertSameObservations file (seedOneObservations |> List.filter (fun keyed -> keyed.key = key)) observations
+            | Ok _ -> Assert.Fail($"{file.value}: expected observation points; actual another shape of points")
+            | Error error -> Assert.Fail($"{file.value}: expected its seed-1 observations; actual {error.caption.value}")
+
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-2 builds the absorbing-biaxial-noisy kit's library entries, items and table through the app's messages`` () : unit =
@@ -2141,3 +2267,11 @@ module KitAcceptanceTests =
         assertAbsorbingExperiments experiments
         assertAbsorbingConfigurations setups experiments
         assertConfigurationInputs built.folder reader
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-2 writes each seed's noisy observations through the Mueller-matrix observation profile and attaches seed 1's to its plates`` () : unit =
+        let built = absorbingBuild.Force ()
+        let reader = KitProxy.create built.folder
+        assertNoisyObservationFiles built.folder
+        assertNoisyObservationAttachments built reader
