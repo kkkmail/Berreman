@@ -107,6 +107,26 @@ module KitAcceptanceTests =
             groups : AcceptanceLabGroup list
         }
 
+    /// A committed kit's relative files and directories, `.oc/` included, and each file's bytes, recorded before a read-only session (spec 0050 S12.2).
+    type private CommittedKitRecording =
+        {
+            files : FileName list
+            directories : FolderName list
+            bytes : Map<FileName, FileByteContent>
+        }
+
+    /// A committed kit opened read-only against an empty library, and its folder as recorded before the open (spec 0050 S12.2; 001 §Q 'Open').
+    type private CommittedKitSession =
+        {
+            context : OpticalConstructor.Ui.AppContext
+            opened : OpenedKit
+            /// The Inverse window over the opened kit (spec 0050 S12.2).
+            model : TableAndElementRotationModel
+            /// The start screen's clock, fixed at the kit's refit instant, which the read-only refit stamps its run with (spec 0050 S12.2).
+            clock : ClockProvider
+            recorded : CommittedKitRecording
+        }
+
     let private kitId = KitId (Guid.Parse "e63c9d6e-7961-4d9f-9c8d-e5a151414e0e")
     let private kitAuthor = KitAuthor "optics-mueller lab"
     let private initialTime = ClockTime (DateTime(2026, 5, 31, 12, 0, 0, DateTimeKind.Utc))
@@ -406,9 +426,14 @@ module KitAcceptanceTests =
     let private readKitResult<'Value> (file : FileName) (result : Result<'Value, KitError>) : 'Value =
         result |> Result.defaultWith (fun error -> failwith $"{file.value}: expected a successful read/write; actual {error.describe}")
 
-    let private committedFolder () : KitFolder =
-        CommittedKit.OpticsMuellerKit.tryFindFolder
-        |> Option.defaultWith (fun () -> failwith "data/optics-mueller: expected the committed kit; actual folder missing")
+    /// The committed kit's folder under `data/`; a missing folder fails the fact naming it (spec 0050 S12.1, S12.2).
+    let private committedFolder (kit : CommittedKit) : KitFolder =
+        let name =
+            match kit with
+            | OpticsMuellerKit -> "data/optics-mueller"
+            | AbsorbingBiaxialNoisyKit -> "data/absorbing-biaxial-noisy"
+        kit.tryFindFolder
+        |> Option.defaultWith (fun () -> failwith $"{name}: expected the committed kit; actual folder missing")
 
     let private itemIdOf (label : ItemLabel) : ItemId =
         (itemSpecs |> List.find (fun item -> item.label = label)).id
@@ -875,7 +900,7 @@ module KitAcceptanceTests =
         if Directory.Exists runFolder.value then failwith $"{runFolder.value}: expected a fresh run folder; actual already exists"
         let mutable openedOpt : OpenedKit option = None
         try
-            let sourceData = Path.Combine((committedFolder ()).value.value, "data")
+            let sourceData = Path.Combine((committedFolder OpticsMuellerKit).value.value, "data")
             let targetData = Path.Combine(folder.value.value, "data")
             Directory.CreateDirectory targetData |> ignore
             for directory in Directory.EnumerateDirectories(sourceData, "*", SearchOption.AllDirectories) do
@@ -1071,6 +1096,13 @@ module KitAcceptanceTests =
         |> Array.sort
         |> List.ofArray
 
+    /// Every directory under `folder`, empty ones included, relative to it and sorted (spec 0050 S12.1, S12.2).
+    let private relativeDirectories (folder : FolderName) : FolderName list =
+        Directory.GetDirectories(folder.value, "*", SearchOption.AllDirectories)
+        |> Array.map (fun directory -> FolderName (Path.GetRelativePath(folder.value, directory)))
+        |> Array.sort
+        |> List.ofArray
+
     let private kitContentFiles (folder : KitFolder) : Set<FileName> =
         relativeFiles folder.value
         |> List.filter (fun file -> not (file.value.StartsWith($".oc{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
@@ -1140,7 +1172,7 @@ module KitAcceptanceTests =
             assertSameBytes source target
 
     let private assertLabBytes (folder : KitFolder) : unit =
-        let original = (committedFolder ()).value.combine (FolderName "data")
+        let original = (committedFolder OpticsMuellerKit).value.combine (FolderName "data")
         let copied = folder.value.combine (FolderName "data")
         let files = relativeFiles original
         expect (FileName copied.value) "lab files" files (relativeFiles copied)
@@ -1188,7 +1220,7 @@ module KitAcceptanceTests =
         expect experimentsFile "setup corrections" 2 (experiments |> List.sumBy (fun experiment -> experiment.corrections.Length))
         expect experimentsFile "excluded frames" 1 (experiments |> List.sumBy (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.exclusions.Length) |> Option.defaultValue 0))
         let restart = restartTimeOf files
-        let original = committedFolder ()
+        let original = committedFolder OpticsMuellerKit
         for lab in files do
             let source = labFileAt original lab.path
             let attachment : DataAttachment =
@@ -1319,69 +1351,118 @@ module KitAcceptanceTests =
     let ``the built optics-mueller kit equals the committed kit file by file`` () : unit =
         let run = FolderName (Guid.NewGuid().ToString("N"))
         let built = buildOpticsMuellerKit run
-        try assertSameKitFiles built.folder (committedFolder ())
+        try assertSameKitFiles built.folder (committedFolder OpticsMuellerKit)
         finally
             built.model.kit.close () |> readKitResult KitFile.fileName
         // Spec 0050 S12.1 / step 0428: a failed comparison retains the named kit for regeneration.
         Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
 
-    /// Reconstruct from committed snapshots and lab bytes without changing the kit (spec 0050 S12.1; 001 §Q 'Open').
-    [<Fact>]
-    [<Trait("Category", "kit-acceptance")>]
-    let ``the committed optics-mueller kit opens read-only against an empty library, writes nothing, and its study reproduces the reference reconstruction`` () : unit =
-        let original = committedFolder ()
+    /// The instant a read-only session's clock reads, after the kit's own fits: AT-1's refit at 12:03, AT-2's at 12:02 (spec 0050 S12.1, S12.2).
+    let private refitTimeOf (kit : CommittedKit) : ClockTime =
+        match kit with
+        | OpticsMuellerKit -> ClockTime (DateTime(2026, 5, 31, 12, 3, 0, DateTimeKind.Utc))
+        | AbsorbingBiaxialNoisyKit -> ClockTime (DateTime(2026, 6, 1, 12, 2, 0, DateTimeKind.Utc))
+
+    /// The context's item-model, live-library, material, sample and source stores list no entry (spec 0050 S12.1, S12.2; 001 §Q 'Open').
+    let private assertEmptyLibrary (context : OpticalConstructor.Ui.AppContext) : unit =
+        expect KitFile.fileName "empty item-model database" (Ok []) (context.itemModels.listItemModels ())
+        expect KitFile.fileName "empty live library" (Ok [ LibraryTree.byKind [] ]) (context.library.libraryTrees ())
+        expect KitFile.fileName "empty material database" (Ok []) (context.materials.listMaterials IncludeInactive)
+        expect KitFile.fileName "empty sample database" (Ok []) (context.samples.listSamples IncludeInactive)
+        expect KitFile.fileName "empty source database" (Ok []) (context.sources.listSources ())
+
+    /// The committed kit's folder holds exactly the recorded relative paths, directories and bytes: nothing written, no lock, stamp, snapshot or cache (spec 0050 S12.2; .spec-md §3.12).
+    let private assertCommittedUnchanged (kit : CommittedKit) (recorded : CommittedKitRecording) : unit =
+        let original = committedFolder kit
+        let folderFile = FileName original.value.value
+        expect folderFile "every relative file path unchanged, including .oc" recorded.files (relativeFiles original.value)
+        expect folderFile "every directory unchanged, including empty cache folders" recorded.directories (relativeDirectories original.value)
+        for KeyValue(file, expected) in recorded.bytes do
+            let actual = File.ReadAllBytes (file.combine original.value).value |> FileByteContent
+            expect file "committed bytes unchanged by the read-only session" expected.value actual.value
+
+    /// Records the committed kit's folder, then opens it read-only against an empty library through the start screen, the Inverse window over it; a failure after the recording closes the kit and checks the folder first (spec 0050 S12.2; 001 §Q 'Open').
+    let private openCommittedReadOnly (kit : CommittedKit) : CommittedKitSession =
+        let original = committedFolder kit
         let originalFiles = relativeFiles original.value
-        let originalBytes : Map<FileName, FileByteContent> =
-            originalFiles
-            |> List.map (fun file -> file, FileByteContent (File.ReadAllBytes (file.combine original.value).value))
-            |> Map.ofList
-        let directoriesInCommittedKit () : FolderName list =
-            Directory.GetDirectories(original.value.value, "*", SearchOption.AllDirectories)
-            |> Array.map (fun directory -> FolderName (Path.GetRelativePath(original.value.value, directory)))
-            |> Array.sort
-            |> List.ofArray
-        let originalDirectories = directoriesInCommittedKit ()
-        let assertCommittedKitUnchanged () : unit =
-            let folderFile = FileName original.value.value
-            expect folderFile "every relative file path unchanged, including .oc" originalFiles (relativeFiles original.value)
-            expect folderFile "every directory unchanged, including empty cache folders" originalDirectories (directoriesInCommittedKit ())
-            for KeyValue(file, expected) in originalBytes do
-                let actual = File.ReadAllBytes (file.combine original.value).value |> FileByteContent
-                expect file "committed bytes unchanged by the read-only session" expected.value actual.value
+        let recorded : CommittedKitRecording =
+            {
+                files = originalFiles
+                directories = relativeDirectories original.value
+                bytes =
+                    originalFiles
+                    |> List.map (fun file -> file, FileByteContent (File.ReadAllBytes (file.combine original.value).value))
+                    |> Map.ofList
+            }
+        let committedId, committedAuthor =
+            match kit with
+            | OpticsMuellerKit -> kitId, kitAuthor
+            | AbsorbingBiaxialNoisyKit -> absorbingKitId, absorbingKitAuthor
         let mutable openedOpt : OpenedKit option = None
         try
             let context = TestAppScope.emptyLibraryAppContext (FolderName "KitAcceptanceTests")
-            let assertEmptyLibrary () : unit =
-                expect KitFile.fileName "empty item-model database" (Ok []) (context.itemModels.listItemModels ())
-                expect KitFile.fileName "empty live library" (Ok [ LibraryTree.byKind [] ]) (context.library.libraryTrees ())
-            assertEmptyLibrary ()
-            let refitTime = ClockTime (DateTime(2026, 5, 31, 12, 3, 0, DateTimeKind.Utc))
-            let clock : ClockProvider =
-                {
-                    now = fun () -> refitTime
-                }
-            let startContext : KitStartContext =
-                {
-                    kitHistory = KitHistoryProxy.createInMemory [ original ]
-                    limit = KitHistoryLimit.defaultValue
-                    clock = clock
-                    kitIds = KitIdProvider.system
-                    author = kitAuthor
-                    imports = context.catalogueImports
-                    picker = TestAppScope.kitPickerOf original
-                    showKit = fun opened -> openedOpt <- Some opened
-                    activateKitWindow = fun _ -> NoKitWindowOpen
-                    zipPicker = KitZipPicker.none
-                    archive = KitArchiveProxy.create ()
-                    archiveJobs = KitArchiveJobHost.inert
-                }
-            let started = initKitStart startContext InverseConstructor |> updateKitStart (OpenKitReadOnly original)
+            assertEmptyLibrary context
+            let clock, _ = testClockAt (refitTimeOf kit)
+            let start, shown = kitStartOver context clock committedId committedAuthor original
+            let started = start |> updateKitStart (OpenKitReadOnly original)
+            openedOpt <- shown.Value
             expect KitFile.fileName "OpenKitReadOnly status" None started.status
             let opened =
                 openedOpt
                 |> Option.defaultWith (fun () -> failwith $"{original.value.value}: OpenKitReadOnly did not open the committed kit")
             expect KitFile.fileName "opened folder" original opened.folder
             expect KitFile.fileName "read-only access" ReadOnlyKitAccess opened.library.kit.access
+            let model = TestAppScope.inverseModelOver context opened
+            expect KitFile.fileName "window's read-only access" ReadOnlyKitAccess model.kit.access
+            expect KitFile.fileName "window's experiments" opened.experiments model.experimentCollection.experiments
+            expect KitFile.fileName "window's setups" opened.setups model.kitSetups
+            expect KitFile.fileName "window's items" opened.items model.kitItems
+            expect (FileName "*.study-json") "window's studies" opened.studies model.kitStudies
+            expect (FileName "*.fitrun-json") "window's fit runs" opened.fitRuns model.kitFitRuns
+            let session : CommittedKitSession =
+                {
+                    context = context
+                    opened = opened
+                    model = model
+                    clock = clock
+                    recorded = recorded
+                }
+            session
+        with _ ->
+            try
+                match openedOpt with
+                | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+                | None -> ()
+            finally
+                assertCommittedUnchanged kit recorded
+            reraise ()
+
+    /// The study engine's fit over a read-only window: the session's clock, the solver and deviates `StudyFitEnvironment.create` composes, and the window's fit runs (spec 0050 S12.1, S12.2).
+    let private readOnlyStudyFit (session : CommittedKitSession) : StudyFitParam =
+        let fit : StudyFitParam =
+            {
+                forward = session.model.studyForwardContext
+                clock = session.clock
+                linearSolver = createMathNetSvd ()
+                deviates = UniformDeviateProvider.fromSeed (NoiseSeed 1)
+                fitRuns = session.model.kitFitRuns
+            }
+        fit
+
+    /// Closes the session's kit, then checks the committed folder is as recorded, even when the close fails (spec 0050 S12.2).
+    let private closeCommittedReadOnly (kit : CommittedKit) (session : CommittedKitSession) : unit =
+        try session.opened.library.kit.close () |> readKitResult KitFile.fileName
+        finally assertCommittedUnchanged kit session.recorded
+
+    /// Reconstruct from committed snapshots and lab bytes without changing the kit (spec 0050 S12.1; 001 §Q 'Open').
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the committed optics-mueller kit opens read-only against an empty library, writes nothing, and its study reproduces the reference reconstruction`` () : unit =
+        let session = openCommittedReadOnly OpticsMuellerKit
+        let context = session.context
+        let opened = session.opened
+        let model = session.model
+        try
             expect KitFile.fileName "experiment count" 53 opened.experiments.Length
             expect KitFile.fileName "setup count" 42 opened.setups.Length
             expect KitFile.fileName "item count" 9 opened.items.Length
@@ -1393,18 +1474,10 @@ module KitAcceptanceTests =
             let fitFile = FileName "QZ-LR@*.fitrun-json"
             expect fitFile "two stored fit runs" [ calibrationRunName; objectRunName ] (opened.fitRuns |> List.map _.name)
             expect fitFile "stored fit stages" [ CalibrationStage; ObjectStage ] (opened.fitRuns |> List.map _.stage)
-
-            let model = TestAppScope.inverseModelOver context opened
-            expect KitFile.fileName "window's read-only access" ReadOnlyKitAccess model.kit.access
-            expect KitFile.fileName "window's experiments" opened.experiments model.experimentCollection.experiments
-            expect KitFile.fileName "window's setups" opened.setups model.kitSetups
-            expect KitFile.fileName "window's items" opened.items model.kitItems
-            expect studyFile "window's studies" opened.studies model.kitStudies
-            expect fitFile "window's fit runs" opened.fitRuns model.kitFitRuns
             expect (FileName "*.item-json") "all nine item identities"
                 (itemSpecs |> List.map _.id |> List.sort) (model.kitItems |> List.map _.id |> List.sort)
-            assertCommittedKitUnchanged ()
-            assertEmptyLibrary ()
+            assertCommittedUnchanged OpticsMuellerKit session.recorded
+            assertEmptyLibrary context
             for item in model.kitItems do
                 let file = ItemKitFile.fileNameOf item.label.fileStem
                 let choice =
@@ -1425,7 +1498,7 @@ module KitAcceptanceTests =
                 | ItemModelVersionInstance _
                 | SampleInstance _ -> ()
 
-            let labFiles = readAcceptanceLabFiles original
+            let labFiles = readAcceptanceLabFiles opened.folder
             for experiment in model.experimentCollection.experiments do
                 let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
                 let data =
@@ -1443,15 +1516,7 @@ module KitAcceptanceTests =
                 expect file "all mapped group points" (CapturePoints group.captures) mapped
             assertReferenceInstruments model.kitItems
 
-            let seed = NoiseSeed 1
-            let fit : StudyFitParam =
-                {
-                    forward = model.studyForwardContext
-                    clock = clock
-                    linearSolver = createMathNetSvd ()
-                    deviates = UniformDeviateProvider.fromSeed seed
-                    fitRuns = model.kitFitRuns
-                }
+            let fit = readOnlyStudyFit session
             let request : StudyFitRequest =
                 {
                     study = studyName
@@ -1462,20 +1527,15 @@ module KitAcceptanceTests =
                 fit.runFit request UnwatchedIterations
                 |> Result.defaultWith (fun error -> failwith $"{studyFile.value}: {error.describe}")
             expect fitFile "refit study" studyName run.study
-            expect fitFile "refit stamp" refitTime run.stamp
+            expect fitFile "refit stamp" (refitTimeOf OpticsMuellerKit) run.stamp
             expect fitFile "refit stage" ObjectStage run.stage
             expect fitFile "fixed calibrations" CalibrationHeldFixed run.calibrationUse
             expect fitFile "linear reconstruction" LinearStudyEngine run.engine
             assertReferenceObjects run
-            assertEmptyLibrary ()
-            assertCommittedKitUnchanged ()
+            assertEmptyLibrary context
+            assertCommittedUnchanged OpticsMuellerKit session.recorded
         finally
-            try
-                match openedOpt with
-                | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
-                | None -> ()
-            finally
-                assertCommittedKitUnchanged ()
+            closeCommittedReadOnly OpticsMuellerKit session
 
     /// Send and reopen the built kit without changing its files or study residual (spec 0050 S12.1; 001 §H, §Q 'Send').
     [<Fact>]
@@ -1623,7 +1683,7 @@ module KitAcceptanceTests =
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-1 attaches every lab group of the final data files through the Phone ROI CSV profile, with its role, session, correction and exclusion`` () : unit =
-        let original = committedFolder ()
+        let original = committedFolder OpticsMuellerKit
         let originalHashes = labHashes original
         let files = readAcceptanceLabFiles original
         let run = FolderName (Guid.NewGuid().ToString("N"))
@@ -2332,7 +2392,7 @@ module KitAcceptanceTests =
             | Error error -> Assert.Fail($"{file.value}: expected the observation profile to read it; actual {error.caption.value}")
 
     /// Each experiment holds seed 1's file in place, keyed by its name, and reads to its plate's observations in file order (spec 0050 S12.2).
-    let private assertNoisyObservationAttachments (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
+    let private assertNoisyObservationAttachments (model : TableAndElementRotationModel) (reader : KitProxy) : unit =
         let experimentsFile = FileName "*.experiment-json"
         let experiments = reader.readExperiments () |> readKitResult experimentsFile
         let seedOne = NoiseSeed 1
@@ -2342,7 +2402,7 @@ module KitAcceptanceTests =
                 contentHash = ContentHash.ofBytes (FileByteContent (System.Text.UTF8Encoding(false).GetBytes (observationFileOf seedOne).value))
             }
         let seedOneObservations = plateKeyedObservationsOf seedOne
-        expect experimentsFile "stored model" built.model.experimentCollection.experiments experiments
+        expect experimentsFile "stored model" model.experimentCollection.experiments experiments
         expect experimentsFile "experiments" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) (experiments |> List.map _.name)
         for experiment in experiments do
             let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
@@ -2356,7 +2416,7 @@ module KitAcceptanceTests =
                 }
             expect file "data attachment" (Some expected) experiment.dataOpt
             let data = experiment.dataOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its data attachment; actual none")
-            match built.model.experimentData.readMapped data with
+            match model.experimentData.readMapped data with
             | Ok (ObservationPoints observations) ->
                 assertSameObservations file (seedOneObservations |> List.filter (fun keyed -> keyed.key = key)) observations
             | Ok _ -> Assert.Fail($"{file.value}: expected observation points; actual another shape of points")
@@ -2383,7 +2443,7 @@ module KitAcceptanceTests =
                 (r.parameterValueOf AbsorbingBiaxialSample.perturbedStart) (a.parameterValueOf start))
 
     /// `AbsorbingTriclinic.study-json` holds the five experiments and the material at version 1, its components freed as set, no scope, link or session; each is per material (spec 0050 S12.2).
-    let private assertAbsorbingStudy (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
+    let private assertAbsorbingStudy (model : TableAndElementRotationModel) (reader : KitProxy) : unit =
         let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
         let studies = reader.readStudies () |> readKitResult file
         expect file "study names" [ absorbingStudyName ] (studies |> List.map _.name)
@@ -2407,7 +2467,7 @@ module KitAcceptanceTests =
         expect file "scopes" [] study.scopes
         expect file "links" [] study.links
         expect file "session gains" [] study.sessionGains
-        let held = studyIn built.model absorbingStudyName
+        let held = studyIn model absorbingStudyName
         expect file "the window's study" held study
         for parameter in material.parameters do
             let reference = MaterialParameterRef (material.version, parameter.name)
@@ -2415,7 +2475,7 @@ module KitAcceptanceTests =
         let shared =
             CrystalPhysics.AbsorbingTriclinicParameters.axes
             |> List.map (fun r -> MaterialParameterRef (material.version, r.name), MaterialOwner material.version)
-        let layout = held.parameterLayoutWith built.model.studyForwardContext
+        let layout = held.parameterLayoutWith model.studyForwardContext
         expect file "one vector entry per component, shared by the five plates" shared (layout.entries |> List.map (fun entry -> entry.unknown.parameter, entry.owner))
         assertAbsorbingAxes file material.crystal
 
@@ -2563,14 +2623,14 @@ module KitAcceptanceTests =
         let built = absorbingBuild.Force ()
         let reader = KitProxy.create built.folder
         assertNoisyObservationFiles built.folder
-        assertNoisyObservationAttachments built reader
+        assertNoisyObservationAttachments built.model reader
 
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-2's study opens the material across the five plates, loads the harness's observations exactly, and its residual at perturbedStart is the harness's`` () : unit =
         let built = absorbingBuild.Force ()
         let reader = KitProxy.create built.folder
-        assertAbsorbingStudy built reader
+        assertAbsorbingStudy built.model reader
         let observations = byPlate (noisyObservationsOf attachedSeed)
         assertAbsorbingStudyData built.model observations
         assertAbsorbingStartResidual built.model observations
@@ -2598,6 +2658,98 @@ module KitAcceptanceTests =
         match CommittedKit.AbsorbingBiaxialNoisyKit.tryFindFolder with
         | Some committed -> assertSameKitFiles built.folder committed
         | None -> Assert.Fail($"Built kit: {built.folder.value.value}\ndata/absorbing-biaxial-noisy: expected the committed kit; actual folder missing")
+
+    /// Each AT-2 item resolves through the kit's snapshots alone: its shipped model, the laser's preset, and each plate's dropped sample, whose material version resolves from the material's snapshot (spec 0050 S12.2; 001 §Q 'Open').
+    let private assertAbsorbingSnapshotResolution (session : CommittedKitSession) : unit =
+        let context = session.context
+        let model = session.model
+        expect (FileName "*.item-json") "the eight item identities"
+            (absorbingItemSpecs |> List.map _.id |> List.sort) (model.kitItems |> List.map _.id |> List.sort)
+        for item in model.kitItems do
+            let file = ItemKitFile.fileNameOf item.label.fileStem
+            let spec = absorbingItemSpecs |> List.find (fun held -> held.id = item.id)
+            let choice =
+                model.tryItemModelChoice item
+                |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the kit snapshots to resolve its stored model; actual none")
+            expect file "resolved stored model and binding" item.model choice.instance
+            let version =
+                match choice with
+                | LibraryModelChoice version
+                | SourcePresetChoice (version, _)
+                | PolarizerPresetChoice (version, _)
+                | StackSampleChoice (version, _, _) -> version
+            expect file "the shipped model entry" spec.modelId version.entry.id
+            expect file "model absent from the database" (Ok None) (context.itemModels.resolveItemModelVersion version.versionId)
+            expect file "model present in the snapshot overlay" (Ok (Some version)) (model.itemModels.resolveItemModelVersion version.versionId)
+            match choice with
+            | SourcePresetChoice (_, source) ->
+                expect file "bound preset" spec.bindingOpt (Some source.id)
+                expect file "bound preset absent from the database" (Ok None) (context.library.tryGetEntry source.id)
+            | StackSampleChoice (_, sampleVersion, sample) ->
+                expect file "the dropped sample's first version" (Library.SampleVersionId.firstOf absorbingPlate.id) sampleVersion
+                expect file "the dropped sample, as the kit's snapshot holds it" absorbingPlate sample
+                expect file "sample absent from the database" (Ok None) (context.samples.resolveVersion sampleVersion)
+                match sample.structure.substrate with
+                | Some substrate ->
+                    expect file "the sample's material version" absorbingMaterialVersion substrate.materialId
+                    expect file "material absent from the database" (Ok None) (context.materials.resolveVersion substrate.materialId)
+                    expect file "material resolved from the kit's snapshot" (Ok (Some absorbingMaterial)) (model.materials.resolveVersion substrate.materialId)
+                | None -> Assert.Fail($"{file.value}: expected the dropped sample's substrate; actual none")
+            | LibraryModelChoice _
+            | PolarizerPresetChoice _ -> ()
+
+    /// Reproduce AT-2 from the committed kit's snapshots and observation files without changing the kit (spec 0050 S12.2; 001 §Q 'Open', AT-2).
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the committed absorbing-biaxial-noisy kit opens read-only against an empty library, writes nothing, and reproduces AT-2's data, model and fit`` () : unit =
+        let session = openCommittedReadOnly AbsorbingBiaxialNoisyKit
+        let opened = session.opened
+        let model = session.model
+        let reader = model.kit.proxy
+        try
+            assertNoisyObservationFiles opened.folder
+
+            assertEmptyLibrary session.context
+            assertAbsorbingSnapshotResolution session
+
+            assertKitFile reader absorbingKitId (KitName "absorbing-biaxial-noisy") absorbingKitAuthor absorbingStartTime absorbingTemplate
+            assertAbsorbingSetups opened.setups
+            assertAbsorbingExperiments opened.experiments
+            assertAbsorbingConfigurations opened.setups opened.experiments
+            assertConfigurationInputs opened.folder reader
+            assertAbsorbingStudy model reader
+            let fitFile = FileName $"{absorbingStudyName.fileStem.value}@*.fitrun-json"
+            match opened.fitRuns with
+            | [ stored ] -> assertAbsorbingFitRun stored
+            | held -> Assert.Fail($"{fitFile.value}: expected the one committed fit run; actual {held.Length}")
+            for experiment in model.experimentCollection.experiments do
+                let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
+                let data =
+                    experiment.dataOpt
+                    |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its data attachment; actual none")
+                expect file "recorded attachment hash unchanged" (Ok AttachedDataUnchanged) (model.experimentData.attachmentStatus data.attachment)
+            assertNoisyObservationAttachments model reader
+            assertCommittedUnchanged AbsorbingBiaxialNoisyKit session.recorded
+
+            let observations = byPlate (noisyObservationsOf attachedSeed)
+            assertAbsorbingStudyData model observations
+            assertAbsorbingStartResidual model observations
+
+            let run =
+                (readOnlyStudyFit session).runFit absorbingFitRequest UnwatchedIterations
+                |> Result.defaultWith (fun error -> failwith $"{fitFile.value}: expected the study engine's fit run; actual {error.describe}")
+            expect fitFile "refit study" absorbingStudyName run.study
+            expect fitFile "refit stamp" (refitTimeOf AbsorbingBiaxialNoisyKit) run.stamp
+            expect fitFile "refit stage" JointStage run.stage
+            expect fitFile "fixed calibrations" CalibrationHeldFixed run.calibrationUse
+            expect fitFile "nonlinear engine" NonlinearStudyEngine run.engine
+            expect fitFile "refit runs, the five plates' experiments in kit order"
+                (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) run.runs
+            assertAbsorbingRecovery (studyIn model absorbingStudyName) run
+            assertEmptyLibrary session.context
+            assertCommittedUnchanged AbsorbingBiaxialNoisyKit session.recorded
+        finally
+            closeCommittedReadOnly AbsorbingBiaxialNoisyKit session
 
     /// Seeds 2 to 5 re-attached to the plates and fitted through the shell after seed 1's, on demand only, as xUnit v3 runs an `Explicit` fact (spec 0050 S12.2).
     [<Fact(Explicit = true)>]
