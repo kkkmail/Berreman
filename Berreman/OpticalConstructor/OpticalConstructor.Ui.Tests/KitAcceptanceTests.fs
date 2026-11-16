@@ -345,6 +345,10 @@ module KitAcceptanceTests =
     let private polarimeterT = polarimeterItem (ItemId (Guid.Parse "f7e47d80-d265-481e-b351-6e6bf48785ee")) (ItemLabel "Polarimeter T")
     let private polarimeterR = polarimeterItem (ItemId (Guid.Parse "938e1eb1-4b3d-43ea-b4a0-12c1dc5c4191")) (ItemLabel "Polarimeter R")
     let private opticAxisCutPlate = plateItem (ItemId (Guid.Parse "f61f5339-1db2-4c6c-a453-a9a9f0c11594")) (ItemLabel "OpticAxisCut")
+    let private otherOpticAxisCutPlate = plateItem (ItemId (Guid.Parse "10409181-5b7a-47b6-82df-525608098a65")) (ItemLabel "OtherOpticAxisCut")
+    let private zCutPlate = plateItem (ItemId (Guid.Parse "1a62e3fd-a168-4c03-a653-1ed3ae71789b")) (ItemLabel "ZCut")
+    let private xCutPlate = plateItem (ItemId (Guid.Parse "d64587f5-a4dd-4d6e-b85d-c6fecdc24f9b")) (ItemLabel "XCut")
+    let private yCutPlate = plateItem (ItemId (Guid.Parse "5b34e704-1b59-4aa7-9904-f5ccbbb3ef71")) (ItemLabel "YCut")
 
     /// AT-2's eight items in the order the build adds them, each taking the next minted id (spec 0050 S12.2).
     let private absorbingItemSpecs : AcceptanceItem list =
@@ -353,10 +357,21 @@ module KitAcceptanceTests =
             polarimeterT
             polarimeterR
             opticAxisCutPlate
-            plateItem (ItemId (Guid.Parse "10409181-5b7a-47b6-82df-525608098a65")) (ItemLabel "OtherOpticAxisCut")
-            plateItem (ItemId (Guid.Parse "1a62e3fd-a168-4c03-a653-1ed3ae71789b")) (ItemLabel "ZCut")
-            plateItem (ItemId (Guid.Parse "d64587f5-a4dd-4d6e-b85d-c6fecdc24f9b")) (ItemLabel "XCut")
-            plateItem (ItemId (Guid.Parse "5b34e704-1b59-4aa7-9904-f5ccbbb3ef71")) (ItemLabel "YCut")
+            otherOpticAxisCutPlate
+            zCutPlate
+            xCutPlate
+            yCutPlate
+        ]
+
+    /// Each AT-2 plate, in the order its setup and experiment are recorded, and the cut `AbsorbingBiaxialSample` builds
+    /// its configurations with (spec 0050 S12.2; 001 §Q AT-2).
+    let private absorbingPlateCuts : (AcceptanceItem * SampleCut) list =
+        [
+            opticAxisCutPlate, AbsorbingBiaxialSample.opticAxisCut
+            otherOpticAxisCutPlate, AbsorbingBiaxialSample.otherOpticAxisCut
+            zCutPlate, ZCut
+            xCutPlate, XCut
+            yCutPlate, YCut
         ]
 
     let private expect<'Value> (file : FileName) (field : string) (expected : 'Value) (actual : 'Value) : unit =
@@ -1752,6 +1767,85 @@ module KitAcceptanceTests =
         expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures table firstObjectSlot)
         table
 
+    /// The draft's edited axis: the plate's `variable` over `low`…`high` in `points`, as the Experiments bay sets one (spec 0050 S12.2).
+    let private plateAxis
+        (variable : ExperimentControls.VariableChoice)
+        (low : ExperimentControls.ExperimentRangeEnd)
+        (high : ExperimentControls.ExperimentRangeEnd)
+        (points : ExperimentControls.ExperimentPointCount)
+        : TableAndElementRotationMsg list =
+        [
+            ExpChooseElement firstObjectSlot
+            ExpChooseVariable variable
+            ExpSetRangeMin low
+            ExpSetRangeMax high
+            ExpSetRangePoints points
+        ]
+
+    /// A1's four azimuths of a plate, 0…67.5° in steps of 22.5°, read in T (spec 0050 S12.2; 001 §Q AT-2).
+    let private azimuthsInT : TableAndElementRotationMsg list =
+        plateAxis
+            ExperimentControls.VaryR1
+            (ExperimentControls.ExperimentRangeEnd 0.0)
+            (ExperimentControls.ExperimentRangeEnd 67.5)
+            (ExperimentControls.ExperimentPointCount 4)
+        @ [ ExpChooseMeasurement ExperimentControls.CaptureT ]
+
+    /// The incidences `low`…`high` in `points` by the azimuths 0 and 90°, each read in T then R, as A2 and A3 read them (spec 0050 S12.2).
+    let private incidencesByAzimuthInTAndR
+        (low : ExperimentControls.ExperimentRangeEnd)
+        (high : ExperimentControls.ExperimentRangeEnd)
+        (points : ExperimentControls.ExperimentPointCount)
+        : TableAndElementRotationMsg list =
+        plateAxis ExperimentControls.VaryR2 low high points
+        @ [ ExpAddScanAxis ]
+        @ plateAxis
+            ExperimentControls.VaryR1
+            (ExperimentControls.ExperimentRangeEnd 0.0)
+            (ExperimentControls.ExperimentRangeEnd 90.0)
+            (ExperimentControls.ExperimentPointCount 2)
+        @ [ ExpChooseMeasurement ExperimentControls.CaptureBoth ]
+
+    /// Over a fresh draft and grid panel, each plate tried in Object 1 and the grid generated: its setups and one experiment of the draft over each (spec 0050 S12.2; 001 §J).
+    let private generatePlateGrid
+        (draft : TableAndElementRotationMsg list)
+        (plates : AcceptanceItem list)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        let opened =
+            model
+            |> apply (ExpNew :: draft)
+            |> updateTableAndElementRotation OpenSetupGrid
+            |> apply (plates |> List.map (fun plate -> ToggleSetupGridItem (firstObjectSlot, plate.id)))
+        let generated = opened |> updateTableAndElementRotation (GenerateSetupGrid (gridOf opened))
+        let status = generated.kitStatus |> Option.map _.value |> Option.defaultValue "none"
+        let names = plates |> List.map _.label.value
+        let heldSetups = opened.kitSetups |> List.map _.name
+        let addedSetups = generated.kitSetups |> List.map _.name |> List.filter (fun name -> not (List.contains name heldSetups))
+        expect (FileName "*.setup-json") $"setups the grid added (status: {status})" (List.sort names) (addedSetups |> List.map _.value |> List.sort)
+        let appended = generated.experimentCollection.experiments |> List.skip opened.experimentCollection.experiments.Length
+        expect (FileName "*.experiment-json") $"experiments the grid appended (status: {status})" names (appended |> List.map _.name.value)
+        generated |> updateTableAndElementRotation CloseSetupGrid
+
+    /// Three grids record the five setups and one experiment per plate, whose scans read the design's 44 configurations (spec 0050 S12.2; 001 §Q AT-2).
+    let private buildAbsorbingGrids (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let opticAxisScan =
+            azimuthsInT
+            @ [ ExpAddScanBlock ]
+            @ incidencesByAzimuthInTAndR
+                (ExperimentControls.ExperimentRangeEnd 20.0)
+                (ExperimentControls.ExperimentRangeEnd 60.0)
+                (ExperimentControls.ExperimentPointCount 3)
+        let principalCutScan =
+            incidencesByAzimuthInTAndR
+                (ExperimentControls.ExperimentRangeEnd 0.0)
+                (ExperimentControls.ExperimentRangeEnd 45.0)
+                (ExperimentControls.ExperimentPointCount 2)
+        model
+        |> generatePlateGrid opticAxisScan [ opticAxisCutPlate ]
+        |> generatePlateGrid azimuthsInT [ otherOpticAxisCutPlate ]
+        |> generatePlateGrid principalCutScan [ zCutPlate; xCutPlate; yCutPlate ]
+
     /// AT-2's kit, built through the Library drop, the import dialog, the start screen and the kit window's messages alone (spec 0050 S12.2; 001 §Q).
     let private buildAbsorbingKit (run : FolderName) : BuiltAcceptanceKit =
         let runFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitAcceptanceTests", run.value))
@@ -1800,10 +1894,11 @@ module KitAcceptanceTests =
             expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
             let table = buildAbsorbingTable stocked
             expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
+            let recorded = buildAbsorbingGrids table
             {
                 folder = folder
                 context = context
-                model = table
+                model = recorded
                 clock = clock
             }
         with _ ->
@@ -1862,19 +1957,23 @@ module KitAcceptanceTests =
                 expect file "substrate.thickness in metres" (AbsorbingBiaxialSample.plate.parameterValueOpt |> Option.map KnownParameter)
                     (stateOf ParameterName.substrateThickness)
 
-    /// `library/` holds the dropped entries as dropped and the shipped closure as shipped, byte for byte (spec 0050 S12.2; 0432-impl-log.md).
+    /// The library entry a preset's value id names (spec 0050 S12.2).
+    let private presetEntryIdOf (preset : ElementValueId) : LibraryEntryId =
+        preset.tryToLibraryEntryId
+        |> Option.defaultWith (fun () -> failwith $"library/: expected a GUID preset id; actual {preset.value}")
+
+    /// `library/` holds the dropped entries as dropped and the shipped closure as shipped, byte for byte (spec 0050 S12.2; 0432-impl-log.md, 0433-impl-log.md).
     let private assertAbsorbingLibrary (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
         let snapshots = reader.listSnapshots () |> readKitResult (FileName "library/*")
         let library = built.folder.value.combine (FolderName "library")
         let libraryFile = FileName library.value
         expect libraryFile "snapshot files" (snapshots |> List.map _.snapshotFileName |> List.sort) (relativeFiles library)
-        let heNe633 =
-            PresetIds.heNe633.tryToLibraryEntryId
-            |> Option.defaultWith (fun () -> failwith $"{libraryFile.value}: expected the heNe633 preset's GUID; actual {PresetIds.heNe633.value}")
         let dropped = [ absorbingMaterial.id.toLibraryEntryId; absorbingPlate.id.toLibraryEntryId ]
         let shipped =
             [
-                heNe633
+                presetEntryIdOf PresetIds.heNe633
+                // The reflected detector keeps `AddElement Detector`'s seed, which its setups snapshot (0433-impl-log.md).
+                presetEntryIdOf PresetIds.detectorIntensity
                 ItemModelIds.sourcePresetItemModelId.toLibraryEntryId
                 ItemModelIds.muellerPolarimeterModelId.toLibraryEntryId
                 ItemModelIds.stackSampleItemModelId.toLibraryEntryId
@@ -1900,17 +1999,123 @@ module KitAcceptanceTests =
             expect target $"entry file {source.value} exists" true (File.Exists source.value)
             assertSameBytes source target
 
+    /// The table's and every AT-2 setup's slots: the laser, `plate` and both polarimeters, Polarimeter R on the plate's reflected ray (spec 0050 S12.2).
+    let private assertAbsorbingSlots (file : FileName) (plate : AcceptanceItem) (slots : SetupSlot list) : unit =
+        let slotOf (slot : ElementId) : SetupSlot =
+            slots
+            |> List.tryFind (fun element -> element.id = slot)
+            |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the slot {slot.value}; actual none")
+        expect file "slots" [ sourceSlot; firstObjectSlot; detectorSlot; reflectedDetectorSlot ] (slots |> List.map _.id)
+        for slot, spec in [ sourceSlot, absorbingLaser; firstObjectSlot, plate; detectorSlot, polarimeterT; reflectedDetectorSlot, polarimeterR ] do
+            expect file $"{slot.value} content" (ItemInSlot (spec.id, PlacementTurn)) (slotOf slot).content
+        expect file "the added detector's ray" (BeamLayout.OnReflectedBeamOf firstObjectSlot) (slotOf reflectedDetectorSlot).beam
+
     /// The table holds the laser, the plate and both polarimeters, Polarimeter R on the plate's reflected ray (spec 0050 S12.2).
     let private assertAbsorbingTable (model : TableAndElementRotationModel) : unit =
-        let slotOf (slot : ElementId) : SetupSlot =
-            model.elements
-            |> List.tryFind (fun element -> element.id = slot)
-            |> Option.defaultWith (fun () -> failwith $"{KitFile.fileName.value}: expected the table slot {slot.value}; actual none")
-        expect KitFile.fileName "table slots" [ sourceSlot; firstObjectSlot; detectorSlot; reflectedDetectorSlot ] (model.elements |> List.map _.id)
-        for slot, spec in [ sourceSlot, absorbingLaser; firstObjectSlot, opticAxisCutPlate; detectorSlot, polarimeterT; reflectedDetectorSlot, polarimeterR ] do
-            expect KitFile.fileName $"{slot.value} content" (ItemInSlot (spec.id, PlacementTurn)) (slotOf slot).content
-        expect KitFile.fileName "the added detector's ray" (BeamLayout.OnReflectedBeamOf firstObjectSlot) (slotOf reflectedDetectorSlot).beam
+        assertAbsorbingSlots KitFile.fileName opticAxisCutPlate model.elements
         expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures model firstObjectSlot)
+
+    /// The configurations the experiment's scan reads: each point in order on its capture, T then R for both, as `AbsorbingBiaxialSample.configuration` (spec 0050 S12.2).
+    let private configurationsOf (setups : Setup list) (experiment : Experiment) : MeasurementConfiguration list =
+        let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
+        let setup =
+            setups
+            |> List.tryFind (fun held -> held.name = experiment.setup.name)
+            |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the setup {experiment.setup.describe}; actual none")
+        let slots = setup.slotsAt experiment.setup.revision |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.describe}")
+        let plateSlot = (SetupSlot.inLightOrder slots |> List.find (fun roled -> roled.role = firstObjectRole)).slot
+        let cut =
+            match plateSlot.content.itemOpt |> Option.bind (fun id -> absorbingPlateCuts |> List.tryFind (fun (plate, _) -> plate.id = id)) with
+            | Some (_, plateCut) -> plateCut
+            | None -> failwith $"{file.value}: expected a plate in Obj 1 of {experiment.setup.describe}; actual %A{plateSlot.content}"
+        let degreesOf (variable : VariableParameter) (point : ScanPoint) : float option =
+            point.settings
+            |> List.tryFind (fun setting -> setting.elementId = plateSlot.id && setting.variable = variable)
+            |> Option.map _.value.value
+        experiment.scan.points
+        |> List.collect (fun point ->
+            // Spec 0050 S12.2: a point that sets no incidence holds the plate at normal incidence.
+            let incidence = degreesOf VaryR2 point |> Option.defaultValue 0.0
+            let azimuth =
+                degreesOf VaryR1 point
+                |> Option.defaultWith (fun () -> failwith $"{file.value}: expected every point to set the plate's R1; actual %A{point.settings}")
+            let observables =
+                match point.capture with
+                | CaptureTransmitted -> [ TransmittedMueller ]
+                | CaptureReflected -> [ ReflectedMueller ]
+                | CaptureBoth -> [ TransmittedMueller; ReflectedMueller ]
+            observables |> List.map (AbsorbingBiaxialSample.configuration cut incidence azimuth))
+
+    /// The five setups in their names' ordinal order, each at its first revision over the table's slots, its plate in Object 1 (spec 0050 S12.2; 001 §J).
+    let private assertAbsorbingSetups (setups : Setup list) : unit =
+        let plates = absorbingPlateCuts |> List.map fst
+        let names =
+            plates
+            |> List.map (fun plate -> SetupName plate.label.value)
+            |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
+        expect (FileName "*.setup-json") "the five setups in their names' ordinal order" names (setups |> List.map _.name)
+        for plate in plates do
+            let setup = setups |> List.find (fun held -> held.name.value = plate.label.value)
+            let file = SetupKitFile.fileNameOf setup.name.fileStem
+            expect file "revision" SetupRevision.first setup.revision
+            expect file "history" [] setup.history
+            assertAbsorbingSlots file plate setup.slots
+
+    /// One experiment per plate in id order, a `ScienceRun` in no session over its setup's first revision; OpticAxisCut's scan has two blocks (spec 0050 S12.2).
+    let private assertAbsorbingExperiments (experiments : Experiment list) : unit =
+        let experimentsFile = FileName "*.experiment-json"
+        let plates = absorbingPlateCuts |> List.map fst
+        expect experimentsFile "the five experiments in id order" (plates |> List.map (fun plate -> ExperimentName plate.label.value)) (experiments |> List.map _.name)
+        expect experimentsFile "ids" (plates |> List.mapi (fun index _ -> ExperimentId (index + 1))) (experiments |> List.map _.id)
+        for plate, experiment in List.zip plates experiments do
+            let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
+            let setup : SetupReference =
+                {
+                    name = SetupName plate.label.value
+                    revision = SetupRevision.first
+                }
+            expect file "setup and revision" setup experiment.setup
+            expect file "role" ScienceRun experiment.role
+            expect file "session" None experiment.sessionOpt
+            expect file "scan blocks" (if plate = opticAxisCutPlate then 2 else 1) experiment.scan.blocks.Length
+
+    /// The experiments' configurations in kit order are A1–A3 with each plate's together, 16, 4, 8, 8 and 8 of them (spec 0050 S12.2; 001 §Q AT-2).
+    let private assertAbsorbingConfigurations (setups : Setup list) (experiments : Experiment list) : unit =
+        let experimentsFile = FileName "*.experiment-json"
+        let a1 = AbsorbingBiaxialSample.a1
+        let expected = (a1 |> List.take 4) @ AbsorbingBiaxialSample.a2 @ (a1 |> List.skip 4) @ AbsorbingBiaxialSample.a3
+        let full = AbsorbingBiaxialSample.fullConfigurations
+        let holdsAll (configurations : MeasurementConfiguration list) (others : MeasurementConfiguration list) : bool =
+            others |> List.forall (fun configuration -> List.contains configuration configurations)
+        expect experimentsFile "expected configuration count" full.Length expected.Length
+        expect experimentsFile "the expected order holds fullConfigurations, each plate's together" true (holdsAll expected full && holdsAll full expected)
+        let read = experiments |> List.map (fun experiment -> experiment.name, configurationsOf setups experiment)
+        expect experimentsFile "configurations per experiment" [ 16; 4; 8; 8; 8 ] (read |> List.map (fun (_, configurations) -> configurations.Length))
+        let numbered =
+            read |> List.collect (fun (name, configurations) -> configurations |> List.mapi (fun index configuration -> name, index + 1, configuration))
+        List.zip expected numbered
+        |> List.iteri (fun position (wanted, (name, index, actual)) ->
+            if actual <> wanted then
+                let file = ExperimentKitFile.fileNameOf name.fileStem
+                Assert.Fail($"{file.value}: configuration {index} (position {position + 1} of {expected.Length}): expected %A{wanted}; actual %A{actual}"))
+
+    /// The kit's plate and Laser are the plate and the wavelength `AbsorbingBiaxialSample.configuration` builds with (spec 0050 S12.2).
+    let private assertConfigurationInputs (folder : KitFolder) (reader : KitProxy) : unit =
+        let snapshots = reader.listSnapshots () |> readKitResult (FileName "library/*")
+        let library = folder.value.combine (FolderName "library")
+        let snapshotOf (entryId : LibraryEntryId) : LibraryEntryContent * FileName =
+            match snapshots |> List.tryFind (fun envelope -> envelope.content.id = entryId) with
+            | Some envelope -> envelope.content, envelope.snapshotFileName.combine library
+            | None -> failwith $"{library.value}: expected the snapshot of {entryId.value}; actual none"
+        let plateEntry, plateFile = snapshotOf absorbingPlate.id.toLibraryEntryId
+        match plateEntry.toSample |> Result.map _.structure.substrate with
+        | Ok (Some substrate) -> expect plateFile "substrate thickness" AbsorbingBiaxialSample.plate substrate.thickness
+        | Ok None -> Assert.Fail($"{plateFile.value}: expected a substrate; actual none")
+        | Error error -> Assert.Fail($"{plateFile.value}: expected a sample; actual {error.describe}")
+        let laserEntry, laserFile = snapshotOf (presetEntryIdOf PresetIds.heNe633)
+        match laserEntry.toSourcePreset with
+        | Ok source -> expect laserFile "wavelength" AbsorbingBiaxialSample.waveLength source.waveLength
+        | Error error -> Assert.Fail($"{laserFile.value}: expected a source preset; actual {error.describe}")
 
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
@@ -1921,3 +2126,18 @@ module KitAcceptanceTests =
         assertAbsorbingItems built reader
         assertAbsorbingLibrary built reader
         assertAbsorbingTable built.model
+
+    // F# reserves '@' in identifiers (FS1104) and compiles one as `<prefix>@<line>`, so the census id rides on the
+    // compiled name (spec 0050 step 0433).
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    [<CompiledName("AT-2's grid generator records one experiment per plate whose multi-variable scan reproduces a1 @ a2 @ a3 configuration by configuration")>]
+    let ``AT-2's grid generator records one experiment per plate whose multi-variable scan reproduces a1, a2 and a3 configuration by configuration`` () : unit =
+        let built = absorbingBuild.Force ()
+        let reader = KitProxy.create built.folder
+        let setups = reader.readSetups () |> readKitResult (FileName "*.setup-json")
+        let experiments = reader.readExperiments () |> readKitResult (FileName "*.experiment-json")
+        assertAbsorbingSetups setups
+        assertAbsorbingExperiments experiments
+        assertAbsorbingConfigurations setups experiments
+        assertConfigurationInputs built.folder reader
