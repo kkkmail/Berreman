@@ -36,6 +36,7 @@ open OpticalConstructor.Domain.SetupGrids
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.StudyEngine
@@ -290,11 +291,17 @@ module KitAcceptanceTests =
             physics = CrystalParameterPhysics (CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.absorbing)
         }
 
+    /// The material's first version: what the plate is made of and what AT-2's study opens (spec 0050 S12.2).
+    let private absorbingMaterialVersion : MaterialVersionId = MaterialVersionId.firstOf absorbingMaterial.id
+
+    /// AT-2's one study, of the five plates' experiments (spec 0050 S12.2; 001 §Q AT-2).
+    let private absorbingStudyName = StudyName "AbsorbingTriclinic"
+
     /// The 100 µm plate of that material every AT-2 plate item binds; each observation carries its cut (spec 0050 S12.2).
     let private absorbingPlate : Library.Sample =
         let substrate : SampleLayer =
             {
-                materialId = MaterialVersionId.firstOf absorbingMaterial.id
+                materialId = absorbingMaterialVersion
                 thickness = AbsorbingBiaxialSample.plate
                 orientation = PrimaryAxes
             }
@@ -1235,6 +1242,26 @@ module KitAcceptanceTests =
         let ratio = ControlCaption $"{file.value}: QZ then LR product-check RMSE ratio"
         expectReferenceValue ratio MuellerReference.productCheckRmseRatio.value check.rmseRatio.value
 
+    /// The kit window's study of that name; a kit without it fails the fact (spec 0050 S12.1, S12.2).
+    let private studyIn (model : TableAndElementRotationModel) (study : StudyName) : Study =
+        let file = StudyKitFile.fileNameOf study.fileStem
+        model.kitStudies
+        |> List.tryFind (fun held -> held.name = study)
+        |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the study in the kit")
+
+    /// The study's data as its first fit reads it, `prefitWith` before any fit run then `dataWith` (spec 0050 S12.1, S12.2).
+    let private studyDataOf (model : TableAndElementRotationModel) (study : StudyName) : Result<StudyData, StudyForwardError> =
+        let held = studyIn model study
+        let forward = model.studyForwardContext
+        held.prefitWith forward [] |> Result.bind (held.dataWith forward)
+
+    /// The study's residual over that data at its layout's start vector, the one composition AT-1 and AT-2 share (spec 0050 S12.1, S12.2).
+    let private studyResidualAtStart (model : TableAndElementRotationModel) (study : StudyName) : Result<ResidualVector, StudyForwardError> =
+        let held = studyIn model study
+        let forward = model.studyForwardContext
+        let layout = held.parameterLayoutWith forward
+        studyDataOf model study |> Result.bind (fun data -> held.residualWith forward layout data layout.startVector)
+
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``the built optics-mueller kit equals the committed kit file by file`` () : unit =
@@ -1422,15 +1449,7 @@ module KitAcceptanceTests =
         try
             let studyFile = StudyKitFile.fileNameOf studyName.fileStem
             let residualAtStart (model : TableAndElementRotationModel) : ResidualVector =
-                let study =
-                    model.kitStudies
-                    |> List.tryFind (fun study -> study.name = studyName)
-                    |> Option.defaultWith (fun () -> failwith $"{studyFile.value}: expected the study in the kit")
-                let forward = model.studyForwardContext
-                let layout = study.parameterLayoutWith forward
-                study.prefitWith forward []
-                |> Result.bind (study.dataWith forward)
-                |> Result.bind (fun data -> study.residualWith forward layout data layout.startVector)
+                studyResidualAtStart model studyName
                 |> Result.defaultWith (fun error -> failwith $"{studyFile.value}: expected a start-point residual; actual {error.describe}")
 
             let builtResidual = residualAtStart built.model
@@ -1846,14 +1865,21 @@ module KitAcceptanceTests =
         |> generatePlateGrid azimuthsInT [ otherOpticAxisCutPlate ]
         |> generatePlateGrid principalCutScan [ zCutPlate; xCutPlate; yCutPlate ]
 
+    /// The harness's forward model of the absorbing crystal: it draws the observations and forms the harness residual (spec 0050 S12.2).
+    let private absorbingForward : ForwardModelProxy<CrystalPhysics.AbsorbingTriclinicParameters> =
+        MuellerInverse.createBerremanForward
+            (fun (p : CrystalPhysics.AbsorbingTriclinicParameters) -> p.opticalProperties)
+            BiaxialSample.solverParameters
+
     /// Seed `seed`'s noisy observations of the 44 configurations, drawn as `AbsorbingBiaxialNoisyTests` draws them (spec 0050 S12.2).
     let private noisyObservationsOf (seed : NoiseSeed) : MuellerObservation list =
-        let forward =
-            MuellerInverse.createBerremanForward
-                (fun (p : CrystalPhysics.AbsorbingTriclinicParameters) -> p.opticalProperties)
-                BiaxialSample.solverParameters
-        noisyObserveAbsoluteWith forward AbsorbingBiaxialSample.absorbing NoiseParam.decentLab seed AbsorbingBiaxialSample.fullConfigurations
+        noisyObserveAbsoluteWith absorbingForward AbsorbingBiaxialSample.absorbing NoiseParam.decentLab seed AbsorbingBiaxialSample.fullConfigurations
         |> Result.defaultWith (fun error -> failwith $"noise seed {seed.value}: expected its noisy observations; actual %A{error}")
+
+    /// The observations of each plate together, plate by plate in kit order, each plate's in their own order: how the study reads seed 1's file (spec 0050 S12.2).
+    let private byPlate (observations : MuellerObservation list) : MuellerObservation list =
+        absorbingPlateCuts
+        |> List.collect (fun (_, cut) -> observations |> List.filter (fun observation -> observation.configuration.cut = cut))
 
     /// The label of the plate cut as `cut`, by `absorbingPlateCuts` read from cut to plate (spec 0050 S12.2).
     let private plateLabelOf (cut : SampleCut) : ItemLabel =
@@ -1914,6 +1940,47 @@ module KitAcceptanceTests =
         expect file "every experiment attached through the profile" (plates |> List.map (fun _ -> Some ImportProfileName.muellerObservations)) profiles
         attached
 
+    /// Each generated axis of `crystal` freed from `perturbedStart` within ± `searchBox.halfWidth` × the harness's scale on the record axis at its position (spec 0050 S12.2).
+    let private perturbedStartUnknownsOf (crystal : CrystalPhysics.CrystalParameters) : Parameter list =
+        let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+        let generated = crystal.parameterAxes
+        let records = CrystalPhysics.AbsorbingTriclinicParameters.axes
+        if generated.Length <> records.Length then
+            failwith $"{file.value}: expected {records.Length} generated axes, one per record axis; actual {generated.Length}"
+        let start = CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.perturbedStart
+        let scale = (AbsorbingBiaxialSample.absorbingScalingAround AbsorbingBiaxialSample.perturbedStart).scale
+        List.map2
+            (fun (a : ParameterAxis<CrystalPhysics.CrystalParameters>) (r : ParameterAxis<CrystalPhysics.AbsorbingTriclinicParameters>) ->
+                let s = a.parameterValueOf start
+                let h = AbsorbingBiaxialSample.searchBox.halfWidth * r.read scale
+                let parameter : Parameter =
+                    {
+                        name = a.name
+                        state = unknownBetween s (ParameterValue (s.value - h)) (ParameterValue (s.value + h))
+                    }
+                parameter)
+            generated
+            records
+
+    /// AT-2's study over the five experiments in kit order, the material opened and its components freed from `perturbedStart`; no scope is set and no fit runs (spec 0050 S12.2; 001 §Q AT-2).
+    let private buildAbsorbingStudy (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+        let sent (current : TableAndElementRotationModel) (message : StudyMsg) : TableAndElementRotationModel =
+            let next = current |> updateTableAndElementRotation (StudyCommand message)
+            expect file "study command status" None next.kitStatus
+            next
+        let experiments = model.experimentCollection.experiments |> List.map _.name
+        let opened =
+            [ CreateStudy (absorbingStudyName, experiments); OpenMaterial (absorbingStudyName, absorbingMaterialVersion) ]
+            |> List.fold sent model
+        let copy =
+            match (studyIn opened absorbingStudyName).materials with
+            | [ material ] -> material
+            | materials -> failwith $"{file.value}: expected one opened material; actual {materials.Length}"
+        perturbedStartUnknownsOf copy.crystal
+        |> List.map (fun parameter -> SetOpenedMaterialParameter (absorbingStudyName, copy.version, parameter))
+        |> List.fold sent opened
+
     /// AT-2's kit, built through the Library drop, the import dialog, the start screen and the kit window's messages alone (spec 0050 S12.2; 001 §Q).
     let private buildAbsorbingKit (run : FolderName) : BuiltAcceptanceKit =
         let runFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitAcceptanceTests", run.value))
@@ -1929,7 +1996,7 @@ module KitAcceptanceTests =
         let sample = LibraryEntryContent.ofSample VersionNumber.first UserProvenance absorbingPlate
         dropOnLibraryWindow context [ writeEntryFile entries material; writeEntryFile entries sample ] [ material.id; sample.id ]
         let heldMaterial =
-            context.materials.resolveVersion (MaterialVersionId.firstOf absorbingMaterial.id)
+            context.materials.resolveVersion absorbingMaterialVersion
             |> Result.map (Option.map (fun (held : MaterialEntry) -> held.id))
         expect material.fileName "material held at version 1" (Ok (Some absorbingMaterial.id)) heldMaterial
         let heldSample =
@@ -1964,10 +2031,11 @@ module KitAcceptanceTests =
             expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
             let recorded = buildAbsorbingGrids table
             let attached = attachNoisyObservations folder recorded
+            let studied = buildAbsorbingStudy attached
             {
                 folder = folder
                 context = context
-                model = attached
+                model = studied
                 clock = clock
             }
         with _ ->
@@ -2186,17 +2254,21 @@ module KitAcceptanceTests =
         | Ok source -> expect laserFile "wavelength" AbsorbingBiaxialSample.waveLength source.waveLength
         | Error error -> Assert.Fail($"{laserFile.value}: expected a source preset; actual {error.describe}")
 
+    /// `actual` is `expected`: its configuration and every `measured.element i j`, exactly (spec 0050 S12.2).
+    let private assertSameObservation (file : FileName) (row : ControlCaption) (expected : MuellerObservation) (actual : MuellerObservation) : unit =
+        expect file $"{row.value}: configuration" expected.configuration actual.configuration
+        for i in 0 .. 3 do
+            for j in 0 .. 3 do
+                expect file $"{row.value}: m{i}{j}" (expected.measured.element i j) (actual.measured.element i j)
+
     /// `actual` is `expected` in order: every key, every configuration and every `measured.element i j` exactly (spec 0050 S12.2).
     let private assertSameObservations (file : FileName) (expected : KeyedObservation list) (actual : KeyedObservation list) : unit =
         expect file "observation count" expected.Length actual.Length
         List.zip expected actual
         |> List.iteri (fun index (wanted, read) ->
-            let row = index + 1
-            expect file $"observation {row}: key" wanted.key read.key
-            expect file $"observation {row}: configuration" wanted.observation.configuration read.observation.configuration
-            for i in 0 .. 3 do
-                for j in 0 .. 3 do
-                    expect file $"observation {row}: m{i}{j}" (wanted.observation.measured.element i j) (read.observation.measured.element i j))
+            let row = ControlCaption $"observation {index + 1}"
+            expect file $"{row.value}: key" wanted.key read.key
+            assertSameObservation file row wanted.observation read.observation)
 
     /// `data/` holds exactly the five seeds' files, each regenerated byte for byte and parsed back to its observations (spec 0050 S12.2).
     let private assertNoisyObservationFiles (folder : KitFolder) : unit =
@@ -2243,6 +2315,103 @@ module KitAcceptanceTests =
             | Ok _ -> Assert.Fail($"{file.value}: expected observation points; actual another shape of points")
             | Error error -> Assert.Fail($"{file.value}: expected its seed-1 observations; actual {error.caption.value}")
 
+    /// The field case an axis lives in, by its case name, as the axis assertion compares it (spec 0050 S12.2).
+    let private fieldCaseOf<'Parameters> (field : ParameterField<'Parameters>) : ControlCaption =
+        match field with
+        | RefractionIndexField _ -> ControlCaption "RefractionIndexField"
+        | RhoValueField _ -> ControlCaption "RhoValueField"
+        | EpsValueField _ -> ControlCaption "EpsValueField"
+
+    /// The opened copy's generated axes are `AbsorbingTriclinicParameters.axes`: names and field cases in order, and reads of `perturbedStart` exactly (spec 0050 S12.2).
+    let private assertAbsorbingAxes (file : FileName) (crystal : CrystalPhysics.CrystalParameters) : unit =
+        let generated = crystal.parameterAxes
+        let records = CrystalPhysics.AbsorbingTriclinicParameters.axes
+        expect file "fifteen record axes" 15 records.Length
+        expect file "generated axis names in the record's order" (records |> List.map _.name) (generated |> List.map _.name)
+        expect file "generated field cases" (records |> List.map (fun r -> fieldCaseOf r.field)) (generated |> List.map (fun a -> fieldCaseOf a.field))
+        let start = CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.perturbedStart
+        List.zip records generated
+        |> List.iteri (fun index (r, a) ->
+            expect file $"axis {index + 1} ({r.name.value}): the generated read of perturbedStart"
+                (r.parameterValueOf AbsorbingBiaxialSample.perturbedStart) (a.parameterValueOf start))
+
+    /// `AbsorbingTriclinic.study-json` holds the five experiments and the material at version 1, its components freed as set, no scope, link or session; each is per material (spec 0050 S12.2).
+    let private assertAbsorbingStudy (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
+        let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+        let studies = reader.readStudies () |> readKitResult file
+        expect file "study names" [ absorbingStudyName ] (studies |> List.map _.name)
+        let study = List.exactlyOne studies
+        expect file "the five experiments in kit order" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) study.experiments
+        let material =
+            match study.materials with
+            | [ only ] -> only
+            | held -> failwith $"{file.value}: expected one opened material; actual {held.Length}"
+        expect file "opened version" absorbingMaterialVersion material.version
+        expect file "opened name" absorbingMaterial.name material.name
+        expect file "opened crystal" (CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.absorbing) material.crystal
+        let unknowns =
+            material.parameters
+            |> List.choose (fun parameter ->
+                match parameter.state with
+                | UnknownParameter _ -> Some parameter.name
+                | KnownParameter _ | CalibratedParameter _ -> None)
+        expect file "fifteen unknown components" 15 unknowns.Length
+        expect file "components freed from perturbedStart within the harness's box" (perturbedStartUnknownsOf material.crystal) material.parameters
+        expect file "scopes" [] study.scopes
+        expect file "links" [] study.links
+        expect file "session gains" [] study.sessionGains
+        let held = studyIn built.model absorbingStudyName
+        expect file "the window's study" held study
+        for parameter in material.parameters do
+            let reference = MaterialParameterRef (material.version, parameter.name)
+            expect file $"{reference.describe} scope" MaterialScope (held.scopeOf reference)
+        let shared =
+            CrystalPhysics.AbsorbingTriclinicParameters.axes
+            |> List.map (fun r -> MaterialParameterRef (material.version, r.name), MaterialOwner material.version)
+        let layout = held.parameterLayoutWith built.model.studyForwardContext
+        expect file "one vector entry per component, shared by the five plates" shared (layout.entries |> List.map (fun entry -> entry.unknown.parameter, entry.owner))
+        assertAbsorbingAxes file material.crystal
+
+    /// `studyDataOf`'s runs are the five experiments in study order, holding only observation rows that equal `expected` exactly (spec 0050 S12.2).
+    let private assertAbsorbingStudyData (model : TableAndElementRotationModel) (expected : MuellerObservation list) : unit =
+        let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+        let data =
+            studyDataOf model absorbingStudyName
+            |> Result.defaultWith (fun error -> failwith $"{file.value}: expected the study's data; actual {error.describe}")
+        expect file "fitted runs in study order" (studyIn model absorbingStudyName).experiments (data.runs |> List.map _.experiment.name)
+        let observations =
+            data.runs
+            |> List.collect (fun run ->
+                run.rows
+                |> List.mapi (fun index row ->
+                    match row with
+                    | ObservationRow observation -> observation
+                    | SettingsRow _ -> failwith $"{file.value}: {run.experiment.name.value} row {index + 1}: expected an observation row; actual a settings row"))
+        expect file "observation count" expected.Length observations.Length
+        List.zip expected observations
+        |> List.iteri (fun index (wanted, read) -> assertSameObservation file (ControlCaption $"observation {index + 1}") wanted read)
+
+    /// The study's start residual is `throughputResidualFor` of the harness's forward over `observations` at the zero scaled vector, each entry within 1e-12 relative (spec 0050 S12.2).
+    let private assertAbsorbingStartResidual (model : TableAndElementRotationModel) (observations : MuellerObservation list) : unit =
+        let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+        let scaling = AbsorbingBiaxialSample.absorbingScalingAround AbsorbingBiaxialSample.perturbedStart
+        let origin = ScaledVector (Array.zeroCreate scaling.dimension)
+        let harness = (MuellerFitting.throughputResidualFor absorbingForward observations scaling origin).value
+        let residual =
+            studyResidualAtStart model absorbingStudyName
+            |> Result.defaultWith (fun error -> failwith $"{file.value}: expected the residual at perturbedStart; actual {error.describe}")
+        expect file "residual entries, 16 per observation" (16 * observations.Length) residual.value.Length
+        expect file "residual entries" 704 residual.value.Length
+        let mismatches =
+            Array.zip harness residual.value
+            |> Array.indexed
+            |> Array.choose (fun (k, (h, a)) ->
+                if abs (a - h) <= 1.0e-12 * max 1.0 (abs h) then None
+                else Some $"entry {k}: expected {h:R}; actual {a:R}")
+        if mismatches.Length > 0 then
+            let listed = String.concat "\n" mismatches
+            Assert.Fail($"{file.value}: {mismatches.Length} residual entries off the harness's by more than 1e-12 · max(1, |h_k|)\n{listed}")
+
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-2 builds the absorbing-biaxial-noisy kit's library entries, items and table through the app's messages`` () : unit =
@@ -2275,3 +2444,13 @@ module KitAcceptanceTests =
         let reader = KitProxy.create built.folder
         assertNoisyObservationFiles built.folder
         assertNoisyObservationAttachments built reader
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-2's study opens the material across the five plates, loads the harness's observations exactly, and its residual at perturbedStart is the harness's`` () : unit =
+        let built = absorbingBuild.Force ()
+        let reader = KitProxy.create built.folder
+        assertAbsorbingStudy built reader
+        let observations = byPlate (noisyObservationsOf attachedSeed)
+        assertAbsorbingStudyData built.model observations
+        assertAbsorbingStartResidual built.model observations
