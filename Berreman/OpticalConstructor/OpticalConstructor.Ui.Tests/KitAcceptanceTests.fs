@@ -1081,6 +1081,21 @@ module KitAcceptanceTests =
         let actualBytes = File.ReadAllBytes actual.value
         expect actual $"bytes against {expected.value}" expectedBytes actualBytes
 
+    /// Fails at the first relative path, `.oc/` left out of both, that `other` lacks, adds or holds in other bytes, naming `built`'s folder (spec 0050 S12.2).
+    let private assertSameKitFiles (built : KitFolder) (other : KitFolder) : unit =
+        let builtFiles = kitContentFiles built
+        let otherFiles = kitContentFiles other
+        for file in Set.union builtFiles otherFiles do
+            let diagnostic = $"Built kit: {built.value.value}\n{file.value}"
+            if not (Set.contains file otherFiles) then
+                Assert.Fail($"{diagnostic}: missing from {other.value.value} (extra in the built kit).")
+            elif not (Set.contains file builtFiles) then
+                Assert.Fail($"{diagnostic}: extra in {other.value.value} (missing from the built kit).")
+            else
+                try assertSameBytes (file.combine other.value) (file.combine built.value)
+                with :? Xunit.Sdk.XunitException as error ->
+                    Assert.Fail($"{diagnostic}: different bytes.\n{error.Message}")
+
     /// The `.kit-json` a build's start screen and template write: created and modified at `instant`, no notes, profile or exclusion (spec 0050 S12.1, S12.2).
     let private assertKitFile
         (reader : KitProxy)
@@ -1304,20 +1319,7 @@ module KitAcceptanceTests =
     let ``the built optics-mueller kit equals the committed kit file by file`` () : unit =
         let run = FolderName (Guid.NewGuid().ToString("N"))
         let built = buildOpticsMuellerKit run
-        try
-            let original = committedFolder ()
-            let expectedFiles = kitContentFiles original
-            let actualFiles = kitContentFiles built.folder
-            for file in Set.union expectedFiles actualFiles do
-                let diagnostic = $"Built kit: {built.folder.value.value}\n{file.value}"
-                if not (Set.contains file expectedFiles) then
-                    Assert.Fail($"{diagnostic}: missing from the committed kit (extra in the built kit).")
-                elif not (Set.contains file actualFiles) then
-                    Assert.Fail($"{diagnostic}: extra in the committed kit (missing from the built kit).")
-                else
-                    try assertSameBytes (file.combine original.value) (file.combine built.folder.value)
-                    with :? Xunit.Sdk.XunitException as error ->
-                        Assert.Fail($"{diagnostic}: different bytes.\n{error.Message}")
+        try assertSameKitFiles built.folder (committedFolder ())
         finally
             built.model.kit.close () |> readKitResult KitFile.fileName
         // Spec 0050 S12.1 / step 0428: a failed comparison retains the named kit for regeneration.
@@ -1585,10 +1587,7 @@ module KitAcceptanceTests =
             expect KitFile.fileName "reopened folder" target opened.folder
             expect KitFile.fileName "reopened access" ReadWriteKitAccess opened.library.kit.access
             let reopened = TestAppScope.inverseModelOver built.context opened
-            expect KitFile.fileName "all relative kit, library and data paths outside .oc"
-                expectedFiles (kitContentFiles target)
-            for file in expectedFiles do
-                assertSameBytes (file.combine built.folder.value) (file.combine target.value)
+            assertSameKitFiles built.folder target
 
             let reopenedResidual = residualAtStart reopened
             Assert.NotEmpty reopenedResidual.value
@@ -2590,6 +2589,15 @@ module KitAcceptanceTests =
         expect fitFile "the stored fit run, the window's completed job" built.model.kitFitRuns runs
         assertAbsorbingFitRun run
         assertAbsorbingRecovery (storedAbsorbingStudy reader) run
+
+    /// Every kit file, `library/` snapshot and `data/` observation file AT-2 writes is the committed kit's, `.oc/` aside (spec 0050 S12.2; 001 §Q AT-2).
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the built absorbing-biaxial-noisy kit equals the committed kit file by file`` () : unit =
+        let built = absorbingBuild.Force ()
+        match CommittedKit.AbsorbingBiaxialNoisyKit.tryFindFolder with
+        | Some committed -> assertSameKitFiles built.folder committed
+        | None -> Assert.Fail($"Built kit: {built.folder.value.value}\ndata/absorbing-biaxial-noisy: expected the committed kit; actual folder missing")
 
     /// Seeds 2 to 5 re-attached to the plates and fitted through the shell after seed 1's, on demand only, as xUnit v3 runs an `Explicit` fact (spec 0050 S12.2).
     [<Fact(Explicit = true)>]

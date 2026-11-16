@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "study": {
+    "experiments": [
+      "OpticAxisCut",
+      "OtherOpticAxisCut",
+      "ZCut",
+      "XCut",
+      "YCut"
+    ],
+    "links": [],
+    "materials": [
+      {
+        "crystal": {
+          "Case": "AbsorbingTriclinicCrystal",
+          "Fields": [
+            {
+              "epsIm11": 0.0012,
+              "epsIm12": 0.00045,
+              "epsIm13": -0.00025,
+              "epsIm22": 0.0018,
+              "epsIm23": 0.00035,
+              "epsIm33": 0.0009,
+              "g11": 4.31E-05,
+              "g12": 2.46E-05,
+              "g13": -3.64E-05,
+              "g22": 6.9E-05,
+              "g23": 1.72E-05,
+              "g33": -2.85E-05,
+              "index1": 1.574064836,
+              "index2": 1.601416913,
+              "index3": 1.616414016
+            }
+          ]
+        },
+        "name": "Absorbing triclinic crystal",
+        "parameters": [
+          {
+            "name": "n1",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": 1.527212965672,
+                    "upper": 1.627212965672
+                  },
+                  "priorOpt": null,
+                  "start": 1.577212965672
+                }
+              ]
+            }
+          },
+          {
+            "name": "n2",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": 1.5530183299129998,
+                    "upper": 1.653018329913
+                  },
+                  "priorOpt": null,
+                  "start": 1.6030183299129999
+                }
+              ]
+            }
+          },
+          {
+            "name": "n3",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": 1.568838637024,
+                    "upper": 1.668838637024
+                  },
+                  "priorOpt": null,
+                  "start": 1.618838637024
+                }
+              ]
+            }
+          },
+          {
+            "name": "e11",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.0035000000000000005,
+                    "upper": 0.0065
+                  },
+                  "priorOpt": null,
+                  "start": 0.0014999999999999998
+                }
+              ]
+            }
+          },
+          {
+            "name": "e22",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.00356,
+                    "upper": 0.00644
+                  },
+                  "priorOpt": null,
+                  "start": 0.00144
+                }
+              ]
+            }
+          },
+          {
+            "name": "e33",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.00392,
+                    "upper": 0.00608
+                  },
+                  "priorOpt": null,
+                  "start": 0.00108
+                }
+              ]
+            }
+          },
+          {
+            "name": "e23",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.0047375,
+                    "upper": 0.0052625
+                  },
+                  "priorOpt": null,
+                  "start": 0.0002625
+                }
+              ]
+            }
+          },
+          {
+            "name": "e13",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.005325,
+                    "upper": 0.004675
+                  },
+                  "priorOpt": null,
+                  "start": -0.00032500000000000004
+                }
+              ]
+            }
+          },
+          {
+            "name": "e12",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.004649,
+                    "upper": 0.005351
+                  },
+                  "priorOpt": null,
+                  "start": 0.000351
+                }
+              ]
+            }
+          },
+          {
+            "name": "g11",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.00044397,
+                    "upper": 0.00055603
+                  },
+                  "priorOpt": null,
+                  "start": 5.603E-05
+                }
+              ]
+            }
+          },
+          {
+            "name": "g22",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.00045170000000000003,
+                    "upper": 0.0005483
+                  },
+                  "priorOpt": null,
+                  "start": 4.8299999999999995E-05
+                }
+              ]
+            }
+          },
+          {
+            "name": "g33",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.000535625,
+                    "upper": 0.000464375
+                  },
+                  "priorOpt": null,
+                  "start": -3.5625E-05
+                }
+              ]
+            }
+          },
+          {
+            "name": "g23",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.0004871,
+                    "upper": 0.0005129
+                  },
+                  "priorOpt": null,
+                  "start": 1.2900000000000002E-05
+                }
+              ]
+            }
+          },
+          {
+            "name": "g13",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.00054914,
+                    "upper": 0.00045086000000000003
+                  },
+                  "priorOpt": null,
+                  "start": -4.914E-05
+                }
+              ]
+            }
+          },
+          {
+            "name": "g12",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.00048401,
+                    "upper": 0.00051599
+                  },
+                  "priorOpt": null,
+                  "start": 1.599E-05
+                }
+              ]
+            }
+          }
+        ],
+        "version": {
+          "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+          "version": 1
+        }
+      }
+    ],
+    "name": "AbsorbingTriclinic",
+    "notes": "",
+    "scopes": [],
+    "sessionGains": [],
+    "settings": {
+      "detectorWeights": [],
+      "disabled": [],
+      "experimentWeights": [],
+      "mode": 1,
+      "starts": 1,
+      "suspect": {
+        "correlation": 0.95,
+        "sigmaFraction": 0.1
+      }
+    }
+  }
+}

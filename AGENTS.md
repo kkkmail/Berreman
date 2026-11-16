@@ -635,6 +635,6 @@ This is a spec-driven, gated repository.
   one subfolder each. Only `data/chroma/` (the web app's knowledge base) and each kit's
   `.oc/` are git-ignored. Tests open those kits read-only and never write into `data/`.
 - **The reference kits are AT-1's and AT-2's output, never hand-edited** (`KitAcceptanceTests.fs`, spec 0050 S12).
-  `data/optics-mueller/` is exactly AT-1's build output, `.oc/` aside; changes to kit-file shapes, snapshotted catalogue
-  entries or build messages re-run `the built optics-mueller kit equals the committed kit file by file`
-  and re-commit the kit files it names in the same step.
+  `data/optics-mueller/` is exactly AT-1's build output and `data/absorbing-biaxial-noisy/` AT-2's, five observation files
+  included, `.oc/` aside; output changes re-run `the built optics-mueller kit equals the committed kit file by file` or
+  `the built absorbing-biaxial-noisy kit equals the committed kit file by file` and re-commit what it names in the same step.

@@ -1,0 +1,36 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "5b34e704-1b59-4aa7-9904-f5ccbbb3ef71",
+    "label": "YCut",
+    "model": {
+      "Case": "SampleInstance",
+      "Fields": [
+        {
+          "itemModelId": "4d13ecb1-2006-576f-99e7-e8bc266e8624",
+          "version": 1
+        },
+        {
+          "sampleId": "af711361-2854-4b61-ade4-bdb47a184d9f",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "substrate.thickness",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            9.999999999999999E-05
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}
