@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Optimization
 
 open System
+open System.Runtime.CompilerServices
 open System.Threading
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
@@ -84,6 +85,11 @@ module FittedProblems =
             unit : StudyParameterVector
         }
 
+        // One Jacobian and one report per solve, however often its quality, σ and profiles read them; keyed by the
+        // problem's identity, so a copy is evaluated afresh (`.manual/035` R0004).
+        static let jacobians = ConditionalWeakTable<FittedProblem, ResidualJacobian> ()
+        static let reports = ConditionalWeakTable<FittedProblem, FitQuality.FitReport> ()
+
         /// The residual about a frame offset by a hundred, y ↦ residual (start + (y − 100)), and the vector of hundreds
         /// that stands for the solution in it (spec 0050 S11.4).
         member private this.offsetFrame : Residual * DesignVector =
@@ -98,14 +104,16 @@ module FittedProblems =
         /// FitQuality's Jacobian in the offset frame: its step √ε · max(|x|, 1e-12) is then about 1.5e-6, the order of
         /// ALGLIB's own 1e-6, and a coordinate at zero is still perturbed (spec 0050 S11.4).
         member this.jacobian : ResidualJacobian =
-            let shifted, solution = this.offsetFrame
-            FitQuality.residualJacobian shifted solution
+            jacobians.GetValue(this, fun problem ->
+                let shifted, solution = problem.offsetFrame
+                FitQuality.residualJacobian shifted solution)
 
         /// FitQuality's report in the offset frame with the solve's own final residuals, read for its standard errors
         /// only: its parameters are the frame's (spec 0050 S11.4).
         member this.report : FitQuality.FitReport =
-            let shifted, solution = this.offsetFrame
-            FitQuality.reportFrom shifted solution (this.residual this.search.start)
+            reports.GetValue(this, fun problem ->
+                let shifted, solution = problem.offsetFrame
+                FitQuality.reportFrom shifted solution (problem.residual problem.search.start))
 
         /// The solve's identifiability: its condition and correlation only where the Jacobian's rank is the coordinate
         /// count and the condition finite (spec 0050 S11.4).

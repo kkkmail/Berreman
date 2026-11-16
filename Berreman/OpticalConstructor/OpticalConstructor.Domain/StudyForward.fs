@@ -921,7 +921,7 @@ module StudyForward =
 
         /// The residual at `vector`: every row of `data.runs` in order, each entry times its run's weight, the element
         /// entries first and every Mueller row's throughput last, as `MuellerFitting.throughputResidualFor` lays them out;
-        /// the first error stops the walk (spec 0050 S11.2; 001 §K, §L).
+        /// the first refusal in row order answers instead (spec 0050 S11.2; 001 §K, §L; `.manual/035`).
         member this.residualWith
             (context : StudyForwardContext)
             (layout : StudyParameterLayout)
@@ -942,36 +942,60 @@ module StudyForward =
             let weightedBy (weight : ResidualWeight) (entries : ResidualVector) : ResidualVector =
                 entries.value |> Array.map (fun entry -> entry * weight.value) |> ResidualVector
 
-            // Folded through `Result.bind`, not `ItemEvaluation.sequenced`: nothing after the first error is solved (spec 0050 S11.2).
-            let walkedRun (run : StudyRun) (read : RowResidual list) : Result<RowResidual list, StudyForwardError> =
+            let boundRun (run : StudyRun) : Result<BoundExperiment, StudyForwardError> =
                 let name = run.experiment.name
 
                 layout.assignmentFor this context.kit.items name vector
                 |> Result.bind (fun assignment -> run.experiment.boundWith context this assignment (darkOf name))
-                |> Result.bind (fun bound ->
-                    let weight = this.residualWeightOf name bound.detectorItem
 
-                    let rowResidualOf (row : MeasuredRow) : Result<RowResidual, StudyForwardError> =
-                        bound.predictedReadingOf row
-                        |> Result.bind (fun predicted -> predicted.residualAgainst (measuredOf row))
-                        |> Result.map (fun residual ->
-                            let weighted : RowResidual =
-                                {
-                                    elements = weightedBy weight residual.elements
-                                    throughputOpt = residual.throughputOpt |> Option.map (weightedBy weight)
-                                }
+            // The runs bound in order up to the first refusal, which is kept to answer after their rows' (spec 0050 S11.2).
+            let rec boundFrom
+                (remaining : StudyRun list)
+                (bound : (StudyRun * BoundExperiment) list)
+                : (StudyRun * BoundExperiment) list * StudyForwardError option =
+                match remaining with
+                | [] -> List.rev bound, None
+                | run :: rest ->
+                    match boundRun run with
+                    | Ok experiment -> boundFrom rest ((run, experiment) :: bound)
+                    | Error error -> List.rev bound, Some error
 
-                            weighted)
+            let rowResidualOf (bound : BoundExperiment) (weight : ResidualWeight) (row : MeasuredRow) : Result<RowResidual, StudyForwardError> =
+                bound.predictedReadingOf row
+                |> Result.bind (fun predicted -> predicted.residualAgainst (measuredOf row))
+                |> Result.map (fun residual ->
+                    let weighted : RowResidual =
+                        {
+                            elements = weightedBy weight residual.elements
+                            throughputOpt = residual.throughputOpt |> Option.map (weightedBy weight)
+                        }
 
-                    let prepended (held : Result<RowResidual list, StudyForwardError>) (row : MeasuredRow) : Result<RowResidual list, StudyForwardError> =
-                        held |> Result.bind (fun residuals -> rowResidualOf row |> Result.map (fun residual -> residual :: residuals))
+                    weighted)
 
-                    run.rows |> List.fold prepended (Ok read))
+            let boundRuns, refusalOpt = boundFrom data.runs []
 
-            data.runs
-            |> List.fold (fun held run -> held |> Result.bind (walkedRun run)) (Ok [])
-            |> Result.map (fun reversed ->
-                let rows = List.rev reversed
-                let elements = rows |> List.map (fun row -> row.elements.value) |> Array.concat
-                let throughputs = rows |> List.choose (fun row -> row.throughputOpt |> Option.map (fun throughput -> throughput.value)) |> Array.concat
-                Array.append elements throughputs |> ResidualVector)
+            // The rows are independent solves, run concurrently and read back in row order: the same vector, and the same
+            // first refusal as the serial walk (`.manual/035` R0004).
+            let solved : Result<RowResidual, StudyForwardError>[] =
+                boundRuns
+                |> List.collect (fun (run, bound) ->
+                    let weight = this.residualWeightOf run.experiment.name bound.detectorItem
+                    run.rows |> List.map (fun row -> bound, weight, row))
+                |> List.toArray
+                |> Array.Parallel.map (fun (bound, weight, row) -> rowResidualOf bound weight row)
+
+            let firstRowRefusalOpt =
+                solved
+                |> Array.tryPick (fun result ->
+                    match result with
+                    | Error error -> Some error
+                    | Ok _ -> None)
+
+            match firstRowRefusalOpt, refusalOpt with
+            | Some error, _
+            | None, Some error -> Error error
+            | None, None ->
+                let rows = solved |> Array.choose (fun result -> match result with | Ok row -> Some row | Error _ -> None)
+                let elements = rows |> Array.map (fun row -> row.elements.value) |> Array.concat
+                let throughputs = rows |> Array.choose (fun row -> row.throughputOpt |> Option.map (fun throughput -> throughput.value)) |> Array.concat
+                Array.append elements throughputs |> ResidualVector |> Ok
