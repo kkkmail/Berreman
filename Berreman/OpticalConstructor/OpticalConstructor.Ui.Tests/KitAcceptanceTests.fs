@@ -40,11 +40,13 @@ open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.LabFileImport
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.ImportDialogView
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.KitStartView
@@ -60,7 +62,8 @@ module KitAcceptanceTests =
             id : ItemId
             label : ItemLabel
             modelId : ItemModelId
-            presetOpt : ElementValueId option
+            /// The preset or the sample the model binds, by its library value id (spec 0050 S12.2).
+            bindingOpt : ElementValueId option
             dial : ItemDial
         }
 
@@ -209,65 +212,151 @@ module KitAcceptanceTests =
                 id = ItemId (Guid.Parse "d4d8dfc0-3d43-4a24-853c-369479de4f5d")
                 label = ItemLabel "Laser"
                 modelId = ItemModelIds.sourcePresetItemModelId
-                presetOpt = Some PresetIds.heNe633
+                bindingOpt = Some PresetIds.heNe633
                 dial = FixedMounting
             }
             {
                 id = ItemId (Guid.Parse "375bde88-fe45-4bd7-ad77-f13708076224")
                 label = ItemLabel "LP1"
                 modelId = ItemModelIds.realLinearPolarizerModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = FixedMounting
             }
             {
                 id = ItemId (Guid.Parse "72d0505d-8685-4884-89ad-ea13694c8693")
                 label = ItemLabel "LP2"
                 modelId = ItemModelIds.realLinearPolarizerModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = DialMounted DialNegative
             }
             {
                 id = ItemId (Guid.Parse "0d2c2b6e-c91f-486b-b80b-a1b815c03aac")
                 label = ItemLabel "CPL1"
                 modelId = ItemModelIds.circularPolarizerModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = FixedMounting
             }
             {
                 id = ItemId (Guid.Parse "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f")
                 label = ItemLabel "CPL2"
                 modelId = ItemModelIds.circularPolarizerModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = DialMounted DialPositive
             }
             {
                 id = ItemId (Guid.Parse "dc89cf47-6d94-4887-a0fb-49e3a8ca1cb4")
                 label = ItemLabel "AIR"
                 modelId = ItemModelIds.emptySlotModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = FixedMounting
             }
             {
                 id = ItemId (Guid.Parse "436f47ea-a1c4-47ed-8c5c-f09eae8098b1")
                 label = ItemLabel "QZ"
                 modelId = ItemModelIds.blackBoxMuellerModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = FixedMounting
             }
             {
                 id = ItemId (Guid.Parse "69c2edf9-3a4d-4b23-bea2-94ba305ca507")
                 label = ItemLabel "LR"
                 modelId = ItemModelIds.blackBoxMuellerModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = FixedMounting
             }
             {
                 id = ItemId (Guid.Parse "93fae6cc-d838-45b7-b5f0-949f7a759e91")
                 label = ItemLabel "Phone"
                 modelId = ItemModelIds.intensityDetectorModelId
-                presetOpt = None
+                bindingOpt = None
                 dial = FixedMounting
             }
+        ]
+
+    let private absorbingKitId = KitId (Guid.Parse "e15b30f6-b9ff-4a6b-a88d-b5401df2a7ae")
+    let private absorbingKitAuthor = KitAuthor "absorbing-biaxial-noisy bench"
+    let private absorbingStartTime = ClockTime (DateTime(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc))
+    let private absorbingTemplate = ControlCaption "{obj1}"
+    // The detector `buildAbsorbingTable` adds on the plate's reflected ray, fixed so builds are byte-equal (`.manual/033`).
+    let private reflectedDetectorSlot = ElementId "45dba7c2-156b-4d31-895a-1179ff672cfc"
+
+    /// The one material version every AT-2 plate is made of, holding the `absorbing` ground truth (spec 0050 S12.2; 001 §Q AT-2).
+    let private absorbingMaterial : MaterialEntry =
+        {
+            id = MaterialId (Guid.Parse "81e1d115-5d06-4337-80fd-50765a403de7")
+            name = EntryName "Absorbing triclinic crystal"
+            category = CategoryIds.crystal
+            description = Some (EntryDescription "The fifteen-parameter absorbing, gyrotropic, triclinic crystal of spec 0044 (AbsorbingBiaxialSample.absorbing).")
+            physics = CrystalParameterPhysics (CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.absorbing)
+        }
+
+    /// The 100 µm plate of that material every AT-2 plate item binds; each observation carries its cut (spec 0050 S12.2).
+    let private absorbingPlate : Library.Sample =
+        let substrate : SampleLayer =
+            {
+                materialId = MaterialVersionId.firstOf absorbingMaterial.id
+                thickness = AbsorbingBiaxialSample.plate
+                orientation = PrimaryAxes
+            }
+        let structure : SampleStructure =
+            {
+                films = []
+                substrate = Some substrate
+                lower = None
+            }
+        {
+            id = SampleId (Guid.Parse "af711361-2854-4b61-ade4-bdb47a184d9f")
+            name = EntryName "Absorbing triclinic plate 100 um"
+            structure = structure
+            substrate = ThickPlate
+            description = EntryDescription "A 100 um plate of the absorbing triclinic crystal; each observation carries its cut."
+            supportedEmission = EmitBoth
+        }
+
+    let private absorbingLaser : AcceptanceItem =
+        {
+            id = ItemId (Guid.Parse "9f304813-02a2-4624-b7e3-eea3e75193e7")
+            label = ItemLabel "Laser"
+            modelId = ItemModelIds.sourcePresetItemModelId
+            bindingOpt = Some PresetIds.heNe633
+            dial = FixedMounting
+        }
+
+    /// A Mueller polarimeter, its noise axes defaulting to `NoiseParam.decentLab`'s budget (spec 0050 S12.2).
+    let private polarimeterItem (id : ItemId) (label : ItemLabel) : AcceptanceItem =
+        {
+            id = id
+            label = label
+            modelId = ItemModelIds.muellerPolarimeterModelId
+            bindingOpt = None
+            dial = FixedMounting
+        }
+
+    /// A plate of `absorbingPlate` through the stack-sample model (spec 0050 S12.2).
+    let private plateItem (id : ItemId) (label : ItemLabel) : AcceptanceItem =
+        {
+            id = id
+            label = label
+            modelId = ItemModelIds.stackSampleItemModelId
+            bindingOpt = Some absorbingPlate.id.toElementValueId
+            dial = FixedMounting
+        }
+
+    let private polarimeterT = polarimeterItem (ItemId (Guid.Parse "f7e47d80-d265-481e-b351-6e6bf48785ee")) (ItemLabel "Polarimeter T")
+    let private polarimeterR = polarimeterItem (ItemId (Guid.Parse "938e1eb1-4b3d-43ea-b4a0-12c1dc5c4191")) (ItemLabel "Polarimeter R")
+    let private opticAxisCutPlate = plateItem (ItemId (Guid.Parse "f61f5339-1db2-4c6c-a453-a9a9f0c11594")) (ItemLabel "OpticAxisCut")
+
+    /// AT-2's eight items in the order the build adds them, each taking the next minted id (spec 0050 S12.2).
+    let private absorbingItemSpecs : AcceptanceItem list =
+        [
+            absorbingLaser
+            polarimeterT
+            polarimeterR
+            opticAxisCutPlate
+            plateItem (ItemId (Guid.Parse "10409181-5b7a-47b6-82df-525608098a65")) (ItemLabel "OtherOpticAxisCut")
+            plateItem (ItemId (Guid.Parse "1a62e3fd-a168-4c03-a653-1ed3ae71789b")) (ItemLabel "ZCut")
+            plateItem (ItemId (Guid.Parse "d64587f5-a4dd-4d6e-b85d-c6fecdc24f9b")) (ItemLabel "XCut")
+            plateItem (ItemId (Guid.Parse "5b34e704-1b59-4aa7-9904-f5ccbbb3ef71")) (ItemLabel "YCut")
         ]
 
     let private expect<'Value> (file : FileName) (field : string) (expected : 'Value) (actual : 'Value) : unit =
@@ -330,21 +419,32 @@ module KitAcceptanceTests =
     let private choiceFor (spec : AcceptanceItem) (offers : ItemModelChoice list) : ItemModelChoice =
         offers
         |> List.tryFind (fun choice ->
-            match choice, spec.presetOpt with
+            match choice, spec.bindingOpt with
             | SourcePresetChoice (model, source), Some preset -> model.entry.id = spec.modelId && source.id = preset
+            | StackSampleChoice (model, _, sample), Some bound -> model.entry.id = spec.modelId && sample.id.toElementValueId = bound
             | LibraryModelChoice model, None -> model.entry.id = spec.modelId
             | _ -> false)
         |> Option.defaultWith (fun () -> failwith $"{spec.label.value}.item-json: expected model {spec.modelId.value}; actual no matching offer")
 
-    let private addAcceptanceItem (model : TableAndElementRotationModel) (spec : AcceptanceItem) : TableAndElementRotationModel =
+    /// Add `spec` through the Add item form: open it, choose its offer, label it, send `formEdits`, then Add (spec 0050 S12.1, S12.2).
+    let private addItemThroughForm
+        (formEdits : TableAndElementRotationMsg list)
+        (spec : AcceptanceItem)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel * ItemModelChoice =
         let file = ItemKitFile.fileNameOf spec.label.fileStem
         let opened = model |> updateTableAndElementRotation OpenAddItemForm
         let offer = choiceFor spec (formOf opened).offers
         let filled =
-            opened |> apply [ ChooseNewItemModel offer; SetNewItemLabel spec.label.caption; SetNewItemDial spec.dial ]
+            opened |> apply ([ ChooseNewItemModel offer; SetNewItemLabel spec.label.caption ] @ formEdits)
         let draft = (formOf filled).itemDraftOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected an Add draft; actual none")
         let added = filled |> updateTableAndElementRotation (AddItem draft)
         expect file "Add item status" None added.kitStatus
+        added, offer
+
+    let private addAcceptanceItem (model : TableAndElementRotationModel) (spec : AcceptanceItem) : TableAndElementRotationModel =
+        let file = ItemKitFile.fileNameOf spec.label.fileStem
+        let added, offer = addItemThroughForm [ SetNewItemDial spec.dial ] spec model
         let edits =
             offer.parameterAxes @ spec.dial.parameterAxes
             |> List.choose (fun axis ->
@@ -658,6 +758,55 @@ module KitAcceptanceTests =
             (reconstructed.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> readKitResult calibrationFile)
         reconstructed
 
+    /// A clock reading `instant` and the cell only a build sets to move it (spec 0050 S12.1, S12.2).
+    let private testClockAt (instant : ClockTime) : ClockProvider * ClockTime ref =
+        let time = ref instant
+        let clock : ClockProvider =
+            {
+                now = fun () -> time.Value
+            }
+        clock, time
+
+    /// The Inverse start screen over `folder` and the cell its `showKit` keeps the opened kit in (spec 0050 S12.1, S12.2).
+    let private kitStartOver
+        (context : OpticalConstructor.Ui.AppContext)
+        (clock : ClockProvider)
+        (kitId : KitId)
+        (author : KitAuthor)
+        (folder : KitFolder)
+        : KitStartModel * OpenedKit option ref =
+        let shown : OpenedKit option ref = ref None
+        let startContext : KitStartContext =
+            {
+                kitHistory = KitHistoryProxy.createInMemory [ folder ]
+                limit = KitHistoryLimit.defaultValue
+                clock = clock
+                kitIds =
+                    {
+                        mintKitId = fun () -> kitId
+                    }
+                author = author
+                imports = context.catalogueImports
+                picker = TestAppScope.kitPickerOf folder
+                showKit = fun opened -> shown.Value <- Some opened
+                activateKitWindow = fun _ -> NoKitWindowOpen
+                zipPicker = KitZipPicker.none
+                archive = KitArchiveProxy.create ()
+                archiveJobs = KitArchiveJobHost.inert
+            }
+        initKitStart startContext InverseConstructor, shown
+
+    /// Mints `ids` in order and fails on a request past the last; the cell holds the ids not yet minted (spec 0050 S12.1, S12.2).
+    let private mintingFrom<'Id> (file : FileName) (what : string) (ids : 'Id list) : (unit -> 'Id) * 'Id list ref =
+        let unused = ref ids
+        let mint () : 'Id =
+            match unused.Value with
+            | next :: rest ->
+                unused.Value <- rest
+                next
+            | [] -> failwith $"{file.value}: expected {ids.Length} {what} requests; actual an extra request"
+        mint, unused
+
     /// Build through application messages, retaining the setup and experiment checkpoints (spec 0050 S12.1).
     let private buildOpticsMuellerKitWith
         (finish : (ClockTime -> unit) -> KitFolder -> TableAndElementRotationModel -> TableAndElementRotationModel)
@@ -676,51 +825,21 @@ module KitAcceptanceTests =
             for file in Directory.EnumerateFiles(sourceData, "*", SearchOption.AllDirectories) do
                 File.Copy(file, Path.Combine(targetData, Path.GetRelativePath(sourceData, file)))
             let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
-            let mutable now = initialTime
-            let clock : ClockProvider =
-                {
-                    now = fun () -> now
-                }
-            let startContext : KitStartContext =
-                {
-                    kitHistory = KitHistoryProxy.createInMemory [ folder ]
-                    limit = KitHistoryLimit.defaultValue
-                    clock = clock
-                    kitIds =
-                        {
-                            mintKitId = fun () -> kitId
-                        }
-                    author = kitAuthor
-                    imports = context.catalogueImports
-                    picker = TestAppScope.kitPickerOf folder
-                    showKit = fun opened -> openedOpt <- Some opened
-                    activateKitWindow = fun _ -> NoKitWindowOpen
-                    zipPicker = KitZipPicker.none
-                    archive = KitArchiveProxy.create ()
-                    archiveJobs = KitArchiveJobHost.inert
-                }
-            let started = initKitStart startContext InverseConstructor |> updateKitStart (CreateKit folder)
+            let clock, time = testClockAt initialTime
+            let start, shown = kitStartOver context clock kitId kitAuthor folder
+            let started = start |> updateKitStart (CreateKit folder)
+            openedOpt <- shown.Value
             expect KitFile.fileName "CreateKit status" None started.status
             let opened = openedOpt |> Option.defaultWith (fun () -> failwith $"{folder.value.value}: expected CreateKit to open the kit; actual no kit")
-            let mutable remaining = itemSpecs |> List.map _.id
+            let mintItemId, unusedItemIds = mintingFrom (FileName "*.item-json") "item-id" (itemSpecs |> List.map _.id)
+            let mintElementId, unusedSlotIds = mintingFrom (FileName "*.setup-json") "added-slot id" addedSlotIds
             let itemIds : ItemIdProvider =
                 {
-                    mintItemId = fun () ->
-                        match remaining with
-                        | next :: rest ->
-                            remaining <- rest
-                            next
-                        | [] -> failwith "*.item-json: expected nine item-id requests; actual an extra request"
+                    mintItemId = mintItemId
                 }
-            let mutable remainingSlots = addedSlotIds
             let elementIds : ElementIdProvider =
                 {
-                    mintElementId = fun () ->
-                        match remainingSlots with
-                        | next :: rest ->
-                            remainingSlots <- rest
-                            next
-                        | [] -> failwith "*.setup-json: expected three added-slot id requests; actual an extra request"
+                    mintElementId = mintElementId
                 }
             let initial =
                 {
@@ -728,11 +847,11 @@ module KitAcceptanceTests =
                 }
                 |> apply [ SetNamingTemplateText labTemplate; SaveNamingTemplate ]
             let stocked = itemSpecs |> List.fold addAcceptanceItem initial
-            expect (FileName "*.item-json") "unused item identities" [] remaining
+            expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
             let setups = buildAcceptanceSetups stocked
-            expect (FileName "*.setup-json") "unused added-slot identities" [] remainingSlots
+            expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
             expect (FileName "*.setup-json") "setups including both corrections" 42 setups.kitSetups.Length
-            let model = finish (fun at -> now <- at) folder setups
+            let model = finish (fun at -> time.Value <- at) folder setups
             {
                 folder = folder
                 context = context
@@ -820,7 +939,7 @@ module KitAcceptanceTests =
             let item = items |> List.find (fun item -> item.label = spec.label)
             let model = models |> List.find (fun model -> model.entry.id = spec.modelId)
             let expectedModel =
-                match spec.presetOpt with
+                match spec.bindingOpt with
                 | Some preset -> PresetInstance (model.versionId, preset)
                 | None -> ItemModelVersionInstance model.versionId
             expect file "id" spec.id item.id
@@ -831,7 +950,7 @@ module KitAcceptanceTests =
             expect file "photo" None item.photoOpt
             expect file "notes" (ItemNotes "") item.notes
             let axes =
-                match spec.presetOpt with
+                match spec.bindingOpt with
                 | Some preset ->
                     match built.context.library.tryGetEntry preset with
                     | Ok (Some (SourceItem source)) -> (SourcePresetChoice (model, source)).parameterAxes
@@ -902,6 +1021,27 @@ module KitAcceptanceTests =
         let expectedBytes = File.ReadAllBytes expected.value
         let actualBytes = File.ReadAllBytes actual.value
         expect actual $"bytes against {expected.value}" expectedBytes actualBytes
+
+    /// The `.kit-json` a build's start screen and template write: created and modified at `instant`, no notes, profile or exclusion (spec 0050 S12.1, S12.2).
+    let private assertKitFile
+        (reader : KitProxy)
+        (kitId : KitId)
+        (name : KitName)
+        (author : KitAuthor)
+        (instant : ClockTime)
+        (template : ControlCaption)
+        : unit =
+        let metadata = reader.readKitFile () |> readKitResult KitFile.fileName
+        expect KitFile.fileName "schema version" KitFile.currentSchemaVersion metadata.schemaVersion
+        expect KitFile.fileName "id" kitId metadata.id
+        expect KitFile.fileName "name" name metadata.name
+        expect KitFile.fileName "author" author metadata.author
+        expect KitFile.fileName "notes" (KitNotes "") metadata.notes
+        expect KitFile.fileName "created" instant metadata.created
+        expect KitFile.fileName "modified" instant metadata.modified
+        expect KitFile.fileName "naming template" template.value metadata.namingTemplate.value
+        expect KitFile.fileName "import profiles" [] metadata.importProfiles
+        expect KitFile.fileName "send exclusions" [] metadata.sendExclude
 
     let private assertLibrarySnapshots (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
         let snapshots = reader.listSnapshots () |> readKitResult (FileName "library/*")
@@ -1399,18 +1539,8 @@ module KitAcceptanceTests =
         let built = buildOpticsMuellerKitWith (fun _ _ model -> model) run
         try
             let reader = KitProxy.create built.folder
-            let metadata = reader.readKitFile () |> readKitResult KitFile.fileName
-            expect KitFile.fileName "schema version" KitFile.currentSchemaVersion metadata.schemaVersion
-            expect KitFile.fileName "id" kitId metadata.id
-            expect KitFile.fileName "name" (KitName "optics-mueller") metadata.name
-            expect KitFile.fileName "author" kitAuthor metadata.author
-            expect KitFile.fileName "notes" (KitNotes "") metadata.notes
-            expect KitFile.fileName "created" initialTime metadata.created
-            expect KitFile.fileName "modified" initialTime metadata.modified
+            assertKitFile reader kitId (KitName "optics-mueller") kitAuthor initialTime labTemplate
             expect KitFile.fileName "clock" initialTime (built.clock.now ())
-            expect KitFile.fileName "naming template" labTemplate.value metadata.namingTemplate.value
-            expect KitFile.fileName "import profiles" [] metadata.importProfiles
-            expect KitFile.fileName "send exclusions" [] metadata.sendExclude
             expect (FileName "*.experiment-json") "setups-only build" [] (reader.readExperiments () |> readKitResult (FileName "*.experiment-json"))
             assertStoredItems built reader
             assertStoredSetups reader
@@ -1542,3 +1672,252 @@ module KitAcceptanceTests =
         finally
             try built.model.kit.close () |> readKitResult KitFile.fileName
             finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
+
+    /// The folder beside an AT-2 kit that holds the entry files its build drops (spec 0050 S12.2).
+    let private droppedEntriesFolderOf (kit : KitFolder) : FolderName =
+        (FolderName (Path.GetDirectoryName kit.value.value)).combine (FolderName "entries")
+
+    /// Seals `content` and writes its text under `folder` as its entry file, UTF-8 without a byte-order mark (spec 0050 S12.2).
+    let private writeEntryFile (folder : FolderName) (content : LibraryEntryContent) : FileName =
+        let file = content.fileName.combine folder
+        let text =
+            content.``sealed``
+            |> Result.bind (fun (envelope : LibraryEntryEnvelope) -> envelope.fileText)
+            |> Result.defaultWith (fun error -> failwith $"{file.value}: expected a sealed entry file; actual {error.describe}")
+        File.WriteAllText(file.value, text.value, System.Text.UTF8Encoding(false))
+        file
+
+    /// Drops `files` on a Library window and applies the import dialog's rows, each adding its entry, as a user would (spec 0050 S12.2; 001 §H).
+    let private dropOnLibraryWindow (context : OpticalConstructor.Ui.AppContext) (files : FileName list) (added : LibraryEntryId list) : unit =
+        let drop = FileName (files |> List.map _.value |> String.concat ", ")
+        let requests = ResizeArray<ImportDialogRequest> ()
+        let windowContext : LibraryWindowView.LibraryWindowContext =
+            {
+                library = context.library
+                samples = context.samples
+                materials = context.materials
+                categories = context.categories
+                libraryBackups = context.libraryBackups
+                catalogueImports = context.catalogueImports
+                openImportDialog = requests.Add
+                treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
+                thicknessBucketCap = ThicknessBucketCap.defaultValue
+                openSampleEditor = fun _ -> ()
+                sources = context.sources
+                openSourceEditor = fun _ -> ()
+                requestClose = fun () -> ()
+            }
+        let dropped =
+            LibraryWindowView.initLibraryWindow windowContext WindowMode.Browse
+            |> LibraryWindowView.updateLibraryWindow (LibraryWindowView.DropLibraryEntryFiles files)
+        expect drop "drop refusal" None dropped.lastError
+        let request =
+            match List.ofSeq requests with
+            | [ only ] -> only
+            | held -> failwith $"{drop.value}: expected one import dialog request; actual {held.Length}"
+        let decisions =
+            match request with
+            | ApplyDroppedEntries decisions -> decisions
+            | SettlePendingCatalogue _ | ResolveKitSnapshot _ -> failwith $"{drop.value}: expected the dropped files' rows; actual {request.heading.value}"
+        expect drop "dropped rows" added (decisions |> List.map _.entryId)
+        expect drop "each row's default action" (added |> List.map (fun _ -> CatalogueImport.AddIncomingEntry)) (decisions |> List.map _.defaultAction)
+        let applied : ImportDialogApplied option ref = ref None
+        let dialog : ImportDialogContext =
+            {
+                imports = context.catalogueImports
+                request = request
+                onApplied = fun result -> applied.Value <- Some result
+                requestClose = fun () -> ()
+            }
+        let confirmed = dialog.initImportDialog |> updateImportDialog ApplyImportChoices
+        expect drop "import refusal" None confirmed.lastError
+        let result = applied.Value |> Option.defaultWith (fun () -> failwith $"{drop.value}: expected the import dialog to apply; actual nothing applied")
+        let completed = dropped |> LibraryWindowView.updateLibraryWindow (LibraryWindowView.LibraryImportApplied result)
+        expect drop "Library window refusal" None completed.lastError
+        expect drop "Library window status" (Some result.summary) completed.importStatus
+
+    /// Fills the table's slots, then adds Polarimeter R's detector on the plate's reflected ray, so the plate is captured in T and R (spec 0050 S12.2).
+    let private buildAbsorbingTable (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let assigned (slot : ElementId) (spec : AcceptanceItem) (current : TableAndElementRotationModel) : TableAndElementRotationModel =
+            let next = current |> updateTableAndElementRotation (AssignSlot (slot, Some spec.id))
+            expect KitFile.fileName $"{spec.label.value} assigned to {slot.value}" None next.kitStatus
+            next
+        let table =
+            model
+            |> assigned sourceSlot absorbingLaser
+            |> assigned firstObjectSlot opticAxisCutPlate
+            |> assigned detectorSlot polarimeterT
+            |> apply [ AddElement Detector; PlaceOnBeam (reflectedDetectorSlot, BeamLayout.OnReflectedBeamOf firstObjectSlot) ]
+            |> assigned reflectedDetectorSlot polarimeterR
+        expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures table firstObjectSlot)
+        table
+
+    /// AT-2's kit, built through the Library drop, the import dialog, the start screen and the kit window's messages alone (spec 0050 S12.2; 001 §Q).
+    let private buildAbsorbingKit (run : FolderName) : BuiltAcceptanceKit =
+        let runFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitAcceptanceTests", run.value))
+        let folder = KitFolder (runFolder.combine (FolderName "absorbing-biaxial-noisy"))
+        let entries = droppedEntriesFolderOf folder
+        // A run's name is fixed, so the previous run's folder, left for diagnosis, is removed first (spec 0050 S12.2).
+        if Directory.Exists runFolder.value then Directory.Delete(runFolder.value, true)
+        Directory.CreateDirectory folder.value.value |> ignore
+        Directory.CreateDirectory entries.value |> ignore
+        let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
+        let clock, _ = testClockAt absorbingStartTime
+        let material = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance absorbingMaterial
+        let sample = LibraryEntryContent.ofSample VersionNumber.first UserProvenance absorbingPlate
+        dropOnLibraryWindow context [ writeEntryFile entries material; writeEntryFile entries sample ] [ material.id; sample.id ]
+        let heldMaterial =
+            context.materials.resolveVersion (MaterialVersionId.firstOf absorbingMaterial.id)
+            |> Result.map (Option.map (fun (held : MaterialEntry) -> held.id))
+        expect material.fileName "material held at version 1" (Ok (Some absorbingMaterial.id)) heldMaterial
+        let heldSample =
+            context.samples.resolveVersion (Library.SampleVersionId.firstOf absorbingPlate.id)
+            |> Result.map (Option.map (fun (held : Library.Sample) -> held.id))
+        expect sample.fileName "sample held at version 1" (Ok (Some absorbingPlate.id)) heldSample
+        let mutable openedOpt : OpenedKit option = None
+        try
+            let start, shown = kitStartOver context clock absorbingKitId absorbingKitAuthor folder
+            let started = start |> updateKitStart (CreateKit folder)
+            openedOpt <- shown.Value
+            expect KitFile.fileName "CreateKit status" None started.status
+            let opened = openedOpt |> Option.defaultWith (fun () -> failwith $"{folder.value.value}: expected CreateKit to open the kit; actual no kit")
+            let mintItemId, unusedItemIds = mintingFrom (FileName "*.item-json") "item-id" (absorbingItemSpecs |> List.map _.id)
+            let mintElementId, unusedSlotIds = mintingFrom (FileName "*.setup-json") "added-slot id" [ reflectedDetectorSlot ]
+            let itemIds : ItemIdProvider =
+                {
+                    mintItemId = mintItemId
+                }
+            let elementIds : ElementIdProvider =
+                {
+                    mintElementId = mintElementId
+                }
+            let initial =
+                {
+                    TestAppScope.inverseModelOver context opened with itemIds = itemIds; elementIds = elementIds
+                }
+                |> apply [ SetNamingTemplateText absorbingTemplate; SaveNamingTemplate ]
+            let stocked = absorbingItemSpecs |> List.fold (fun model spec -> addItemThroughForm [] spec model |> fst) initial
+            expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
+            let table = buildAbsorbingTable stocked
+            expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
+            {
+                folder = folder
+                context = context
+                model = table
+                clock = clock
+            }
+        with _ ->
+            match openedOpt with
+            | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+            | None -> ()
+            reraise ()
+
+    /// Every AT-2 fact but the ensemble reads this build, run once as xUnit runs a class's facts in turn; none writes into it (spec 0050 S12.2).
+    let private absorbingBuild : Lazy<BuiltAcceptanceKit> = lazy (buildAbsorbingKit (FolderName "AT-2"))
+
+    /// The offer an AT-2 item instantiates: its shipped model's held version over the dropped plate or its preset (spec 0050 S12.2).
+    let private absorbingChoiceOf (context : OpticalConstructor.Ui.AppContext) (spec : AcceptanceItem) : ItemModelChoice =
+        let file = ItemKitFile.fileNameOf spec.label.fileStem
+        let model =
+            context.itemModels.listItemModels ()
+            |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.describe}")
+            |> List.tryFind (fun held -> held.entry.id = spec.modelId)
+            |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the shipped model {spec.modelId.value}; actual none")
+        match spec.bindingOpt with
+        | None -> LibraryModelChoice model
+        | Some bound when bound = absorbingPlate.id.toElementValueId ->
+            StackSampleChoice (model, Library.SampleVersionId.firstOf absorbingPlate.id, absorbingPlate)
+        | Some bound ->
+            match context.library.tryGetEntry bound with
+            | Ok (Some (SourceItem source)) -> SourcePresetChoice (model, source)
+            | _ -> failwith $"{file.value}: expected the source preset {bound.value}; actual unavailable"
+
+    /// The eight items as added, every parameter known at its default: the decent lab's noise budget, the plate's thickness (spec 0050 S12.2).
+    let private assertAbsorbingItems (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
+        let itemsFile = FileName "*.item-json"
+        let items = reader.readItems () |> readKitResult itemsFile
+        expect itemsFile "labels" (absorbingItemSpecs |> List.map _.label |> List.sort) (items |> List.map _.label |> List.sort)
+        for spec in absorbingItemSpecs do
+            let file = ItemKitFile.fileNameOf spec.label.fileStem
+            let item = items |> List.find (fun held -> held.label = spec.label)
+            let choice = absorbingChoiceOf built.context spec
+            let known : Parameter list =
+                choice.parameterAxes @ spec.dial.parameterAxes
+                |> List.map (fun axis ->
+                    {
+                        name = axis.name
+                        state = KnownParameter axis.defaultValue
+                    })
+            let stateOf (name : ParameterName) : ParameterState option = item.tryFindParameter name |> Option.map _.state
+            expect file "id" spec.id item.id
+            expect file "model and version" choice.instance item.model
+            expect file "dial" FixedMounting item.dial
+            expect file "revision" ItemRevision.first item.revision
+            expect file "history" [] item.history
+            expect file "every parameter known at its default" known item.parameters
+            if spec.modelId = ItemModelIds.muellerPolarimeterModelId then
+                for axis in NoiseParam.decentLab.parameterAxes do
+                    expect file $"{axis.name.value} at the decent lab's budget" (Some (KnownParameter axis.defaultValue)) (stateOf axis.name)
+            elif spec.modelId = ItemModelIds.stackSampleItemModelId then
+                expect file "substrate.thickness in metres" (AbsorbingBiaxialSample.plate.parameterValueOpt |> Option.map KnownParameter)
+                    (stateOf ParameterName.substrateThickness)
+
+    /// `library/` holds the dropped entries as dropped and the shipped closure as shipped, byte for byte (spec 0050 S12.2; 0432-impl-log.md).
+    let private assertAbsorbingLibrary (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
+        let snapshots = reader.listSnapshots () |> readKitResult (FileName "library/*")
+        let library = built.folder.value.combine (FolderName "library")
+        let libraryFile = FileName library.value
+        expect libraryFile "snapshot files" (snapshots |> List.map _.snapshotFileName |> List.sort) (relativeFiles library)
+        let heNe633 =
+            PresetIds.heNe633.tryToLibraryEntryId
+            |> Option.defaultWith (fun () -> failwith $"{libraryFile.value}: expected the heNe633 preset's GUID; actual {PresetIds.heNe633.value}")
+        let dropped = [ absorbingMaterial.id.toLibraryEntryId; absorbingPlate.id.toLibraryEntryId ]
+        let shipped =
+            [
+                heNe633
+                ItemModelIds.sourcePresetItemModelId.toLibraryEntryId
+                ItemModelIds.muellerPolarimeterModelId.toLibraryEntryId
+                ItemModelIds.stackSampleItemModelId.toLibraryEntryId
+                CategoryIds.crystal.toLibraryEntryId
+            ]
+        let expected : LibraryVersionRef list =
+            dropped @ shipped
+            |> List.map (fun entryId ->
+                let reference : LibraryVersionRef =
+                    {
+                        entryId = entryId
+                        version = VersionNumber.first
+                    }
+                reference)
+            |> List.sort
+        expect libraryFile "snapshot entries at version 1" expected (snapshots |> List.map _.libraryVersionRef |> List.sort)
+        let builtIn = CatalogueProxy.builtInFolderUnder built.context.locations.shippedCatalogueFolder
+        let entries = droppedEntriesFolderOf built.folder
+        for envelope in snapshots do
+            let origin = if List.contains envelope.content.id dropped then entries else builtIn
+            let source = envelope.content.fileName.combine origin
+            let target = envelope.snapshotFileName.combine library
+            expect target $"entry file {source.value} exists" true (File.Exists source.value)
+            assertSameBytes source target
+
+    /// The table holds the laser, the plate and both polarimeters, Polarimeter R on the plate's reflected ray (spec 0050 S12.2).
+    let private assertAbsorbingTable (model : TableAndElementRotationModel) : unit =
+        let slotOf (slot : ElementId) : SetupSlot =
+            model.elements
+            |> List.tryFind (fun element -> element.id = slot)
+            |> Option.defaultWith (fun () -> failwith $"{KitFile.fileName.value}: expected the table slot {slot.value}; actual none")
+        expect KitFile.fileName "table slots" [ sourceSlot; firstObjectSlot; detectorSlot; reflectedDetectorSlot ] (model.elements |> List.map _.id)
+        for slot, spec in [ sourceSlot, absorbingLaser; firstObjectSlot, opticAxisCutPlate; detectorSlot, polarimeterT; reflectedDetectorSlot, polarimeterR ] do
+            expect KitFile.fileName $"{slot.value} content" (ItemInSlot (spec.id, PlacementTurn)) (slotOf slot).content
+        expect KitFile.fileName "the added detector's ray" (BeamLayout.OnReflectedBeamOf firstObjectSlot) (slotOf reflectedDetectorSlot).beam
+        expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures model firstObjectSlot)
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-2 builds the absorbing-biaxial-noisy kit's library entries, items and table through the app's messages`` () : unit =
+        let built = absorbingBuild.Force ()
+        let reader = KitProxy.create built.folder
+        assertKitFile reader absorbingKitId (KitName "absorbing-biaxial-noisy") absorbingKitAuthor absorbingStartTime absorbingTemplate
+        assertAbsorbingItems built reader
+        assertAbsorbingLibrary built reader
+        assertAbsorbingTable built.model
