@@ -288,6 +288,24 @@ module CatalogueImport =
                 | Ok (CatalogueAwaitsChoices pending) -> Some pending
                 | Ok (CatalogueUnchanged _ | CatalogueImported _) | Error _ -> None)
 
+    /// One held version and the source record it was pulled from (spec 0050 S13.1).
+    type PulledRecord =
+        {
+            version : LibraryVersionRef
+            pull : SourcePullInfo
+        }
+
+        /// Orders records ordinally by record text, then entry GUID text, then ascending version (spec 0050 S13.1).
+        static member inRecordOrder (records : PulledRecord list) : PulledRecord list =
+            records
+            |> List.sortWith (fun first second ->
+                match String.CompareOrdinal(first.pull.record.value, second.pull.record.value) with
+                | 0 ->
+                    match String.CompareOrdinal(first.version.entryId.value.ToString(), second.version.entryId.value.ToString()) with
+                    | 0 -> compare first.version.version second.version.version
+                    | order -> order
+                | order -> order)
+
     /// Reads held/user entries, pins versions and puts active, unpinned envelopes (spec 0050 S3.1; S3.3).
     /// A first put or MoveLatestVersion sets latest; duplicate versions and kind conflicts are refused.
     /// Retires held entries and maintains the catalogue import log; equality is by reference.
@@ -301,6 +319,8 @@ module CatalogueImport =
             heldEntriesOf : CatalogueId -> Result<HeldEntry list, CatalogueImportError>
             /// Returns every entry whose latest provenance is user-managed, regardless of lifecycle (spec 0050 S3.3).
             heldUserEntries : unit -> Result<HeldEntry list, CatalogueImportError>
+            /// Every held version, any lifecycle, pulled from the source, in `PulledRecord.inRecordOrder` (spec 0050 S13.1).
+            pulledRecordsOf : MaterialSourceName -> Result<PulledRecord list, CatalogueImportError>
             /// Pins a held version permanently; accepts existing pins and rejects unheld versions (spec 0050 001 §C).
             pinEntryVersion : LibraryEntryId -> VersionNumber -> Result<unit, CatalogueImportError>
             putEntryVersion : EntryVersionPut -> Result<unit, CatalogueImportError>
@@ -871,6 +891,20 @@ module CatalogueImport =
                     heldUserEntries = fun () ->
                         entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
                         |> List.filter (fun held -> held.provenance.protection = UserManaged) |> Ok
+                    pulledRecordsOf = fun source ->
+                        entries.Value |> Map.toList |> List.collect (fun (_, state) -> state.envelopes)
+                        |> List.choose (fun envelope ->
+                            match envelope.content.provenance with
+                            | SourcePullProvenance pull when pull.source = source ->
+                                let record : PulledRecord =
+                                    {
+                                        version = envelope.libraryVersionRef
+                                        pull = pull
+                                    }
+                                Some record
+                            | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | SourcePullProvenance _
+                            | ForkProvenance _ | FitProvenance _ -> None)
+                        |> PulledRecord.inRecordOrder |> Ok
                     pinEntryVersion = fun id version ->
                         let envelopeOpt =
                             entries.Value |> Map.tryFind id

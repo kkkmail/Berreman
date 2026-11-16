@@ -1394,3 +1394,54 @@ module LibraryDatabaseTests =
             Assert.Empty(context.EntryFacets |> Seq.filter (fun row -> row.EntryId = sampleId.value))
             Assert.Equal<StoredEntryVersion option>(None, context.tryLatestStored sampleId |> expectDatabaseOk))
         |> expectDatabaseOk
+
+    [<Fact>]
+    let ``a pulled version's pulled-source row is stored beside its version row, and no other version has one`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let pulledId = MaterialId (Guid.Parse "31801b06-444f-43c8-8440-000000000442")
+        let userId = MaterialId (Guid.Parse "31801b07-444f-43c8-8440-000000000442")
+        let licence = EntryLicence "CC-BY-4.0"
+        let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+        let pulled = BuiltinCatalogue.licensedMaterialContent pulledId (EntryName "Pulled glass") licence citation
+        let user = BuiltinCatalogue.userMaterialContent userId (EntryName "Lab glass")
+        let pulledVersion = pulled.``sealed`` |> expectDatabaseOk |> activeStoredVersion
+        let userVersion = user.``sealed`` |> expectDatabaseOk |> activeStoredVersion
+        database.run (fun context ->
+            Assert.Empty(context.PulledSources)
+            context.stageVersion pulledVersion |> expectDatabaseOk
+            context.stageVersion userVersion |> expectDatabaseOk
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let assertPulledSourceRow (context : LibraryDbContext) : unit =
+            let row = Assert.Single<LibraryPulledSourceRow>(context.PulledSources)
+            match pulled.provenance with
+            | SourcePullProvenance info ->
+                Assert.Equal(pulled.id.value, row.EntryId)
+                Assert.Equal(pulled.version.value, row.Version)
+                Assert.Equal(info.source.value, row.Source)
+                Assert.Equal(info.record.value, row.RecordPath)
+                Assert.Equal(info.sourceVersion.value, row.SourceVersion)
+                Assert.Equal(info.licence.value, row.Licence)
+                Assert.Equal(info.citation.value, row.Citation)
+            | _ -> Assert.Fail("The licensed material must be pulled from its source.")
+
+        database.run (fun context ->
+            assertPulledSourceRow context
+            Assert.Equal<StoredEntryVersion>(pulledVersion, context.tryStoredVersion pulled.id pulled.version |> expectStoredVersion)
+            Assert.Equal<StoredEntryVersion>(userVersion, context.tryStoredVersion user.id user.version |> expectStoredVersion)
+            context.stagePin pulled.id pulled.version |> expectDatabaseOk |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            assertPulledSourceRow context
+            context.stageRemoval pulled.id
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Empty(context.PulledSources)
+            Assert.Equal<StoredEntryVersion option>(None, context.tryStoredVersion pulled.id pulled.version |> expectDatabaseOk)
+            Assert.Equal<StoredEntryVersion>(userVersion, context.tryStoredVersion user.id user.version |> expectStoredVersion))
+        |> expectDatabaseOk

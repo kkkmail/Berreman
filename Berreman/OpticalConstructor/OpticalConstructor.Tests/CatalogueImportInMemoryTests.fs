@@ -752,6 +752,85 @@ type CatalogueImportContract () =
         Assert.Equal(InactiveEntry, (held |> List.find (fun entry -> entry.id = lab.id)).lifecycle)
 
     [<Fact>]
+    member this.``the pulled records of a source are its held pulled versions, by record, entry and version`` () : unit =
+        let context = (this.freshImport ()).context
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let silicon = BuiltinCatalogue.material MaterialIds.silicon
+        let testSource = MaterialSourceName "Test source"
+        let otherSource = MaterialSourceName "Other source"
+        let unknownSource = MaterialSourceName "Unknown source"
+        let licence = EntryLicence "CC-BY-4.0"
+        let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+        let pullOf (source : MaterialSourceName) (record : MaterialSourceRecordId) (sourceVersion : MaterialSourceVersion) : SourcePullInfo =
+            {
+                source = source
+                record = record
+                recordHash = Text.Encoding.UTF8.GetBytes $"{record.value} at {sourceVersion.value}" |> FileByteContent |> ContentHash.ofBytes
+                sourceVersion = sourceVersion
+                licence = licence
+                citation = citation
+            }
+        let materialContent (id : MaterialId) (name : EntryName) (version : VersionNumber) (provenance : EntryProvenance) : LibraryEntryContent =
+            let entry =
+                {
+                    silicon with
+                        id = id
+                        name = name
+                }
+            LibraryEntryContent.ofMaterialEntry version provenance entry
+        let pulledRecord (content : LibraryEntryContent) (pull : SourcePullInfo) : PulledRecord =
+            {
+                version =
+                    {
+                        entryId = content.id
+                        version = content.version
+                    }
+                pull = pull
+            }
+        // A's GUID text sorts before B's, so only the record's text puts B first.
+        let aId = MaterialId (Guid.Parse "31801b01-444f-43c8-8440-000000000442")
+        let bId = MaterialId (Guid.Parse "31801b02-444f-43c8-8440-000000000442")
+        let cId = MaterialId (Guid.Parse "31801b03-444f-43c8-8440-000000000442")
+        let forkId = LibraryEntryId (Guid.Parse "31801b04-444f-43c8-8440-000000000442")
+        let userId = MaterialId (Guid.Parse "31801b05-444f-43c8-8440-000000000442")
+        let aName = EntryName "Pulled glass A"
+        let aPullFirst = pullOf testSource (MaterialSourceRecordId "b/x.yml") (MaterialSourceVersion "2026-11-01")
+        let aPullSecond = pullOf testSource (MaterialSourceRecordId "b/x.yml") (MaterialSourceVersion "2026-11-16")
+        let bPull = pullOf testSource (MaterialSourceRecordId "a/y.yml") (MaterialSourceVersion "2026-11-01")
+        let cPull = pullOf otherSource (MaterialSourceRecordId "a/y.yml") (MaterialSourceVersion "2026-11-01")
+        let aFirst = materialContent aId aName VersionNumber.first (SourcePullProvenance aPullFirst)
+        let aSecond = materialContent aId aName VersionNumber.first.next (SourcePullProvenance aPullSecond)
+        let b = materialContent bId (EntryName "Pulled glass B") VersionNumber.first (SourcePullProvenance bPull)
+        let c = materialContent cId (EntryName "Pulled glass C") VersionNumber.first (SourcePullProvenance cPull)
+        let fork =
+            {
+                aFirst with
+                    id = forkId
+                    name = EntryName "Pulled glass A (fork)"
+                    provenance =
+                        ForkProvenance
+                            {
+                                originalId = aFirst.id
+                                originalVersion = aFirst.version
+                                originalProvenance = aFirst.provenance
+                            }
+            }
+        let user = BuiltinCatalogue.userMaterialContent userId (EntryName "Lab glass")
+        Assert.Empty(context.proxy.pulledRecordsOf testSource |> expectImportOk)
+        BuiltinCatalogue.putSealedEntries context [ aFirst; c; fork; aSecond; user; b ]
+        Assert.NotEqual<ContentHash>(aPullFirst.recordHash, aPullSecond.recordHash)
+        let assertPulledRecords () : unit =
+            Assert.Equal<PulledRecord list>(
+                [ pulledRecord b bPull; pulledRecord aFirst aPullFirst; pulledRecord aSecond aPullSecond ],
+                context.proxy.pulledRecordsOf testSource |> expectImportOk)
+            Assert.Equal<PulledRecord list>([ pulledRecord c cPull ], context.proxy.pulledRecordsOf otherSource |> expectImportOk)
+            Assert.Empty(context.proxy.pulledRecordsOf unknownSource |> expectImportOk)
+        assertPulledRecords ()
+        context.proxy.retireEntry c.id |> expectImportOk
+        assertPulledRecords ()
+
+    [<Fact>]
     member this.``pinEntryVersion pins a held version so that its next physics edit mints a version, and refuses a version not held`` () : unit =
         let stores = this.freshImport ()
         let context = stores.context

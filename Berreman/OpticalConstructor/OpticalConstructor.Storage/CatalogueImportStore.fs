@@ -134,6 +134,41 @@ module CatalogueImportStore =
                                 select latest.EntryId
                             }
                         |> Seq.map LibraryEntryId |> Seq.toList |> collectHeld context)
+                pulledRecordsOf = fun source ->
+                    runImport (fun context ->
+                        query
+                            {
+                                for row in context.PulledSources do
+                                where (row.Source = source.value)
+                                select row
+                            }
+                        |> Seq.toList
+                        |> List.fold (fun result row ->
+                            result |> Result.bind (fun records ->
+                                let reference : LibraryVersionRef =
+                                    {
+                                        entryId = LibraryEntryId row.EntryId
+                                        version = VersionNumber row.Version
+                                    }
+                                context.tryStoredVersion reference.entryId reference.version
+                                |> Result.bind (fun storedOpt ->
+                                    match storedOpt with
+                                    | Some stored ->
+                                        match stored.envelope.content.provenance with
+                                        | SourcePullProvenance pull when pull.source = source ->
+                                            let record : PulledRecord =
+                                                {
+                                                    version = reference
+                                                    pull = pull
+                                                }
+                                            Ok (record :: records)
+                                        | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | SourcePullProvenance _
+                                        | ForkProvenance _ | FitProvenance _ ->
+                                            Error (LibraryRowInvalidErr $"the pulled-source row of {reference.describe} names a version not pulled from '{source.value}'")
+                                    | None ->
+                                        Error (LibraryRowInvalidErr $"the pulled-source row of {reference.describe} names a version the library does not hold")))) (Ok [])
+                        |> Result.map PulledRecord.inRecordOrder
+                        |> storageResult)
                 pinEntryVersion = fun id version ->
                     runImport (fun context ->
                         context.stagePin id version

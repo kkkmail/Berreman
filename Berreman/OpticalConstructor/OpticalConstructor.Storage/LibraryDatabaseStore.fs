@@ -121,6 +121,28 @@ module LibraryDatabaseStore =
                     FacetKey = key.value,
                     FacetValue = value.value)))
 
+        /// A pulled version's one pulled-source row; a fork and every other provenance have none (spec 0050 S13.1).
+        [<ElevationBoundary(nameof StorageBoundary, "the library database seam (spec 0050 001 §C, §D): a pulled version's provenance becomes its pulled-source row")>]
+        member this.pulledSourceRows : LibraryPulledSourceRow list =
+            let content = this.content
+            match content.provenance with
+            | SourcePullProvenance info ->
+                [
+                    LibraryPulledSourceRow(
+                        EntryId = content.id.value,
+                        Version = content.version.value,
+                        Source = info.source.value,
+                        RecordPath = info.record.value,
+                        SourceVersion = info.sourceVersion.value,
+                        Licence = info.licence.value,
+                        Citation = info.citation.value)
+                ]
+            | BuiltInProvenance _
+            | UserProvenance
+            | KitImportProvenance _
+            | ForkProvenance _
+            | FitProvenance _ -> []
+
         [<ElevationBoundary(nameof StorageBoundary, "the library database seam (spec 0050 001 §C): a sample version's referenced material versions become relational keys")>]
         member this.sampleMaterialRows : Result<LibrarySampleMaterialRow list, StorageError> =
             let content = this.content
@@ -418,6 +440,17 @@ module LibraryDatabaseStore =
                     | null -> this.SampleMaterials.Add(material) |> ignore
                     | tracked when this.Entry(tracked).State = EntityState.Deleted -> this.Entry(tracked).State <- EntityState.Unchanged
                     | _ -> ()
+
+                // Spec 0050 S13.1: the row's key is its version's, so a re-staged row is updated in place, never re-added.
+                match this.PulledSources.Find(row.EntryId, row.Version), stored.envelope.pulledSourceRows with
+                | null, pulledSources ->
+                    for pulledSource in pulledSources do
+                        this.PulledSources.Add(pulledSource) |> ignore
+                | previous, [] -> this.PulledSources.Remove(previous) |> ignore
+                | previous, pulledSource :: _ ->
+                    let tracked = this.Entry(previous)
+                    if tracked.State = EntityState.Deleted then tracked.State <- EntityState.Unchanged
+                    tracked.CurrentValues.SetValues(pulledSource)
                 Ok ()
 
         [<ElevationBoundary(nameof StorageBoundary, "the library database seam (001 §C): every EF Core and SQLite call is caught by LibraryDatabase.run")>]
