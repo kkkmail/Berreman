@@ -35,3 +35,25 @@ suite's own bands. The only authorized edit is
 - **Recovery.** One seed's relative error, not an ensemble scatter, is judged against bands pinned at ~3× the
   scatter; a breach would be a measured finding, never a loosened band.
 - Earlier AT-2 facts read the same Lazy build; the fit must not change the study, experiments or library they check.
+
+## Attempt 02 — the recovery round (2026-11-16)
+
+The step's code is committed: the worker's `KitAcceptanceTests.fs` (`21962d32`), R0004's repair (`85e7efeb`:
+`FittedProblems.fs` evaluates one Jacobian and one report per problem; `StudyForward.fs` solves a residual's rows
+concurrently) and R0005's (`2a72a8c0`, `d3cd3274`: `BerremanMatrix.create` and `EmComponent.create` read `rhoT` once; the
+app and the UI test host run the server collector). The operator measured AT-2's fit through the shell at 811 s, inside
+R0005's 1800 s bound, so R0004's conditional concurrent profile pass (3) is not triggered and `StudyEngine.fs`,
+`FitResultsTests.fs` and `StudyEngineTests.fs` stay untouched.
+
+1. Review the committed diffs against the slice's how-to (1)–(4), R0004 and R0005, and R0001–R0003's preservation.
+2. Correct the one imprecise line found: `Fields.fs`'s new comment says the generated terms read `rhoT` "~90 times";
+   `EmComponent.create` reads it ten times (R0005 itself says 10; ~90 is `BerremanMatrix.create`'s 92). Comment only,
+   same line, under R0005's authority over `Fields.fs` at 0436.
+3. Development evidence: the solution build and the elevation analyzers from the arc origin, because production code
+   changed. No test suite is re-run: the operator's 811 s measurement is the fit's evidence, and the supervisor runs the
+   unchanged roster.
+4. Rewrite the state of the world for the recovered step; append this attempt to the impl-log.
+5. (Found while executing 3.) Elevation over the committed tree fails with ELEV003 and ELEV008 on
+   `FittedProblem.init@78`, the hidden field a record's `static let` creates. Move R0004's two memo tables into a
+   private class in the same recursive group (under R0004's authority over `FittedProblems.fs`). Rebuild, re-run
+   elevation, and run the two classes that exercise the code (`FitResultsTests`, `StudyEngineTests`).

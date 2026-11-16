@@ -229,7 +229,7 @@ module Fields =
         /// The x component of normalized Poynting vector s gives sin(fi).
         static member create (emv : EigenValueVector) amplitude (nsf : N1SinFita) (o : OpticalProperties) =
             let n1SinFita = nsf.complex
-            // Read once: `rhoT` builds a new matrix on every access, and the generated terms below read it ~90 times (`.manual/036` R0005).
+            // Read once: `rhoT` builds a new matrix on every access, and the generated terms below read it ten times (`.manual/036` R0005).
             let rhoT = o.rhoT
             let bf = emv.vector |> BerremanFieldEH
 

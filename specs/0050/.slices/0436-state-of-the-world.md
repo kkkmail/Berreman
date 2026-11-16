@@ -5,108 +5,110 @@ items, the table, one experiment per plate, seed 1's attached observations, and 
 fifteen components freed from `perturbedStart`. This step makes the build end by fitting that study through the shell's
 fit host, and adds the fact that judges the recovered crystal by the noisy suite's bands.
 
-The code is written as the how-to says, but the step is **blocked**: the study engine's fit for this study runs past
-7170 s. That breaks the how-to's 1800 s deadline and kit-acceptance's 3600 s. The time goes to the engine's results
-pass (σ, quality and χ² profiles of suspect entries), production code outside this step's authorized effects. An
-operator ruling is needed.
+Attempt 01 wrote the test and was blocked: the study engine's fit ran past 7170 s. The operator committed that work
+(`21962d32`) and repaired the product under R0004 (`85e7efeb`) and R0005 (`2a72a8c0`, `d3cd3274`). They measured AT-2's
+fit through the shell at 811 s against R0005's 1800 s bound, with the new fact passing.
+
+This attempt 02 reviewed the committed tree and corrected one comment. Elevation found R0004's memo tables tripping
+ELEV003 and ELEV008, and the tables moved into a private class with the behaviour unchanged. The supervisor runs the
+unchanged 26-gate roster to publish checkpoint 435.
 
 # What's working
 
 - AT-1 and AT-2 host their study fits through one `runStudyFitThroughShell (model) (request) (deadline)`.
-- AT-1's build keeps its sixty seconds and every assertion; its six facts pass over the shared host.
-- AT-2's build moves its clock to 2026-06-01T12:01:00Z and runs the joint fit, calibrations held fixed, with 1800 s.
-- `assertAbsorbingRecovery` promotes the study's material from the run and asserts `absorbingBandBreaches` is empty.
-- New fact: the stored fit run's shape, then `assertAbsorbingRecovery`. It fails today on the 1800 s fit deadline.
+- AT-2's build ends with the study's joint fit, calibrations held fixed, at 2026-06-01T12:01:00Z within 1800 s.
+- New fact: the stored fit run's shape, then `assertAbsorbingRecovery` holds the crystal within the noisy suite's bands.
+- A fitted problem evaluates its Jacobian and report once; a study residual solves its rows concurrently (R0004).
+- The memo tables live in the private class `FittedProblemEvaluations`, not the record, so elevation is clean.
+- The Berreman matrix and field components read `rhoT` once; the app and UI test host run the server GC (R0005).
 
 # Tests
 
-These are development runs, evidence only and not gate verdicts; the supervisor's gates are authoritative.
+Development runs, evidence only and not gate verdicts; the supervisor's gates are authoritative.
 
-- Build of the UI test project: 0 errors; the only warnings are the exempt NU1902 advisory.
-- ui-tests selecting `StudyViewTests` and `DataStepTests` (both untouched): `Passed!`, 18 of 18, in 29 s against 360 s.
-- ui-smoke over every discovered smoke test: `Passed!`, 264 of 264, in 232 s against 600 s.
-- The twenty-one s42 invariants: each decoded `git grep` finds nothing.
-- elevation was not run: the only edited file is in a test project, outside the ELEV scope.
-- **kit-acceptance over `OpticalConstructor.Ui.Tests.KitAcceptanceTests`: `Failed!`, 6 of 11 succeeded, in 1887 s
-  against 3600 s.**
-  - The six AT-1 facts pass.
-  - The five AT-2 facts fail on the shared build: `AbsorbingTriclinic@*.fitrun-json: expected the Joint fit of
-    AbsorbingTriclinic (fixed) to end within 1800 s; actual no end`. The new fact is among them, discovered under its
-    census id.
-- **The probe: the fit does not end within 7171 s.** The fact ran alone with the deadline raised to 7200 s for the
-  probe only; the file was then restored byte for byte.
-  - The main LM fit took ~363 s. The harness's identical seed-1 fit takes 278.5 s, and a study residual costs 1.31 s
-    against the harness's 1.00 s.
-  - `resultsWith` then spent ~593 s before its first profile re-fit: each `sigmaAt` recomputes two Jacobians, once per
-    coordinate.
-  - Its profile pass over four suspects was still running at 7171.6 s. The suspects are n1, n2 and n3, at |ρ| 0.9999,
-    and g23, at σ/span 0.107.
-- **The recovery itself is sound.** The harness's own seed-1 fit holds every reported quantity inside its band; the
-  worst are e13 at 5.7e-3 against 1.5e-2 and g23 at 1.58 against 10.
-- No gate deadline was exceeded by a development run of the gate's own selection (kit-acceptance 1887 s against 3600 s,
-  failed). The 7171 s probe is not a gate run. `commit_ready` is false: the step is blocked on authority.
+- **build** (`dotnet build Berreman.slnx -c Release`): exit 0, 0 errors, in 83 s against 600 s.
+  - The warnings are the exempt NU1902 advisory and four `SYSLIB0051` from the vendored MathNet's C#.
+  - The MathNet warnings pre-date this step (step 0434's first build has them too).
+- **elevation** from the arc origin `f395597c`, ELEV004 excluded, over all 13 projects:
+  - on the committed tree: **FAILED**, ELEV003 and ELEV008 on `FittedProblem.init@78` (R0004's `static let` in the
+    record), in 228 s;
+  - after moving the tables into a class: `ELEV-GATE: OK`, 0 new findings, in 229 s against 600 s.
+- **build after the fix:** exit 0, 0 errors, in 49 s; NU1902 only.
+- **`FitResultsTests` and `StudyEngineTests`** (`OpticalConstructor.Tests`, the classes exercising the edited code):
+  `Passed!`, 47 of 47, in 47 s. They are not in the roster; this is evidence for the edit.
+- **The twenty-one s42 invariants:** each decoded `git grep` finds nothing.
+- **kit-acceptance, ui-smoke and ui-tests were not re-run in this attempt.**
+  - No test identity changed since attempt 01, which measured ui-tests at 18 of 18 in 29 s against 360 s, and ui-smoke at
+    264 of 264 in 232 s against 600 s.
+  - The operator measured AT-2's fit through `runStudyFitThroughShell` at 811 s, main solve 45 s, inside R0005's 1800 s
+    bound, with the step's new fact passing.
+  - The worker protocol (Invariant 6) and the operator's standing instruction say a measured fit is not repeated. The
+    supervisor's roster runs kit-acceptance over `KitAcceptanceTests`.
+  - That gate runs AT-1's builds and AT-2's build, whose fit measured 811 s, under its 3600 s attempt timeout.
+- No development run exceeded its gate's effective deadline.
 
 ```yaml
 gates:
-  kit_acceptance_tests: 6
+  kit_acceptance_tests: 11
   ui_smoke_tests: 264
   ui_tests: 18
 ```
 
-These are this round's measured development counts, not a green checkpoint. kit-acceptance's 6 is below its baseline
-of 10 because AT-2's shared build fails.
+The counts are expected, not re-measured in this attempt.
+
+- kit-acceptance: 0435's baseline of 10 plus the one fact this step creates.
+- ui-smoke and ui-tests: attempt 01's measured counts. No identity in either selection has changed since.
 
 # Architecture
 
-Everything is in `KitAcceptanceTests.fs`.
-
-- **`runStudyFitThroughShell`** is the one fit-hosting composition:
-  - `StudyFitJobHost.posting` whose `post` runs each action at once, the two messages recorded in a queue;
-  - the wait on a `ManualResetEventSlim` for the given deadline; a miss fails the fact naming the request;
-  - the recorded messages passed through the update in order;
-  - started, one completion, no refusal, finished, handle released, and the completed run committed and appended.
-
-  `runAcceptanceFit` is AT-1's wrapper: its request, sixty seconds and expected-name check.
-- **AT-2's build** ends with `absorbingFitRequest` at `absorbingFitTime`, 1800 s, and checks the committed name
-  `AbsorbingTriclinic@20260601T120100Z`. The engine, the single start and the seed-1 deviates are the defaults steps
-  382, 386, 387 and 393 already compose, so nothing is configured.
-- **`assertAbsorbingFitRun`** checks the stored run:
-  - name, stamp, study, `JointStage`, `CalibrationHeldFixed`, `NonlinearStudyEngine`, the five runs;
-  - fifteen entries in the axes' order, owned by the material, starting at `perturbedStart`;
-  - one converged member starting at those starts.
-
-  **`assertAbsorbingRecovery`** is `promotedMaterialWith` followed by `absorbingBandBreaches`; step 439 reuses it.
+- **The tests, `KitAcceptanceTests.fs` (attempt 01, `21962d32`):**
+  - `runStudyFitThroughShell` is the one fit-hosting composition:
+    - `StudyFitJobHost.posting` whose `post` runs each job at once, recording the progress and end messages;
+    - a `ManualResetEventSlim` wait bounded by the deadline;
+    - the recorded messages through the update, in order;
+    - the generic post-conditions.
+  - `runAcceptanceFit` is AT-1's wrapper.
+  - `assertAbsorbingFitRun` checks the stored run's shape; `assertAbsorbingRecovery` is `promotedMaterialWith`
+    followed by `absorbingBandBreaches`. Step 439 reuses it.
+- **R0004 (`85e7efeb`):**
+  - `FittedProblem.jacobian` and `report` are memoized in two `ConditionalWeakTable`s keyed on the problem's reference
+    identity (`[<ReferenceEquality>]`), so a copy is evaluated afresh.
+  - Attempt 02 moved the tables from the record's `static let` into `FittedProblemEvaluations`, a private class in
+    the same recursive group (`and private`). The record no longer gets a hidden `init@` field.
+  - `Study.residualWith` binds its runs in order up to the first refusal. It solves the bound runs' rows with
+    `Array.Parallel.map`, then answers the vector in row order, or the first row refusal, else the bind refusal: the
+    same answer as the serial walk.
+- **R0005 (`2a72a8c0`, `d3cd3274`):**
+  - `BerremanMatrix.create` reads `o.rhoT` once for its 92 term reads, and `EmComponent.create` once for its ten.
+  - `ServerGarbageCollection` is set in the App and UI test project files.
+- R0004's conditional concurrent profile pass is not used: the measured 811 s is under 1800 s. `StudyEngine.fs`,
+  `FitResultsTests.fs` and `StudyEngineTests.fs` are unchanged.
 
 # Deferred
 
-Nothing is deferred by choice. The step is blocked, not split: its fact cannot pass until the operator rules on the
-fit's runtime. Each remedy needs authority this step lacks:
-
-- (a) **Recommended: production, in `FittedProblems.fs` and `StudyEngine.fs`.** Compute each problem's Jacobian,
-  report and sigmas once. Bound the profile pass's cost, for example by evaluating the 44 independent configurations,
-  or the Jacobian's columns, in parallel.
-- (b) **Gates:** raise AT-2's fit deadline and kit-acceptance's attempt timeout above the measured total, which is
-  more than 7170 s and not yet known.
-- (c) **A settings message or seam** for the suspect thresholds.
-
-Steps 0437–0439 remain as planned.
+Nothing.
 
 # Gotchas
 
-- **The how-to's premise, "one fifteen-parameter fit takes about three minutes" (001 §1b), is the harness's LM solve
-  alone.** The study engine's `runFit` adds `resultsWith`. For this crystal that is four χ² profiles, six 14-parameter
-  re-fits each, along a 0.9999-correlated index valley, which together take over 95 % of the time.
-- **`FittedProblem`'s `jacobian`, `report` and `sigmas` are recomputed on every read.** `suspectsWith` calls
-  `sigmaAt` per coordinate, so the results pass costs ~500 residual evaluations before any profile.
-- **No app message sets a study's start count or suspect thresholds.** The test therefore cannot shorten the pass
-  through the window, and it did not reach past the messages to do so.
-- **A missed deadline leaves the fit running on the thread pool until the process exits.** The late `Set` on the
-  disposed event does not throw, so the process does not crash.
+- **A `static let` in an F# record or union fails elevation.** The compiler adds a hidden `init@<line> : int` field,
+  which the analyzers read as a bare primitive record field (ELEV003, ELEV008). Hold static state in a class.
+- **Keep these through 0437–0494:** the single Jacobian and report per problem, the concurrent residual, the single
+  `rhoT` read, the server collector, the 1800 s bound and R0001–R0003 (R0004, R0005).
+- At 0460, `StudyForward.fs` keeps the residual concurrent. At 0476, the offset frame's move keeps one Jacobian and one
+  report per problem.
+- **A missed deadline leaves the fit running on the thread pool until the test process exits.** The late `Set` on the
+  disposed event does not throw.
+- **The residual's rows after a refusal are now solved and dropped.** The answer is still the first refusal in serial
+  order (S11.2 as R0004 restates it).
+- `BerremanMatrix.create` and `EmComponent.create`'s terms are generated. A regeneration must keep the single `rhoT`
+  local (R0005).
 
 # Changelog
 
-- 2026-11-15/16: Step 0436, AT-2's fifth part.
-  - AT-1 and AT-2 share `runStudyFitThroughShell`.
-  - AT-2's build ends with the study's joint fit; `assertAbsorbingRecovery` and the recovery fact were added.
-  - Blocked: the engine's fit runs past 7170 s, so it breaks the how-to's 1800 s and kit-acceptance's 3600 s.
-    The measurements and the remedies needing authority are in the impl-log.
+- 2026-11-15/16, attempt 01: AT-1 and AT-2 share `runStudyFitThroughShell`; AT-2's build ends with the study's joint fit;
+  `assertAbsorbingRecovery` and the recovery fact were added. Blocked: the engine's fit ran past 7170 s.
+- 2026-11-16, operator: R0004 and R0005 repairs committed; AT-2's fit measured at 811 s.
+- 2026-11-16, attempt 02:
+  - reviewed the committed tree and corrected `Fields.fs`'s comment to the ten `rhoT` reads;
+  - fixed the elevation breach R0004's record `static let` caused, moving the memo tables to `FittedProblemEvaluations`;
+  - recorded the build, elevation, invariant and fit-class evidence.

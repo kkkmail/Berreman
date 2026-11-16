@@ -188,3 +188,141 @@ These are development runs, evidence only and not gate verdicts; the supervisor 
   disposed `ManualResetEventSlim` does not throw, so the process does not crash. In the gate it keeps one core busy
   through AT-1's facts.
 - The new fact's name has no `@`, so it needs no `CompiledName` (unlike step 0433's).
+
+---
+
+# Attempt 02 — recovery under R0004 and R0005 (2026-11-16)
+
+## Progress (attempt 02)
+
+- Read the task, both system prompts, the project prompt, rulings R0001–R0005 (`.manual/030`, `031`, `033`, `035`,
+  `036`, section "Binding ruling" of each), the operator reply (`.manual/037`), the post-mortem and its review, the
+  slice and its gate snapshot, and this log's attempt 01.
+- Reviewed the committed tree: `21962d32` (the worker's `KitAcceptanceTests.fs`), `85e7efeb` (R0004:
+  `StudyForward.fs`, `FittedProblems.fs`), `2a72a8c0` and `d3cd3274` (R0005: `Fields.fs`, `BerremanMatrix.fs`, the App and
+  UI test project files).
+- **Review of the committed tree: it satisfies the slice and the rulings.**
+  - **How-to (1)–(4), `21962d32`.**
+    - `runStudyFitThroughShell` is the one composition. AT-1 calls it through `runAcceptanceFit` with sixty seconds,
+      every assertion kept; AT-2's build calls it with 1800 s at 2026-06-01T12:01:00Z.
+    - `assertAbsorbingRecovery` promotes through `promotedMaterialWith`. Any other physics or a refusal fails, naming
+      it, and `absorbingBandBreaches` must be empty, its message naming each breach and the χ².
+    - The fact checks the stored run's shape, then the recovery.
+  - **R0004 (1), `FittedProblems.fs`.**
+    - `jacobian` and `report` are memoized in `ConditionalWeakTable`s, keyed on the record's reference identity
+      (`FittedProblem` is `[<ReferenceEquality>]`).
+    - `quality`, the private `sigmas`, `sigmaAt`, `entrySigmas` and `profileAt` all read through those two members,
+      so each problem pays one Jacobian and one report.
+    - `GetValue` may run its callback twice under a race; the computation is deterministic, so either value is the
+      same.
+  - **R0004 (2), `StudyForward.fs`.**
+    - Runs bind in order up to the first bind refusal, and their rows are solved with `Array.Parallel.map`.
+    - The answer is the first row refusal in row order, else the bind refusal, else the vector assembled in row order.
+      The serial walk met any row refusal of run j < k before run k's bind refusal, so the answer is the same.
+    - Binding a later run is pure, so binding more than the walk did changes nothing.
+  - **R0004 (3) is not triggered.** The operator measured 811 s, under the 1800 s bound R0005 puts in place of 900 s.
+    So `StudyEngine.fs`, `FitResultsTests.fs` and `StudyEngineTests.fs` are untouched, as the ruling requires.
+  - **R0005.**
+    - `BerremanMatrix.create` reads `o.rhoT` once into a local for its 92 term reads, and `EmComponent.create` for its
+      10. No term changed beyond the receiver.
+    - `ServerGarbageCollection` is set in the App and UI test project files, and nowhere else.
+  - **R0001–R0003 are untouched.** No dispatch, analyzer-law or element-identity code was edited.
+- **One correction (before, then after).** `Fields.fs`'s new comment said the generated terms read `rhoT` "~90 times".
+  `EmComponent.create` reads it ten times; R0005's own text says 10, and ~90 is `BerremanMatrix.create`'s 92.
+  - Changed to "ten times", the same line, comment only.
+  - R0005 authorizes editing `Fields.fs` at 0436.
+  - LF; the BOM predates the edit.
+- **Development build of the solution:** exit 0, 0 errors, 83 s.
+- **The twenty-one s42 invariants:** each decoded `git grep` finds nothing.
+- **Elevation from the arc origin** (`ASG_ARC_BASE_COMMIT=f395597c`, `-ExcludeRules ELEV004`): run over all 13 projects,
+  since the solution file changed since the origin. Result under Testing state.
+
+- **Elevation on the committed tree FAILED: 2 new findings**, in 228 s (`.artifacts/0436-attempt-02-dev-elevation.log`):
+  - `ELEV003 FittedProblems.fs:78:10 - FittedProblem.init@78 : int - bare primitive in a public record field`;
+  - `ELEV008 FittedProblems.fs:78:10 - FittedProblem.init@78 carries bare primitive(s) int`.
+
+  R0004's two `static let` tables inside the `FittedProblem` record make the compiler emit a hidden static
+  `init@78 : int` initialization field, which the analyzers read as a record field. Every other project was clean, so
+  the `elevation` gate would have failed on the committed tree. A class's `static let` is not flagged: `MinWidthPanel`
+  (`WindowLayout.fs:20`) holds one and Controls analyzes clean.
+- **The fix (under R0004's authority over `FittedProblems.fs` at 0436), before then after.**
+  - The two tables move out of the record into `FittedProblemEvaluations`, a private class in the same recursive group
+    (`and private FittedProblemEvaluations private ()`), shaped as `MinWidthPanel` is: a `static let` per table and a
+    static member reading it.
+  - `jacobian` and `report` read `FittedProblemEvaluations.jacobians` / `.reports` with the same `GetValue` and
+    callbacks.
+  - The behaviour is identical: the same `ConditionalWeakTable`s, the same reference-identity key, one Jacobian and
+    one report per problem.
+  - The ruling's comment moved with the tables, plus one line on why a class. The name is unused anywhere in Berreman
+    or STL (ELEV014).
+- **Development build after the fix:** exit 0, 0 errors, 49 s; the only warning is the exempt NU1902.
+- **Elevation after the fix:** `ELEV-GATE: OK - 0 new finding(s) in 13 project(s)`, 229 s, with 1674 suppressed (as
+  before) and 0 known (`.artifacts/0436-attempt-02-dev-elevation-2.log`).
+- **The two classes that exercise the edited code**, the ones R0005 names for it: `FitResultsTests` (a problem's Jacobian,
+  σ and profiles) and `StudyEngineTests` (the results pass). `Passed!`, 47 of 47, in 47 s
+  (`.artifacts/0436-attempt-02-dev-fit-classes.log`). They are not in 0436's roster; this is evidence for the edit only.
+
+## Files modified (attempt 02)
+
+- `Berreman/Berreman/Fields.fs`: one comment line (`~90 times` → `ten times`), under R0005.
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/FittedProblems.fs`: R0004's memo tables moved from the
+  record's `static let` to the private class `FittedProblemEvaluations` (+10 / −5), under R0004, to clear ELEV003 and
+  ELEV008.
+- The step's three worker files: this log, the impl-plan's attempt-02 section, and the rewritten state of the world.
+
+## Decisions (attempt 02)
+
+- **No test suite is re-run.**
+  - The implement worker acts and the gate engine runs the gates (Invariant 6).
+  - The operator's standing instruction is not to repeat a measurement the diagnosis already produced: AT-2's fit at
+    811 s, with the new fact passing.
+  - The supervisor runs the unchanged 26-gate roster over this tree.
+  - The build and elevation ran as development evidence, because production code changed after attempt 01's runs.
+    Attempt 01 had not run elevation, and the operator's note reports only the build.
+- **The SoW's YAML gives the expected counts:** kit-acceptance 11 (0435's 10 plus the created fact), ui-smoke 264, and
+  ui-tests 18. The last two are attempt 01's measured counts; no identity in either selection has changed since.
+- **`%A{other}` in `assertAbsorbingRecovery` stays.** `MaterialPhysics` has no render member, the file already writes
+  `%A` in failure messages, and test projects are outside the ELEV scope.
+
+## Testing state (attempt 02)
+
+Development runs, evidence only and not gate verdicts.
+
+- build: exit 0, 0 errors, 83 s against 600 s (`.artifacts/0436-attempt-02-dev-build.log`).
+  - Warnings: NU1902 (exempt) and four `SYSLIB0051` from the vendored MathNet's C#. These pre-date the step: step
+    0434's first build has them too.
+- The twenty-one s42 invariants: nothing found.
+- elevation, from the arc origin `f395597c` with ELEV004 excluded:
+  - on the committed tree: **FAILED**, 2 new findings (ELEV003 and ELEV008 on `FittedProblem.init@78`), in 228 s
+    against 600 s;
+  - after the fix: `ELEV-GATE: OK`, 0 new findings in 13 projects, in 229 s against 600 s.
+- After the fix, the build: exit 0, 0 errors, 49 s; NU1902 only (`.artifacts/0436-attempt-02-dev-build-2.log`).
+- `OpticalConstructor.Tests`, filtered to `FitResultsTests` and `StudyEngineTests`: `Passed!`, 47 of 47, in 47 s.
+- **kit-acceptance, ui-smoke and ui-tests were not re-run.**
+  - The fix changes no behaviour: the same tables and the same key.
+  - The operator measured AT-2's fit through the shell at 811 s, main solve 45 s, against R0005's 1800 s, with the new
+    fact passing.
+  - The supervisor runs the unchanged roster.
+- No development run exceeded its gate's effective deadline.
+- `commit_ready` is true: every how-to item, R0004 and R0005 are in the tree, and the one gate breach found is fixed.
+
+## Artifacts (attempt 02)
+
+- `.artifacts/0436-attempt-02-dev-build.log`, the build of the committed tree plus the comment fix.
+- `.artifacts/0436-attempt-02-dev-elevation.log`, elevation on that tree: FAILED, 2 findings.
+- `.artifacts/0436-attempt-02-dev-build-2.log` and `.artifacts/0436-attempt-02-dev-elevation-2.log`, the build and
+  elevation after the fix: OK.
+- `.artifacts/0436-attempt-02-dev-fit-classes.log`, `FitResultsTests` and `StudyEngineTests`.
+- The SARIF reports are under `Elevation/bin/reports/` (git-ignored, overwritten by each run).
+
+## Gotchas (attempt 02)
+
+- **A `static let` (or `static member val`) in an F# record or union is an ELEV breach.** The compiler adds a hidden
+  `init@<line> : int` static field, which the analyzers report as a bare primitive record field (ELEV003, ELEV008).
+  Hold static state in a class instead, as `FittedProblemEvaluations` and `MinWidthPanel` do.
+- **The operator's note reported the build only.** R0005's verification also names elevation from the arc origin,
+  which is where the breach showed. The note's other claims hold against the code: the single evaluation, the
+  concurrent residual, the single `rhoT` read and the server collector.
+- **Preserve through 0437–0494** (R0004, R0005): one Jacobian and one report per problem, the concurrent residual, the
+  single `rhoT` read, the server collector and the 1800 s bound. At 0476 the offset frame's move keeps the memo, and
+  the memo stays in `FittedProblemEvaluations`, not the record.

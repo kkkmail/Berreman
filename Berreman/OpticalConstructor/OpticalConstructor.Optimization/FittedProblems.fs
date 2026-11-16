@@ -85,11 +85,6 @@ module FittedProblems =
             unit : StudyParameterVector
         }
 
-        // One Jacobian and one report per solve, however often its quality, σ and profiles read them; keyed by the
-        // problem's identity, so a copy is evaluated afresh (`.manual/035` R0004).
-        static let jacobians = ConditionalWeakTable<FittedProblem, ResidualJacobian> ()
-        static let reports = ConditionalWeakTable<FittedProblem, FitQuality.FitReport> ()
-
         /// The residual about a frame offset by a hundred, y ↦ residual (start + (y − 100)), and the vector of hundreds
         /// that stands for the solution in it (spec 0050 S11.4).
         member private this.offsetFrame : Residual * DesignVector =
@@ -104,14 +99,14 @@ module FittedProblems =
         /// FitQuality's Jacobian in the offset frame: its step √ε · max(|x|, 1e-12) is then about 1.5e-6, the order of
         /// ALGLIB's own 1e-6, and a coordinate at zero is still perturbed (spec 0050 S11.4).
         member this.jacobian : ResidualJacobian =
-            jacobians.GetValue(this, fun problem ->
+            FittedProblemEvaluations.jacobians.GetValue(this, fun problem ->
                 let shifted, solution = problem.offsetFrame
                 FitQuality.residualJacobian shifted solution)
 
         /// FitQuality's report in the offset frame with the solve's own final residuals, read for its standard errors
         /// only: its parameters are the frame's (spec 0050 S11.4).
         member this.report : FitQuality.FitReport =
-            reports.GetValue(this, fun problem ->
+            FittedProblemEvaluations.reports.GetValue(this, fun problem ->
                 let shifted, solution = problem.offsetFrame
                 FitQuality.reportFrom shifted solution (problem.residual problem.search.start))
 
@@ -252,3 +247,13 @@ module FittedProblems =
 
             pointsFrom planned []
             |> Result.map (fun points -> ({ points = points; iterations = IterationCount (told.Value.value - earlier.value) } : ProfileRun))
+
+    /// One Jacobian and one report per solve, however often its quality, σ and profiles read them; keyed by the
+    /// problem's identity, so a copy is evaluated afresh (`.manual/035` R0004).
+    // A class, not the record's `static let`: that adds a hidden `int` record field (ELEV003, ELEV008).
+    and private FittedProblemEvaluations private () =
+        static let jacobianTable = ConditionalWeakTable<FittedProblem, ResidualJacobian> ()
+        static let reportTable = ConditionalWeakTable<FittedProblem, FitQuality.FitReport> ()
+
+        static member jacobians : ConditionalWeakTable<FittedProblem, ResidualJacobian> = jacobianTable
+        static member reports : ConditionalWeakTable<FittedProblem, FitQuality.FitReport> = reportTable
