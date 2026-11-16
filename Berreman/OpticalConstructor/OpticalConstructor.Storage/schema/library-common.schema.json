@@ -64,11 +64,12 @@
           "prefixItems": [
             {
               "type": "object",
-              "required": ["source", "record", "sourceVersion", "licence", "citation"],
+              "required": ["source", "record", "recordHash", "sourceVersion", "licence", "citation"],
               "additionalProperties": false,
               "properties": {
                 "source": { "type": "string" },
                 "record": { "type": "string" },
+                "recordHash": { "$ref": "#/$defs/contentHash" },
                 "sourceVersion": { "type": "string" },
                 "licence": { "type": "string", "description": "An SPDX identifier, e.g. CC0-1.0 or CC-BY-4.0." },
                 "citation": { "type": "string" }
@@ -77,7 +78,7 @@
           ],
           "minItems": 1,
           "items": false,
-          "description": "The online source, its record, the source's version of it, and the record's licence and citation."
+          "description": "The online source, its record and the SHA-256 of the record's text when pulled (spec 0050 S13.1), the source's version of it, and the record's licence and citation."
         }
       }
     },

@@ -179,11 +179,23 @@ module LibraryEntryFiles =
 
         member this.value : string = let (EntryCitation s) = this in s
 
+    /// The lowercase hex SHA-256 of an entry's canonical content or a kit file's stored bytes (spec 0050 001 §B, §E).
+    type ContentHash =
+        | ContentHash of string
+
+        member this.value : string = let (ContentHash s) = this in s
+
+        /// The app's one SHA-256 body, used for an entry's canonical content and a kit's files (spec 0050 001 §B, §E).
+        static member ofBytes (bytes : FileByteContent) : ContentHash =
+            Convert.ToHexStringLower(SHA256.HashData bytes.value) |> ContentHash
+
     /// Where a pulled entry came from (spec 0050 001 §B `provenance`).
     type SourcePullInfo =
         {
             source : MaterialSourceName
             record : MaterialSourceRecordId
+            /// The SHA-256 of the record's text as the source's snapshot held it when this version was pulled (spec 0050 S13.1).
+            recordHash : ContentHash
             sourceVersion : MaterialSourceVersion
             licence : EntryLicence
             citation : EntryCitation
@@ -303,16 +315,6 @@ module LibraryEntryFiles =
                     |> List.map (fun material -> material.toLibraryEntryId)
                 | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
             ownIds @ materialIds
-
-    /// The lowercase hex SHA-256 of an entry's canonical content or a kit file's stored bytes (spec 0050 001 §B, §E).
-    type ContentHash =
-        | ContentHash of string
-
-        member this.value : string = let (ContentHash s) = this in s
-
-        /// The app's one SHA-256 body, used for an entry's canonical content and a kit's files (spec 0050 001 §B, §E).
-        static member ofBytes (bytes : FileByteContent) : ContentHash =
-            Convert.ToHexStringLower(SHA256.HashData bytes.value) |> ContentHash
 
     type EntryName with
 

@@ -319,6 +319,7 @@ module LibraryEntryFilesTests =
             {
                 source = MaterialSourceName "refractiveindex.info"
                 record = MaterialSourceRecordId "main/Si/Aspnes"
+                recordHash = Encoding.UTF8.GetBytes "shelf: main\nbook: Si\npage: Aspnes\n" |> FileByteContent |> ContentHash.ofBytes
                 sourceVersion = MaterialSourceVersion "2024-08-14"
                 licence = EntryLicence "CC0-1.0"
                 citation = EntryCitation "D. E. Aspnes and A. A. Studna, Phys. Rev. B 27, 985 (1983)"

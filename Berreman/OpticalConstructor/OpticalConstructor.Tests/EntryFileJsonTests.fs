@@ -2,6 +2,7 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.Numerics
+open System.Text
 open System.Text.Json.Nodes
 open Microsoft.FSharp.Reflection
 open Xunit
@@ -10,6 +11,7 @@ open Berreman.Fields
 open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Dispersion
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Placement
@@ -247,6 +249,7 @@ module EntryFileJsonTests =
         {
             source = MaterialSourceName "refractiveindex.info"
             record = MaterialSourceRecordId "main/SiO2/Malitson"
+            recordHash = Encoding.UTF8.GetBytes "shelf: main\nbook: SiO2\npage: Malitson\n" |> FileByteContent |> ContentHash.ofBytes
             sourceVersion = MaterialSourceVersion "2024-08-14"
             licence = EntryLicence "CC-BY-4.0"
             citation = EntryCitation "I. H. Malitson, J. Opt. Soc. Am. 55, 1205–1208 (1965)"
@@ -469,6 +472,34 @@ module EntryFileJsonTests =
         match (LibraryFileText "{ this is not JSON").parseEntry MaterialEntryKind with
         | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason, "the error carries the parser's message")
         | other -> Assert.Fail($"a text that is not JSON: expected MalformedJsonErr, got %A{other}")
+
+    [<Fact>]
+    let ``a pulled provenance keeps its record's hash through an entry file, and a file without it is refused`` () =
+        // Spec 0050 S13.1: the pulled provenance carries its record's hash, and the schema requires it.
+        let abcHash = ContentHash "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        let pulled : SourcePullInfo =
+            {
+                pulledFromSource with
+                    recordHash = Encoding.UTF8.GetBytes "abc" |> FileByteContent |> ContentHash.ofBytes
+            }
+        Assert.Equal<ContentHash>(abcHash, pulled.recordHash)
+
+        let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first (SourcePullProvenance pulled) silica
+        let envelope = content.``sealed`` |> okOf
+        let text = envelope.fileText |> okOf
+        let readBack = text.parseEntry MaterialEntryKind |> okOf
+        Assert.Equal<LibraryEntryEnvelope>(envelope, readBack)
+
+        match readBack.content.provenance with
+        | SourcePullProvenance info -> Assert.Equal<ContentHash>(abcHash, info.recordHash)
+        | other -> Assert.Fail($"expected SourcePullProvenance, got %A{other}")
+
+        let withoutRecordHash =
+            editedText text (fun entry ->
+                let pulledFields = entry.["provenance"].["Fields"].[0].AsObject()
+                Assert.Equal<string>(abcHash.value, pulledFields.["recordHash"].GetValue<string>())
+                Assert.True(pulledFields.Remove "recordHash", "the file holds the record's hash"))
+        assertSchemaInvalid "a pulled provenance without its record hash" (withoutRecordHash.parseEntry MaterialEntryKind)
 
     let private unionCaseNames<'Union> (values : 'Union list) : Set<string> =
         values |> List.map (fun value -> (fst (FSharpValue.GetUnionFields(box value, typeof<'Union>))).Name) |> Set.ofList

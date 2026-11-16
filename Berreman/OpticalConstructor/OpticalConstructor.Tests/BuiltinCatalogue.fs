@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Text
 open Berreman.Constants
 open Berreman.Media
 open Softellect.Sys.Primitives
@@ -225,11 +226,13 @@ module BuiltinCatalogue =
 
     /// Returns catalogue Silicon under the supplied identity and source licence (spec 0050 S3.3).
     let licensedMaterialContent (id : MaterialId) (name : EntryName) (licence : EntryLicence) (citation : EntryCitation) : LibraryEntryContent =
+        let record = MaterialSourceRecordId $"test/{name.value}"
         let provenance =
             SourcePullProvenance
                 {
                     source = MaterialSourceName "Test optical constants"
-                    record = MaterialSourceRecordId $"test/{name.value}"
+                    record = record
+                    recordHash = Encoding.UTF8.GetBytes record.value |> FileByteContent |> ContentHash.ofBytes
                     sourceVersion = MaterialSourceVersion "2026-11-01"
                     licence = licence
                     citation = citation
