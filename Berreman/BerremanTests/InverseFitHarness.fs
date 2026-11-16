@@ -5,7 +5,6 @@ open OpticalConstructor.Domain                          // PropagationReadouts: 
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
-open OpticalConstructor.Optimization.BenchNoise
 open Xunit
 open BerremanTests.MatrixComparison
 
@@ -37,7 +36,3 @@ module InverseFitHarness =
                 let e = expected.element i j
                 let a = actual.element i j
                 Assert.True(abs (e - a) < allowedDiff, $"M[{i},{j}]: expected {e}, got {a}")
-
-    /// The fixed, distinct seeds, one noisy experiment each, so a whole ensemble is reproducible bit for bit from
-    /// this list alone. Both suites use the same eight, which makes their ensembles directly comparable.
-    let ensembleSeeds : NoiseSeed list = [ 1; 2; 3; 4; 5; 6; 7; 8 ] |> List.map NoiseSeed

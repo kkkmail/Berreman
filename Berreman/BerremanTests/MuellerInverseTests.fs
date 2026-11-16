@@ -1193,7 +1193,7 @@ type MuellerInverseTests() =
         // took 504 s against the 365 s this serial version measures — so the seeds are run serially,
         // deliberately. The forward solves allocate heavily, and extra threads buy contention rather than
         // throughput.
-        let experiments = ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments = BerremanTestSupport.BiaxialSample.ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
@@ -1241,7 +1241,7 @@ type MuellerInverseTests() =
         // error — fixed within an experiment, and therefore genuinely systematic FOR that experiment —
         // has no preferred direction across experiments.
         for row in table do
-            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length ensembleSeeds)) row).value
+            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length BerremanTestSupport.BiaxialSample.ensembleSeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}) — the error is systematic, not random: {report}")

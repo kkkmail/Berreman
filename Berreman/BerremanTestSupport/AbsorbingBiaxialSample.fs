@@ -5,9 +5,12 @@ open Berreman.Geometry
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
 open BerremanTestSupport.BiaxialSample
 
 /// Spec 0044 — the ABSORBING triclinic sample both absorbing suites share: its ground-truth constants,
@@ -173,3 +176,58 @@ module AbsorbingBiaxialSample =
     /// Generous box bounds in SCALED units: ±50 is ±0.05 in refractive index, ±5e-3 in ε″ and ±5e-4 in
     /// gyration, which brackets any physically sensible excursion from the start.
     let searchBox = SearchBox 50.0
+
+    /// Five of the shared eight seeds keep the fifteen-parameter ensemble's runtime bounded (spec 0050 S12.2).
+    let noisySeeds : NoiseSeed list = ensembleSeeds |> List.truncate 5
+
+    /// The fifteen unknowns, the three birefringences and the isotropic absorption: the direction normalized data
+    /// suppresses and absolute throughput was added to recover (spec 0050 S12.2).
+    let absorbingReportedQuantities : RecoveredQuantity<AbsorbingTriclinicParameters> list =
+        [ for a in AbsorbingTriclinicParameters.axes -> RecoveredQuantity.ofAxis a ]
+        @ [ RecoveredQuantity.derived (ParameterName "n2 - n1") (fun p -> QuantityValue (p.index2.value - p.index1.value))
+            RecoveredQuantity.derived (ParameterName "n3 - n2") (fun p -> QuantityValue (p.index3.value - p.index2.value))
+            RecoveredQuantity.derived (ParameterName "n3 - n1") (fun p -> QuantityValue (p.index3.value - p.index1.value))
+            RecoveredQuantity.derived (ParameterName "isotropic absorption") (fun p ->
+                QuantityValue ((p.epsIm11.value + p.epsIm22.value + p.epsIm33.value) / 3.0)) ]
+
+    /// A reported quantity whose spread is outside its pinned band or has no band (spec 0050 S12.2).
+    type RecoveryBandBreach =
+        {
+            quantity : ParameterName
+            spread : RelativeError
+            bandOpt : RelativeError option
+        }
+
+        member this.describe : string =
+            match this.bandOpt with
+            | Some band -> $"{this.quantity.value} {this.spread.value} is out of its band {band.value}"
+            | None -> $"{this.quantity.value} has no band pinned"
+
+    /// In report order, every quantity whose caller-measured spread is not strictly below its band, or which has no
+    /// band; empty when all are in band. The bands were pinned from the ensemble per spec 0044 §9 (spec 0050 S12.2).
+    let absorbingBandBreaches
+        (spreadOf : RecoveredQuantity<AbsorbingTriclinicParameters> -> RelativeError)
+        : RecoveryBandBreach list =
+        absorbingReportedQuantities
+        |> List.choose (fun quantity ->
+            let spread = spreadOf quantity
+            // Bands ~3x the observed scatters: indices 3.3e-4, birefringences 1.4e-4 to 4.5e-4,
+            // absorption components 5.1e-4 to 5.1e-3, isotropic absorption 6.3e-4, gyration 2.4e-2 to
+            // 3.12 (yes, 312 % — g23 is not measured by this bench in any useful sense).
+            let bandOpt =
+                match quantity.name.value with
+                | "n1" | "n2" | "n3" -> Some (RelativeErr 1.0e-3)
+                | "n2 - n1" | "n3 - n2" | "n3 - n1" -> Some (RelativeErr 1.5e-3)
+                | "e11" | "e22" | "e33" | "e23" | "e13" | "e12" -> Some (RelativeErr 1.5e-2)
+                | "isotropic absorption" -> Some (RelativeErr 2.0e-3)
+                | "g11" | "g22" | "g33" | "g23" | "g13" | "g12" -> Some (RelativeErr 1.0e1)
+                | _ -> None
+            match bandOpt with
+            | Some band when spread.value < band.value -> None
+            | _ ->
+                Some
+                    {
+                        quantity = quantity.name
+                        spread = spread
+                        bandOpt = bandOpt
+                    })

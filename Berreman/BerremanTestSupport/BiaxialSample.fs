@@ -11,6 +11,7 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.RecoveryEnsembles
 
 /// Spec 0044 — the TRICLINIC (class 1) gyrotropic sample every biaxial suite shares:
@@ -178,3 +179,6 @@ module BiaxialSample =
         @ [ RecoveredQuantity.derived (ParameterName "n2 - n1") (fun p -> QuantityValue (p.index2.value - p.index1.value))
             RecoveredQuantity.derived (ParameterName "n3 - n2") (fun p -> QuantityValue (p.index3.value - p.index2.value))
             RecoveredQuantity.derived (ParameterName "n3 - n1") (fun p -> QuantityValue (p.index3.value - p.index1.value)) ]
+
+    /// Fixed, distinct seeds shared by the noisy suites for reproducible, comparable ensembles (spec 0050 S12.2).
+    let ensembleSeeds : NoiseSeed list = [ 1; 2; 3; 4; 5; 6; 7; 8 ] |> List.map NoiseSeed

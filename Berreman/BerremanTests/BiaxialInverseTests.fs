@@ -834,7 +834,7 @@ type BiaxialInverseTests() =
         // RUNTIME. Eight full nine-parameter fits from a blind start dominate this class. They are run
         // SERIALLY: the uniaxial suite measured concurrency on the same forward model and found it slower
         // rather than faster, because the solves allocate heavily and extra threads buy contention.
-        let experiments = ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments = BerremanTestSupport.BiaxialSample.ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
@@ -919,7 +919,7 @@ type BiaxialInverseTests() =
         // the standard error of the ensemble MEAN: a departure smaller than that is the random error not
         // yet averaged away, not evidence of anything systematic.
         for row in table do
-            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length ensembleSeeds)) row).value
+            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length BerremanTestSupport.BiaxialSample.ensembleSeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}): {report}")

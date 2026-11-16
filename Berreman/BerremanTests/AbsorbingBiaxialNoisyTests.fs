@@ -66,14 +66,6 @@ type AbsorbingBiaxialNoisyTests() =
 
     let forward = createBerremanForward buildAbsorbing solverParameters
 
-    /// The seeds this ensemble uses. FIVE rather than the shared eight, and the reason is runtime: a
-    /// fifteen-parameter fit on noisy data is roughly three times the work of the nine-parameter
-    /// transparent one, and eight of them would put this single fact past forty minutes. Five still gives
-    /// a sample standard deviation, at 35 % relative uncertainty against the eight-seed 27 %. The seeds
-    /// are the first five of the shared list, so the ensembles remain directly comparable as far as they
-    /// overlap.
-    let seeds = ensembleSeeds |> List.truncate 5
-
     /// Run ONE noisy absorbing experiment end to end.
     let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<AbsorbingTriclinicParameters> =
         let observations = noisyObserveAbsoluteWith forward absorbing noise seed fullConfigurations |> expectOk
@@ -81,21 +73,6 @@ type AbsorbingBiaxialNoisyTests() =
             seed = seed
             fit = fitAbsorbingObservations forward searchBox observations (absorbingScalingAround perturbedStart) |> expectOk
         }
-
-    /// The quantities the ensemble reports on: the fifteen fitted unknowns, plus the three birefringences
-    /// and the ISOTROPIC ABSORPTION.
-    ///
-    /// The isotropic absorption is here because it is the whole reason absolute throughput was added to
-    /// the measurement. It is not a fitted parameter — it is the mean of three of them — and the
-    /// noiseless suite showed it is the direction normalized data suppresses. Reporting only the six
-    /// individual components would leave the one quantity this design exists to rescue unmeasured.
-    let reportedQuantities : RecoveredQuantity<AbsorbingTriclinicParameters> list =
-        [ for a in AbsorbingTriclinicParameters.axes -> RecoveredQuantity.ofAxis a ]
-        @ [ RecoveredQuantity.derived (ParameterName "n2 - n1") (fun p -> QuantityValue (p.index2.value - p.index1.value))
-            RecoveredQuantity.derived (ParameterName "n3 - n2") (fun p -> QuantityValue (p.index3.value - p.index2.value))
-            RecoveredQuantity.derived (ParameterName "n3 - n1") (fun p -> QuantityValue (p.index3.value - p.index1.value))
-            RecoveredQuantity.derived (ParameterName "isotropic absorption") (fun p ->
-                QuantityValue ((p.epsIm11.value + p.epsIm22.value + p.epsIm33.value) / 3.0)) ]
 
     let absorptionNames = [ "e11"; "e22"; "e33"; "e23"; "e13"; "e12" ]
     let gyrationNames = [ "g11"; "g22"; "g33"; "g23"; "g13"; "g12" ]
@@ -109,13 +86,13 @@ type AbsorbingBiaxialNoisyTests() =
         // normalized Mueller elements wrong by up to 0.005 of full scale, absolute throughput wrong by up
         // to 1 %. Each fits fifteen unknowns from the perturbed start against the RECORDED angles. Their
         // spread is the uncertainty.
-        let experiments = seeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments = noisySeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
 
         let recovered = experiments |> List.map (fun e -> e.fit.recovered)
-        let table = reportedQuantities |> List.map (statisticsFor absorbing recovered)
+        let table = absorbingReportedQuantities |> List.map (statisticsFor absorbing recovered)
         let residualLevels =
             [ for e in experiments ->
                 $"seed {e.seed.value}: chi2 {e.fit.chiSquared}, rms {e.fit.rmsResidual}, {e.fit.solution.iterations.value} iterations" ]
@@ -143,25 +120,15 @@ type AbsorbingBiaxialNoisyTests() =
         // two sit between 3 and 3.6 (e22 at 3.5, the isotropic absorption at 3.2) and every other is
         // below 2.7 — which is what an unbiased set of nineteen t(4) estimates looks like.
         for row in table do
-            let allowance = 5.0 * (standardErrorOfMean (EnsembleSize (List.length seeds)) row).value
+            let allowance = 5.0 * (standardErrorOfMean (EnsembleSize (List.length noisySeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}): {report}")
 
-        // Bands pinned per the spec §9 protocol from the observed ensemble.
-        for row in table do
-            // Bands ~3x the observed scatters: indices 3.3e-4, birefringences 1.4e-4 to 4.5e-4,
-            // absorption components 5.1e-4 to 5.1e-3, isotropic absorption 6.3e-4, gyration 2.4e-2 to
-            // 3.12 (yes, 312 % — g23 is not measured by this bench in any useful sense).
-            let scatterBand =
-                match row.quantity.name.value with
-                | "n1" | "n2" | "n3" -> 1.0e-3
-                | "n2 - n1" | "n3 - n2" | "n3 - n1" -> 1.5e-3
-                | "e11" | "e22" | "e33" | "e23" | "e13" | "e12" -> 1.5e-2
-                | "isotropic absorption" -> 2.0e-3
-                | "g11" | "g22" | "g33" | "g23" | "g13" | "g12" -> 1.0e1
-                | other -> failwith $"no acceptance band is pinned for {other}"
-            Assert.True(row.scatter.value < scatterBand, $"{row.quantity.name.value} scatter {row.scatter.value} out of band: {report}")
+        let breaches = absorbingBandBreaches (fun q -> (rowFor table q.name |> expectOk).scatter)
+        Assert.True(
+            List.isEmpty breaches,
+            System.String.Join("; ", [ for breach in breaches -> breach.describe ]) + ": " + report)
 
         // ------------------------------------------------------------------ the ordering of the result
         //
