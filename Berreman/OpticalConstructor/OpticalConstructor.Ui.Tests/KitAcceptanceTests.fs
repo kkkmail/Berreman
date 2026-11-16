@@ -35,6 +35,7 @@ open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.SetupGrids
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.StudyForward
+open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.BenchNoise
@@ -296,6 +297,16 @@ module KitAcceptanceTests =
 
     /// AT-2's one study, of the five plates' experiments (spec 0050 S12.2; 001 §Q AT-2).
     let private absorbingStudyName = StudyName "AbsorbingTriclinic"
+
+    /// AT-2's one fit: its study's joint fit, calibrations held fixed, run one minute after the kit's start (spec 0050 S12.2; 001 §Q AT-2).
+    let private absorbingFitRequest : StudyFitRequest =
+        {
+            study = absorbingStudyName
+            stage = JointStage
+            calibrationUse = CalibrationHeldFixed
+        }
+    let private absorbingFitTime = ClockTime (DateTime(2026, 6, 1, 12, 1, 0, DateTimeKind.Utc))
+    let private absorbingFitRunName = FitRunName "AbsorbingTriclinic@20260601T120100Z"
 
     /// The 100 µm plate of that material every AT-2 plate item binds; each observation carries its cut (spec 0050 S12.2).
     let private absorbingPlate : Library.Sample =
@@ -706,12 +717,14 @@ module KitAcceptanceTests =
             ]
         attached |> apply edits
 
-    let private runAcceptanceFit
-        (stage : FitStage)
-        (expectedName : FitRunName)
+    /// Runs `request` through the shell's `StudyFitJobHost.posting`, its post running each job at once, then the recorded messages through the update in order; a fit not ended by `deadline` fails the fact naming the request (spec 0050 S12.1, S12.2).
+    let private runStudyFitThroughShell
         (model : TableAndElementRotationModel)
+        (request : StudyFitRequest)
+        (deadline : TimeSpan)
         : TableAndElementRotationModel =
-        let file = FitRunKitFile.fileNameOf expectedName.fileStem
+        let file = FileName $"{request.study.fileStem.value}@*.fitrun-json"
+        let requested = $"the {request.stage.text} fit of {request.study.value} ({request.calibrationUse.text})"
         use ended = new ManualResetEventSlim (false)
         let messages = ConcurrentQueue<TableAndElementRotationMsg> ()
         let host =
@@ -729,29 +742,45 @@ module KitAcceptanceTests =
                             model.kitShell with studyFits = host
                         }
             }
+        let running = ready |> updateTableAndElementRotation (StudyFit (RunFit request))
+        expect file $"{requested} started" true running.studyFit.job.isRunning
+        if not (ended.Wait deadline) then
+            Assert.Fail($"{file.value}: expected {requested} to end within {deadline.TotalSeconds} s; actual no end")
+        let recorded = messages.ToArray () |> Array.toList
+        let completions = recorded |> List.choose (function StudyFit (StudyFitEnded result) -> Some result | _ -> None)
+        expect file "completion message count" 1 completions.Length
+        let finished = running |> apply recorded
+        match finished.studyFit.errorOpt with
+        | Some error -> Assert.Fail($"{file.value}: expected {requested} to succeed; actual {error.describe}")
+        | None -> ()
+        expect file "fit finished" false finished.studyFit.job.isRunning
+        expect file "fit handle released" None finished.studyFit.handleOpt
+        match completions with
+        | [ Ok run ] ->
+            expect file "committed fit run" (Some run.name) finished.studyFit.job.committedResults
+            expect file "appended fit run names" ((model.kitFitRuns |> List.map _.name) @ [ run.name ]) (finished.kitFitRuns |> List.map _.name)
+        | [ Error error ] -> Assert.Fail($"{file.value}: expected {requested} to end with a fit run; actual {error.describe}")
+        | _ -> Assert.Fail($"{file.value}: expected one completion of {requested}; actual {completions.Length}")
+        {
+            finished with kitShell = model.kitShell
+        }
+
+    /// AT-1's fit of `stage` through the shell within its sixty seconds, committing `expectedName` (spec 0050 S12.1, S12.2).
+    let private runAcceptanceFit
+        (stage : FitStage)
+        (expectedName : FitRunName)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        let file = FitRunKitFile.fileNameOf expectedName.fileStem
         let request : StudyFitRequest =
             {
                 study = studyName
                 stage = stage
                 calibrationUse = CalibrationHeldFixed
             }
-        let running = ready |> updateTableAndElementRotation (StudyFit (RunFit request))
-        expect file "fit started" true running.studyFit.job.isRunning
-        Assert.True(ended.Wait(TimeSpan.FromSeconds 60.0), $"{file.value}: expected fit completion within sixty seconds; actual no completion")
-        let recorded = messages.ToArray () |> Array.toList
-        let completions = recorded |> List.choose (function StudyFit (StudyFitEnded result) -> Some result | _ -> None)
-        expect file "completion message count" 1 completions.Length
-        let finished = running |> apply recorded
-        match finished.studyFit.errorOpt with
-        | Some error -> Assert.Fail($"{file.value}: expected a successful fit; actual {error.describe}")
-        | None -> ()
-        expect file "fit finished" false finished.studyFit.job.isRunning
-        expect file "fit handle released" None finished.studyFit.handleOpt
+        let finished = runStudyFitThroughShell model request (TimeSpan.FromSeconds 60.0)
         expect file "committed fit run" (Some expectedName) finished.studyFit.job.committedResults
-        expect file "appended fit run names" ((model.kitFitRuns |> List.map _.name) @ [ expectedName ]) (finished.kitFitRuns |> List.map _.name)
-        {
-            finished with kitShell = model.kitShell
-        }
+        finished
 
     let private buildAcceptanceStudy
         (setTime : ClockTime -> unit)
@@ -1981,7 +2010,7 @@ module KitAcceptanceTests =
         |> List.map (fun parameter -> SetOpenedMaterialParameter (absorbingStudyName, copy.version, parameter))
         |> List.fold sent opened
 
-    /// AT-2's kit, built through the Library drop, the import dialog, the start screen and the kit window's messages alone (spec 0050 S12.2; 001 §Q).
+    /// AT-2's kit, built through the Library drop, the import dialog, the start screen and the kit window's messages alone, ending with its study's fit (spec 0050 S12.2; 001 §Q).
     let private buildAbsorbingKit (run : FolderName) : BuiltAcceptanceKit =
         let runFolder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "KitAcceptanceTests", run.value))
         let folder = KitFolder (runFolder.combine (FolderName "absorbing-biaxial-noisy"))
@@ -1991,7 +2020,7 @@ module KitAcceptanceTests =
         Directory.CreateDirectory folder.value.value |> ignore
         Directory.CreateDirectory entries.value |> ignore
         let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
-        let clock, _ = testClockAt absorbingStartTime
+        let clock, time = testClockAt absorbingStartTime
         let material = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance absorbingMaterial
         let sample = LibraryEntryContent.ofSample VersionNumber.first UserProvenance absorbingPlate
         dropOnLibraryWindow context [ writeEntryFile entries material; writeEntryFile entries sample ] [ material.id; sample.id ]
@@ -2032,10 +2061,13 @@ module KitAcceptanceTests =
             let recorded = buildAbsorbingGrids table
             let attached = attachNoisyObservations folder recorded
             let studied = buildAbsorbingStudy attached
+            time.Value <- absorbingFitTime
+            let fitted = runStudyFitThroughShell studied absorbingFitRequest (TimeSpan.FromSeconds 1800.0)
+            expect (FitRunKitFile.fileNameOf absorbingFitRunName.fileStem) "committed fit run" (Some absorbingFitRunName) fitted.studyFit.job.committedResults
             {
                 folder = folder
                 context = context
-                model = studied
+                model = fitted
                 clock = clock
             }
         with _ ->
@@ -2412,6 +2444,67 @@ module KitAcceptanceTests =
             let listed = String.concat "\n" mismatches
             Assert.Fail($"{file.value}: {mismatches.Length} residual entries off the harness's by more than 1e-12 · max(1, |h_k|)\n{listed}")
 
+    /// `run` is AT-2's one fit: the study's joint fit at its stamp over the five plates, nonlinear, one member converged from the entries' starts, and the material's fifteen components in the axes' order from `perturbedStart` (spec 0050 S12.2; 001 §Q AT-2).
+    let private assertAbsorbingFitRun (run : FitRun) : unit =
+        let file = FitRunKitFile.fileNameOf run.name.fileStem
+        expect file "name" absorbingFitRunName run.name
+        expect file "study" absorbingStudyName run.study
+        expect file "stamp" absorbingFitTime run.stamp
+        expect file "stage" JointStage run.stage
+        expect file "calibration use" CalibrationHeldFixed run.calibrationUse
+        expect file "engine" NonlinearStudyEngine run.engine
+        expect file "fitted runs, the five plates' experiments in kit order" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) run.runs
+        let expected : (FitEntryRef * ParameterValue) list =
+            CrystalPhysics.AbsorbingTriclinicParameters.axes
+            |> List.map (fun r ->
+                let entry : FitEntryRef =
+                    {
+                        parameter = MaterialParameterRef (absorbingMaterialVersion, r.name)
+                        owner = MaterialOwner absorbingMaterialVersion
+                    }
+                entry, r.parameterValueOf AbsorbingBiaxialSample.perturbedStart)
+        let actual : (FitEntryRef * ParameterValue) list =
+            run.entries
+            |> List.map (fun held ->
+                let entry : FitEntryRef =
+                    {
+                        parameter = held.parameter
+                        owner = held.owner
+                    }
+                entry, held.start)
+        expect file "fifteen entries, the material's components in the axes' order, each starting at perturbedStart's value" expected actual
+        match run.members with
+        | [ only ] ->
+            match only.outcome with
+            | MemberConverged _ -> expect file "the member's start, the entries' starts" (run.entries |> List.map _.start) only.start
+            | MemberFailed failure -> Assert.Fail($"{file.value}: expected its one member to converge; actual {failure.value}")
+        | members -> Assert.Fail($"{file.value}: expected one member, the study's single start; actual {members.Length}")
+
+    /// The crystal `run` promotes the study's material to holds every reported quantity within the noisy suite's bands, each by its relative error to `absorbing` (spec 0050 S12.2; 001 §Q AT-2).
+    let private assertAbsorbingRecovery (study : Study) (run : FitRun) : unit =
+        let file = FitRunKitFile.fileNameOf run.name.fileStem
+        let recovered =
+            match study.promotedMaterialWith run absorbingMaterialVersion absorbingMaterial with
+            | Ok promoted ->
+                match promoted.physics with
+                | CrystalParameterPhysics (CrystalPhysics.AbsorbingTriclinicCrystal p) -> p
+                | other -> failwith $"{file.value}: expected the promoted material's absorbing triclinic crystal; actual %A{other}"
+            | Error error -> failwith $"{file.value}: expected the study to promote its material; actual {error.describe}"
+        let truth = AbsorbingBiaxialSample.absorbing
+        let breaches =
+            AbsorbingBiaxialSample.absorbingBandBreaches (fun q -> MuellerFitting.RelativeError.between (q.valueIn recovered) (q.valueIn truth))
+        if not breaches.IsEmpty then
+            let chiSquared =
+                run.members
+                |> List.choose (fun held ->
+                    match held.outcome with
+                    | MemberConverged (_, chiSquaredOpt) -> chiSquaredOpt
+                    | MemberFailed _ -> None)
+                |> List.map (fun chi -> $"{chi.value:R}")
+                |> String.concat ", "
+            let listed = breaches |> List.map _.describe |> String.concat "; "
+            Assert.Fail($"{file.value}: {breaches.Length} reported quantities out of the noisy suite's bands, chi-squared {chiSquared}: {listed}")
+
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-2 builds the absorbing-biaxial-noisy kit's library entries, items and table through the app's messages`` () : unit =
@@ -2454,3 +2547,24 @@ module KitAcceptanceTests =
         let observations = byPlate (noisyObservationsOf attachedSeed)
         assertAbsorbingStudyData built.model observations
         assertAbsorbingStartResidual built.model observations
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-2's study engine recovers one seed's fifteen constants and derived quantities within the bands AbsorbingBiaxialNoisyTests asserts`` () : unit =
+        let built = absorbingBuild.Force ()
+        let reader = KitProxy.create built.folder
+        let fitFile = FileName $"{absorbingStudyName.fileStem.value}@*.fitrun-json"
+        let runs = reader.readFitRuns absorbingStudyName |> readKitResult fitFile
+        let run =
+            match runs with
+            | [ only ] -> only
+            | held -> failwith $"{fitFile.value}: expected exactly one fit run; actual {held.Length}"
+        expect fitFile "the stored fit run, the window's completed job" built.model.kitFitRuns runs
+        assertAbsorbingFitRun run
+        let studyFile = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+        let study =
+            reader.readStudies ()
+            |> readKitResult studyFile
+            |> List.tryFind (fun held -> held.name = absorbingStudyName)
+            |> Option.defaultWith (fun () -> failwith $"{studyFile.value}: expected the stored study; actual none")
+        assertAbsorbingRecovery study run
