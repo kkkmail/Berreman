@@ -242,6 +242,7 @@
         <Compile Include="HenkeCompoundsTests.fs" />
         <Compile Include="PlannerSymmetryTests.fs" />
         <Compile Include="PlannerReportTests.fs" />
+        <Compile Include="PlannerInputsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

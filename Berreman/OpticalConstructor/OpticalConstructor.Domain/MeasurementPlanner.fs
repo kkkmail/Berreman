@@ -7,6 +7,8 @@ open Berreman.Fields
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.PlannerSymmetry
 
@@ -294,14 +296,16 @@ module MeasurementPlanner =
                 | OffAxisCutFinding need -> Some need
                 | UnrecoverableTargetFinding _ -> None)
 
-    /// Why the planner refuses a report (spec 0050 S14.1).
+    /// Why the planner refuses a report or a lab profile (spec 0050 S14.1).
     type PlannerError =
         | UnknownPlannerTargetErr of reason : string
+        | UnresolvedPlannerItemErr of reason : string
 
         /// The refusal as the planner states it (spec 0050 S14.1).
         member this.describe : string =
             match this with
             | UnknownPlannerTargetErr reason -> $"the crystal has no such parameter: {reason}"
+            | UnresolvedPlannerItemErr reason -> $"the item's model is not in the library: {reason}"
 
     type CrystalParameters with
 
@@ -409,3 +413,180 @@ module MeasurementPlanner =
                 | None -> Error (UnknownPlannerTargetErr $"{name.value} (it has {heldNames})"))
             |> ItemEvaluation.sequenced
             |> Result.map reportOf
+
+    /// A light source of the kit: its preset's line, and its limits when it is tunable (spec 0050 S14.1; 001 §M).
+    type PlannerSource =
+        {
+            item : ItemId
+            label : ItemLabel
+            waveLength : WaveLength
+            tunableLimitsOpt : Berreman.Dispersion.WaveLengthInterval option
+        }
+
+    /// What an optic of the kit does around a plate; derived, never stored, so it carries no wire tag
+    /// (spec 0050 S14.1).
+    type OpticRole =
+        | PolarizerOptic
+        | CompensatorOptic
+        /// A compound holding a polarizer at some depth, as a circular polarizer does (spec 0050 S14.1).
+        | CompoundOptic
+
+    /// A polarizer, compensator or compound of the kit (spec 0050 S14.1; 001 §M).
+    type PlannerOptic =
+        {
+            item : ItemId
+            label : ItemLabel
+            role : OpticRole
+        }
+
+    /// What a detector of the kit records; derived, never stored, so it carries no wire tag (spec 0050 S14.1).
+    type DetectorRecording =
+        | RecordsIntensity
+        | RecordsMuellerMatrix
+        | RecordsPsiDelta
+
+    /// A detector of the kit with its noise model: the item's own values, checked against its model's noise axes
+    /// (spec 0050 S14.1; 001 §M).
+    type PlannerDetector =
+        {
+            item : ItemId
+            label : ItemLabel
+            recording : DetectorRecording
+            noise : ParameterValues
+        }
+
+    /// The lab profile: the kit's sources, optics and detectors read from their models in item order; nothing is
+    /// typed in (spec 0050 S14.1; 001 §M).
+    type LabProfile =
+        {
+            sources : PlannerSource list
+            optics : PlannerOptic list
+            detectors : PlannerDetector list
+        }
+
+        /// Each item read through `choiceOf`, as the study's forward model reads it; the first item it does not
+        /// resolve, or a detector its noise axes refuse, refuses the whole profile (spec 0050 S14.1; 001 §M).
+        static member ofItems
+            (items : Item list)
+            (choiceOf : Item -> ItemModelChoice option)
+            : Result<LabProfile, PlannerError> =
+            let noProfile : LabProfile = { sources = []; optics = []; detectors = [] }
+
+            // A compound's component may itself be a compound; its leaves are what the light meets.
+            let rec leafForms (components : CompoundComponent list) : OpticalForm list =
+                components
+                |> List.collect (fun part ->
+                    match part.form with
+                    | CompoundModel inner -> leafForms inner
+                    | RealPolarizerModel _
+                    | RetarderPlateModel _
+                    | BlackBoxMuellerModel _ -> [ part.form ])
+
+            let compoundRoleOf (components : CompoundComponent list) : OpticRole =
+                leafForms components
+                |> List.tryPick (fun form ->
+                    match form with
+                    | RealPolarizerModel _ -> Some CompoundOptic
+                    | RetarderPlateModel _
+                    | BlackBoxMuellerModel _
+                    | CompoundModel _ -> None)
+                |> Option.defaultValue CompensatorOptic
+
+            let profileOf (item : Item) : Result<LabProfile, PlannerError> =
+                let opticOf (role : OpticRole) : LabProfile =
+                    let optic : PlannerOptic = { item = item.id; label = item.label; role = role }
+                    { noProfile with optics = [ optic ] }
+
+                let detectorOf
+                    (recording : DetectorRecording)
+                    (noiseAxes : ItemParameterAxis list)
+                    : Result<LabProfile, PlannerError> =
+                    (ParameterValues.ofParameters item.parameters).checkedFor noiseAxes
+                    |> Result.mapError (fun error -> UnresolvedPlannerItemErr $"{item.label.value}: {error.describe}")
+                    |> Result.map (fun noise ->
+                        let detector : PlannerDetector =
+                            {
+                                item = item.id
+                                label = item.label
+                                recording = recording
+                                noise = noise
+                            }
+
+                        { noProfile with detectors = [ detector ] })
+
+                match choiceOf item with
+                | None -> Error (UnresolvedPlannerItemErr item.label.value)
+                | Some (SourcePresetChoice (_, preset)) ->
+                    let source : PlannerSource =
+                        {
+                            item = item.id
+                            label = item.label
+                            waveLength = preset.waveLength
+                            tunableLimitsOpt = preset.tunableLimitsOpt
+                        }
+
+                    Ok { noProfile with sources = [ source ] }
+                | Some (PolarizerPresetChoice (_, polarizer)) ->
+                    match polarizer.behavior with
+                    | Library.ComputedIdeal _ -> Ok (opticOf PolarizerOptic)
+                    | Library.ConstantMueller _ -> Ok (opticOf CompoundOptic)
+                // A plate is the planner's sample, read in step 471, not a part of the lab.
+                | Some (StackSampleChoice _) -> Ok noProfile
+                | Some (LibraryModelChoice model) ->
+                    match model.entry.model with
+                    | OpticalElementModel (RealPolarizerModel _) -> Ok (opticOf PolarizerOptic)
+                    | OpticalElementModel (RetarderPlateModel _) -> Ok (opticOf CompensatorOptic)
+                    | OpticalElementModel (CompoundModel components) -> Ok (opticOf (compoundRoleOf components))
+                    // An object, and the calibration reference.
+                    | OpticalElementModel (BlackBoxMuellerModel _)
+                    | EmptySlotModel -> Ok noProfile
+                    | IntensityDetectorModel noiseAxes -> detectorOf RecordsIntensity noiseAxes
+                    | MuellerPolarimeterModel noiseAxes -> detectorOf RecordsMuellerMatrix noiseAxes
+                    | EllipsometerModel noiseAxes -> detectorOf RecordsPsiDelta noiseAxes
+                    // Only a bound choice carries the preset or sample a binding form takes its physics from
+                    // (step 216).
+                    | SourcePresetItemModel
+                    | IdealPolarizerItemModel
+                    | StackSampleItemModel ->
+                        let modelName : string = model.entry.name.value
+                        let reason : string = $"{item.label.value}: '{modelName}' takes a binding, and the choice binds none"
+                        Error (UnresolvedPlannerItemErr reason)
+
+            items
+            |> List.map profileOf
+            |> sequenced
+            |> Result.map (fun (profiles : LabProfile list) ->
+                let profile : LabProfile =
+                    {
+                        sources = profiles |> List.collect (fun (one : LabProfile) -> one.sources)
+                        optics = profiles |> List.collect (fun (one : LabProfile) -> one.optics)
+                        detectors = profiles |> List.collect (fun (one : LabProfile) -> one.detectors)
+                    }
+
+                profile)
+
+        /// A polarimeter's full Mueller matrix, an ellipsometer's Psi and Delta, and an intensity detector's full
+        /// Mueller matrix only beside two polarizing optics, a polarizer and an analyzer around the plate: the HAUP
+        /// class (spec 0050 S14.1; 001 §M).
+        member this.reachOf (detector : PlannerDetector) : DetectorReach =
+            match detector.recording with
+            | RecordsMuellerMatrix -> FullMuellerReach
+            | RecordsPsiDelta -> EllipsometricReach
+            | RecordsIntensity ->
+                let polarizing : PlannerOptic list =
+                    this.optics
+                    |> List.choose (fun (optic : PlannerOptic) ->
+                        match optic.role with
+                        | PolarizerOptic
+                        | CompoundOptic -> Some optic
+                        | CompensatorOptic -> None)
+
+                match polarizing with
+                | _ :: _ :: _ -> FullMuellerReach
+                | _ -> IntensityOnlyReach
+
+        /// Each reach some detector of the profile has, once, the fullest first (spec 0050 S14.1).
+        member this.reaches : DetectorReach list =
+            let reached : DetectorReach list = this.detectors |> List.map this.reachOf
+            [ FullMuellerReach; EllipsometricReach; IntensityOnlyReach ]
+            |> List.filter (fun reach -> List.contains reach reached)
