@@ -906,7 +906,7 @@ module CatalogueImport =
                                     }
                                 Some record
                             | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | SourcePullProvenance _
-                            | ForkProvenance _ | FitProvenance _ -> None)
+                            | ForkProvenance _ | FitProvenance _ | FileImportProvenance _ -> None)
                         |> PulledRecord.inRecordOrder |> Ok
                     pinEntryVersion = fun id version ->
                         let envelopeOpt =

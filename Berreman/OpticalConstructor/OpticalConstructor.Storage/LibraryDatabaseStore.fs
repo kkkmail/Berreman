@@ -44,8 +44,10 @@ module LibraryDatabaseStore =
             | SourcePullProvenance _ -> 4
             | ForkProvenance _ -> 5
             | FitProvenance _ -> 6
+            | FileImportProvenance _ -> 7
 
-        /// The catalogue that ships the entry: a built-in's alone, never a fitted entry's (spec 0050 S11.5).
+        /// The catalogue that ships the entry: a built-in's alone, never a fitted entry's (spec 0050 S11.5)
+        /// nor a file import's (S13.2).
         member this.catalogueIdOpt : CatalogueId option =
             match this with
             | BuiltInProvenance catalogueId -> Some catalogueId
@@ -53,7 +55,8 @@ module LibraryDatabaseStore =
             | KitImportProvenance _
             | SourcePullProvenance _
             | ForkProvenance _
-            | FitProvenance _ -> None
+            | FitProvenance _
+            | FileImportProvenance _ -> None
 
     type StoredEntryVersion with
 
@@ -141,7 +144,8 @@ module LibraryDatabaseStore =
             | UserProvenance
             | KitImportProvenance _
             | ForkProvenance _
-            | FitProvenance _ -> []
+            | FitProvenance _
+            | FileImportProvenance _ -> []
 
         [<ElevationBoundary(nameof StorageBoundary, "the library database seam (spec 0050 001 §C): a sample version's referenced material versions become relational keys")>]
         member this.sampleMaterialRows : Result<LibrarySampleMaterialRow list, StorageError> =

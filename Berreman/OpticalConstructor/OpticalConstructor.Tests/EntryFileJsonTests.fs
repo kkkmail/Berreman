@@ -360,6 +360,20 @@ module EntryFileJsonTests =
 
         assertMaterialRoundTrips fitProvenance fittedSilica
 
+        let fileImportProvenance =
+            FileImportProvenance
+                {
+                    file = FileName "test-glasses.agf"
+                    fileHash = Encoding.UTF8.GetBytes "abc" |> FileByteContent |> ContentHash.ofBytes
+                }
+        let importedSilica : MaterialEntry =
+            {
+                silica with
+                    id = MaterialId (Guid.Parse "b4c8e2f6-0a3d-4e71-9c5b-7d1f3a6e8b20")
+            }
+
+        assertMaterialRoundTrips fileImportProvenance importedSilica
+
     /// A constant material with one distinctive number, the one a tampering test changes.
     let private tamperable : MaterialEntry =
         materialWith "7e2c4a9b-5d13-4f68-9a0e-3c1f7d2b8e64" "Transparent test glass" (epsOnly (EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.5234))))

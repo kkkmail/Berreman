@@ -134,6 +134,31 @@
         }
       }
     },
+    "fileImportProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "FileImportProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": ["file", "fileHash"],
+              "additionalProperties": false,
+              "properties": {
+                "file": { "type": "string", "minLength": 1 },
+                "fileHash": { "$ref": "#/$defs/contentHash" }
+              }
+            }
+          ],
+          "minItems": 1,
+          "items": false,
+          "description": "The leaf name of the user's catalogue file an imported entry came from, and the SHA-256 of its bytes (spec 0050 S13.2)."
+        }
+      }
+    },
     "provenance": {
       "oneOf": [
         { "$ref": "#/$defs/builtInProvenance" },
@@ -141,9 +166,10 @@
         { "$ref": "#/$defs/kitImportProvenance" },
         { "$ref": "#/$defs/sourcePullProvenance" },
         { "$ref": "#/$defs/forkProvenance" },
-        { "$ref": "#/$defs/fitProvenance" }
+        { "$ref": "#/$defs/fitProvenance" },
+        { "$ref": "#/$defs/fileImportProvenance" }
       ],
-      "description": "Where the entry comes from: built-in, user, imported from a kit, pulled from an online source, forked from another entry, or fitted in a kit."
+      "description": "Where the entry comes from: built-in, user, imported from a kit, pulled from an online source, forked from another entry, fitted in a kit, or imported from a user's catalogue file."
     }
   }
 }

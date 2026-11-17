@@ -163,7 +163,7 @@ module CatalogueImportStore =
                                                 }
                                             Ok (record :: records)
                                         | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | SourcePullProvenance _
-                                        | ForkProvenance _ | FitProvenance _ ->
+                                        | ForkProvenance _ | FitProvenance _ | FileImportProvenance _ ->
                                             Error (LibraryRowInvalidErr $"the pulled-source row of {reference.describe} names a version not pulled from '{source.value}'")
                                     | None ->
                                         Error (LibraryRowInvalidErr $"the pulled-source row of {reference.describe} names a version the library does not hold")))) (Ok [])

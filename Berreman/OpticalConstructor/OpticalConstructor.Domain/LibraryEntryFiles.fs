@@ -220,7 +220,8 @@ module LibraryEntryFiles =
         member this.withExtension (extension : FileExtension) : FileName = FileName $"{this.value}{extension.value}"
 
     /// An entry file's `provenance` (spec 0050 001 §B); a built-in's protection derives from it.
-    /// A fork preserves its ancestry but belongs to the user (spec 0050 S3.1); so does a fitted entry (S11.5).
+    /// A fork preserves its ancestry but belongs to the user (spec 0050 S3.1); so does a fitted entry (S11.5)
+    /// and one imported from a user's catalogue file (S13.2).
     type EntryProvenance =
         | BuiltInProvenance of CatalogueId
         | UserProvenance
@@ -228,6 +229,7 @@ module LibraryEntryFiles =
         | SourcePullProvenance of SourcePullInfo
         | ForkProvenance of EntryForkInfo
         | FitProvenance of EntryFitInfo
+        | FileImportProvenance of EntryFileImportInfo
 
         member this.protection : EntryProtection =
             match this with
@@ -236,7 +238,8 @@ module LibraryEntryFiles =
             | KitImportProvenance _
             | SourcePullProvenance _
             | ForkProvenance _
-            | FitProvenance _ -> UserManaged
+            | FitProvenance _
+            | FileImportProvenance _ -> UserManaged
 
         member this.categoryOrigin : CategoryOrigin =
             match this with
@@ -245,7 +248,8 @@ module LibraryEntryFiles =
             | KitImportProvenance _
             | SourcePullProvenance _
             | ForkProvenance _
-            | FitProvenance _ -> UserCategory
+            | FitProvenance _
+            | FileImportProvenance _ -> UserCategory
 
     /// The entry version a fork came from, retaining its provenance, licence and citation (spec 0050 S3.1).
     and EntryForkInfo =
@@ -262,6 +266,14 @@ module LibraryEntryFiles =
             kit : KitId
             studyStem : FileStem
             fitRunStem : FileStem
+        }
+
+    /// The user's catalogue file an imported entry came from: its leaf name and the SHA-256 of its bytes
+    /// (spec 0050 S13.2).
+    and EntryFileImportInfo =
+        {
+            file : FileName
+            fileHash : ContentHash
         }
 
     /// The licence credit shown for an entry, including its citation when required (spec 0050 S3.3).
@@ -286,12 +298,12 @@ module LibraryEntryFiles =
     type EntryProvenance with
 
         /// Pulled entries retain their licence credit through every fork (spec 0050 S3.3); a fit carries no
-        /// licence (S11.5).
+        /// licence (S11.5), nor does a user's file, whose licence the app does not know (S13.2).
         member this.attributionOpt : EntryAttribution option =
             match this with
             | SourcePullProvenance info -> Some (info.licence.attributionWith info.citation)
             | ForkProvenance fork -> fork.originalProvenance.attributionOpt
-            | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | FitProvenance _ -> None
+            | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | FitProvenance _ | FileImportProvenance _ -> None
 
     /// One named entry's licence credit in a surface's attribution list (spec 0050 S3.3).
     type EntryAttributionLine =
