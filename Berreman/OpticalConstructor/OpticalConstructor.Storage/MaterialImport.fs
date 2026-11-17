@@ -5,6 +5,7 @@ open System.Text
 open System.Numerics
 open System.Globalization
 open FSharp.Data
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Fields
@@ -18,14 +19,14 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Domain.HenkeCompounds
 
-/// refractiveindex.info YAML + CSV import and CSV export (§D.9), and PTB OCDB import (spec 0050 S13.2). Importers produce
+/// refractiveindex.info YAML + CSV import and CSV export (§D.9), and PTB OCDB and AGF glass-catalogue import (spec 0050 S13.2). Importers produce
 /// in-memory `MaterialEntry` values (never FsPickler-pickled, §I.4); every parsed
 /// wavelength is reduced to the engine meter base through the sole `Units` seam
 /// (§D.2/§D.11) according to the file's declared unit. A tabulated page or CSV becomes
 /// a `TabulatedNK` axis table, read linearly in λ and clamped to its end samples (spec
 /// 0050 step 2). The error channel is `Result<_, ImportError>` — parsing never throws
 /// past the boundary. The importers read, and `exportCsv` returns, the raw file TEXT
-/// (`RefractiveIndexInfoText` / `NkCsvText` / `PtbOcdbText`), keeping filesystem IO and its exceptions
+/// (`RefractiveIndexInfoText` / `NkCsvText` / `PtbOcdbText` / `GlassCatalogueText`), keeping filesystem IO and its exceptions
 /// out of the parser.
 module MaterialImport =
 
@@ -112,6 +113,51 @@ module MaterialImport =
 
         member this.value : string = let (HenkeScatteringText t) = this in t
 
+    /// A Zemax glass catalogue's dispersion formula number, the third token of a glass's `NM` line (spec 0050 S13.2).
+    type AgfFormulaNumber =
+        | AgfFormulaNumber of int
+
+        member this.value : int = let (AgfFormulaNumber n) = this in n
+
+        /// The formula's name as Zemax gives it; any other number is named by itself (spec 0050 S13.2).
+        member this.family : string =
+            match this with
+            | AgfFormulaNumber 1 -> "Schott"
+            | AgfFormulaNumber 2 -> "Sellmeier 1"
+            | AgfFormulaNumber 3 -> "Herzberger"
+            | AgfFormulaNumber 4 -> "Sellmeier 2"
+            | AgfFormulaNumber 5 -> "Conrady"
+            | AgfFormulaNumber 6 -> "Sellmeier 3"
+            | AgfFormulaNumber 7 -> "Handbook of Optics 1"
+            | AgfFormulaNumber 8 -> "Handbook of Optics 2"
+            | AgfFormulaNumber 9 -> "Sellmeier 4"
+            | AgfFormulaNumber 10 -> "Extended"
+            | AgfFormulaNumber 11 -> "Sellmeier 5"
+            | AgfFormulaNumber 12 -> "Extended 2"
+            | AgfFormulaNumber 13 -> "Extended 3"
+            | AgfFormulaNumber n -> $"AGF formula {n}"
+
+    /// The text of a Zemax glass catalogue (`.agf`), as Schott, Ohara, Hoya and CDGM publish theirs: a file the user
+    /// gives, never a bundled one (spec 0050 S13.2).
+    type GlassCatalogueText =
+        | GlassCatalogueText of string
+
+        member this.value : string = let (GlassCatalogueText t) = this in t
+
+        /// The catalogue's bytes decoded: a UTF-16 (`FF FE`, `FE FF`) or UTF-8 byte-order mark names the encoding, and
+        /// without one a zero in the first two bytes is UTF-16 little-endian, else UTF-8, as Zemax writes either (spec 0050 S13.2).
+        static member ofBytes (bytes : FileByteContent) : GlassCatalogueText =
+            let raw = bytes.value
+            let decodedAfter (markLength : int) (encoding : Encoding) : string = encoding.GetString(raw, markLength, raw.Length - markLength)
+            let text =
+                match List.ofArray (Array.truncate 3 raw) with
+                | 0xFFuy :: 0xFEuy :: _ -> decodedAfter 2 Encoding.Unicode
+                | 0xFEuy :: 0xFFuy :: _ -> decodedAfter 2 Encoding.BigEndianUnicode
+                | [ 0xEFuy; 0xBBuy; 0xBFuy ] -> decodedAfter 3 Encoding.UTF8
+                | prefix when List.contains 0uy (List.truncate 2 prefix) -> decodedAfter 0 Encoding.Unicode
+                | _ -> decodedAfter 0 Encoding.UTF8
+            GlassCatalogueText text
+
     let private inv = CultureInfo.InvariantCulture
 
     /// One row of an imported n,k table: λ in meters, n and k.
@@ -123,12 +169,23 @@ module MaterialImport =
             k : float
         }
 
+    /// A source's wavelength range from its two bounds in µm, the refractiveindex.info and AGF convention, through the
+    /// `Units` seam (spec 0050 S13.2).
+    let private micrometerInterval (lower : UnitMagnitude) (upper : UnitMagnitude) : WaveLengthInterval =
+        { lower = toWaveLength Micrometer lower; upper = toWaveLength Micrometer upper }
+
+    /// The zero nominal interval of a source that states no range: with a single segment the topmost segment
+    /// extrapolates for every wavelength (`Dispersion.fs:346`), so the bounds are descriptive, not clamping.
+    let private unrangedInterval : WaveLengthInterval =
+        let nominal = toWaveLength Micrometer (UnitMagnitude 0.0)
+        { lower = nominal; upper = nominal }
+
     /// A refractiveindex.info page, split into lines; its line rules also read the catalog (spec 0050 S13.1).
     type private RiiPage =
         | RiiPage of string[]
 
-        /// A source text's lines, whatever its line endings: a refractiveindex.info page or catalog, a PTB OCDB record
-        /// (spec 0050 S13.1, S13.2).
+        /// A source text's lines, whatever its line endings: a refractiveindex.info page or catalog, a PTB OCDB record,
+        /// a glass catalogue (spec 0050 S13.1, S13.2).
         static member linesOf (text : string) : string[] = text.Replace("\r\n", "\n").Split('\n')
 
         /// The text after `key`, trimmed, when the trimmed line opens with it (spec 0050 S13.1).
@@ -208,10 +265,7 @@ module MaterialImport =
                 else None)
 
         /// The page's `wavelength_range: a b` (µm, the RII convention) as the
-        /// imported segment's interval, through the `Units` seam. A page without one
-        /// gets the zero nominal interval — with a single segment the topmost
-        /// segment extrapolates for every wavelength (`Dispersion.fs:346`), so the
-        /// bounds are descriptive, not clamping.
+        /// imported segment's interval; a page without one gets the zero nominal interval.
         member this.rangeInterval : WaveLengthInterval =
             let (RiiPage lines) = this
             let bounds =
@@ -221,10 +275,8 @@ module MaterialImport =
                     t.StartsWith "wavelength_range:" || t.StartsWith "range:")
                 |> Option.map (fun l -> RiiPage.floatsOn (l.Substring(l.IndexOf(':') + 1)))
             match bounds with
-            | Some f when f.Length >= 2 -> { lower = toWaveLength Micrometer (UnitMagnitude f.[0]); upper = toWaveLength Micrometer (UnitMagnitude f.[1]) }
-            | _ ->
-                let nominal = toWaveLength Micrometer (UnitMagnitude 0.0)
-                { lower = nominal; upper = nominal }
+            | Some f when f.Length >= 2 -> micrometerInterval (UnitMagnitude f.[0]) (UnitMagnitude f.[1])
+            | _ -> unrangedInterval
 
     type TabulatedNkTable with
 
@@ -322,6 +374,12 @@ module MaterialImport =
             let r = Math.Round p
             if abs (p - r) < 1e-9 then Some (TermPower (int r)) else None
 
+    /// The coefficients of a formula block in their source's order: a refractiveindex.info page's, or an AGF glass's `CD`
+    /// line (spec 0050 S13.2).
+    [<Softellect.Sys.NumericCarrier("the coefficient block of one dispersion formula, a refractiveindex.info page's or an AGF glass's, read by position as the formula is rewritten and lowered to term data (R3; as DispersionModels.SellmeierCoefficients)")>]
+    type FormulaCoefficients =
+        | FormulaCoefficients of float[]
+
     /// One (amplitude, partner) pair of a formula block: a monomial's exponent, a resonance or an oscillator constant.
     type private CoefficientPair =
         {
@@ -329,15 +387,10 @@ module MaterialImport =
             partner : RiiCoefficient
         }
 
-    /// The coefficients of a formula block, in the page's order.
-    [<Softellect.Sys.NumericCarrier("the coefficient block of one refractiveindex.info formula page, read by position as the formula is lowered to term data (R3; as DispersionModels.SellmeierCoefficients)")>]
-    type private FormulaCoefficients =
-        | FormulaCoefficients of float[]
-
-        /// Consecutive (amplitude, partner) coefficient pairs; a dangling odd tail
-        /// drops (the pre-existing formula-1 behaviour).
-        member this.coefficientPairs : CoefficientPair list =
-            let (FormulaCoefficients values) = this
+        /// Consecutive (amplitude, partner) coefficient pairs of a block; a dangling odd tail drops (the pre-existing
+        /// formula-1 behaviour). A member here, not on the block, because the block is public and a pair is not (spec 0050 S13.2).
+        static member pairsOf (coefficients : FormulaCoefficients) : CoefficientPair list =
+            let (FormulaCoefficients values) = coefficients
             values
             |> Array.chunkBySize 2
             |> Array.choose (fun p -> if p.Length = 2 then Some { amplitude = RiiCoefficient p.[0]; partner = RiiCoefficient p.[1] } else None)
@@ -405,7 +458,7 @@ module MaterialImport =
     /// is total, so the lowering cannot fail.
     let private sellmeierAxis (resonance : ResonanceShape) (coefficients : FormulaCoefficients) : Result<EpsAxisDispersion, ImportError> =
         let (FormulaCoefficients nums) = coefficients
-        let pairs = (FormulaCoefficients nums.[1..]).coefficientPairs
+        let pairs = CoefficientPair.pairsOf (FormulaCoefficients nums.[1..])
         let model =
             Sellmeier
                 {
@@ -426,7 +479,7 @@ module MaterialImport =
     /// RII formula 3 (polynomial): n² = c₀ + Σ cᵢ·λ^{pᵢ} — ε term data directly.
     let private polynomialAxis (coefficients : FormulaCoefficients) : Result<EpsAxisDispersion, ImportError> =
         let (FormulaCoefficients nums) = coefficients
-        monomialTerms (RiiFormulaNumber 3) (fun amplitude p -> amplitude.complexPowerTerm p) (FormulaCoefficients nums.[1..]).coefficientPairs
+        monomialTerms (RiiFormulaNumber 3) (fun amplitude p -> amplitude.complexPowerTerm p) (CoefficientPair.pairsOf (FormulaCoefficients nums.[1..]))
         |> Result.map (fun terms -> ComplexEps { terms = (RiiCoefficient nums.[0]).complexConstTerm :: terms; wavelengthScale = micrometerScale })
 
     /// RII formula 4 (the RefractiveIndex.INFO formula): n² = c₀
@@ -450,14 +503,14 @@ module MaterialImport =
             match resonant c.[5] c.[6] c.[7] c.[8] with
             | Error e -> Error e
             | Ok second ->
-                monomialTerms (RiiFormulaNumber 4) (fun amplitude p -> amplitude.complexPowerTerm p) (FormulaCoefficients c.[9..]).coefficientPairs
+                monomialTerms (RiiFormulaNumber 4) (fun amplitude p -> amplitude.complexPowerTerm p) (CoefficientPair.pairsOf (FormulaCoefficients c.[9..]))
                 |> Result.map (fun tail ->
                     ComplexEps { terms = (RiiCoefficient c.[0]).complexConstTerm :: first @ second @ tail; wavelengthScale = micrometerScale })
 
     /// RII formula 5 (Cauchy): n = c₀ + Σ cᵢ·λ^{pᵢ} — an n formula directly; k = 0.
     let private cauchyAxis (coefficients : FormulaCoefficients) : Result<EpsAxisDispersion, ImportError> =
         let (FormulaCoefficients nums) = coefficients
-        monomialTerms (RiiFormulaNumber 5) (fun amplitude p -> amplitude.realPowerTerm p) (FormulaCoefficients nums.[1..]).coefficientPairs
+        monomialTerms (RiiFormulaNumber 5) (fun amplitude p -> amplitude.realPowerTerm p) (CoefficientPair.pairsOf (FormulaCoefficients nums.[1..]))
         |> Result.map (fun terms ->
             RealNK { nFormula = { terms = (RiiCoefficient nums.[0]).realConstTerm :: terms; wavelengthScale = micrometerScale }; kFormula = zeroK })
 
@@ -467,7 +520,7 @@ module MaterialImport =
     let private gasesAxis (coefficients : FormulaCoefficients) : Result<EpsAxisDispersion, ImportError> =
         let (FormulaCoefficients nums) = coefficients
         let oscillators =
-            (FormulaCoefficients nums.[1..]).coefficientPairs
+            CoefficientPair.pairsOf (FormulaCoefficients nums.[1..])
             |> List.filter (fun pair -> pair.amplitude.value <> 0.0)
             |> List.collect (fun pair ->
                 let amplitude = pair.amplitude.value
@@ -517,11 +570,11 @@ module MaterialImport =
         | RiiFormulaNumber n -> Error (UnsupportedFormulaErr (formula, $"unknown refractiveindex.info dispersion formula %d{n} (supported: 1-7)"))
 
     /// Assemble the imported entry for a lowered formula (spec 0033 step 025):
-    /// the single-segment isotropic tree over the page's wavelength range
+    /// the single-segment isotropic tree over the source's wavelength range
     /// carried in an `EpsWithDispValue`-backed `MaterialComplexity`, so the
-    /// import is EDITABLE. A fresh `MaterialId` is minted — imports carry no persisted
-    /// identity of their own (step 002).
-    let private entryOfAxis (formula : RiiFormulaNumber) (interval : WaveLengthInterval) (axis : EpsAxisDispersion) : MaterialEntry =
+    /// import is EDITABLE, named and described by its source (spec 0050 S13.2). A fresh
+    /// `MaterialId` is minted — imports carry no persisted identity of their own (step 002).
+    let private entryOfAxis (name : EntryName) (description : EntryDescription) (interval : WaveLengthInterval) (axis : EpsAxisDispersion) : MaterialEntry =
         let complexity =
             {
                 eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = interval; dispersion = axis } ])
@@ -530,11 +583,42 @@ module MaterialImport =
             }
         {
             id = MaterialId.create ()
-            name = EntryName $"Imported (refractiveindex.info formula %d{formula.value})"
+            name = name
             category = CategoryIds.glass
-            description = Some (EntryDescription $"Imported %s{formula.family} (refractiveindex.info formula %d{formula.value}).")
+            description = Some description
             physics = ComplexityPhysics complexity
         }
+
+    type AgfFormulaNumber with
+
+        /// A glass's coefficients C1 … Cn, absent ones zero, as the refractiveindex.info page of the same equation term
+        /// for term, so `lowerFormulaAxis` lowers it and no number is approximated; a number outside 1-13 is
+        /// MalformedSourceFileErr (spec 0050 S13.2).
+        member this.riiFormOf (coefficients : FormulaCoefficients) : Result<RiiFormulaNumber * FormulaCoefficients, ImportError> =
+            let (FormulaCoefficients values) = coefficients
+            let c (i : int) : float = if i <= values.Length then values.[i - 1] else 0.0
+            let page (formula : RiiFormulaNumber) (block : float list) : Result<RiiFormulaNumber * FormulaCoefficients, ImportError> =
+                Ok (formula, FormulaCoefficients (Array.ofList block))
+            // Formula 1's C1 + C2·λ² + C3·λ⁻² + … + C6·λ⁻⁸, which 10 and 12 extend.
+            let schott = [ c 1; c 2; 2.0; c 3; -2.0; c 4; -4.0; c 5; -6.0; c 6; -8.0 ]
+            let sellmeier (termCount : int) : float list = 0.0 :: [ for i in 1 .. 2 * termCount -> c i ]
+            // C1 + C2·λ^power/(λ² − C3) − C4·λ²: the RII formula's first resonance and one monomial.
+            let handbook (power : float) : float list = [ c 1; c 2; power; c 3; 1.0; 0.0; 0.0; 0.0; 0.0; -(c 4); 2.0 ]
+            match this with
+            | AgfFormulaNumber 1 -> page (RiiFormulaNumber 3) schott
+            | AgfFormulaNumber 2 -> page (RiiFormulaNumber 2) (sellmeier 3)
+            | AgfFormulaNumber 3 -> page (RiiFormulaNumber 7) [ for i in 1 .. 6 -> c i ]
+            | AgfFormulaNumber 4 -> page (RiiFormulaNumber 1) [ for i in 1 .. 5 -> c i ]
+            | AgfFormulaNumber 5 -> page (RiiFormulaNumber 5) [ c 1; c 2; -1.0; c 3; -3.5 ]
+            | AgfFormulaNumber 6 -> page (RiiFormulaNumber 2) (sellmeier 4)
+            | AgfFormulaNumber 7 -> page (RiiFormulaNumber 4) (handbook 0.0)
+            | AgfFormulaNumber 8 -> page (RiiFormulaNumber 4) (handbook 2.0)
+            | AgfFormulaNumber 9 -> page (RiiFormulaNumber 2) [ c 1 - 1.0; c 2; c 3; c 4; c 5 ]
+            | AgfFormulaNumber 10 -> page (RiiFormulaNumber 3) (schott @ [ c 7; -10.0; c 8; -12.0 ])
+            | AgfFormulaNumber 11 -> page (RiiFormulaNumber 2) (sellmeier 5)
+            | AgfFormulaNumber 12 -> page (RiiFormulaNumber 3) (schott @ [ c 7; 4.0; c 8; 6.0 ])
+            | AgfFormulaNumber 13 -> page (RiiFormulaNumber 3) [ c 1; c 2; 2.0; c 3; 4.0; c 4; -2.0; c 5; -4.0; c 6; -6.0; c 7; -8.0; c 8; -10.0; c 9; -12.0 ]
+            | AgfFormulaNumber n -> Error (MalformedSourceFileErr $"AGF formula {n} is not one of the Zemax glass formulas 1-13")
 
     type RefractiveIndexInfoText with
 
@@ -561,8 +645,10 @@ module MaterialImport =
                             let nums = RiiPage.floatsOn (cl.Substring(cl.IndexOf(':') + 1))
                             if nums.Length < 1 then Error (NoDataErr $"formula %d{formula.value}: no coefficients")
                             else
+                                let name = EntryName $"Imported (refractiveindex.info formula %d{formula.value})"
+                                let description = EntryDescription $"Imported %s{formula.family} (refractiveindex.info formula %d{formula.value})."
                                 lowerFormulaAxis formula (FormulaCoefficients nums)
-                                |> Result.map (entryOfAxis formula page.rangeInterval)
+                                |> Result.map (entryOfAxis name description page.rangeInterval)
                         | None -> Error (MalformedYamlErr $"formula %d{formula.value} block has no coefficients line")
                 | None ->
                     let rows = page.tabulatedRows Micrometer
@@ -864,6 +950,109 @@ module MaterialImport =
                             match AtomicScatteringFactors.tryCreate (kept |> Array.map (fun row -> row.[0])) (kept |> Array.map (fun row -> row.[1])) (kept |> Array.map (fun row -> row.[2])) with
                             | Ok factors -> Ok factors
                             | Error error -> Error (MalformedSourceFileErr error.describe)
+            with e -> Error (MalformedSourceFileErr e.Message)
+
+    type GlassCatalogueText with
+
+        /// One user glass per `NM` block in file order: `CD` gives its coefficients and `LD` its range in µm, and every
+        /// other line is read past. Each is `riiFormOf`, then `lowerFormulaAxis`, then `entryOfAxis`. A glass that does
+        /// not read or lower refuses the whole text, naming every such glass one per line; no glass is NoDataErr (spec 0050 S13.2).
+        member this.importGlasses : Result<MaterialEntry list, ImportError> =
+            try
+                let numbered =
+                    RiiPage.linesOf this.value
+                    |> Array.mapi (fun at line -> (at + 1, line.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries)))
+                    |> Array.filter (fun (_, tokens) -> tokens.Length > 0 && not (tokens.[0].StartsWith '!'))
+                    |> Array.toList
+
+                // Each NM line with the lines after it up to the next; the lines before the first belong to no glass.
+                let glasses =
+                    List.foldBack
+                        (fun ((_, tokens : string[]) as line) (pending, closed) ->
+                            match tokens.[0] with
+                            | "NM" -> ([], (line, pending) :: closed)
+                            | _ -> (line :: pending, closed))
+                        numbered
+                        ([], [])
+                    |> snd
+
+                let numbersOf (lineNumber : int, tokens : string[]) : Result<float[], string> =
+                    let values =
+                        tokens.[1..]
+                        |> Array.choose (fun token ->
+                            match Double.TryParse(token, NumberStyles.Float, inv) with
+                            | true, v -> Some v
+                            | _ -> None)
+                    let lineText = String.concat " " tokens
+                    if values.Length = tokens.Length - 1 then Ok values
+                    else Error $"line {lineNumber} does not read as numbers: {lineText}"
+
+                let formulaOf (token : string) : AgfFormulaNumber option =
+                    match Double.TryParse(token, NumberStyles.Float, inv) with
+                    | true, v when Double.IsInteger v && abs v <= float Int32.MaxValue -> Some (AgfFormulaNumber (int v))
+                    | _ -> None
+
+                let readGlass ((nmLineNumber, nmTokens) : int * string[], own : (int * string[]) list) : Result<MaterialEntry, string> =
+                    let nameOpt = nmTokens |> Array.tryItem 1 |> Option.map EntryName
+                    let nmText = String.concat " " nmTokens
+                    let keyed (keyword : string) : (int * string[]) list = own |> List.filter (fun (_, tokens) -> tokens.[0] = keyword)
+
+                    let coefficients =
+                        match keyed "CD" with
+                        | [ line ] -> numbersOf line |> Result.map FormulaCoefficients
+                        | [] -> Error "it has no CD line"
+                        | _ -> Error "it has more than one CD line"
+
+                    let interval =
+                        match keyed "LD" with
+                        | [] -> Ok unrangedInterval
+                        | [ (lineNumber, _) as line ] ->
+                            numbersOf line
+                            |> Result.bind (fun bounds ->
+                                if bounds.Length >= 2 then Ok (micrometerInterval (UnitMagnitude bounds.[0]) (UnitMagnitude bounds.[1]))
+                                else Error $"line {lineNumber} does not give two wavelengths")
+                        | _ -> Error "it has more than one LD line"
+
+                    let imported =
+                        match nameOpt, nmTokens |> Array.tryItem 2 |> Option.bind formulaOf, coefficients, interval with
+                        | None, _, _, _ -> Error "its NM line names no glass"
+                        | Some _, None, _, _ -> Error $"its NM line gives no whole formula number: {nmText}"
+                        | Some _, Some _, Error reason, _
+                        | Some _, Some _, _, Error reason -> Error reason
+                        | Some name, Some formula, Ok glassCoefficients, Ok range ->
+                            match formula.riiFormOf glassCoefficients with
+                            | Error (MalformedSourceFileErr reason) -> Error reason
+                            | Error error -> Error error.describe
+                            | Ok (riiFormula, riiCoefficients) ->
+                                match lowerFormulaAxis riiFormula riiCoefficients with
+                                | Error error -> Error $"AGF formula {formula.value} ({formula.family}) does not lower to term data: {error.describe}"
+                                | Ok axis ->
+                                    let description = EntryDescription $"Imported {formula.family} glass (AGF formula {formula.value})."
+                                    Ok (entryOfAxis name description range axis)
+
+                    let label =
+                        match nameOpt with
+                        | Some name -> name.value
+                        | None -> "a glass without a name"
+                    imported |> Result.mapError (fun reason -> $"{label} (line {nmLineNumber}): {reason}")
+
+                let read = glasses |> List.map readGlass
+                let refusals =
+                    read
+                    |> List.choose (fun result ->
+                        match result with
+                        | Error reason -> Some reason
+                        | Ok _ -> None)
+                match read, refusals with
+                | [], _ -> Error (NoDataErr "the catalogue holds no glass: no line opens with NM")
+                | _, [] ->
+                    read
+                    |> List.choose (fun result ->
+                        match result with
+                        | Ok glass -> Some glass
+                        | Error _ -> None)
+                    |> Ok
+                | _, refused -> Error (MalformedSourceFileErr (String.concat "\n" refused))
             with e -> Error (MalformedSourceFileErr e.Message)
 
     /// Export n,k sampled over a `Range<WaveLength>` to CSV text (§D.9), reading the

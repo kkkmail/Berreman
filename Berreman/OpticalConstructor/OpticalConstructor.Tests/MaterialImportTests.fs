@@ -2,6 +2,9 @@ namespace OpticalConstructor.Tests
 
 open System.IO
 open System.Numerics
+open System.Text
+open System.Globalization
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Fields
@@ -506,3 +509,188 @@ module MaterialImportTests =
         | Error (NoDataErr _) -> ()
         | Error e -> Assert.Fail($"a header alone: expected NoDataErr, got {e.describe}")
         | Ok _ -> Assert.Fail "a header alone: expected NoDataErr, got factors"
+
+    /// An AGF equation the fact evaluates itself from C1 … Cn at λ in µm: n² or n (spec 0050 S13.2).
+    type private AgfEquation =
+        | SquaredIndexEquation of (float[] -> float -> float)
+        | PlainIndexEquation of (float[] -> float -> float)
+
+    /// One glass written out by hand: its name, its `NM` formula number, its `CD` coefficients and its AGF equation
+    /// (spec 0050 S13.2).
+    type private AgfGlassSample =
+        {
+            glassName : string
+            formulaNumber : int
+            coefficients : float[]
+            equation : AgfEquation
+        }
+
+        /// The glass as catalogue lines, each coefficient written so it reads back exactly.
+        member this.agfLines : string =
+            let values = this.coefficients |> Array.map (fun c -> c.ToString("R", CultureInfo.InvariantCulture)) |> String.concat " "
+            $"NM {this.glassName} {this.formulaNumber} 0 1.5 60.0 0 1\nCD {values}\n"
+
+    /// The AGF equations as OpticSim.jl evaluates them (`src/GlassCat/utilities.jl`), C1 the array's first entry.
+    let private schottSquared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 + c.[2] / l2 + c.[3] / pown l2 2 + c.[4] / pown l2 3 + c.[5] / pown l2 4
+
+    let private sellmeierSquared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        1.0 + (c |> Array.chunkBySize 2 |> Array.sumBy (fun term -> term.[0] * l2 / (l2 - term.[1])))
+
+    let private herzbergerIndex (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        let l = 1.0 / (l2 - 0.028)
+        c.[0] + c.[1] * l + c.[2] * l * l + c.[3] * l2 + c.[4] * pown l2 2 + c.[5] * pown l2 3
+
+    let private sellmeier2Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        1.0 + c.[0] + c.[1] * l2 / (l2 - c.[2] * c.[2]) + c.[3] * l2 / (l2 - c.[4] * c.[4])
+
+    let private handbook1Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] / (l2 - c.[2]) - c.[3] * l2
+
+    let private handbook2Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 / (l2 - c.[2]) - c.[3] * l2
+
+    let private sellmeier4Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 / (l2 - c.[2]) + c.[3] * l2 / (l2 - c.[4])
+
+    let private extendedSquared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        schottSquared c lam + c.[6] / pown l2 5 + c.[7] / pown l2 6
+
+    let private extended2Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        schottSquared c lam + c.[6] * pown l2 2 + c.[7] * pown l2 3
+
+    let private extended3Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 + c.[2] * pown l2 2 + c.[3] / l2 + c.[4] / pown l2 2 + c.[5] / pown l2 3 + c.[6] / pown l2 4
+        + c.[7] / pown l2 5 + c.[8] / pown l2 6
+
+    /// `fixtures/test-glasses.agf`'s three glasses, in file order.
+    let private fixtureGlasses : AgfGlassSample list =
+        [
+            { glassName = "TEST-S1"; formulaNumber = 2; coefficients = [| 1.04; 0.006; 0.23; 0.02; 1.01; 103.6; 0.0; 0.0; 0.0; 0.0 |]; equation = SquaredIndexEquation (fun c lam -> sellmeierSquared c.[0..5] lam) }
+            { glassName = "TEST-SCHOTT"; formulaNumber = 1; coefficients = [| 2.56; -0.0106; 0.0283; 0.0011; -4.5e-5; 4.0e-6 |]; equation = SquaredIndexEquation schottSquared }
+            { glassName = "TEST-HERZ"; formulaNumber = 3; coefficients = [| 1.68; 0.0105; 0.0003; -0.0035; 1.0e-5; -2.0e-7 |]; equation = PlainIndexEquation herzbergerIndex }
+        ]
+
+    /// Test-local glasses of the formulas the fixture leaves out, Conrady aside (its λ^3.5 is refused).
+    let private formulaGlasses : AgfGlassSample list =
+        [
+            { glassName = "TEST-F4"; formulaNumber = 4; coefficients = [| 0.1; 1.2; 0.09; 0.5; 9.0 |]; equation = SquaredIndexEquation sellmeier2Squared }
+            { glassName = "TEST-F6"; formulaNumber = 6; coefficients = [| 0.7; 0.005; 0.4; 0.015; 0.2; 0.03; 0.8; 100.0 |]; equation = SquaredIndexEquation sellmeierSquared }
+            { glassName = "TEST-F7"; formulaNumber = 7; coefficients = [| 2.3; 0.012; 0.025; 0.011 |]; equation = SquaredIndexEquation handbook1Squared }
+            { glassName = "TEST-F8"; formulaNumber = 8; coefficients = [| 1.4; 0.95; 0.012; 0.009 |]; equation = SquaredIndexEquation handbook2Squared }
+            { glassName = "TEST-F9"; formulaNumber = 9; coefficients = [| 1.3; 1.0; 0.01; 0.8; 100.0 |]; equation = SquaredIndexEquation sellmeier4Squared }
+            { glassName = "TEST-F10"; formulaNumber = 10; coefficients = [| 2.27; -0.0101; 0.0109; 0.000176; -9.7e-6; 5.8e-7; 1.0e-8; -2.0e-10 |]; equation = SquaredIndexEquation extendedSquared }
+            { glassName = "TEST-F11"; formulaNumber = 11; coefficients = [| 0.6; 0.005; 0.4; 0.015; 0.3; 0.03; 0.2; 50.0; 0.1; 120.0 |]; equation = SquaredIndexEquation sellmeierSquared }
+            { glassName = "TEST-F12"; formulaNumber = 12; coefficients = [| 2.27; -0.0101; 0.0109; 0.000176; -9.7e-6; 5.8e-7; -0.0002; 0.00001 |]; equation = SquaredIndexEquation extended2Squared }
+            { glassName = "TEST-F13"; formulaNumber = 13; coefficients = [| 2.25; -0.009; -0.0001; 0.011; 0.0002; -8.0e-6; 6.0e-7; 1.0e-8; -2.0e-10 |]; equation = SquaredIndexEquation extended3Squared }
+        ]
+
+    /// The imported glasses match their samples in order: name, glass category, editable term data, and n² (or n) of
+    /// the AGF equation within 1e-12 at every λ in µm.
+    let private assertGlassesMatch (samples : AgfGlassSample list) (samplesMkm : float list) (imported : Result<MaterialEntry list, ImportError>) =
+        match imported with
+        | Error e -> Assert.Fail(e.describe)
+        | Ok glasses ->
+            Assert.Equal<EntryName list>(samples |> List.map (fun sample -> EntryName sample.glassName), glasses |> List.map _.name)
+            for sample, glass in List.zip samples glasses do
+                Assert.Equal<CategoryId>(CategoryIds.glass, glass.category)
+                assertEditableDispersive glass
+                for lam in samplesMkm do
+                    let eps = epsAt glass (toWaveLength Micrometer (UnitMagnitude lam))
+                    match sample.equation with
+                    | SquaredIndexEquation equation ->
+                        let want = Complex.create (equation sample.coefficients lam) 0.0
+                        Assert.True(closeC 1e-12 eps want, $"{sample.glassName} at {lam} µm: n² {eps}, want {want}")
+                    | PlainIndexEquation equation ->
+                        let n = Complex.Sqrt eps
+                        let want = Complex.create (equation sample.coefficients lam) 0.0
+                        Assert.True(closeC 1e-12 n want, $"{sample.glassName} at {lam} µm: n {n}, want {want}")
+
+    [<Fact>]
+    let ``a glass catalogue's glasses lower through MaterialImport's formulas to the AGF equations`` () =
+        let catalogue = GlassCatalogueText (readFixture "test-glasses.agf")
+        assertGlassesMatch fixtureGlasses [ 0.4; 0.5876; 1.0 ] catalogue.importGlasses
+        let descriptions : EntryDescription option list =
+            [
+                Some (EntryDescription "Imported Sellmeier 1 glass (AGF formula 2).")
+                Some (EntryDescription "Imported Schott glass (AGF formula 1).")
+                Some (EntryDescription "Imported Herzberger glass (AGF formula 3).")
+            ]
+        match catalogue.importGlasses with
+        | Ok glasses -> Assert.Equal<EntryDescription option list>(descriptions, glasses |> List.map _.description)
+        | Error e -> Assert.Fail(e.describe)
+
+        let formulas = GlassCatalogueText ("CC test-local glasses\n" + (formulaGlasses |> List.map _.agfLines |> String.concat ""))
+        assertGlassesMatch formulaGlasses [ 0.5876 ] formulas.importGlasses
+
+    [<Fact>]
+    let ``a glass catalogue reads in UTF-8 or UTF-16 and takes each glass's wavelength range`` () =
+        let text = readFixture "test-glasses.agf"
+        let intervalOf (glass : MaterialEntry) : WaveLengthInterval =
+            match glass.physics with
+            | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } -> segment.wavelengthInterval
+            | other -> failwith $"{glass.name.value}: expected a single isotropic dispersive segment, got %A{other}"
+        let micrometers (lower : float) (upper : float) : WaveLengthInterval =
+            { lower = toWaveLength Micrometer (UnitMagnitude lower); upper = toWaveLength Micrometer (UnitMagnitude upper) }
+        let content (imported : Result<MaterialEntry list, ImportError>) =
+            match imported with
+            | Ok glasses -> glasses |> List.map (fun glass -> (glass.name, glass.description, glass.physics))
+            | Error e -> failwith e.describe
+
+        match (GlassCatalogueText text).importGlasses with
+        | Ok [ s1; schott; herz ] ->
+            Assert.Equal(micrometers 0.3 2.5, intervalOf s1)
+            Assert.Equal(micrometers 0.36 1.5, intervalOf schott)
+            Assert.Equal(micrometers 0.0 0.0, intervalOf herz)
+        | Ok glasses -> Assert.Fail($"expected three glasses, got {List.length glasses}")
+        | Error e -> Assert.Fail(e.describe)
+
+        let fileBytes = File.ReadAllBytes(Path.Combine(fixtures, "test-glasses.agf"))
+        let encodings : (string * byte[]) list =
+            [
+                "UTF-8 without a mark", fileBytes
+                "UTF-8 with its mark", Array.append (Encoding.UTF8.GetPreamble()) fileBytes
+                "UTF-16 little-endian with its mark", Array.append (Encoding.Unicode.GetPreamble()) (Encoding.Unicode.GetBytes text)
+                "UTF-16 little-endian without a mark", Encoding.Unicode.GetBytes text
+                "UTF-16 big-endian with its mark", Array.append (Encoding.BigEndianUnicode.GetPreamble()) (Encoding.BigEndianUnicode.GetBytes text)
+            ]
+        let expected = content (GlassCatalogueText text).importGlasses
+        for label, bytes in encodings do
+            let decoded = GlassCatalogueText.ofBytes (FileByteContent bytes)
+            Assert.True((decoded.value = text), $"{label}: the decoded text differs from the fixture's")
+            Assert.True((content decoded.importGlasses = expected), $"{label}: the glasses differ from the fixture's")
+
+    [<Fact>]
+    let ``a glass catalogue with a glass no formula lowers, or with no glass, is refused`` () =
+        let refusedText =
+            GlassCatalogueText (
+                "CC test-local glasses, two refused\n"
+                + "NM TEST-S1 2 516640 1.516 64.0 0 1\nCD 1.04 0.006 0.23 0.02 1.01 103.6 0 0 0 0\nLD 0.3 2.5\n"
+                + "NM TEST-CONRADY 5 520600 1.52 60.0 0 1\nCD 1.5 0.01 0.0002\nLD 0.4 1.0\n"
+                + "NM TEST-F14 14 530600 1.53 60.0 0 1\nCD 1.5 0.01 0.0002\n")
+        match refusedText.importGlasses with
+        | Error (MalformedSourceFileErr reason) ->
+            let lines = reason.Split('\n')
+            Assert.Equal(2, lines.Length)
+            Assert.Contains("TEST-CONRADY", lines.[0])
+            Assert.Contains("3.5", lines.[0])
+            Assert.Contains("TEST-F14", lines.[1])
+            Assert.Contains("formula 14", lines.[1])
+            Assert.DoesNotContain("TEST-S1", reason)
+        | Error e -> Assert.Fail($"expected MalformedSourceFileErr naming both glasses, got {e.describe}")
+        | Ok glasses -> Assert.Fail($"expected MalformedSourceFileErr naming both glasses, got {List.length glasses} glass(es)")
+
+        match (GlassCatalogueText "CC a test catalogue without a glass\n").importGlasses with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a CC line alone: expected NoDataErr, got {e.describe}")
+        | Ok glasses -> Assert.Fail($"a CC line alone: expected NoDataErr, got {List.length glasses} glass(es)")
