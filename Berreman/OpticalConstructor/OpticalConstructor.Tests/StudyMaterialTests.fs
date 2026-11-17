@@ -15,9 +15,67 @@ open OpticalConstructor.Domain.Studies
 open Xunit
 open CrystalMaterialFixtures
 
-/// Spec 0050 S11.1 — OpenMaterial's pure half: an opened crystal material's working copy takes its parameters from the
-/// record's generated axes, one copy per version shared by every sample made of it; a complexity tree is refused.
+/// The test-local tabulated user material the study-table facts share: one isotropic tabulated segment at 400, 500 and
+/// 700 nm, n 1.5, 1.6 and 1.9, k 0, 0.1 and 0.3, σn 0.01, 0.02 and 0.03, σk 0, 0.001 and 0.002 (spec 0050 S13.2). It
+/// lives here because this file compiles first among those facts.
+module TabulatedStudyFixtures =
+
+    /// The version the tabulated material stands for.
+    let tableVersion : MaterialVersionId =
+        MaterialVersionId.firstOf (MaterialId (Guid.Parse "46000000-0000-4000-8000-000000000001"))
+
+    /// The three rows without the source's uncertainty.
+    let plainTable : TabulatedNkTable =
+        match TabulatedNkTable.tryCreate [| 400e-9<meter>; 500e-9<meter>; 700e-9<meter> |] [| 1.5; 1.6; 1.9 |] [| 0.0; 0.1; 0.3 |] with
+        | Ok table -> table
+        | Error error -> failwith $"the fixture's table is refused: %A{error}"
+
+    /// The three rows with the source's one-sigma n and k.
+    let uncertainTable : TabulatedNkTable =
+        match plainTable.withUncertainty { sigmaN = [| 0.01; 0.02; 0.03 |]; sigmaK = [| 0.0; 0.001; 0.002 |] } with
+        | Ok table -> table
+        | Error error -> failwith $"the fixture's uncertainties are refused: %A{error}"
+
+    /// The user material whose physics is one isotropic tabulated segment of `table` over its samples, with no magnetic
+    /// or active part, as a tabulated import builds it.
+    let tableEntryOf (table : TabulatedNkTable) : MaterialEntry =
+        {
+            id = tableVersion.materialId
+            name = EntryName "Probe tabulated glass"
+            category = CategoryIds.glass
+            description = Some (EntryDescription "Three tabulated rows of n and k")
+            physics =
+                ComplexityPhysics
+                    {
+                        eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ])
+                        magnetic = None
+                        active = None
+                    }
+        }
+
+    /// The material with the source's uncertainties.
+    let uncertainTableEntry : MaterialEntry = tableEntryOf uncertainTable
+
+    let row1K : ParameterName = ParameterName.tableRowExtinction (ParameterNameIndex 1)
+    let row2N : ParameterName = ParameterName.tableRowIndex (ParameterNameIndex 2)
+    let row2K : ParameterName = ParameterName.tableRowExtinction (ParameterNameIndex 2)
+    let row3N : ParameterName = ParameterName.tableRowIndex (ParameterNameIndex 3)
+    let row3K : ParameterName = ParameterName.tableRowExtinction (ParameterNameIndex 3)
+
+    /// `row2.n` freed from `start` within [1.5, 1.7], with no prior.
+    let row2NFrom (start : float) : UnknownParameterData =
+        {
+            start = ParameterValue start
+            bounds = { lower = ParameterValue 1.5; upper = ParameterValue 1.7 }
+            priorOpt = None
+        }
+
+/// Spec 0050 S11.1, S13.2 — OpenMaterial's pure half: an opened crystal material's working copy takes its parameters from
+/// the record's generated axes, an opened tabulated material's from its rows' n and k, one copy per version shared by every
+/// sample made of it; any other complexity tree is refused.
 module StudyMaterialTests =
+
+    open TabulatedStudyFixtures
 
     /// The test-local material version every opened entry here stands for.
     let private openedVersion : MaterialVersionId =
@@ -83,9 +141,12 @@ module StudyMaterialTests =
 
         Assert.Equal(openedVersion, opened.version)
         Assert.Equal(entry.name, opened.name)
-        Assert.Equal(crystal, opened.crystal)
+        Assert.Equal<OpenedMaterialPhysics>(OpenedCrystalPhysics crystal, opened.physics)
 
-        let generated = opened.crystal.parameterAxes
+        let generated =
+            match opened.physics with
+            | OpenedCrystalPhysics c -> c.parameterAxes
+            | OpenedTablePhysics _ -> failwith "expected an opened crystal, got an opened table"
         Assert.Equal<ParameterName list>(recordAxes |> List.map (fun axis -> axis.name), generated |> List.map (fun axis -> axis.name))
 
         for recordAxis, axis in List.zip recordAxes generated do
@@ -154,9 +215,11 @@ module StudyMaterialTests =
         Assert.Equal<Parameter list>(expectedParameters, freedCopy.parameters)
         Assert.Equal(n3, freedCopy.parameters.[2].name)
         Assert.Equal({ study with materials = [ StudyFileFixtures.studyProbeMaterial; freedCopy ] }, freed)
-        Assert.Equal(copy.crystal, freedCopy.crystal)
-        Assert.Equal(AbsorbingTriclinicCrystal { absorbingTriclinicParameters with index3 = RefractionIndex 1.70 }, freedCopy.currentCrystal)
-        Assert.Equal(copy.crystal, copy.currentCrystal)
+        Assert.Equal<OpenedMaterialPhysics>(copy.physics, freedCopy.physics)
+        Assert.Equal<OpenedMaterialPhysics>(
+            OpenedCrystalPhysics (AbsorbingTriclinicCrystal { absorbingTriclinicParameters with index3 = RefractionIndex 1.70 }),
+            freedCopy.currentPhysics)
+        Assert.Equal<OpenedMaterialPhysics>(copy.physics, copy.currentPhysics)
 
         // A calibrated component reads its calibrated value.
         let calibrated =
@@ -168,9 +231,9 @@ module StudyMaterialTests =
                 }
 
         let calibratedCopy = openedOf (freedCopy.withParameterState (ParameterName "e11") calibrated)
-        Assert.Equal(
-            AbsorbingTriclinicCrystal { absorbingTriclinicParameters with index3 = RefractionIndex 1.70; epsIm11 = EpsValue 2.5e-3 },
-            calibratedCopy.currentCrystal)
+        Assert.Equal<OpenedMaterialPhysics>(
+            OpenedCrystalPhysics (AbsorbingTriclinicCrystal { absorbingTriclinicParameters with index3 = RefractionIndex 1.70; epsIm11 = EpsValue 2.5e-3 }),
+            calibratedCopy.currentPhysics)
 
         match study.withMaterialParameterState openedVersion (ParameterName "n_o") freeN3 with
         | Error (UnknownStudyParameterErr reason) ->
@@ -266,3 +329,108 @@ module StudyMaterialTests =
             }
 
         Assert.Equal<OpenedMaterial list>([ StudyFileFixtures.studyProbeMaterial; copy ], both.openedMaterialsIn study)
+
+    /// The component's state in the copy.
+    let private stateIn (material : OpenedMaterial) (name : ParameterName) : ParameterState =
+        (material.parameters |> List.find (fun parameter -> parameter.name = name)).state
+
+    [<Fact>]
+    let ``a tabulated material opens with one known component per row's n and k`` () : unit =
+        let copy = openedOf (OpenedMaterial.openFrom tableVersion uncertainTableEntry)
+
+        Assert.Equal(tableVersion, copy.version)
+        Assert.Equal(uncertainTableEntry.name, copy.name)
+        Assert.Equal<OpenedMaterialPhysics>(OpenedTablePhysics uncertainTable, copy.physics)
+
+        // Each row's n then its k, rows 1-based in table order, known at the table's own values.
+        let known (name : string) (value : float) : Parameter = { name = ParameterName name; state = KnownParameter (ParameterValue value) }
+
+        Assert.Equal<Parameter list>(
+            [ known "row1.n" 1.5; known "row1.k" 0.0; known "row2.n" 1.6; known "row2.k" 0.1; known "row3.n" 1.9; known "row3.k" 0.3 ],
+            copy.parameters)
+
+        Assert.Equal<ParameterName list>(copy.parameters |> List.map (fun parameter -> parameter.name), copy.physics.componentNames)
+        Assert.Equal<ParameterName list>([ ParameterName "row1.k"; ParameterName "row2.n"; ParameterName "row3.k" ], [ row1K; row2N; row3K ])
+
+        // The study opens it beside its crystal as it opens a crystal.
+        Assert.Equal(
+            { heldStudy with materials = [ StudyFileFixtures.studyProbeMaterial; copy ] },
+            studyOf (heldStudy.openMaterial tableVersion uncertainTableEntry))
+
+        // Two tabulated segments are no single table: refused, as a constant complexity is.
+        let segment : IsotropicEpsSegment = { wavelengthInterval = plainTable.sampleRange; dispersion = TabulatedNK plainTable }
+
+        let twoSegments : MaterialEntry =
+            {
+                uncertainTableEntry with
+                    name = EntryName "Two-segment glass"
+                    physics = ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ segment; segment ]); magnetic = None; active = None }
+            }
+
+        match OpenedMaterial.openFrom tableVersion twoSegments with
+        | Error (MaterialWithoutParametersErr reason) -> Assert.Contains("'Two-segment glass'", reason)
+        | other -> Assert.Fail($"expected Error (MaterialWithoutParametersErr _), got %A{other}")
+
+    [<Fact>]
+    let ``a freed component of an uncertain table takes its source sigma as its prior, and an explicit prior is kept`` () : unit =
+        let copy = openedOf (OpenedMaterial.openFrom tableVersion uncertainTableEntry)
+        let freeRow2N = row2NFrom 1.6
+
+        // row2.n freed with no prior: the opened 1.6 at the source's σn 0.02.
+        let freed = openedOf (copy.withParameterState row2N (UnknownParameter freeRow2N))
+        let sourcePrior : ParameterPrior = { centre = ParameterValue 1.6; sigma = ParameterSigma 0.02 }
+        Assert.Equal<ParameterState>(UnknownParameter { freeRow2N with priorOpt = Some sourcePrior }, stateIn freed row2N)
+
+        // row1.k's σk is 0, so it takes none.
+        let freeRow1K : UnknownParameterData =
+            {
+                start = ParameterValue 0.0
+                bounds = { lower = ParameterValue 0.0; upper = ParameterValue 0.05 }
+                priorOpt = None
+            }
+
+        Assert.Equal<ParameterState>(UnknownParameter freeRow1K, stateIn (openedOf (copy.withParameterState row1K (UnknownParameter freeRow1K))) row1K)
+
+        // An explicit prior is kept; a known or calibrated state is stored as given.
+        let explicitPrior = { freeRow2N with priorOpt = Some { centre = ParameterValue 1.62; sigma = ParameterSigma 0.05 } }
+        Assert.Equal<ParameterState>(UnknownParameter explicitPrior, stateIn (openedOf (copy.withParameterState row2N (UnknownParameter explicitPrior))) row2N)
+
+        let knownRow3N = KnownParameter (ParameterValue 1.85)
+        Assert.Equal<ParameterState>(knownRow3N, stateIn (openedOf (copy.withParameterState row3N knownRow3N)) row3N)
+
+        let calibratedRow2K =
+            CalibratedParameter
+                {
+                    value = ParameterValue 0.12
+                    sigma = ParameterSigma 0.004
+                    fitRun = FitRunName "Glass@20261117T120000Z"
+                }
+
+        Assert.Equal<ParameterState>(calibratedRow2K, stateIn (openedOf (copy.withParameterState row2K calibratedRow2K)) row2K)
+
+        // The study stores the copy holding the source prior.
+        let study = studyOf (heldStudy.openMaterial tableVersion uncertainTableEntry)
+        let freedStudy = studyOf (study.withMaterialParameterState tableVersion row2N (UnknownParameter freeRow2N))
+        Assert.Equal({ study with materials = [ StudyFileFixtures.studyProbeMaterial; freed ] }, freedStudy)
+
+        // The same material without uncertainties frees row2.n with none.
+        let plainCopy = openedOf (OpenedMaterial.openFrom tableVersion (tableEntryOf plainTable))
+        Assert.Equal<ParameterState>(UnknownParameter freeRow2N, stateIn (openedOf (plainCopy.withParameterState row2N (UnknownParameter freeRow2N))) row2N)
+
+    [<Fact>]
+    let ``an opened table's current physics is its table with each row at its parameter's current value`` () : unit =
+        let copy = openedOf (OpenedMaterial.openFrom tableVersion uncertainTableEntry)
+
+        let changed =
+            copy.withParameterState row2N (UnknownParameter (row2NFrom 1.65))
+            |> Result.bind (fun held -> held.withParameterState row3K (KnownParameter (ParameterValue 0.35)))
+            |> openedOf
+
+        // n2 at its unknown's start, k3 at its known value; every other value and the uncertainties the table's own.
+        Assert.Equal<OpenedMaterialPhysics>(
+            OpenedTablePhysics { uncertainTable with n = [| 1.5; 1.65; 1.9 |]; k = [| 0.0; 0.1; 0.35 |] },
+            changed.currentPhysics)
+
+        // The copy keeps the opened version's table, and an unchanged copy's current physics is that table.
+        Assert.Equal<OpenedMaterialPhysics>(OpenedTablePhysics uncertainTable, changed.physics)
+        Assert.Equal<OpenedMaterialPhysics>(copy.physics, copy.currentPhysics)

@@ -37,7 +37,7 @@ module StudyForward =
         | ForwardSlotErr of error : SlotRunError
         /// No detector slot of the setup holds a detector item to read the light (spec 0050 S11.2).
         | StudyDetectorErr of reason : string
-        /// A Mueller observation whose setup holds no one object item made of one opened material (spec 0050 S11.2).
+        /// A Mueller observation whose setup holds no one object item made of one opened crystal (spec 0050 S11.2, S13.2).
         | ObservationPlateErr of reason : string
         /// A measured row the experiment's detector does not record, such as a Mueller observation under an intensity
         /// detector (spec 0050 S11.2).
@@ -291,11 +291,11 @@ module StudyForward =
             { entries = entries; sessions = sessions }
 
     /// The numbers one experiment is evaluated with at one parameter vector: each item's values and each opened
-    /// material's crystal, which every sample made of it shares (spec 0050 S11.2; 001 §I, §L).
+    /// material's physics, which every sample made of it shares (spec 0050 S11.2, S13.2; 001 §I, §L).
     type ExperimentAssignment =
         {
             itemValues : Map<ItemId, ParameterValues>
-            crystals : Map<MaterialVersionId, CrystalParameters>
+            physics : Map<MaterialVersionId, OpenedMaterialPhysics>
         }
 
         /// The item's assigned values, or its own for an item the assignment lacks (spec 0050 S11.2).
@@ -304,25 +304,26 @@ module StudyForward =
             | Some values -> values
             | None -> ParameterValues.ofParameters item.parameters
 
-        /// The opened material's assigned crystal, or its working copy's current one (spec 0050 S11.2).
-        member this.crystalOf (material : OpenedMaterial) : CrystalParameters =
-            match this.crystals |> Map.tryFind material.version with
-            | Some crystal -> crystal
-            | None -> material.currentCrystal
+        /// The opened material's assigned physics, or its working copy's current one (spec 0050 S11.2, S13.2).
+        member this.physicsOf (material : OpenedMaterial) : OpenedMaterialPhysics =
+            match this.physics |> Map.tryFind material.version with
+            | Some physics -> physics
+            | None -> material.currentPhysics
 
-        /// `materials` with an assigned version resolving to the store's entry over the assigned crystal, so a stack sample
-        /// made of an opened material is solved with the study's working copy; all else passes through (spec 0050 S11.2).
+        /// `materials` with an assigned version resolving to the store's entry over the assigned physics, so a stack sample
+        /// made of an opened crystal or table is solved with the study's working copy; all else passes through
+        /// (spec 0050 S11.2, S13.2).
         member this.materialProxyOver (materials : MaterialProxy) : MaterialProxy =
-            let crystals = this.crystals
+            let assigned = this.physics |> Map.map (fun _ (physics : OpenedMaterialPhysics) -> physics.materialPhysics)
 
             {
                 materials with
                     resolveVersion =
                         fun version ->
-                            match crystals |> Map.tryFind version with
-                            | Some crystal ->
+                            match assigned |> Map.tryFind version with
+                            | Some physics ->
                                 materials.resolveVersion version
-                                |> Result.map (Option.map (fun (entry : MaterialEntry) -> { entry with physics = CrystalParameterPhysics crystal }))
+                                |> Result.map (Option.map (fun (entry : MaterialEntry) -> { entry with physics = physics }))
                             | None -> materials.resolveVersion version
             }
 
@@ -357,11 +358,6 @@ module StudyForward =
                     |> List.filter (fun (entry, _) -> holds entry.owner)
                     |> List.map (fun (entry, value) -> entry.unknown.parameter, value)
 
-                let writtenComponent (name : ParameterName) (value : ParameterValue) (crystal : CrystalParameters) : CrystalParameters =
-                    match crystal.parameterAxes |> List.tryFind (fun axis -> axis.name = name) with
-                    | Some axis -> axis.writeValue value crystal
-                    | None -> crystal
-
                 let itemValuesOf (item : Item) : ParameterValues =
                     held
                     |> List.fold (fun (values : ParameterValues) (parameter, value) ->
@@ -370,18 +366,18 @@ module StudyForward =
                         | ItemParameterRef _
                         | MaterialParameterRef _ -> values) (ParameterValues.ofParameters item.parameters)
 
-                let crystalOf (material : OpenedMaterial) : CrystalParameters =
+                let physicsOf (material : OpenedMaterial) : OpenedMaterialPhysics =
                     held
-                    |> List.fold (fun (crystal : CrystalParameters) (parameter, value) ->
+                    |> List.fold (fun (physics : OpenedMaterialPhysics) (parameter, value) ->
                         match parameter with
-                        | MaterialParameterRef (version, name) when version = material.version -> writtenComponent name value crystal
+                        | MaterialParameterRef (version, name) when version = material.version -> physics.withComponent name value
                         | MaterialParameterRef _
-                        | ItemParameterRef _ -> crystal) material.currentCrystal
+                        | ItemParameterRef _ -> physics) material.currentPhysics
 
                 let assigned : ExperimentAssignment =
                     {
                         itemValues = items |> List.map (fun item -> item.id, itemValuesOf item) |> Map.ofList
-                        crystals = study.materials |> List.map (fun material -> material.version, crystalOf material) |> Map.ofList
+                        physics = study.materials |> List.map (fun material -> material.version, physicsOf material) |> Map.ofList
                     }
 
                 // A leader never follows (`withLink` refuses a chain), so each follower reads its leader once; a link whose
@@ -391,10 +387,7 @@ module StudyForward =
                     | ItemParameterRef (item, name) ->
                         assignment.itemValues |> Map.tryFind item |> Option.bind (fun values -> values.valueOf name |> Result.toOption)
                     | MaterialParameterRef (version, name) ->
-                        assignment.crystals
-                        |> Map.tryFind version
-                        |> Option.bind (fun crystal ->
-                            crystal.parameterAxes |> List.tryFind (fun axis -> axis.name = name) |> Option.map (fun axis -> axis.parameterValueOf crystal))
+                        assignment.physics |> Map.tryFind version |> Option.bind (fun physics -> physics.componentValue name)
 
                 let followed (assignment : ExperimentAssignment) (link : ParameterLink) : ExperimentAssignment =
                     match leaderValueOpt assignment link.leader, link.follower with
@@ -403,8 +396,8 @@ module StudyForward =
                         | Some values -> { assignment with itemValues = assignment.itemValues |> Map.add item (values.withValue name value) }
                         | None -> assignment
                     | Some value, MaterialParameterRef (version, name) ->
-                        match assignment.crystals |> Map.tryFind version with
-                        | Some crystal -> { assignment with crystals = assignment.crystals |> Map.add version (writtenComponent name value crystal) }
+                        match assignment.physics |> Map.tryFind version with
+                        | Some physics -> { assignment with physics = assignment.physics |> Map.add version (physics.withComponent name value) }
                         | None -> assignment
                     | None, _ -> assignment
 
@@ -526,7 +519,7 @@ module StudyForward =
                             |> Result.mapError (SlotEvaluationErr >> ForwardSlotErr))
 
             // An observation is a plate of one crystal: the lone object item's stack sample, made of one opened material,
-            // at its assigned crystal (spec 0050 S11.2; 001 §K).
+            // at its assigned crystal; an opened table is no crystal (spec 0050 S11.2, S13.2; 001 §K).
             let observedCrystalIn (slots : SetupSlot list) : CrystalParameters option =
                 let objectItems : ItemId list =
                     SetupSlot.inLightOrder slots
@@ -543,7 +536,7 @@ module StudyForward =
                     match items |> List.tryFind (fun item -> item.id = itemId) |> Option.bind context.choiceOf with
                     | Some (StackSampleChoice (_, _, sample)) ->
                         match sample.openedMaterialsIn study with
-                        | [ material ] -> Some (assignment.crystalOf material)
+                        | [ material ] -> (assignment.physicsOf material).crystalOpt
                         | _ -> None
                     | Some (SourcePresetChoice _ | PolarizerPresetChoice _ | LibraryModelChoice _)
                     | None -> None

@@ -31,6 +31,7 @@ open OpticalConstructor.Domain.PrefitChecks
 open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Optimization
 open CrystalMaterialFixtures
+open TabulatedStudyFixtures
 
 /// Spec 0050 S11.2 — what a detector records, each mapped point placed on the scan its experiment was taken over, the
 /// study's parameter vector laid out by its unknowns' owners, the numbers one experiment is evaluated with, and the
@@ -687,12 +688,12 @@ module StudyForwardTests =
         let copy = openedOf layoutStudy crystalVersion
 
         // The copy's n_o is the vector's; its n_e, g11 and g33 are the copy's own.
-        Assert.Equal<CrystalParameters>(crystalAtVector, atE1.crystalOf copy)
-        Assert.Equal<Map<MaterialVersionId, CrystalParameters>>(Map.ofList [ crystalVersion, crystalAtVector ], atE1.crystals)
+        Assert.Equal<OpenedMaterialPhysics>(OpenedCrystalPhysics crystalAtVector, atE1.physicsOf copy)
+        Assert.Equal<Map<MaterialVersionId, OpenedMaterialPhysics>>(Map.ofList [ crystalVersion, OpenedCrystalPhysics crystalAtVector ], atE1.physics)
 
         // A copy the assignment does not hold is its current crystal: n_o at its unknown's start.
-        let empty : ExperimentAssignment = { itemValues = Map.empty; crystals = Map.empty }
-        Assert.Equal<CrystalParameters>(UniaxialCrystal { uniaxialParameters with ordinaryIndex = RefractionIndex 1.54 }, empty.crystalOf copy)
+        let empty : ExperimentAssignment = { itemValues = Map.empty; physics = Map.empty }
+        Assert.Equal<OpenedMaterialPhysics>(OpenedCrystalPhysics (UniaxialCrystal { uniaxialParameters with ordinaryIndex = RefractionIndex 1.54 }), empty.physicsOf copy)
 
         // CPL2 (retardance known at 1.2) on the bench and the twin version opened; then CPL2 follows CPL1 and the
         // twin's n_o the crystal's.
@@ -729,12 +730,12 @@ module StudyForwardTests =
 
         Assert.Equal<Result<ParameterValue, ItemEvaluationError>>(Ok (ParameterValue 1.2), (before.valuesOf cpl2).valueOf retardance)
         Assert.Equal<ParameterValues>((ownValuesOf cpl2).withValue retardance (ParameterValue 0.7), after.valuesOf cpl2)
-        Assert.Equal<CrystalParameters>(UniaxialCrystal uniaxialParameters, before.crystalOf twin)
-        Assert.Equal<CrystalParameters>(crystalAtVector, after.crystalOf twin)
+        Assert.Equal<OpenedMaterialPhysics>(OpenedCrystalPhysics (UniaxialCrystal uniaxialParameters), before.physicsOf twin)
+        Assert.Equal<OpenedMaterialPhysics>(OpenedCrystalPhysics crystalAtVector, after.physicsOf twin)
 
         // The leaders keep their values.
         Assert.Equal<ParameterValues>(before.valuesOf cpl1, after.valuesOf cpl1)
-        Assert.Equal<CrystalParameters>(crystalAtVector, after.crystalOf copy)
+        Assert.Equal<OpenedMaterialPhysics>(OpenedCrystalPhysics crystalAtVector, after.physicsOf copy)
 
     [<Fact>]
     let ``a stack sample made of an opened material resolves to the study's working copy`` () : unit =
@@ -743,7 +744,7 @@ module StudyForwardTests =
 
         let atE1 = assignmentOf (qzLayout.assignmentFor layoutStudy [ cpl1; qz; phone ] e1 qzVector)
         let over = atE1.materialProxyOver store
-        let e1Crystal = atE1.crystalOf (openedOf layoutStudy crystalVersion)
+        let e1Physics = atE1.physicsOf (openedOf layoutStudy crystalVersion)
 
         // QZ's plate pins the opened version, which resolves to the store's entry over E1's crystal.
         let plateVersion =
@@ -752,10 +753,10 @@ module StudyForwardTests =
             | None -> failwith $"'{qzPlate.name.value}' has no substrate"
 
         Assert.Equal(crystalVersion, plateVersion)
-        Assert.Equal<CrystalParameters>(crystalAtVector, e1Crystal)
+        Assert.Equal<OpenedMaterialPhysics>(OpenedCrystalPhysics crystalAtVector, e1Physics)
 
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(
-            Ok (Some { crystalEntry with physics = CrystalParameterPhysics e1Crystal }),
+            Ok (Some { crystalEntry with physics = CrystalParameterPhysics crystalAtVector }),
             over.resolveVersion plateVersion)
 
         // Another version, and every other read, is the store's own answer.
@@ -768,6 +769,89 @@ module StudyForwardTests =
 
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(store.resolveVersion glass, over.resolveVersion glass)
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some crystalEntry), over.tryGetMaterial crystalVersion.materialId)
+
+    [<Fact>]
+    let ``a stack sample made of an opened table resolves to the study's working table`` () : unit =
+        let store = BuiltinCatalogue.materialStore (fun _ -> [])
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), store.saveMaterial crystalEntry)
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), store.saveMaterial uncertainTableEntry)
+
+        // QZ's study with the probe table opened beside the crystal and its row2.n freed; a plate of the table is made of
+        // the study's copy.
+        let tableStudy =
+            studyOf (layoutStudy.openMaterial tableVersion uncertainTableEntry |> Result.bind (fun opened ->
+                opened.withMaterialParameterState tableVersion row2N (UnknownParameter (row2NFrom 1.6))))
+
+        let tablePlate : Sample =
+            {
+                qzPlate with
+                    id = SampleId (Guid.Parse "46000000-0000-4000-8000-000000000002")
+                    name = EntryName "Glass plate"
+                    structure =
+                        {
+                            films = []
+                            substrate = Some { materialId = tableVersion; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
+                            lower = None
+                        }
+                    description = EntryDescription "A 1 mm plate of the probe tabulated glass"
+            }
+
+        let copy = openedOf tableStudy tableVersion
+        Assert.Equal<OpenedMaterial list>([ copy ], tablePlate.openedMaterialsIn tableStudy)
+
+        // row2.n is the vector's last entry, one per material version, here at 1.65.
+        let layout = tableStudy.parameterLayoutWith (forwardFor tableStudy kitRuns [ bench ])
+
+        Assert.Equal<(StudyParameterRef * UnknownOwner) list>(
+            [ MaterialParameterRef (crystalVersion, ordinaryIndex), MaterialOwner crystalVersion; MaterialParameterRef (tableVersion, row2N), MaterialOwner tableVersion ],
+            layout.entries |> List.skip 3 |> List.map (fun entry -> entry.unknown.parameter, entry.owner))
+
+        let vector = StudyParameterVector [| 0.7; 2.0; 3.0; 1.6; 1.65 |]
+        let atE1 = assignmentOf (layout.assignmentFor tableStudy [ cpl1; qz; phone ] e1 vector)
+        let over = atE1.materialProxyOver store
+        let workingTable = { uncertainTable with n = [| 1.5; 1.65; 1.9 |] }
+
+        // The plate's version resolves to the store's entry over the working table, the crystal to its own working copy.
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some (tableEntryOf workingTable)), over.resolveVersion tableVersion)
+
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(
+            Ok (Some { crystalEntry with physics = CrystalParameterPhysics crystalAtVector }),
+            over.resolveVersion crystalVersion)
+
+        // Solved at 500 nm, the working table's row 2: ε = (1.65 + 0.1i)² on the diagonal, 0 off it.
+        match over.resolveVersion tableVersion with
+        | Ok (Some entry) ->
+            let eps = entry.properties.epsWithDisp.getEps (WaveLength.nm 500.0<nm>)
+            let n2 = System.Numerics.Complex (1.65, 0.1)
+
+            for i in 0 .. 2 do
+                for j in 0 .. 2 do
+                    let expected = if i = j then n2 * n2 else System.Numerics.Complex.Zero
+                    Assert.True((eps.[i, j] - expected).Magnitude <= 1.0e-12, $"ε[{i},{j}]: expected {expected}, got {eps.[i, j]}")
+        | other -> Assert.Fail($"expected the working table's entry, got %A{other}")
+
+        // Another version is the store's own answer.
+        let glass = MaterialVersionId.firstOf MaterialIds.glass152
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(store.resolveVersion glass, over.resolveVersion glass)
+
+        // row3.n following row2.n takes its value, 1.65.
+        let link : ParameterLink =
+            {
+                follower = MaterialParameterRef (tableVersion, row3N)
+                leader = MaterialParameterRef (tableVersion, row2N)
+            }
+
+        let used = (forwardFor tableStudy kitRuns [ bench ]).kit.itemsUsedBy tableStudy
+        let linkedStudy = studyOf (tableStudy.withLink link used)
+        let linkedLayout = linkedStudy.parameterLayoutWith (forwardFor linkedStudy kitRuns [ bench ])
+        let linked = assignmentOf (linkedLayout.assignmentFor linkedStudy [ cpl1; qz; phone ] e1 vector)
+
+        Assert.Equal<StudyVectorEntry list>(layout.entries, linkedLayout.entries)
+        Assert.Equal<ParameterValue option>(Some (ParameterValue 1.65), (linked.physicsOf (openedOf linkedStudy tableVersion)).componentValue row3N)
+
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(
+            Ok (Some (tableEntryOf { uncertainTable with n = [| 1.5; 1.65; 1.65 |] })),
+            (linked.materialProxyOver store).resolveVersion tableVersion)
 
     [<Fact>]
     let ``a vector of another length is refused`` () : unit =
@@ -902,7 +986,7 @@ module StudyForwardTests =
     let private runOver (setup : Setup) : Experiment = { e1Run with id = ExperimentId 5; name = ExperimentName "F1"; setup = setup.reference }
 
     /// No parameter takes a vector's value: each item is evaluated with its own.
-    let private ownAssignment : ExperimentAssignment = { itemValues = Map.empty; crystals = Map.empty }
+    let private ownAssignment : ExperimentAssignment = { itemValues = Map.empty; physics = Map.empty }
 
     let private boundOf (result : Result<BoundExperiment, StudyForwardError>) : BoundExperiment =
         match result with
@@ -1154,7 +1238,7 @@ module StudyForwardTests =
 
     /// Every item at its own values and the probe crystal at those parameters.
     let private observedAssignment : ExperimentAssignment =
-        { ownAssignment with crystals = Map.ofList [ crystalVersion, UniaxialCrystal observedParameters ] }
+        { ownAssignment with physics = Map.ofList [ crystalVersion, OpenedCrystalPhysics (UniaxialCrystal observedParameters) ] }
 
     /// The bench's context over these items and setups, its material store also holding the probe crystal QZ's plate pins.
     let private crystalBenchContext (items : Item list) (setups : Setup list) : StudyForwardContext =
@@ -1211,7 +1295,10 @@ module StudyForwardTests =
 
         // An assignment holding no crystal observes the study's working copy: n_o at its unknown's start, gyrating.
         let ownBound = boundOf ((runOver setup).boundWith context layoutStudy ownAssignment None)
-        let copy = (openedOf layoutStudy crystalVersion).currentCrystal
+        let copy =
+            match (openedOf layoutStudy crystalVersion).currentPhysics with
+            | OpenedCrystalPhysics crystal -> crystal
+            | OpenedTablePhysics _ -> failwith "expected the opened crystal, got an opened table"
         Assert.Equal<CrystalParameters option>(Some copy, ownBound.observedCrystalOpt)
         Assert.NotEqual<CrystalParameters>(UniaxialCrystal observedParameters, copy)
 

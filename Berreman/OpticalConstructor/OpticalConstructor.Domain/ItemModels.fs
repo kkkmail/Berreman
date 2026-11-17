@@ -11,8 +11,9 @@ open OpticalConstructor.Domain.Library
 /// models publish, the parameterised item models as data and the item-model store's seam (spec 0050 S7.1).
 module ItemModels =
 
-    /// A number a published parameter name carries: a Mueller row or column, 0 to 3, or a 1-based film, cell-layer or
-    /// compound-component position (spec 0050 S8.1; elevated because ELEV010 refuses an `int` beside `ParameterName`).
+    /// A number a published parameter name carries: a Mueller row or column, 0 to 3, or a 1-based film, cell-layer,
+    /// compound-component or table-row position (spec 0050 S8.1, S13.2; elevated because ELEV010 refuses an `int` beside
+    /// `ParameterName`).
     type ParameterNameIndex =
         | ParameterNameIndex of int
 
@@ -96,6 +97,16 @@ module ItemModels =
             let (ParameterNameIndex k) = position
             let (ParameterNameIndex j) = layer
             ParameterName $"film{k}.layer{j}.thickness"
+
+        /// An opened tabulated material's row n, `row<i>.n`, i 1-based in table order (spec 0050 S13.2).
+        static member tableRowIndex (row : ParameterNameIndex) : ParameterName =
+            let (ParameterNameIndex i) = row
+            ParameterName $"row{i}.n"
+
+        /// An opened tabulated material's row k, `row<i>.k`, i 1-based in table order (spec 0050 S13.2).
+        static member tableRowExtinction (row : ParameterNameIndex) : ParameterName =
+            let (ParameterNameIndex i) = row
+            ParameterName $"row{i}.k"
 
         /// The name inside a compound's component k (1-based, light order): `c<k>.<name>`, so a nested compound
         /// prefixes twice (spec 0050 S8.1).

@@ -1446,7 +1446,7 @@ module StudyEngineTests =
     /// at its own values but the probed ones.
     let private runLawSignalsOf (context : StudyForwardContext) (run : Experiment) (probed : (ItemId * ItemEvaluation.ParameterValues) list) : float list =
         let study = studyOf (Study.create (StudyName "Run law") [ run.name ] [] [ run ])
-        let assignment : ExperimentAssignment = { itemValues = Map.ofList probed; crystals = Map.empty }
+        let assignment : ExperimentAssignment = { itemValues = Map.ofList probed; physics = Map.empty }
 
         match run.boundWith context study assignment (Some (DarkMean 0.0)) with
         | Error error -> failwith $"{run.name.value} was not bound: {error.describe}"
@@ -2628,7 +2628,7 @@ module StudyEngineTests =
         let study = studyOver "Malus S0" [ blank ]
         let items = [ laser; lp1; malusAnalyzer; malusCameraWith (KnownParameter (ParameterValue 0.1)) ]
         let context = contextWithin [ malusBench ] items [ blank ] study
-        let own : ExperimentAssignment = { itemValues = Map.empty; crystals = Map.empty }
+        let own : ExperimentAssignment = { itemValues = Map.empty; physics = Map.empty }
 
         match blank.attachedRun.boundWith context study own None with
         | Error error -> failwith $"M1 was not bound: {error.describe}"

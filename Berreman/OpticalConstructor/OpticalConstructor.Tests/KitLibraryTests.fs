@@ -56,7 +56,7 @@ module StudyFileFixtures =
         {
             version = version
             name = name
-            crystal = AbsorbingTriclinicCrystal absorbingTriclinicParameters
+            physics = OpenedCrystalPhysics (AbsorbingTriclinicCrystal absorbingTriclinicParameters)
             parameters = [ n3 ]
         }
 
@@ -2118,7 +2118,7 @@ module KitLibraryTests =
                 glass with
                     id = version.materialId
                     name = opened.name
-                    physics = CrystalParameterPhysics opened.crystal
+                    physics = opened.physics.materialPhysics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), materials.saveMaterial crystal)
         let fixture = snapshotFixture (CatalogueImportProxy.createInDatabase database) ReadWriteKitAccess

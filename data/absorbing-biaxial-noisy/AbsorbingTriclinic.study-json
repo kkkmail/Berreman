@@ -11,28 +11,6 @@
     "links": [],
     "materials": [
       {
-        "crystal": {
-          "Case": "AbsorbingTriclinicCrystal",
-          "Fields": [
-            {
-              "epsIm11": 0.0012,
-              "epsIm12": 0.00045,
-              "epsIm13": -0.00025,
-              "epsIm22": 0.0018,
-              "epsIm23": 0.00035,
-              "epsIm33": 0.0009,
-              "g11": 4.31E-05,
-              "g12": 2.46E-05,
-              "g13": -3.64E-05,
-              "g22": 6.9E-05,
-              "g23": 1.72E-05,
-              "g33": -2.85E-05,
-              "index1": 1.574064836,
-              "index2": 1.601416913,
-              "index3": 1.616414016
-            }
-          ]
-        },
         "name": "Absorbing triclinic crystal",
         "parameters": [
           {
@@ -276,6 +254,33 @@
             }
           }
         ],
+        "physics": {
+          "Case": "OpenedCrystalPhysics",
+          "Fields": [
+            {
+              "Case": "AbsorbingTriclinicCrystal",
+              "Fields": [
+                {
+                  "epsIm11": 0.0012,
+                  "epsIm12": 0.00045,
+                  "epsIm13": -0.00025,
+                  "epsIm22": 0.0018,
+                  "epsIm23": 0.00035,
+                  "epsIm33": 0.0009,
+                  "g11": 4.31E-05,
+                  "g12": 2.46E-05,
+                  "g13": -3.64E-05,
+                  "g22": 6.9E-05,
+                  "g23": 1.72E-05,
+                  "g33": -2.85E-05,
+                  "index1": 1.574064836,
+                  "index2": 1.601416913,
+                  "index3": 1.616414016
+                }
+              ]
+            }
+          ]
+        },
         "version": {
           "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
           "version": 1

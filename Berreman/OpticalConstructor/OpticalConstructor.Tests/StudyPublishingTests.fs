@@ -27,6 +27,7 @@ open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
 open Xunit
+open TabulatedStudyFixtures
 
 /// Spec 0050 S11.5 — calibration revisions and library promotion, preserving fit snapshots, identity,
 /// provenance and pinned versions, and refusing read-only writes or values without one fitted result.
@@ -338,19 +339,22 @@ module StudyPublishingTests =
     let private n1Entry : FitRunEntry = fittedMaterialEntry n1 (ParameterValue 1.7)
     let private e11Entry : FitRunEntry = fittedMaterialEntry e11 (ParameterValue 0.02)
 
+    /// The fit run's snapshot of every opened component of `study`, in order.
+    let private materialSnapshotOf (study : Study) : FitRunParameter list =
+        study.materials
+        |> List.collect (fun material ->
+            material.parameters
+            |> List.map (fun parameter ->
+                {
+                    parameter = MaterialParameterRef (material.version, parameter.name)
+                    state = parameter.state
+                }))
+
     let private materialRun : FitRun =
         {
             calibrationRun with
                 entries = [ n1Entry; e11Entry ]
-                parameters =
-                    materialStudy.materials
-                    |> List.collect (fun material ->
-                        material.parameters
-                        |> List.map (fun parameter ->
-                            {
-                                parameter = MaterialParameterRef (material.version, parameter.name)
-                                state = parameter.state
-                            }))
+                parameters = materialSnapshotOf materialStudy
         }
 
     [<Fact>]
@@ -462,6 +466,38 @@ module StudyPublishingTests =
         | Error (PromotionStudyErr (UnknownStudyParameterErr reason)) -> Assert.Contains("n2", reason)
         | Error error -> Assert.Fail error.describe
         | Ok _ -> Assert.Fail "expected a missing fit snapshot component to be refused"
+
+    [<Fact>]
+    let ``a promoted table is its opened version's entry holding the fitted rows without the source's uncertainty`` () : unit =
+        // QZ-LR with the probe table opened and row2.n freed from 1.6, which takes its source sigma as its prior.
+        let tableStudy =
+            qzLr.openMaterial tableVersion uncertainTableEntry
+            |> Result.bind (fun opened -> opened.withMaterialParameterState tableVersion row2N (UnknownParameter (row2NFrom 1.6)))
+            |> publishingStudyOf
+
+        let row2NEntry : FitRunEntry =
+            {
+                parameter = MaterialParameterRef (tableVersion, row2N)
+                owner = MaterialOwner tableVersion
+                start = ParameterValue 1.6
+                fitted = ParameterValue 1.62
+            }
+
+        let tableRun : FitRun =
+            {
+                calibrationRun with
+                    entries = [ row2NEntry ]
+                    parameters = materialSnapshotOf tableStudy
+            }
+
+        match uncertainTable.uncertaintyOpt with
+        | Some _ -> ()
+        | None -> Assert.Fail "the opened version's table must carry its source's uncertainty"
+
+        // Row 2's n is the fit's 1.62, every other value the opened version's, and the uncertainty is the fit run's alone.
+        Assert.Equal<Result<MaterialEntry, PublishError>>(
+            Ok (tableEntryOf { uncertainTable with n = [| 1.5; 1.62; 1.9 |]; uncertaintyOpt = None }),
+            tableStudy.promotedMaterialWith tableRun tableVersion uncertainTableEntry)
 
     let private blackBoxChoice : ItemModelChoice = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.blackBoxMuellerModelId)
     let private m00 : ParameterName = ParameterName "m00"

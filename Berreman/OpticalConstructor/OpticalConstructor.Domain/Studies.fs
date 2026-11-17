@@ -2,6 +2,7 @@ namespace OpticalConstructor.Domain
 
 open System
 open System.Globalization
+open Berreman.Dispersion
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.ItemModels
@@ -33,7 +34,8 @@ module Studies =
         | UnknownStudyExperimentErr of reason : string
         /// A residual weight that is not finite or not above zero.
         | InvalidResidualWeightErr of reason : string
-        /// A material whose physics is a complexity tree, which publishes no parameter axis.
+        /// A material whose physics is a complexity tree other than one isotropic tabulated segment, which publishes no
+        /// parameter axis (spec 0050 S11.1, S13.2).
         | MaterialWithoutParametersErr of reason : string
         /// A material version the study has already opened.
         | MaterialAlreadyOpenErr of reason : string
@@ -561,55 +563,171 @@ module Studies =
             | TriclinicCrystal own -> TriclinicParameters.axes |> List.map (CrystalParameters.triclinicAxis own)
             | AbsorbingTriclinicCrystal own -> AbsorbingTriclinicParameters.axes |> List.map (CrystalParameters.absorbingTriclinicAxis own)
 
+    /// One component of an opened table, a row's n or k: its name, its value, the table holding another value in its
+    /// place, and the source's sigma of it when above zero (spec 0050 S13.2).
+    type private TableRowComponent =
+        {
+            rowName : ParameterName
+            rowValue : ParameterValue
+            writtenAt : ParameterValue -> TabulatedNkTable
+            sourceSigmaOpt : ParameterSigma option
+        }
+
+    /// The physics of an opened material's working copy: a crystal-parameter record, or the table of one isotropic
+    /// tabulated segment, stored in the serializer's case form (spec 0050 S11.1, S13.2).
+    type OpenedMaterialPhysics =
+        | OpenedCrystalPhysics of crystal : CrystalParameters
+        | OpenedTablePhysics of table : TabulatedNkTable
+
+        /// Each row's n then k, in table order (spec 0050 S13.2).
+        static member private tableComponents (table : TabulatedNkTable) : TableRowComponent list =
+            let sigmaAt (column : TabulatedNkUncertainty -> float array) (i : int) : ParameterSigma option =
+                table.uncertaintyOpt
+                |> Option.map (fun uncertainty -> (column uncertainty).[i])
+                |> Option.filter (fun sigma -> sigma > 0.0)
+                |> Option.map ParameterSigma
+
+            List.init table.n.Length (fun i ->
+                let row = ParameterNameIndex (i + 1)
+
+                [
+                    {
+                        rowName = ParameterName.tableRowIndex row
+                        rowValue = ParameterValue table.n.[i]
+                        writtenAt = fun (ParameterValue value) -> { table with n = table.n |> Array.updateAt i value }
+                        sourceSigmaOpt = sigmaAt (fun uncertainty -> uncertainty.sigmaN) i
+                    }
+                    {
+                        rowName = ParameterName.tableRowExtinction row
+                        rowValue = ParameterValue table.k.[i]
+                        writtenAt = fun (ParameterValue value) -> { table with k = table.k |> Array.updateAt i value }
+                        sourceSigmaOpt = sigmaAt (fun uncertainty -> uncertainty.sigmaK) i
+                    }
+                ])
+            |> List.concat
+
+        /// The component names in order: a crystal's generated axes (spec 0050 S11.1), a table's `row<i>.n` then
+        /// `row<i>.k` for each row (spec 0050 S13.2).
+        member this.componentNames : ParameterName list =
+            match this with
+            | OpenedCrystalPhysics crystal -> crystal.parameterAxes |> List.map (fun axis -> axis.name)
+            | OpenedTablePhysics table -> OpenedMaterialPhysics.tableComponents table |> List.map (fun held -> held.rowName)
+
+        /// The named component's number: its generated axis's read, or its row's n or k (spec 0050 S11.1, S13.2).
+        member this.componentValue (name : ParameterName) : ParameterValue option =
+            match this with
+            | OpenedCrystalPhysics crystal ->
+                crystal.parameterAxes |> List.tryFind (fun axis -> axis.name = name) |> Option.map (fun axis -> axis.parameterValueOf crystal)
+            | OpenedTablePhysics table ->
+                OpenedMaterialPhysics.tableComponents table |> List.tryFind (fun held -> held.rowName = name) |> Option.map (fun held -> held.rowValue)
+
+        /// The physics with the named component at `value`, written through its axis or into new table columns; an
+        /// unknown name changes nothing (spec 0050 S11.1, S13.2).
+        member this.withComponent (name : ParameterName) (value : ParameterValue) : OpenedMaterialPhysics =
+            match this with
+            | OpenedCrystalPhysics crystal ->
+                match crystal.parameterAxes |> List.tryFind (fun axis -> axis.name = name) with
+                | Some axis -> OpenedCrystalPhysics (axis.writeValue value crystal)
+                | None -> this
+            | OpenedTablePhysics table ->
+                match OpenedMaterialPhysics.tableComponents table |> List.tryFind (fun held -> held.rowName = name) with
+                | Some held -> OpenedTablePhysics (held.writtenAt value)
+                | None -> this
+
+        /// The source's sigma of a table row's n or k when its table carries one above zero; a crystal's component has
+        /// none (spec 0050 S13.2).
+        member this.componentSigmaOpt (name : ParameterName) : ParameterSigma option =
+            match this with
+            | OpenedCrystalPhysics _ -> None
+            | OpenedTablePhysics table ->
+                OpenedMaterialPhysics.tableComponents table
+                |> List.tryFind (fun held -> held.rowName = name)
+                |> Option.bind (fun held -> held.sourceSigmaOpt)
+
+        /// A table without its source's uncertainty, a crystal unchanged: a fitted value's uncertainty is its fit run's
+        /// (spec 0050 S11.4, S13.2).
+        member this.withoutSourceUncertainty : OpenedMaterialPhysics =
+            match this with
+            | OpenedCrystalPhysics _ -> this
+            | OpenedTablePhysics table -> OpenedTablePhysics { table with uncertaintyOpt = None }
+
+        /// The crystal, or `None` for a table (spec 0050 S13.2).
+        member this.crystalOpt : CrystalParameters option =
+            match this with
+            | OpenedCrystalPhysics crystal -> Some crystal
+            | OpenedTablePhysics _ -> None
+
+        /// The material physics the copy stands for: the crystal-parameter record, or one isotropic dispersive segment
+        /// over the table's sample range with no magnetic or active part, as every tabulated import builds it
+        /// (spec 0050 S11.1, S13.2).
+        member this.materialPhysics : MaterialPhysics =
+            match this with
+            | OpenedCrystalPhysics crystal -> CrystalParameterPhysics crystal
+            | OpenedTablePhysics table ->
+                ComplexityPhysics
+                    {
+                        eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ])
+                        magnetic = None
+                        active = None
+                    }
+
     /// The study-local working copy of an opened material version, stored in the study file (spec 0050 S11.1; 001 §I).
     type OpenedMaterial =
         {
             version : MaterialVersionId
             name : EntryName
-            crystal : CrystalParameters
+            physics : OpenedMaterialPhysics
             parameters : Parameter list
         }
 
-        /// OpenMaterial's working copy: one known parameter per generated axis of the crystal, in order; a complexity
-        /// tree publishes no axis and is refused (spec 0050 S11.1; 001 §I, §P).
+        /// OpenMaterial's working copy: one known parameter per component, in order. A crystal publishes its generated
+        /// axes, one isotropic tabulated segment with no magnetic or active part its rows' n and k; any other
+        /// complexity tree publishes no axis and is refused (spec 0050 S11.1, S13.2; 001 §I, §P).
         static member openFrom (version : MaterialVersionId) (entry : MaterialEntry) : Result<OpenedMaterial, StudyError> =
+            let openedAs (physics : OpenedMaterialPhysics) : OpenedMaterial =
+                {
+                    version = version
+                    name = entry.name
+                    physics = physics
+                    parameters =
+                        physics.componentNames
+                        |> List.choose (fun name ->
+                            physics.componentValue name |> Option.map (fun value -> ({ name = name; state = KnownParameter value } : Parameter)))
+                }
+
             match entry.physics with
-            | CrystalParameterPhysics crystal ->
-                Ok
-                    {
-                        version = version
-                        name = entry.name
-                        crystal = crystal
-                        parameters =
-                            crystal.parameterAxes
-                            |> List.map (fun axis -> ({ name = axis.name; state = KnownParameter (axis.parameterValueOf crystal) } : Parameter))
-                    }
+            | CrystalParameterPhysics crystal -> Ok (openedAs (OpenedCrystalPhysics crystal))
+            | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]); magnetic = None; active = None } ->
+                Ok (openedAs (OpenedTablePhysics table))
             | ComplexityPhysics _ ->
-                Error (MaterialWithoutParametersErr $"'{entry.name.value}' ({entry.id.value}) holds a complexity tree, not a crystal-parameter record")
+                Error (MaterialWithoutParametersErr $"'{entry.name.value}' ({entry.id.value}) holds a complexity tree, not a crystal-parameter record or one isotropic tabulated segment")
 
         /// The copy with that component's state replaced in place, so freeing one is its unknown state; refused when no
-        /// component has the name or the state breaks its rules (spec 0050 S11.1; 001 §I).
+        /// component has the name or the state breaks its rules. An unknown given no prior takes the opened value at its
+        /// source's sigma when the component has one (spec 0050 S11.1, S13.2; 001 §D, §I).
         member this.withParameterState (name : ParameterName) (state : ParameterState) : Result<OpenedMaterial, StudyError> =
             match this.parameters |> List.tryFind (fun parameter -> parameter.name = name) with
             | None ->
                 let reference = MaterialParameterRef (this.version, name)
                 Error (UnknownStudyParameterErr $"{reference.describe} is not among the {this.parameters.Length} parameters of '{this.name.value}'")
             | Some _ ->
-                ({ name = name; state = state } : Parameter).validate
+                let sourced : ParameterState =
+                    match state, this.physics.componentSigmaOpt name, this.physics.componentValue name with
+                    | UnknownParameter ({ priorOpt = None } as unknown), Some sigma, Some centre ->
+                        UnknownParameter { unknown with priorOpt = Some { centre = centre; sigma = sigma } }
+                    | _ -> state
+
+                ({ name = name; state = sourced } : Parameter).validate
                 |> Result.mapError (fun error -> InvalidStudyParameterErr error.describe)
                 |> Result.map (fun parameter ->
                     { this with parameters = this.parameters |> List.map (fun held -> if held.name = name then parameter else held) })
 
-        /// The crystal with each component written through its generated axis at its parameter's current number, in
-        /// order: a known or calibrated value, an unknown's start (spec 0050 S11.1).
-        member this.currentCrystal : CrystalParameters =
-            let axes = this.crystal.parameterAxes
-
+        /// The physics with each component written at its parameter's current number, in order: a known or calibrated
+        /// value, an unknown's start (spec 0050 S11.1, S13.2).
+        member this.currentPhysics : OpenedMaterialPhysics =
             this.parameters
-            |> List.fold (fun (crystal : CrystalParameters) (parameter : Parameter) ->
-                match axes |> List.tryFind (fun axis -> axis.name = parameter.name) with
-                | Some axis -> axis.writeValue parameter.state.currentValue crystal
-                | None -> crystal) this.crystal
+            |> List.fold (fun (physics : OpenedMaterialPhysics) (parameter : Parameter) ->
+                physics.withComponent parameter.name parameter.state.currentValue) this.physics
 
     /// A named set of one kit's experiments fitted together, with its opened materials, scopes, links, session gains,
     /// fit settings and notes; its fit runs are their own files (spec 0050 S11.1, S11.3; 001 §L).

@@ -2089,6 +2089,14 @@ module KitAcceptanceTests =
             generated
             records
 
+    /// The crystal AT-2's opened copy holds, failing on an opened table (spec 0050 S12.2, S13.2).
+    let private openedCrystalOf (material : OpenedMaterial) : CrystalPhysics.CrystalParameters =
+        match material.physics with
+        | OpenedCrystalPhysics crystal -> crystal
+        | OpenedTablePhysics _ ->
+            let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
+            failwith $"{file.value}: expected '{material.name.value}' opened as a crystal; actual an opened table"
+
     /// AT-2's study over the five experiments in kit order, the material opened and its components freed from `perturbedStart`; no scope is set and no fit runs (spec 0050 S12.2; 001 §Q AT-2).
     let private buildAbsorbingStudy (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
@@ -2104,7 +2112,7 @@ module KitAcceptanceTests =
             match (studyIn opened absorbingStudyName).materials with
             | [ material ] -> material
             | materials -> failwith $"{file.value}: expected one opened material; actual {materials.Length}"
-        perturbedStartUnknownsOf copy.crystal
+        perturbedStartUnknownsOf (openedCrystalOf copy)
         |> List.map (fun parameter -> SetOpenedMaterialParameter (absorbingStudyName, copy.version, parameter))
         |> List.fold sent opened
 
@@ -2479,7 +2487,7 @@ module KitAcceptanceTests =
             | held -> failwith $"{file.value}: expected one opened material; actual {held.Length}"
         expect file "opened version" absorbingMaterialVersion material.version
         expect file "opened name" absorbingMaterial.name material.name
-        expect file "opened crystal" (CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.absorbing) material.crystal
+        expect file "opened crystal" (OpenedCrystalPhysics (CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.absorbing)) material.physics
         let unknowns =
             material.parameters
             |> List.choose (fun parameter ->
@@ -2487,7 +2495,7 @@ module KitAcceptanceTests =
                 | UnknownParameter _ -> Some parameter.name
                 | KnownParameter _ | CalibratedParameter _ -> None)
         expect file "fifteen unknown components" 15 unknowns.Length
-        expect file "components freed from perturbedStart within the harness's box" (perturbedStartUnknownsOf material.crystal) material.parameters
+        expect file "components freed from perturbedStart within the harness's box" (perturbedStartUnknownsOf (openedCrystalOf material)) material.parameters
         expect file "scopes" [] study.scopes
         expect file "links" [] study.links
         expect file "session gains" [] study.sessionGains
@@ -2501,7 +2509,7 @@ module KitAcceptanceTests =
             |> List.map (fun r -> MaterialParameterRef (material.version, r.name), MaterialOwner material.version)
         let layout = held.parameterLayoutWith model.studyForwardContext
         expect file "one vector entry per component, shared by the five plates" shared (layout.entries |> List.map (fun entry -> entry.unknown.parameter, entry.owner))
-        assertAbsorbingAxes file material.crystal
+        assertAbsorbingAxes file (openedCrystalOf material)
 
     /// `studyDataOf`'s runs are the five experiments in study order, holding only observation rows that equal `expected` exactly (spec 0050 S12.2).
     let private assertAbsorbingStudyData (model : TableAndElementRotationModel) (expected : MuellerObservation list) : unit =

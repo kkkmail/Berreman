@@ -179,8 +179,9 @@ module StudyPublishing =
 
     type Study with
 
-        /// The opened entry with the crystal the run produced, preserving all its metadata; unchanged components
-        /// come from the fit's snapshot, and values owned per session or run are refused (spec 0050 S11.5).
+        /// The opened entry with the crystal or table the run produced, preserving all its metadata; unchanged components
+        /// come from the fit's snapshot, a table drops its source's uncertainty for the fit run's, and values owned per
+        /// session or run are refused (spec 0050 S11.4, S11.5, S13.2).
         member this.promotedMaterialWith (run : FitRun) (version : MaterialVersionId) (entry : MaterialEntry) : Result<MaterialEntry, PublishError> =
             if run.study <> this.name then
                 Error (ForeignFitRunErr $"'{run.name.value}' is a fit run of '{run.study.value}', not of '{this.name.value}'")
@@ -219,7 +220,7 @@ module StudyPublishing =
                             |> Result.map (fun copy ->
                                 {
                                     entry with
-                                        physics = CrystalParameterPhysics copy.currentCrystal
+                                        physics = copy.currentPhysics.withoutSourceUncertainty.materialPhysics
                                 })
 
     type FitRun with
