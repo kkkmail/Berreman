@@ -19,6 +19,7 @@ open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.InverseFitHarness
 open BerremanTestSupport.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
+open BerremanTestSupport.BiaxialDesign
 
 /// Spec 0044, manual task 012 — the inverse problem for the HARDEST transparent crystal there is: a
 /// biaxial, optically active, TRICLINIC one.
@@ -119,80 +120,6 @@ type BiaxialInverseTests() =
     /// This suite's wavelength — the sample's reference line.
     let waveLength = referenceWaveLength
 
-    // =================================================================================================
-    // The measurement set.
-    //
-    // THICKNESS FIRST, because it is the design variable that decides whether the fit is possible at
-    // all. Linear retardance enters the model through cos and sin of 2π Δn d / λ, so a plate carrying
-    // many waves gives a residual surface that oscillates into a dense forest of local minima roughly
-    // half a fringe apart, and a start guess more than about half a fringe away lands in the wrong one.
-    // The largest birefringence here is n₃ − n₁ = 0.042349 — five times quartz's — so the plate has to be
-    // FIVE TIMES THINNER than the 20 µm the uniaxial suite uses to stay in the same sub-wave regime:
-    // 4 µm is 0.268 wave, against that suite's 0.286.
-    //
-    // Every configuration therefore uses the same 4 µm plate. Unlike the uniaxial case there is no
-    // retardance-free principal cut to spend thickness on: a biaxial crystal has linear birefringence
-    // along EVERY principal axis, and the only directions free of it are the two optic axes, which are
-    // oblique.
-    //
-    // THE CUTS. Three principal cuts, because three different transverse planes are needed:
-    //
-    //   Z-cut, normal incidence: propagation along the crystal 3-axis. Transverse plane (1,2), so this
-    //          cut sees n₁, n₂, g₁₁, g₂₂ and g₁₂.
-    //   X-cut, normal incidence: propagation along the crystal 1-axis. Transverse plane (2,3): n₂, n₃,
-    //          g₂₂, g₃₃, g₂₃.
-    //   Y-cut, normal incidence: propagation along the crystal 2-axis. Transverse plane (1,3): n₁, n₃,
-    //          g₁₁, g₃₃, g₁₃ — and it is the ONLY cut in which g₁₃ is transverse at normal incidence.
-    //
-    // Four azimuths per cut, because rotating the sample about its own normal changes which linear
-    // combination of the transverse components the polarimeter projects onto, even though it cannot
-    // change which components are transverse at all.
-    //
-    // THE OBLIQUE SWEEPS do three things at once: they supply the Fresnel/angle information that pins
-    // the ABSOLUTE index level (which the retardances alone constrain only weakly), they tilt components
-    // that are longitudinal at normal incidence into the transverse plane, and — at the steepest angles
-    // on the x-cut — they approach an OPTIC AXIS, where the linear birefringence vanishes and what is
-    // left is a nearly pure optical rotation. Reflection is included as well as transmission because it
-    // carries index information that never traverses the sample.
-    // =================================================================================================
-
-    /// A 4 µm plate — 0.268 wave of linear retardance at the largest birefringence, the sub-wave regime
-    /// the whole design depends on.
-    let plate = Thickness.mkm 4.0<mkm>
-
-    let configuration (cut : SampleCut) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
-        configurationOf cut plate (incidenceDeg * 1.0<deg>) (azimuthDeg * 1.0<deg>) observable waveLength
-
-    /// The three principal cuts, in the order the transverse planes were listed above.
-    let principalCuts : SampleCut list = [ ZCut; XCut; YCut ]
-
-    /// B1 — three principal cuts, normal incidence, four azimuths, transmission. The backbone: each cut
-    /// contributes its own transverse pair of indices and its own three gyration components.
-    let b1 : MeasurementConfiguration list =
-        [ for cut in principalCuts do
-            for azimuth in [ 0.0; 22.5; 45.0; 67.5 ] ->
-                configuration cut 0.0 azimuth TransmittedMueller ]
-
-    /// B2 — three principal cuts, oblique sweep, two azimuths, transmission and reflection. Absolute
-    /// index leverage, and the mixing that makes each cut's LONGITUDINAL components partially visible.
-    let b2 : MeasurementConfiguration list =
-        [ for cut in principalCuts do
-            for incidence in [ 25.0; 55.0 ] do
-                for azimuth in [ 0.0; 90.0 ] do
-                    for observable in [ TransmittedMueller; ReflectedMueller ] ->
-                        configuration cut incidence azimuth observable ]
-
-    /// B3 — the optic-axis approach: an x-cut plate at 72 deg external incidence, which Snell's law turns
-    /// into ~36.7 deg internally, the angle at which the linear birefringence of this material vanishes.
-    /// Both azimuths are taken because the two optic axes sit on opposite sides of the 1-axis and a
-    /// triclinic crystal has no symmetry making them equivalent.
-    let b3 : MeasurementConfiguration list =
-        [ for azimuth in [ 0.0; 180.0 ] do
-            for observable in [ TransmittedMueller; ReflectedMueller ] ->
-                configuration XCut 72.0 azimuth observable ]
-
-    let fullConfigurations = b1 @ b2 @ b3
-
     /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters.
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
         observeWith forward triclinic configurations |> expectOk
@@ -206,7 +133,7 @@ type BiaxialInverseTests() =
     /// rescaling of the truth, which a fit could exploit. The index perturbations look small in relative
     /// terms and are not: against birefringences of 0.015-0.042 they move n₂ − n₁ by −5.7 % and n₃ − n₂
     /// by +5.5 %, and birefringence, not absolute index, is what the retardance depends on. They cannot
-    /// be larger for the structural reason the thickness commentary above gives — half a fringe is the
+    /// be larger for the structural reason `BiaxialDesign`'s thickness commentary gives — half a fringe is the
     /// basin, and at 0.268 wave that is roughly a factor of two in any one birefringence.
     let perturbedStart : TriclinicParameters =
         {
@@ -259,7 +186,7 @@ type BiaxialInverseTests() =
     /// 25-35 % wrong. Starting isotropic also means the crystal has no preferred axes at the first step,
     /// so the three index directions are as nearly degenerate there as they can be.
     ///
-    /// It is nonetheless legitimate rather than lucky, for the structural reason the thickness
+    /// It is nonetheless legitimate rather than lucky, for the structural reason `BiaxialDesign`'s thickness
     /// commentary gives: linear retardance enters through cos and sin of 2 pi dn d / lambda, so what
     /// matters is the distance in FRINGES, and the three true birefringences are 0.173, 0.095 and 0.268
     /// wave on a 4 um plate. Zero is under a third of a fringe from the largest of them and closer still
@@ -707,19 +634,16 @@ type BiaxialInverseTests() =
         //
         // The practical consequence for anyone designing this experiment: cutting more plates does not
         // substitute for tilting them, and tilting does not substitute for cutting. Both are required,
-        // which is exactly the shape of the measurement set above.
+        // which is exactly the shape of `BiaxialDesign`'s measurement set.
         let scaling = scalingAround perturbedStart
         let truthPoint = toScaled scaling triclinic
 
         let normsFor (configurations : MeasurementConfiguration list) : float[] =
             (residualJacobianAt (residualFor forward (observe configurations) scaling) truthPoint).columnNorms
 
-        let normalOn (cut : SampleCut) =
-            [ for azimuth in [ 0.0; 22.5; 45.0; 67.5 ] -> configuration cut 0.0 azimuth TransmittedMueller ]
-
-        let zOnly = normalOn ZCut
-        let zAndX = zOnly @ normalOn XCut
-        let everyCutNormal = zAndX @ normalOn YCut
+        let zOnly = normalIncidenceOn ZCut
+        let zAndX = zOnly @ normalIncidenceOn XCut
+        let everyCutNormal = zAndX @ normalIncidenceOn YCut
 
         let zNorms = normsFor zOnly
         let zxNorms = normsFor zAndX
