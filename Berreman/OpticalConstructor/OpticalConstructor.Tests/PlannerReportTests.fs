@@ -44,9 +44,13 @@ module PlannerReportTests =
     /// A plate with no principal axis on its normal (a tilted cut) at normal incidence.
     let private normalTiltedCut : PlannerLook = { normalZCut with normalAxisOpt = None }
 
+    /// The parameter of `crystal` named `name`.
+    let private crystalComponentNamed (crystal : CrystalParameters) (name : ParameterName) : CrystalComponent =
+        crystal.components |> List.find (fun (held : CrystalComponent) -> held.name = name)
+
     /// The component `components` names `name` as.
     let private componentNamed (crystal : CrystalParameters) (name : ParameterName) : TensorComponent =
-        (crystal.components |> List.find (fun (held : CrystalComponent) -> held.name = name)).``component``
+        (crystalComponentNamed crystal name).``component``
 
     /// The look's sight of each named parameter of `crystal`.
     let private sightsOf (look : PlannerLook) (crystal : CrystalParameters) (names : ParameterName list) : LookSight list =
@@ -55,6 +59,24 @@ module PlannerReportTests =
     /// What `looks` recover of the named parameter of `crystal`.
     let private targetSightOf (looks : PlannerLook list) (crystal : CrystalParameters) (name : ParameterName) : TargetSight =
         crystal.targetSightOf looks (componentNamed crystal name)
+
+    /// The report of `crystal` over `targets` and `looks`; a refusal fails the fact.
+    let private reportOf (targets : ParameterName list) (looks : PlannerLook list) (crystal : CrystalParameters) : RecoverabilityReport =
+        match crystal.structuralReport targets looks with
+        | Ok report -> report
+        | Error error -> failwith error.describe
+
+    /// The report over `looks` with every parameter of `crystal` a target, in its order.
+    let private reportOver (looks : PlannerLook list) (crystal : CrystalParameters) : RecoverabilityReport =
+        reportOf (crystal.components |> List.map (fun (held : CrystalComponent) -> held.name)) looks crystal
+
+    /// The report's unrecoverable-target findings, in order.
+    let private targetFindingsOf (report : RecoverabilityReport) : TargetFinding list =
+        report.findings
+        |> List.choose (fun (finding : PlannerFinding) ->
+            match finding with
+            | UnrecoverableTargetFinding targetFinding -> Some targetFinding
+            | OffAxisCutFinding _ -> None)
 
     [<Fact>]
     let ``a look sees a component only through an axis transverse to its propagation`` () : unit =
@@ -216,3 +238,125 @@ module PlannerReportTests =
     let ``the Snell cap is the internal angle of the smallest principal index at the steepest incidence`` () : unit =
         Assert.Equal(internalAngle (RefractionIndex 1.544) IncidenceAngle.maxValue, uniaxial.snellCap)
         Assert.Equal(internalAngle triclinicParameters.index1 IncidenceAngle.maxValue, triclinic.snellCap)
+
+    [<Fact>]
+    let ``each unrecoverable target names the missing plates and the tilt or the reach that would recover it`` () : unit =
+        let uniaxialNamed : ParameterName -> CrystalComponent = crystalComponentNamed uniaxial
+        let addXCutOrTilt : PlannerRemedy list = [ AddPlateRemedy XCut; ObliqueIncidenceRemedy uniaxial.snellCap ]
+        let overZCut = reportOver [ normalZCut ] uniaxial
+
+        Assert.Equal<CrystalComponent list>([ uniaxialNamed (ParameterName "g11") ], overZCut.reachable)
+
+        Assert.Equal<TargetFinding list>(
+            [
+                { target = uniaxialNamed (ParameterName "n_o"); reason = NoRetardanceReason; remedies = addXCutOrTilt }
+                { target = uniaxialNamed (ParameterName "n_e"); reason = AlongEveryPropagationReason; remedies = addXCutOrTilt }
+                { target = uniaxialNamed (ParameterName "g33"); reason = AlongEveryPropagationReason; remedies = addXCutOrTilt }
+            ],
+            targetFindingsOf overZCut)
+
+        Assert.Equal<CrystalComponent list>(
+            [ uniaxialNamed (ParameterName "n_o"); uniaxialNamed (ParameterName "n_e"); uniaxialNamed (ParameterName "g33") ],
+            overZCut.unrecoverable)
+
+        Assert.Equal<TargetFinding list>(
+            [
+                { target = uniaxialNamed (ParameterName "g11"); reason = FullMuellerNeededReason; remedies = [ FullMuellerRemedy ] }
+                { target = uniaxialNamed (ParameterName "g33"); reason = FullMuellerNeededReason; remedies = [ FullMuellerRemedy ] }
+            ],
+            targetFindingsOf (reportOver [ { normalXCut with reach = EllipsometricReach } ] uniaxial))
+
+        Assert.Equal<PlannerFinding list>(
+            [
+                UnrecoverableTargetFinding
+                    {
+                        target = crystalComponentNamed triclinic (ParameterName "g12")
+                        reason = NormalIncidenceOnlyReason
+                        remedies = [ ObliqueIncidenceRemedy triclinic.snellCap ]
+                    }
+            ],
+            (reportOf [ ParameterName "g12" ] [ normalXCut; normalYCut; normalZCut ] triclinic).findings)
+
+        let noLook = reportOver [] uniaxial
+
+        Assert.Equal<TargetFinding list>(
+            [
+                {
+                    target = uniaxialNamed (ParameterName "g11")
+                    reason = NoLookReason
+                    remedies = [ AddPlateRemedy ZCut; AddPlateRemedy XCut; FullMuellerRemedy ]
+                }
+            ],
+            targetFindingsOf noLook |> List.filter (fun (finding : TargetFinding) -> finding.target.name = ParameterName "g11"))
+
+        Assert.Equal<CrystalComponent list>([], noLook.reachable)
+        Assert.Equal<OffAxisCutNeed option>(None, noLook.offAxisCutOpt)
+
+    [<Fact>]
+    let ``plates that all put the same axis on their normal call for an off-axis cut`` () : unit =
+        let need : OffAxisCutNeed =
+            {
+                targets = [ crystalComponentNamed uniaxial (ParameterName "n_e"); crystalComponentNamed uniaxial (ParameterName "g33") ]
+                capAngle = uniaxial.snellCap
+                cuts = [ XCut ]
+            }
+
+        let overZCut = reportOver [ normalZCut ] uniaxial
+
+        Assert.Equal<OffAxisCutNeed option>(Some need, overZCut.offAxisCutOpt)
+        Assert.Equal(OffAxisCutFinding need, List.last overZCut.findings)
+
+        let tiltedZCut = reportOver [ normalZCut; obliqueZCut ] uniaxial
+
+        Assert.Equal<TargetFinding list>([], targetFindingsOf tiltedZCut)
+        Assert.Equal<PlannerFinding list>([ OffAxisCutFinding need ], tiltedZCut.findings)
+
+        Assert.Equal<PlannerFinding list>([], (reportOver [ normalZCut; normalXCut ] uniaxial).findings)
+
+        let triclinicNeed : OffAxisCutNeed =
+            {
+                targets = [ crystalComponentNamed triclinic (ParameterName "n3"); crystalComponentNamed triclinic (ParameterName "g33") ]
+                capAngle = triclinic.snellCap
+                cuts = [ XCut; YCut ]
+            }
+
+        Assert.Equal<OffAxisCutNeed option>(Some triclinicNeed, (reportOver [ normalZCut ] triclinic).offAxisCutOpt)
+
+    [<Fact>]
+    let ``a target the crystal does not have refuses the report, naming it`` () : unit =
+        match uniaxial.structuralReport [ ParameterName "n_o"; ParameterName "n2"; ParameterName "n9" ] [ normalZCut ] with
+        | Error (UnknownPlannerTargetErr reason as error) ->
+            Assert.Contains("n2", reason)
+            Assert.Contains("n_o, n_e, g11, g33", reason)
+            Assert.DoesNotContain("n9", reason)
+            Assert.StartsWith("the crystal has no such parameter: ", error.describe)
+        | Ok _ -> Assert.Fail "a target the crystal does not have must refuse the report"
+
+    [<Fact>]
+    let ``the findings read as sentences naming the parameter, the reason and the remedy`` () : unit =
+        let overZCut = reportOver [ normalZCut ] uniaxial
+
+        Assert.Equal<string list>(
+            [
+                "This kit can never recover n_o: no look carries its linear retardance or an oblique change of the Fresnel amplitudes."
+                "This kit can never recover n_e: every look propagates along its axes."
+                "This kit can never recover g33: every look propagates along its axes."
+                "You need an off-axis cut: n_e, g33 lie along the normal of every plate, and a tilt carries the wave at most 40.4° off it; add one x-cut plate."
+            ],
+            overZCut.findings |> List.map (fun (finding : PlannerFinding) -> finding.text))
+
+        Assert.Equal<string list>(
+            [ "add one x-cut plate"; "tilt a plate (its internal angle reaches at most 40.4°)" ],
+            targetFindingsOf overZCut
+            |> List.filter (fun (finding : TargetFinding) -> finding.target.name = ParameterName "n_o")
+            |> List.collect (fun (finding : TargetFinding) -> finding.remedies |> List.map (fun (remedy : PlannerRemedy) -> remedy.text)))
+
+        Assert.Equal<string list>(
+            [ "z-cut plate"; "x-cut plate"; "y-cut plate"; "30.0° tilted-cut plate" ],
+            [ ZCut; XCut; YCut; TiltedCut (Angle.degree 30.0<deg>) ] |> List.map (fun (cut : SampleCut) -> cut.plateText))
+
+        Assert.Equal("use a full Mueller polarimeter, or a polarizer and an analyzer around the plate", FullMuellerRemedy.text)
+
+        Assert.Equal<string option>(
+            Some "You need an off-axis cut: n3, g33 lie along the normal of every plate, and a tilt carries the wave at most 41.1° off it; add one x-cut plate or one y-cut plate.",
+            (reportOver [ normalZCut ] triclinic).offAxisCutOpt |> Option.map (fun (need : OffAxisCutNeed) -> (OffAxisCutFinding need).text))

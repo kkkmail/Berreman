@@ -1,9 +1,12 @@
 namespace OpticalConstructor.Domain
 
+open System.Globalization
 open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
+open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.CrystalPhysics
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.PlannerSymmetry
 
@@ -199,3 +202,210 @@ module MeasurementPlanner =
                 | AbsorbingTriclinicCrystal parameters -> [ parameters.index1; parameters.index2; parameters.index3 ]
 
             internalAngle (List.min principalIndices) IncidenceAngle.maxValue
+
+    type Angle with
+
+        /// Degrees with one decimal under the invariant culture, as every planner sentence writes an angle
+        /// (spec 0050 S14.1).
+        member private this.plannerDegreesText : string = this.degrees.ToString("F1", CultureInfo.InvariantCulture)
+
+    type SampleCut with
+
+        /// The plate a remedy asks for, a tilted cut by its tilt (spec 0050 S14.1).
+        member this.plateText : string =
+            match this with
+            | ZCut -> "z-cut plate"
+            | XCut -> "x-cut plate"
+            | YCut -> "y-cut plate"
+            | TiltedCut tilt -> $"{tilt.plannerDegreesText}° tilted-cut plate"
+
+    /// What would recover a target: one more plate, a tilt capped at the Snell angle, or a fuller detector; derived,
+    /// never stored (spec 0050 S14.1; specs/0044/.manual/004 §3.2).
+    type PlannerRemedy =
+        | AddPlateRemedy of SampleCut
+        | ObliqueIncidenceRemedy of cap : Angle
+        | FullMuellerRemedy
+
+        /// The remedy as the report states it (spec 0050 S14.1).
+        member this.text : string =
+            match this with
+            | AddPlateRemedy cut -> $"add one {cut.plateText}"
+            | ObliqueIncidenceRemedy cap ->
+                $"tilt a plate (its internal angle reaches at most {cap.plannerDegreesText}°)"
+            | FullMuellerRemedy -> "use a full Mueller polarimeter, or a polarizer and an analyzer around the plate"
+
+    /// A target no look recovers, why, and what would recover it (spec 0050 S14.1; 001 §M "this kit can never
+    /// recover X").
+    type TargetFinding =
+        {
+            target : CrystalComponent
+            reason : UnseenReason
+            remedies : PlannerRemedy list
+        }
+
+    /// Targets every plate puts on its normal, which only a tilt reaches, at most `capAngle` off it, and the cuts
+    /// that would lay them across the wave (spec 0050 S14.1; specs/0044/.manual/004 §3.2).
+    type OffAxisCutNeed =
+        {
+            targets : CrystalComponent list
+            capAngle : Angle
+            cuts : SampleCut list
+        }
+
+    /// One finding of the recoverability report; derived, never stored (spec 0050 S14.1; 001 §M).
+    type PlannerFinding =
+        | UnrecoverableTargetFinding of TargetFinding
+        | OffAxisCutFinding of OffAxisCutNeed
+
+        /// The finding as one sentence naming the parameter, the reason and the remedy (spec 0050 S14.1).
+        member this.text : string =
+            match this with
+            | UnrecoverableTargetFinding finding ->
+                $"This kit can never recover {finding.target.name.value}: {finding.reason.text}."
+            | OffAxisCutFinding need ->
+                let names : string = need.targets |> List.map (fun held -> held.name.value) |> String.concat ", "
+                let plates : string = need.cuts |> List.map (fun cut -> $"one {cut.plateText}") |> String.concat " or "
+
+                $"You need an off-axis cut: {names} lie along the normal of every plate, "
+                + $"and a tilt carries the wave at most {need.capAngle.plannerDegreesText}° off it; add {plates}."
+
+    /// The structural recoverability report: the crystal's symmetry, the targets the looks recover, and a finding for
+    /// each that they cannot, then the off-axis cut they call for (spec 0050 S14.1; 001 §M).
+    type RecoverabilityReport =
+        {
+            symmetry : CrystalSymmetry
+            reachable : CrystalComponent list
+            findings : PlannerFinding list
+        }
+
+        /// The targets of its unrecoverable-target findings, in order (spec 0050 S14.1).
+        member this.unrecoverable : CrystalComponent list =
+            this.findings
+            |> List.choose (fun finding ->
+                match finding with
+                | UnrecoverableTargetFinding targetFinding -> Some targetFinding.target
+                | OffAxisCutFinding _ -> None)
+
+        /// Its off-axis-cut finding, none when the plates do not all share one normal axis (spec 0050 S14.1).
+        member this.offAxisCutOpt : OffAxisCutNeed option =
+            this.findings
+            |> List.tryPick (fun finding ->
+                match finding with
+                | OffAxisCutFinding need -> Some need
+                | UnrecoverableTargetFinding _ -> None)
+
+    /// Why the planner refuses a report (spec 0050 S14.1).
+    type PlannerError =
+        | UnknownPlannerTargetErr of reason : string
+
+        /// The refusal as the planner states it (spec 0050 S14.1).
+        member this.describe : string =
+            match this with
+            | UnknownPlannerTargetErr reason -> $"the crystal has no such parameter: {reason}"
+
+    type CrystalParameters with
+
+        /// Each target reachable through `looks`, or a finding of why not with its remedies over the crystal's
+        /// distinct principal plates, then an off-axis cut when every look shares one normal axis; the first unknown
+        /// target refuses (spec 0050 S14.1; 001 §M; specs/0044/.manual/004 §3.2).
+        member this.structuralReport
+            (targets : ParameterName list)
+            (looks : PlannerLook list)
+            : Result<RecoverabilityReport, PlannerError> =
+            let held : CrystalComponent list = this.components
+
+            let heldNames : string =
+                held |> List.map (fun (candidate : CrystalComponent) -> candidate.name.value) |> String.concat ", "
+
+            // A y-cut looks at a uniaxial crystal as an x-cut does (`MuellerInverse.fs` `SampleCut`).
+            let candidates : SampleCut list =
+                match this.symmetry.anisotropy with
+                | Uniaxial -> [ ZCut; XCut ]
+                | Isotropic
+                | Biaxial -> [ ZCut; XCut; YCut ]
+
+            let missing : SampleCut list =
+                candidates
+                |> List.filter (fun cut -> looks |> List.forall (fun look -> look.normalAxisOpt <> cut.normalAxisOpt))
+
+            let addPlatesSeeing (plates : SampleCut list) (target : CrystalComponent) : PlannerRemedy list =
+                plates
+                |> List.choose (fun cut ->
+                    let plateLook : PlannerLook =
+                        {
+                            normalAxisOpt = cut.normalAxisOpt
+                            incidence = IncidenceAngle.normal
+                            observable = TransmittedMueller
+                            reach = FullMuellerReach
+                        }
+
+                    match plateLook.sightOf this target.``component`` with
+                    | SeenInLook -> Some (AddPlateRemedy cut)
+                    | AlongPropagationInLook
+                    | NormalIncidenceInLook
+                    | NoRetardanceInLook
+                    | ReachMissesInLook -> None)
+
+            let remediesOf (target : CrystalComponent) (reason : UnseenReason) : PlannerRemedy list =
+                match reason with
+                | NoLookReason -> addPlatesSeeing candidates target @ [ FullMuellerRemedy ]
+                | AlongEveryPropagationReason
+                | NoRetardanceReason -> addPlatesSeeing missing target @ [ ObliqueIncidenceRemedy this.snellCap ]
+                // More plates never substitute for a tilt on an off-diagonal component (`BiaxialInverseTests`).
+                | NormalIncidenceOnlyReason -> [ ObliqueIncidenceRemedy this.snellCap ]
+                | FullMuellerNeededReason -> [ FullMuellerRemedy ]
+
+            let reportOf (targetComponents : CrystalComponent list) : RecoverabilityReport =
+                let sights : (CrystalComponent * TargetSight) list =
+                    targetComponents |> List.map (fun target -> target, this.targetSightOf looks target.``component``)
+
+                let reachable : CrystalComponent list =
+                    sights
+                    |> List.choose (fun (target, sight) ->
+                        match sight with
+                        | ReachableTarget -> Some target
+                        | UnreachableTarget _ -> None)
+
+                let targetFindings : PlannerFinding list =
+                    sights
+                    |> List.choose (fun (target, sight) ->
+                        match sight with
+                        | ReachableTarget -> None
+                        | UnreachableTarget reason ->
+                            let finding : TargetFinding =
+                                {
+                                    target = target
+                                    reason = reason
+                                    remedies = remediesOf target reason
+                                }
+
+                            Some (UnrecoverableTargetFinding finding))
+
+                let offAxisFindings : PlannerFinding list =
+                    match looks |> List.map (fun look -> look.normalAxisOpt) |> List.distinct with
+                    | [ (Some sharedAxis as sharedNormal) ] ->
+                        let onNormal : CrystalComponent list =
+                            targetComponents |> List.filter (fun target -> target.``component``.axes = [ sharedAxis ])
+
+                        match onNormal with
+                        | [] -> []
+                        | _ :: _ ->
+                            let need : OffAxisCutNeed =
+                                {
+                                    targets = onNormal
+                                    capAngle = this.snellCap
+                                    cuts = candidates |> List.filter (fun cut -> cut.normalAxisOpt <> sharedNormal)
+                                }
+
+                            [ OffAxisCutFinding need ]
+                    | _ -> []
+
+                { symmetry = this.symmetry; reachable = reachable; findings = targetFindings @ offAxisFindings }
+
+            targets
+            |> List.map (fun name ->
+                match held |> List.tryFind (fun (candidate : CrystalComponent) -> candidate.name = name) with
+                | Some found -> Ok found
+                | None -> Error (UnknownPlannerTargetErr $"{name.value} (it has {heldNames})"))
+            |> ItemEvaluation.sequenced
+            |> Result.map reportOf
