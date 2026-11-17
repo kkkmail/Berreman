@@ -1,8 +1,13 @@
 namespace OpticalConstructor.Domain
 
+open Berreman.MaterialProperties
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.Studies
 
 /// The Measurement Planner's layer-1 tables: what a crystal's symmetry allows and what a look at a plate
 /// of it can see (spec 0050 S14.1).
@@ -325,3 +330,135 @@ module PlannerSymmetry =
                 | AbsorbingTriclinicCrystal _ -> [ TriclinicPedial ]
 
             { anisotropy = this.anisotropy; pointGroups = pointGroups }
+
+    /// Below this a rotated marker's entry is zero: a 90 degree rotation leaves round-off near 1e-16 on the entries it
+    /// zeroes (spec 0050 S14.1).
+    [<Literal>]
+    let private markerTolerance : float = 1.0e-9
+
+    /// A principal axis of the frame the crystal records are written in (`CrystalPhysics.fs`; spec 0050 S14.1).
+    type CrystalAxis =
+        | FirstCrystalAxis
+        | SecondCrystalAxis
+        | ThirdCrystalAxis
+
+        /// A probe crystal of permittivity diag(1, 4, 9) and no gyration, so each axis is recognised by its own value
+        /// wherever a rotation carries it (spec 0050 S14.1).
+        static member marker : OpticalProperties =
+            let probe : TriclinicParameters =
+                {
+                    index1 = RefractionIndex 1.0
+                    index2 = RefractionIndex 2.0
+                    index3 = RefractionIndex 3.0
+                    g11 = RhoValue 0.0
+                    g22 = RhoValue 0.0
+                    g33 = RhoValue 0.0
+                    g23 = RhoValue 0.0
+                    g13 = RhoValue 0.0
+                    g12 = RhoValue 0.0
+                }
+
+            probe.opticalProperties
+
+        /// The principal axis of a rotated marker that lies along the lab z-axis, the plate normal the system
+        /// stratifies along (`orientForCut`); none when no principal axis lies there (spec 0050 S14.1).
+        static member normalOf (oriented : OpticalProperties) : CrystalAxis option =
+            let marker = CrystalAxis.marker
+
+            let onNormal (diagonal : int) : bool =
+                abs (oriented.eps.[2, 2].Real - marker.eps.[diagonal, diagonal].Real) < markerTolerance
+
+            if oriented.eps.[0, 2].Magnitude >= markerTolerance || oriented.eps.[1, 2].Magnitude >= markerTolerance then None
+            elif onNormal 0 then Some FirstCrystalAxis
+            elif onNormal 1 then Some SecondCrystalAxis
+            elif onNormal 2 then Some ThirdCrystalAxis
+            else None
+
+    /// Two principal axes in order, those of an off-diagonal tensor component (spec 0050 S14.1).
+    type CrystalAxisPair =
+        {
+            firstAxis : CrystalAxis
+            secondAxis : CrystalAxis
+        }
+
+    /// What a crystal record's parameter is in the tensors: a principal index on the axes it occupies (n_o on the
+    /// 1- and 2-axes of a uniaxial crystal), a gyration component, or a component of the absorbing record's ε″
+    /// (spec 0050 S14.1).
+    type TensorComponent =
+        | PrincipalIndexComponent of CrystalAxis list
+        | GyrationDiagonalComponent of CrystalAxis list
+        | GyrationOffDiagonalComponent of CrystalAxisPair
+        | AbsorptionDiagonalComponent of CrystalAxis
+        | AbsorptionOffDiagonalComponent of CrystalAxisPair
+
+        /// The axes the component is on, a pair's two in order (spec 0050 S14.1).
+        member this.axes : CrystalAxis list =
+            match this with
+            | PrincipalIndexComponent axes
+            | GyrationDiagonalComponent axes -> axes
+            | GyrationOffDiagonalComponent pair
+            | AbsorptionOffDiagonalComponent pair -> [ pair.firstAxis; pair.secondAxis ]
+            | AbsorptionDiagonalComponent axis -> [ axis ]
+
+    /// One parameter of a crystal record and the tensor component it is (spec 0050 S14.1).
+    type CrystalComponent =
+        {
+            name : ParameterName
+            ``component`` : TensorComponent
+        }
+
+    type CrystalParameters with
+
+        /// The record's parameters in their axes' order, each with its tensor component; the names are the
+        /// `parameterAxes` names, never written again (spec 0050 S14.1).
+        member this.components : CrystalComponent list =
+            let principalAxes : CrystalAxis list = [ FirstCrystalAxis; SecondCrystalAxis; ThirdCrystalAxis ]
+
+            // The records' off-diagonal order: 23, 13, 12 (`MuellerInverse.fs` axes).
+            let offDiagonalPairs : CrystalAxisPair list =
+                [
+                    { firstAxis = SecondCrystalAxis; secondAxis = ThirdCrystalAxis }
+                    { firstAxis = FirstCrystalAxis; secondAxis = ThirdCrystalAxis }
+                    { firstAxis = FirstCrystalAxis; secondAxis = SecondCrystalAxis }
+                ]
+
+            let indices : TensorComponent list = principalAxes |> List.map (fun axis -> PrincipalIndexComponent [ axis ])
+
+            let gyration : TensorComponent list =
+                (principalAxes |> List.map (fun axis -> GyrationDiagonalComponent [ axis ]))
+                @ (offDiagonalPairs |> List.map GyrationOffDiagonalComponent)
+
+            let tensorComponents : TensorComponent list =
+                match this with
+                | UniaxialCrystal _ ->
+                    [
+                        PrincipalIndexComponent [ FirstCrystalAxis; SecondCrystalAxis ]
+                        PrincipalIndexComponent [ ThirdCrystalAxis ]
+                        GyrationDiagonalComponent [ FirstCrystalAxis; SecondCrystalAxis ]
+                        GyrationDiagonalComponent [ ThirdCrystalAxis ]
+                    ]
+                | TriclinicCrystal _ -> indices @ gyration
+                | AbsorbingTriclinicCrystal _ ->
+                    indices
+                    @ (principalAxes |> List.map AbsorptionDiagonalComponent)
+                    @ (offDiagonalPairs |> List.map AbsorptionOffDiagonalComponent)
+                    @ gyration
+
+            List.map2
+                (fun (axis : ParameterAxis<CrystalParameters>) (tensorComponent : TensorComponent) ->
+                    { name = axis.name; ``component`` = tensorComponent })
+                this.parameterAxes
+                tensorComponents
+
+    type SampleCut with
+
+        /// The principal axis `orientForCut` carries onto the plate normal; the azimuth only turns the plate about its
+        /// normal, so it is taken at zero (spec 0050 S14.1).
+        member this.normalAxisOpt : CrystalAxis option =
+            CrystalAxis.normalOf (orientForCut this (SampleAzimuth.degree 0.0<Berreman.Constants.deg>) CrystalAxis.marker)
+
+    type CrystalOrientation with
+
+        /// The principal axis the layer's rotation carries onto the plate normal, as `ResolvedLayer.getLayer` rotates
+        /// it; `PrimaryAxes` is a z-cut (spec 0050 S14.1).
+        member this.normalAxisOpt : CrystalAxis option = CrystalAxis.normalOf (CrystalAxis.marker.rotate this.toRotation)

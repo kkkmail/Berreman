@@ -1,13 +1,20 @@
 namespace OpticalConstructor.Tests
 
 open Xunit
+open Berreman.Constants
+open Berreman.Geometry
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.PlannerSymmetry
 open CrystalMaterialFixtures
 
-/// The Measurement Planner's layer-1 point-group table and the symmetry a crystal record states (spec 0050 S14.1).
+/// The Measurement Planner's layer-1 point-group table, the symmetry a crystal record states, its parameters' tensor
+/// components and the axis a cut puts on the plate normal (spec 0050 S14.1).
 module PlannerSymmetryTests =
 
     let private symbolsOf (groups : PointGroup list) : string list =
@@ -18,6 +25,15 @@ module PlannerSymmetryTests =
 
     let private groupsWithAngles (count : ComponentCount) : PointGroup list =
         PointGroup.all |> List.filter (fun group -> group.orientationAngleCount = count)
+
+    let private tensorComponentsOf (crystal : CrystalParameters) : TensorComponent list =
+        crystal.components |> List.map (fun (held : CrystalComponent) -> held.``component``)
+
+    let private axisPair (firstAxis : CrystalAxis) (secondAxis : CrystalAxis) : CrystalAxisPair =
+        { firstAxis = firstAxis; secondAxis = secondAxis }
+
+    let private eulerOrientation (theta : Angle) : CrystalOrientation =
+        EulerRotation { EulerAngles.convention = ZmYpXp; phi = Angle.zero; theta = theta; psi = Angle.zero }
 
     [<Fact>]
     let ``the 32 point groups split into 11 centrosymmetric and 21 non-centrosymmetric classes, 18 of them gyrotropic`` () : unit =
@@ -85,3 +101,68 @@ module PlannerSymmetryTests =
 
         let noGroup : CrystalSymmetry = { anisotropy = Isotropic; pointGroups = [] }
         Assert.Equal(ComponentCount 0, noGroup.orientationAngleCount)
+
+    [<Fact>]
+    let ``every crystal record names its parameters' tensor components in its axis order`` () : unit =
+        for crystal in crystals do
+            Assert.Equal<ParameterName list>(
+                crystal.parameterAxes |> List.map (fun axis -> axis.name),
+                crystal.components |> List.map (fun (held : CrystalComponent) -> held.name))
+
+        let uniaxial = tensorComponentsOf (UniaxialCrystal uniaxialParameters)
+
+        Assert.Equal<TensorComponent list>(
+            [
+                PrincipalIndexComponent [ FirstCrystalAxis; SecondCrystalAxis ]
+                PrincipalIndexComponent [ ThirdCrystalAxis ]
+                GyrationDiagonalComponent [ FirstCrystalAxis; SecondCrystalAxis ]
+                GyrationDiagonalComponent [ ThirdCrystalAxis ]
+            ],
+            uniaxial)
+
+        let offDiagonalPairs =
+            [
+                axisPair SecondCrystalAxis ThirdCrystalAxis
+                axisPair FirstCrystalAxis ThirdCrystalAxis
+                axisPair FirstCrystalAxis SecondCrystalAxis
+            ]
+
+        let triclinic = tensorComponentsOf (TriclinicCrystal triclinicParameters)
+        Assert.Equal(9, triclinic.Length)
+        Assert.Equal<TensorComponent list>(offDiagonalPairs |> List.map GyrationOffDiagonalComponent, triclinic |> List.skip 6)
+
+        Assert.Equal<CrystalAxis list list>(
+            [ [ SecondCrystalAxis; ThirdCrystalAxis ]; [ FirstCrystalAxis; ThirdCrystalAxis ]; [ FirstCrystalAxis; SecondCrystalAxis ] ],
+            triclinic |> List.skip 6 |> List.map (fun tensorComponent -> tensorComponent.axes))
+
+        let absorbing = tensorComponentsOf (AbsorbingTriclinicCrystal absorbingTriclinicParameters)
+        Assert.Equal(15, absorbing.Length)
+        Assert.Equal<TensorComponent list>(offDiagonalPairs |> List.map AbsorptionOffDiagonalComponent, absorbing |> List.skip 6 |> List.take 3)
+        Assert.Equal<TensorComponent list>(offDiagonalPairs |> List.map GyrationOffDiagonalComponent, absorbing |> List.skip 12)
+
+        Assert.Equal<CrystalAxis list list>(
+            [ [ FirstCrystalAxis; SecondCrystalAxis ]; [ ThirdCrystalAxis ]; [ FirstCrystalAxis ] ],
+            [ uniaxial.[0].axes; uniaxial.[3].axes; absorbing.[3].axes ])
+
+    [<Fact>]
+    let ``each principal cut puts on the normal the axis orientForCut carries there, and a tilted cut puts none`` () : unit =
+        Assert.Equal<CrystalAxis option list>(
+            [ Some ThirdCrystalAxis; Some FirstCrystalAxis; Some SecondCrystalAxis; None ],
+            [ ZCut; XCut; YCut; TiltedCut (Angle.degree 30.0<deg>) ] |> List.map (fun (cut : SampleCut) -> cut.normalAxisOpt))
+
+        Assert.Equal<CrystalAxis option>(
+            Some FirstCrystalAxis,
+            CrystalAxis.normalOf (orientForCut XCut (SampleAzimuth.degree 40.0<deg>) CrystalAxis.marker))
+
+        Assert.Equal<float list>([ 1.0; 4.0; 9.0 ], [ 0..2 ] |> List.map (fun i -> CrystalAxis.marker.eps.[i, i].Real))
+
+    [<Fact>]
+    let ``a plate's crystal orientation puts its axis on the normal as the system builder rotates it`` () : unit =
+        Assert.Equal<CrystalAxis option>(Some ThirdCrystalAxis, PrimaryAxes.normalAxisOpt)
+        Assert.Equal<CrystalAxis option>(ZCut.normalAxisOpt, PrimaryAxes.normalAxisOpt)
+
+        let xCutRotation = eulerOrientation (Angle.degree 90.0<deg>)
+        Assert.Equal<CrystalAxis option>(Some FirstCrystalAxis, xCutRotation.normalAxisOpt)
+        Assert.Equal<CrystalAxis option>(XCut.normalAxisOpt, xCutRotation.normalAxisOpt)
+
+        Assert.Equal<CrystalAxis option>(None, (eulerOrientation (Angle.degree 30.0<deg>)).normalAxisOpt)
