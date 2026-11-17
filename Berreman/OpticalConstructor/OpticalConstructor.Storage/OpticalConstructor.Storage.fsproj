@@ -27,6 +27,7 @@
         <Compile Include="PresetDatabaseStore.fs" />
         <Compile Include="ItemModelDatabaseStore.fs" />
         <Compile Include="LibraryBackupStore.fs" />
+        <Compile Include="MaterialImport.fs" />
         <Compile Include="CatalogueImportStore.fs" />
         <Compile Include="KitFolderStore.fs" />
         <Compile Include="KitContentFiles.fs" />
@@ -37,7 +38,6 @@
              compiles after CanonicalJson (its shared options). -->
         <Compile Include="GroupsLibrary.fs" />
         <Compile Include="Sidecar.fs" />
-        <Compile Include="MaterialImport.fs" />
         <Compile Include="MaterialSourceStore.fs" />
         <Compile Include="SpectralImport.fs" />
         <!-- Persistence II (§I.5-I.8, slice 013): export. -->

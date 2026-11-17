@@ -14,6 +14,7 @@ open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialImport
 open Softellect.Sys
 
 module CatalogueImportStore =
@@ -256,7 +257,8 @@ module CatalogueImportStore =
 
     type CatalogueImportContext with
 
-        /// Supplies canonical hashes, fresh identities, the UTC clock and catalogue/entry-file IO (spec 0050 S3.1; S3.2; S3.3).
+        /// Supplies canonical hashes, fresh identities, the UTC clock and catalogue, entry-file and glass-catalogue IO
+        /// (spec 0050 S3.1; S3.2; S3.3; S13.2).
         [<ElevationBoundary(nameof IoBoundary, "the catalogue import composition root: canonical hashing, ambient clock, fresh identities and filesystem proxies")>]
         static member create (proxy : CatalogueImportProxy) : CatalogueImportContext =
             {
@@ -275,6 +277,22 @@ module CatalogueImportStore =
                 readEntryFile = fun kind file ->
                     LibraryFileText.readEntryFile kind file
                     |> Result.mapError (fun error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+                readGlassCatalogue = fun file ->
+                    let bytesRead : Result<FileByteContent, CatalogueImportError> =
+                        try Ok (FileByteContent (File.ReadAllBytes file.value))
+                        with e -> Error (DroppedFileRefusedErr $"{file.value}: {e.Message}")
+                    bytesRead
+                    |> Result.bind (fun bytes ->
+                        (GlassCatalogueText.ofBytes bytes).importGlasses
+                        |> Result.mapError (fun error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+                        |> Result.map (fun glasses ->
+                            let read : GlassCatalogueRead =
+                                {
+                                    file = file.leafName
+                                    fileHash = ContentHash.ofBytes bytes
+                                    glasses = glasses
+                                }
+                            read))
                 writeEntryFile = fun file envelope ->
                     envelope.fileText
                     |> Result.bind (fun text -> text.writeAtomically file)

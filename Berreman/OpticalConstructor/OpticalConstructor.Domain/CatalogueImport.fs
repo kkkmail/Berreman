@@ -437,6 +437,14 @@ module CatalogueImport =
             | ExportFolderHoldsCatalogueErr reason -> $"the export folder already holds a catalogue: {reason}"
             | EmptyLibraryExportErr reason -> $"there is nothing to export: {reason}"
 
+    /// One read glass catalogue: its leaf name, the SHA-256 of its bytes and its glasses in file order (spec 0050 S13.2).
+    type GlassCatalogueRead =
+        {
+            file : FileName
+            fileHash : ContentHash
+            glasses : MaterialEntry list
+        }
+
     [<ReferenceEquality>]
     type CatalogueImportContext =
         {
@@ -450,6 +458,8 @@ module CatalogueImport =
             openCatalogue : FolderName -> CatalogueProxy
             /// Reads one entry file, retaining its file name in a refusal (spec 0050 S3.2).
             readEntryFile : LibraryEntryKind -> FileName -> Result<LibraryEntryEnvelope, CatalogueImportError>
+            /// Reads one glass catalogue, retaining its file name in a refusal (spec 0050 S13.2).
+            readGlassCatalogue : FileName -> Result<GlassCatalogueRead, CatalogueImportError>
             /// Writes one entry file, retaining its file name in a refusal (spec 0050 S3.3).
             writeEntryFile : FileName -> LibraryEntryEnvelope -> Result<unit, LibraryExportError>
             /// The configured catalogue-export folder in which export dialogs open, if any (spec 0050 001 §G).
@@ -539,16 +549,45 @@ module CatalogueImport =
             |> Result.bind (fun entries -> this.exportEntries (entries |> List.map _.id) target)
 
         /// Validates the complete drop and returns decisions in file order without writing (spec 0050 001 §B, §H; S3.2).
+        /// A `.agf` glass catalogue drops one new user material per glass, in its file's order (spec 0050 S13.2).
         member this.decideDroppedFiles (files : FileName list) : Result<ImportDecision list, CatalogueImportError> =
-            let readFile (file : FileName) : Result<FileName * LibraryEntryEnvelope, CatalogueImportError> =
-                match LibraryEntryKind.tryOfFileName file with
-                | None -> Error (DroppedFileRefusedErr $"{file.value}: not a library entry file")
-                | Some kind ->
+            let glassCatalogueExtension = FileExtension ".agf"
+
+            let refusedAs (file : FileName) (error : CatalogueImportError) : CatalogueImportError =
+                match error with
+                | DroppedFileRefusedErr _ -> error
+                | _ -> DroppedFileRefusedErr $"{file.value}: {error.describe}"
+
+            // Each glass takes a minted id, as a pull does, so a second drop collides by name, never by id (spec 0050 S13.2).
+            let readGlasses (file : FileName) : Result<(FileName * LibraryEntryEnvelope) list, CatalogueImportError> =
+                this.readGlassCatalogue file
+                |> Result.bind (fun read ->
+                    let provenance : EntryFileImportInfo =
+                        {
+                            file = read.file
+                            fileHash = read.fileHash
+                        }
+                    read.glasses
+                    |> List.fold (fun result glass ->
+                        result |> Result.bind (fun envelopes ->
+                            let content =
+                                {
+                                    LibraryEntryContent.ofMaterialEntry VersionNumber.first (FileImportProvenance provenance) glass with
+                                        id = this.newEntryId ()
+                                }
+                            this.sealEntry content |> Result.map (fun envelope -> (file, envelope) :: envelopes))) (Ok [])
+                    |> Result.map List.rev)
+                |> Result.mapError (refusedAs file)
+
+            let readFile (file : FileName) : Result<(FileName * LibraryEntryEnvelope) list, CatalogueImportError> =
+                match file.tryGetExtension (), LibraryEntryKind.tryOfFileName file with
+                | Some extension, _ when String.Equals(extension.value, glassCatalogueExtension.value, StringComparison.OrdinalIgnoreCase) ->
+                    readGlasses file
+                | _, None -> Error (DroppedFileRefusedErr $"{file.value}: not a library entry file")
+                | _, Some kind ->
                     this.readEntryFile kind file
-                    |> Result.map (fun envelope -> file, envelope)
-                    |> Result.mapError (function
-                        | DroppedFileRefusedErr _ as error -> error
-                        | error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+                    |> Result.map (fun envelope -> [ file, envelope ])
+                    |> Result.mapError (refusedAs file)
 
             let readResults = files |> List.map readFile
             let refusals =
@@ -560,7 +599,7 @@ module CatalogueImport =
             match refusals with
             | _ :: _ -> Error (DroppedFileRefusedErr (String.concat "\n" refusals))
             | [] ->
-                let entries = readResults |> List.choose (function Ok entry -> Some entry | Error _ -> None)
+                let entries = readResults |> List.collect (function Ok read -> read | Error _ -> [])
                 entries
                 |> List.fold (fun result (file, envelope) ->
                     result |> Result.bind (fun ((seen : Map<LibraryEntryId * VersionNumber, FileName * LibraryEntryEnvelope>), unique) ->

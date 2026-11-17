@@ -170,6 +170,29 @@ module private CatalogueImportContractData =
         text.writeAtomically file |> expectImportDatabaseOk
         file
 
+    let glassCatalogueName = FileName "test-glasses.agf"
+    let glassNames = [ EntryName "TEST-S1"; EntryName "TEST-SCHOTT"; EntryName "TEST-HERZ" ]
+
+    let glassEntryIds : LibraryEntryId list =
+        [ 1 .. 6 ] |> List.map (fun n -> LibraryEntryId (Guid.Parse $"31801b0{n}-444f-43c8-8440-000000000463"))
+
+    let mintingInOrder (ids : LibraryEntryId list) : unit -> LibraryEntryId =
+        let remaining = ref ids
+        fun () ->
+            match remaining.Value with
+            | id :: rest ->
+                remaining.Value <- rest
+                id
+            | [] -> failwith "The fact minted more entry ids than its fixed sequence holds."
+
+    /// The step-462 fixture copied into a fresh import folder, with the bytes it holds (spec 0050 S13.2).
+    let copiedGlassCatalogue () : FileName * FileByteContent =
+        let folder = freshImportFolder ()
+        Directory.CreateDirectory folder.value |> ignore
+        let file = glassCatalogueName.combine folder
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "fixtures", glassCatalogueName.value), file.value)
+        file, FileByteContent (File.ReadAllBytes file.value)
+
     let writeImportFolder (folder : FolderName) (catalogue : CatalogueData) : unit =
         (CatalogueProxy.create folder).writeCatalogue catalogue
         |> Result.defaultWith (fun error -> failwith error.describe)
@@ -1204,6 +1227,120 @@ type CatalogueImportContract () =
         Assert.Equal<Result<ImportDecision list, CatalogueImportError>>(Error failure, failingContext.decideDroppedFiles [ sampleFile ])
         Assert.Equal(material.content.id, Assert.Single lookups)
         assertNoStartupWrites observed
+
+    [<Fact>]
+    member this.``a dropped glass catalogue is decided as one new user material per glass, writing nothing`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let file, bytes = copiedGlassCatalogue ()
+        let observed = observeStartupImport stores.context
+        let context =
+            {
+                observed.context with
+                    newEntryId = mintingInOrder glassEntryIds
+            }
+        let rows = context.decideDroppedFiles [ file ] |> expectImportOk
+        let ids = glassEntryIds |> List.take 3
+        Assert.Equal<LibraryEntryId list>(ids, rows |> List.map _.entryId)
+        Assert.Equal<ImportOrigin list>(List.replicate 3 (DroppedFileOrigin glassCatalogueName), rows |> List.map _.origin)
+        Assert.Equal<EntryName list>(glassNames, rows |> List.map _.rowName)
+        let importedFrom : EntryFileImportInfo =
+            {
+                file = glassCatalogueName
+                fileHash = ContentHash.ofBytes bytes
+            }
+        for row in rows do
+            match row.status with
+            | EntryIdNotHeld incoming ->
+                Assert.Equal(MaterialEntryKind, incoming.content.schema.kind)
+                Assert.Equal(VersionNumber.first, incoming.content.version)
+                Assert.Equal<CategoryId option>(Some CategoryIds.glass, incoming.content.categoryOpt)
+                Assert.Equal<EntryProvenance>(FileImportProvenance importedFrom, incoming.content.provenance)
+            | _ -> Assert.Fail($"The glass '{row.rowName.value}' must be decided as an id the library does not hold.")
+            Assert.Equal(AddIncomingEntry, row.defaultAction)
+        assertNoStartupWrites observed
+        for id in ids do
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry id)
+
+    [<Fact>]
+    member this.``an applied glass catalogue adds its glasses, and dropping it again collides by name`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let file, _ = copiedGlassCatalogue ()
+        let context =
+            {
+                stores.context with
+                    newEntryId = mintingInOrder glassEntryIds
+            }
+        context.decideDroppedFiles [ file ] |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let added = glassEntryIds |> List.take 3 |> List.map (heldImportRow context)
+        Assert.Equal<EntryName list>(glassNames, added |> List.map _.name)
+        for held in added do
+            Assert.Equal(MaterialEntryKind, held.kind)
+            Assert.Equal(VersionNumber.first, held.latest)
+            Assert.Equal(ActiveEntry, held.lifecycle)
+            Assert.Equal(UserManaged, held.provenance.protection)
+        match stores.materials.listMaterials IncludeInactive with
+        | Ok materials ->
+            Assert.Equal<EntryName list>(
+                List.sort glassNames, materials |> List.map _.name |> List.filter (fun name -> List.contains name glassNames) |> List.sort)
+        | Error _ -> Assert.Fail("The material store must list the applied glasses.")
+
+        let again = context.decideDroppedFiles [ file ] |> expectImportOk
+        let minted = glassEntryIds |> List.skip 3
+        Assert.Equal<LibraryEntryId list>(minted, again |> List.map _.entryId)
+        Assert.Equal<EntryName list>(
+            glassNames |> List.map (fun name -> EntryName $"{name.value} — from {glassCatalogueName.value}"), again |> List.map _.rowName)
+        for row, held in List.zip again added do
+            match row.status with
+            | NameCollision (_, sameName) -> Assert.Equal<HeldEntry list>([ held ], sameName)
+            | _ -> Assert.Fail($"The glass '{held.name.value}' dropped again must collide with the one held by name.")
+            Assert.Equal(AddIncomingEntry, row.defaultAction)
+            Assert.Equal<ImportAction list>([ RebindToHeldEntry held.id; SkipIncomingEntry ], row.alternatives)
+        for id in minted do
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry id)
+
+    [<Fact>]
+    member this.``a glass catalogue that does not read is refused, naming the file and its reason`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let incoming = userImportMaterial (readImportRowEntries ()).silicon
+        let folder = freshImportFolder ()
+        let materialFile = writeDroppedEntry folder incoming
+        let conrady = (FileName "conrady-glasses.agf").combine folder
+        File.WriteAllText(
+            conrady.value,
+            "CC test-local glasses, one Conrady\nNM TEST-CONRADY 5 520600 1.52 60.0 0 1\nCD 1.5 0.01 0.0002\nLD 0.4 1.0\n")
+        let missing = (FileName "missing-glasses.AGF").combine folder
+        let observed = observeStartupImport stores.context
+        let context =
+            {
+                observed.context with
+                    newEntryId = mintingInOrder glassEntryIds
+            }
+        let refusedReason (files : FileName list) : string =
+            match context.decideDroppedFiles files with
+            | Error (DroppedFileRefusedErr reason) -> reason
+            | Error error -> failwith $"A glass catalogue that does not read must be DroppedFileRefusedErr, not {error.describe}"
+            | Ok rows -> failwith $"A glass catalogue that does not read must be refused, not decided as {rows.Length} row(s)."
+
+        let conradyReason = refusedReason [ conrady ]
+        Assert.Contains(conrady.value, conradyReason)
+        Assert.Contains("TEST-CONRADY", conradyReason)
+        let missingReason = refusedReason [ missing ]
+        Assert.Contains(missing.value, missingReason)
+        Assert.DoesNotContain("not a library entry file", missingReason)
+
+        let beside = refusedReason [ materialFile; conrady ]
+        Assert.Equal(conradyReason, beside)
+        Assert.DoesNotContain(materialFile.leafName.value, beside)
+        Assert.Equal($"{missingReason}\n{conradyReason}", refusedReason [ missing; materialFile; conrady ])
+        assertNoStartupWrites observed
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry incoming.content.id)
 
     [<Fact>]
     member this.``the start-up import logs the shipped catalogue and skips it, reading no entry file, while its manifest hash is unchanged`` () : unit =
