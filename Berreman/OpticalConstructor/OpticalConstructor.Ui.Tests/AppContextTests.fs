@@ -253,14 +253,16 @@ module AppContextTests =
         Assert.Equal<FolderName option>(Some locations.cataloguesFolder, context.catalogueImports.exportFolderOpt)
         Assert.Equal<FolderName option>(None, standalone.exportFolderOpt)
 
-    // Spec 0050 S13.1: composing the source touches nothing; no fact runs its update, so none reaches the network.
+    // Spec 0050 S13.1, S13.2: composing the sources touches nothing; no fact runs an update, so none reaches the network.
     [<Fact>]
     let ``the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot`` () : unit =
         let sources = (TestAppScope.testLocations owner).materialSourcesFolder
         let context = TestAppScope.freshAppContext owner
-        let source = Assert.Single context.catalogueImports.materialSources
-        Assert.Equal(MaterialSourceName "refractiveindex.info", source.sourceName)
-        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok None, source.snapshotVersion ())
+        let offered = context.catalogueImports.materialSources
+        let expectedNames = [ MaterialSourceName "refractiveindex.info"; MaterialSourceName "PTB OCDB"; MaterialSourceName "CXRO Henke" ]
+        Assert.Equal<MaterialSourceName list>(expectedNames, offered |> List.map (fun source -> source.sourceName))
+        for source in offered do
+            Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok None, source.snapshotVersion ())
         Assert.False(Directory.Exists sources.value, $"composing the app scope must create nothing under '{sources.value}'")
 
     [<Fact>]

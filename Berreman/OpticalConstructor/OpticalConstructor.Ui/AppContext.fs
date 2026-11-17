@@ -49,7 +49,7 @@ type AppContext =
         /// The library's backup store, Backups beside the database (spec 0050 001 §G).
         libraryBackups : LibraryBackupProxy
         /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1)
-        /// and pulls from refractiveindex.info over the configured sources folder (spec 0050 S13.1).
+        /// and pulls from refractiveindex.info, PTB OCDB and CXRO Henke over the configured sources folder (spec 0050 S13.1, S13.2).
         catalogueImports : CatalogueImportContext
         /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
         pendingImports : PendingCatalogueImport list
@@ -76,9 +76,18 @@ type AppContext =
             {
                 CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database) with
                     exportFolderOpt = Some locations.cataloguesFolder
+                    // In this order: the Online sources window opens on the first; building them touches nothing (spec 0050 S13.2).
                     materialSources =
                         [
                             MaterialSourceProxy.createRefractiveIndexInfo
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                            MaterialSourceProxy.createPtbOcdb
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                            MaterialSourceProxy.createHenkeCompounds
                                 locations.materialSourcesFolder
                                 SourceArchiveDownloader.http
                                 ClockProvider.system
