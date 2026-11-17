@@ -239,6 +239,7 @@
         <Compile Include="MaterialSourceStoreTests.fs" />
         <Compile Include="MaterialSourcePullSqliteTests.fs" />
         <Compile Include="MaterialSourcesModelTests.fs" />
+        <Compile Include="HenkeCompoundsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

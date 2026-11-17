@@ -141,6 +141,7 @@
              MaterialStore.fs. -->
         <Compile Include="SampleStore.fs" />
         <Compile Include="MaterialSources.fs" />
+        <Compile Include="HenkeCompounds.fs" />
         <Compile Include="CatalogueImport.fs" />
         <Compile Include="MaterialSourcePulls.fs" />
         <Compile Include="KitLibrary.fs" />
