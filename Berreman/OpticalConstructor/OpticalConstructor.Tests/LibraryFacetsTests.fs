@@ -569,7 +569,8 @@ module LibraryFacetsTests =
         match TabulatedNkTable.tryCreate (samples |> Array.map (fun w -> w.value)) [| 1.5; 1.4 |] [| 0.01; 0.0 |] with
         | Error (EmptyTableErr reason)
         | Error (SampleCountMismatchErr reason)
-        | Error (UnsortedSamplesErr reason) -> Assert.Fail reason
+        | Error (UnsortedSamplesErr reason)
+        | Error (InvalidUncertaintyErr reason) -> Assert.Fail reason
         | Ok table ->
             Assert.Equal("Tabulated n/k", (TabulatedNK table).facetKey.value)
             let entry =

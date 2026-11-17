@@ -182,6 +182,48 @@ module EntryFileJsonTests =
             materialWith $"5b8d2e4f-7a1c-4e93-b6d0-{i + 1:D12}" $"Complexity shape {i + 1}" complexity
             |> assertMaterialRoundTrips builtInCatalogue)
 
+    /// The hand-written table of the tabulated facts (spec 0050 step 2): 400, 500 and 700 nm.
+    let private stepTwoTable : TabulatedNkTable =
+        match TabulatedNkTable.tryCreate [| 400e-9<meter>; 500e-9<meter>; 700e-9<meter> |] [| 1.50; 1.60; 1.90 |] [| 0.00; 0.10; 0.30 |] with
+        | Ok table -> table
+        | Error error -> failwith $"the fixture's table is refused: %A{error}"
+
+    let private tabulatedTableOf (entry : MaterialEntry) : TabulatedNkTable =
+        match entry.physics with
+        | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } -> table
+        | other -> failwith $"expected one isotropic tabulated segment, got %A{other}"
+
+    [<Fact>]
+    let ``a tabulated material keeps its per-sample uncertainties through an entry file`` () =
+        // Spec 0050 S13.2: the source's sigma-n / sigma-k arrays are serialised with the table.
+        let sigmaN = [| 0.01; 0.02; 0.03 |]
+        let sigmaK = [| 0.0; 0.001; 0.002 |]
+
+        let expectedUncertainty : TabulatedNkUncertainty = { sigmaN = sigmaN; sigmaK = sigmaK }
+
+        let withSigma =
+            match stepTwoTable.withUncertainty expectedUncertainty with
+            | Ok table -> table
+            | Error error -> failwith $"the uncertainties are refused: %A{error}"
+
+        for idText, table, uncertaintyOpt in
+            [
+                "6c4a1f8e-2d7b-4e39-a5c0-000000000001", withSigma, Some expectedUncertainty
+                "6c4a1f8e-2d7b-4e39-a5c0-000000000002", stepTwoTable, None
+            ] do
+            let entry =
+                epsOnly (EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ]))
+                |> materialWith idText "User tabulated material"
+
+            let readBack = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance entry |> roundTrip
+            let decoded = readBack.content.toMaterialEntry |> decodedOf
+            Assert.Equal<MaterialEntry>(entry, decoded)
+            Assert.Equal<EntryProvenance>(UserProvenance, readBack.content.provenance)
+
+            let decodedTable = tabulatedTableOf decoded
+            Assert.Equal<TabulatedNkTable>(table, decodedTable)
+            Assert.Equal<TabulatedNkUncertainty option>(uncertaintyOpt, decodedTable.uncertaintyOpt)
+
     [<Fact>]
     let ``a multilayer sample entry file round-trips`` () =
         for sample in [ BuiltinCatalogue.sample SampleIds.multilayerQwId; BuiltinCatalogue.sample SampleIds.langasiteSiliconId ] do

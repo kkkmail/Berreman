@@ -87,7 +87,8 @@ type EpsWithDispValueTests() =
         | Ok table -> table
         | Error (EmptyTableErr reason)
         | Error (SampleCountMismatchErr reason)
-        | Error (UnsortedSamplesErr reason) -> failwith reason
+        | Error (UnsortedSamplesErr reason)
+        | Error (InvalidUncertaintyErr reason) -> failwith reason
 
     /// Compares an index with the expected n + ik through the engine Eps both build.
     let verifyIndex (result : ComplexRefractionIndex) (n : double) (k : double) =
@@ -328,6 +329,50 @@ type EpsWithDispValueTests() =
         match tryTable [| 400.0<nm>; 400.0<nm>; 500.0<nm> |] tableN tableK with
         | Ok _ -> ()
         | Error e -> Assert.Fail($"a repeated wavelength must be accepted, got %A{e}")
+
+
+    [<Fact>]
+    member _.``A tabulated table takes per-sample uncertainties of its own length and refuses any other`` () =
+        // Spec 0050 S13.2: the source's one-sigma n and k per sample are data beside the columns; no number moves.
+        let table = tableOf tableWaveLengthsNm tableN tableK
+        Assert.Equal<TabulatedNkUncertainty option>(None, table.uncertaintyOpt)
+
+        let sigmaN = [| 0.01; 0.02; 0.03 |]
+        let sigmaK = [| 0.0; 0.001; 0.002 |]
+
+        match table.withUncertainty { sigmaN = sigmaN; sigmaK = sigmaK } with
+        | Ok withSigma ->
+            match withSigma.uncertaintyOpt with
+            | Some uncertainty ->
+                Assert.Equal<double array>(sigmaN, uncertainty.sigmaN)
+                Assert.Equal<double array>(sigmaK, uncertainty.sigmaK)
+            | None -> Assert.Fail "the table must hold the uncertainties it was given"
+
+            Assert.Equal<TabulatedNkTable>(table, { withSigma with uncertaintyOpt = None })
+
+            for i in 0 .. tableWaveLengthsNm.Length - 1 do
+                let w = WaveLength.nm tableWaveLengthsNm.[i]
+                verifyIndex (withSigma.complexIndex w) tableN.[i] tableK.[i]
+                verifyMatrixEqualityEps output (Eps.fromComplexRefractionIndex (withSigma.complexIndex w)) (Eps.fromComplexRefractionIndex (table.complexIndex w))
+        | Error e -> Assert.Fail($"uncertainties of the table's length must be accepted, got %A{e}")
+
+        match refusalOf (table.withUncertainty { sigmaN = [| 0.01; 0.02 |]; sigmaK = [| 0.0; 0.001 |] }) with
+        | SampleCountMismatchErr reason -> Assert.Contains("2 sigma n values", reason)
+        | other -> Assert.Fail($"two-value columns: expected SampleCountMismatchErr, got %A{other}")
+
+        match refusalOf (table.withUncertainty { sigmaN = sigmaN; sigmaK = [| 0.0; 0.001 |] }) with
+        | SampleCountMismatchErr reason -> Assert.Contains("2 sigma k values", reason)
+        | other -> Assert.Fail($"a short sigma k column: expected SampleCountMismatchErr, got %A{other}")
+
+        for (label, sigmaNs, sigmaKs, expected) in
+            [
+                "a negative value", [| 0.01; -0.02; 0.03 |], sigmaK, "sigma n at index 1"
+                "a NaN", sigmaN, [| 0.0; 0.001; nan |], "sigma k at index 2"
+                "an infinite value", [| infinity; 0.02; 0.03 |], sigmaK, "sigma n at index 0"
+            ] do
+            match refusalOf (table.withUncertainty { sigmaN = sigmaNs; sigmaK = sigmaKs }) with
+            | InvalidUncertaintyErr reason -> Assert.Contains(expected, reason)
+            | other -> Assert.Fail($"{label}: expected InvalidUncertaintyErr, got %A{other}")
 
 
     [<Fact>]

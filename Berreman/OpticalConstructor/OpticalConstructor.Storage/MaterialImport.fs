@@ -221,7 +221,8 @@ module MaterialImport =
         match TabulatedNkTable.tryCreate wavelengths n k with
         | Error (EmptyTableErr reason)
         | Error (SampleCountMismatchErr reason)
-        | Error (UnsortedSamplesErr reason) -> Error (NoDataErr reason)
+        | Error (UnsortedSamplesErr reason)
+        | Error (InvalidUncertaintyErr reason) -> Error (NoDataErr reason)
         | Ok table ->
             let complexity =
                 {
