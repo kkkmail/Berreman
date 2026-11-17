@@ -110,8 +110,8 @@ module MaterialSources =
         /// The update stopped before its next file and left the held snapshot as it was (spec 0050 S13.1).
         | SourceSnapshotCancelled
 
-    /// One adapter's seam to its online source; it does IO only (spec 0050 S13.1; 001 §D, §P). `createInMemory` is the
-    /// double.
+    /// One adapter's seam to its online source; it does IO only (spec 0050 S13.1; 001 §D, §P).
+    /// Storage's `createRefractiveIndexInfo` is the refractiveindex.info adapter, `createInMemory` the double.
     [<ReferenceEquality>]
     type MaterialSourceProxy =
         {

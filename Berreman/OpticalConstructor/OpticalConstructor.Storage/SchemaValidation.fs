@@ -168,3 +168,10 @@ module SchemaValidation =
 
     /// Validates the kit history file before its version is compared and its history binds (spec 0050 S5.1).
     let validateKitHistory (element : JsonElement) : Result<unit, StorageError> = validateWith kitHistorySchema element
+
+    let private sourceSnapshotSchemaFile : FileName = FileName (Path.Combine("schema", "material-source-snapshot.schema.json"))
+
+    let private sourceSnapshotSchema : Result<JsonSchema, StorageError> Lazy = lazy (sourceSnapshotSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates a material source's snapshot stamp before its version is compared and its stamp binds (spec 0050 S13.1).
+    let validateSourceSnapshot (element : JsonElement) : Result<unit, StorageError> = validateWith sourceSnapshotSchema element

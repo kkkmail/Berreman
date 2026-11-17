@@ -38,6 +38,7 @@
         <Compile Include="GroupsLibrary.fs" />
         <Compile Include="Sidecar.fs" />
         <Compile Include="MaterialImport.fs" />
+        <Compile Include="MaterialSourceStore.fs" />
         <Compile Include="SpectralImport.fs" />
         <!-- Persistence II (§I.5-I.8, slice 013): export. -->
         <Compile Include="Export.fs" />
@@ -93,6 +94,9 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="schema\kit-history.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\material-source-snapshot.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="schema\experiment.schema.json">

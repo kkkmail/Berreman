@@ -235,6 +235,8 @@
         <Compile Include="StudyWindowModelTests.fs" />
         <Compile Include="MaterialSourceProxyTests.fs" />
         <Compile Include="MaterialSourcePullTests.fs" />
+        <Compile Include="MaterialSourceFixture.fs" />
+        <Compile Include="MaterialSourceStoreTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
