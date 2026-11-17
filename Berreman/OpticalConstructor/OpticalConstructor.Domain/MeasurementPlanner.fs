@@ -4,12 +4,16 @@ open System.Globalization
 open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
+open Berreman.Media
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.PlannerSymmetry
 
 /// The Measurement Planner's inputs from a kit and its structural recoverability report (spec 0050 S14.1).
@@ -296,16 +300,22 @@ module MeasurementPlanner =
                 | OffAxisCutFinding need -> Some need
                 | UnrecoverableTargetFinding _ -> None)
 
-    /// Why the planner refuses a report or a lab profile (spec 0050 S14.1).
+    /// Why the planner refuses a report, a lab profile or its inputs (spec 0050 S14.1).
     type PlannerError =
         | UnknownPlannerTargetErr of reason : string
         | UnresolvedPlannerItemErr of reason : string
+        /// The study holds no working copy of the material version the inputs are asked for (spec 0050 S14.1).
+        | UnopenedPlannerMaterialErr of reason : string
+        /// The opened copy is a tabulated table, which has no crystal to plan for (spec 0050 S14.1).
+        | NonCrystalPlannerMaterialErr of reason : string
 
         /// The refusal as the planner states it (spec 0050 S14.1).
         member this.describe : string =
             match this with
             | UnknownPlannerTargetErr reason -> $"the crystal has no such parameter: {reason}"
             | UnresolvedPlannerItemErr reason -> $"the item's model is not in the library: {reason}"
+            | UnopenedPlannerMaterialErr reason -> $"the study opens no such material version: {reason}"
+            | NonCrystalPlannerMaterialErr reason -> $"the opened material is not a crystal: {reason}"
 
     type CrystalParameters with
 
@@ -530,7 +540,7 @@ module MeasurementPlanner =
                     match polarizer.behavior with
                     | Library.ComputedIdeal _ -> Ok (opticOf PolarizerOptic)
                     | Library.ConstantMueller _ -> Ok (opticOf CompoundOptic)
-                // A plate is the planner's sample, read in step 471, not a part of the lab.
+                // A plate is the planner's sample (`PlannerPlate`), not a part of the lab.
                 | Some (StackSampleChoice _) -> Ok noProfile
                 | Some (LibraryModelChoice model) ->
                     match model.entry.model with
@@ -590,3 +600,104 @@ module MeasurementPlanner =
             let reached : DetectorReach list = this.detectors |> List.map this.reachOf
             [ FullMuellerReach; EllipsometricReach; IntensityOnlyReach ]
             |> List.filter (fun reach -> List.contains reach reached)
+
+    /// A free-standing plate of the material in the kit, the shape spec 0044's forward model takes: its sample's
+    /// substrate layer, finite, with the principal axis that layer's orientation puts on the normal (spec 0050 S14.1).
+    type PlannerPlate =
+        {
+            item : ItemId
+            label : ItemLabel
+            sample : Library.SampleVersionId
+            thickness : Thickness
+            substrate : Library.SubstrateKind
+            emission : Emission
+            normalAxisOpt : CrystalAxis option
+        }
+
+    /// The prior: the study's opened copy, whose parameter states carry the known, calibrated and prior values, and its
+    /// crystal at their current values (spec 0050 S14.1; 001 §M).
+    type PlannerPrior =
+        {
+            material : OpenedMaterial
+            crystal : CrystalParameters
+        }
+
+    /// The planner's four inputs from a kit and one of its studies (spec 0050 S14.1; 001 §M).
+    type PlannerInputs =
+        {
+            lab : LabProfile
+            plates : PlannerPlate list
+            prior : PlannerPrior
+            targets : ParameterName list
+        }
+
+    type Study with
+
+        /// The inputs for `material`: the kit's lab profile, its finite plates of the material in item order, the opened
+        /// copy at its current crystal, and the study's unknown components of it, a link's follower left out; refused when
+        /// the study does not open the version, then when the copy is no crystal, then by the lab profile (spec 0050 S14.1).
+        member this.plannerInputsWith
+            (context : StudyContext)
+            (choiceOf : Item -> ItemModelChoice option)
+            (material : MaterialVersionId)
+            : Result<PlannerInputs, PlannerError> =
+            let versionText : string = $"material {material.materialId.value} v{material.version.value}"
+
+            let plateOf (item : Item) : PlannerPlate option =
+                match choiceOf item with
+                | Some (StackSampleChoice (_, version, sample)) ->
+                    match sample.structure.substrate with
+                    | Some layer when layer.materialId = material ->
+                        match layer.thickness.parameterValueOpt with
+                        | Some _ ->
+                            let plate : PlannerPlate =
+                                {
+                                    item = item.id
+                                    label = item.label
+                                    sample = version
+                                    thickness = layer.thickness
+                                    substrate = sample.substrate
+                                    emission = sample.supportedEmission
+                                    normalAxisOpt = layer.orientation.normalAxisOpt
+                                }
+
+                            Some plate
+                        | None -> None
+                    | Some _
+                    | None -> None
+                | Some (SourcePresetChoice _)
+                | Some (PolarizerPresetChoice _)
+                | Some (LibraryModelChoice _)
+                | None -> None
+
+            // A known or calibrated component is prior, and an item's unknown is no crystal component (S14.2 weighs it).
+            let targets : ParameterName list =
+                this.unknownsWith (context.itemsUsedBy this)
+                |> List.choose (fun (unknown : StudyUnknown) ->
+                    match unknown.parameter with
+                    | MaterialParameterRef (version, name) when version = material -> Some name
+                    | MaterialParameterRef _
+                    | ItemParameterRef _ -> None)
+
+            let priorResult : Result<PlannerPrior, PlannerError> =
+                match this.materials |> List.tryFind (fun (opened : OpenedMaterial) -> opened.version = material) with
+                | None ->
+                    Error (UnopenedPlannerMaterialErr $"{versionText} (the study '{this.name.value}' opens {this.materials.Length})")
+                | Some opened ->
+                    match opened.currentPhysics.crystalOpt with
+                    | Some crystal -> Ok { material = opened; crystal = crystal }
+                    | None -> Error (NonCrystalPlannerMaterialErr $"'{opened.name.value}' ({versionText}) opens as a table of n and k")
+
+            priorResult
+            |> Result.bind (fun prior ->
+                LabProfile.ofItems context.items choiceOf
+                |> Result.map (fun lab ->
+                    let inputs : PlannerInputs =
+                        {
+                            lab = lab
+                            plates = context.items |> List.choose plateOf
+                            prior = prior
+                            targets = targets
+                        }
+
+                    inputs))
