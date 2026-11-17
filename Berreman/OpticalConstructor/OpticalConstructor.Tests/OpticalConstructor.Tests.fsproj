@@ -241,6 +241,7 @@
         <Compile Include="MaterialSourcesModelTests.fs" />
         <Compile Include="HenkeCompoundsTests.fs" />
         <Compile Include="PlannerSymmetryTests.fs" />
+        <Compile Include="PlannerReportTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
