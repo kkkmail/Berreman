@@ -17,6 +17,7 @@
         <Compile Include="BiaxialSample.fs" />
         <Compile Include="AbsorbingBiaxialSample.fs" />
         <Compile Include="MuellerReference.fs" />
+        <Compile Include="QuartzSample.fs" />
     </ItemGroup>
 
     <ItemGroup>
