@@ -67,6 +67,7 @@ module AppConfigTests =
                 exportsFolder = FolderName (Environment.ExpandEnvironmentVariables defaults.exportsFolder.value)
                 cataloguesFolder = FolderName (Environment.ExpandEnvironmentVariables defaults.cataloguesFolder.value)
                 shippedCatalogueFolder = context.install.combine DataLocations.shippedCatalogueDefault
+                materialSourcesFolder = FolderName (Environment.ExpandEnvironmentVariables defaults.materialSourcesFolder.value)
             }
 
         Assert.Equal<DataLocations>(expected, locations)
@@ -74,9 +75,13 @@ module AppConfigTests =
         Assert.Empty(beforeSave.RootElement.GetProperty("appSettings").EnumerateObject())
         Assert.Empty(beforeSave.RootElement.GetProperty("connectionStrings").EnumerateObject())
         assertSavedLocations context defaults
+        use afterSave = JsonDocument.Parse(File.ReadAllText context.settingsFile.value)
+        let savedSources = afterSave.RootElement.GetProperty("appSettings").GetProperty(ConfigKey.materialSourcesFolder).GetString()
+        Assert.Equal(defaults.materialSourcesFolder.value, savedSources)
         Assert.Contains("%LOCALAPPDATA%", defaults.libraryConnection.value)
         Assert.Contains("%LOCALAPPDATA%", defaults.backupsFolder.value)
         Assert.Contains("%APPDATA%", defaults.preferencesFolder.value)
+        Assert.Contains("%LOCALAPPDATA%", defaults.materialSourcesFolder.value)
 
     [<Fact>]
     let ``readDataLocations keeps a configured location, expands its variables and roots a relative folder at the install folder`` () : unit =
@@ -149,6 +154,7 @@ module AppConfigTests =
                     exportsFolder = FolderName (Path.Combine(install.value, "TestRun/Exports"))
                     cataloguesFolder = FolderName (Path.Combine(install.value, "TestRun/Catalogues"))
                     shippedCatalogueFolder = FolderName (Path.Combine(install.value, "Catalogue"))
+                    materialSourcesFolder = FolderName (Path.Combine(install.value, "TestRun/Sources"))
                 }
             Assert.Equal<DataLocations>(expected, locations))
 

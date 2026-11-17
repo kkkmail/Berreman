@@ -134,6 +134,8 @@ module WorkbenchSettings =
             cataloguesFolder : FolderName
             /// The shipped catalogue folder.
             shippedCatalogueFolder : FolderName
+            /// The folder holding each online source's offline snapshot (spec 0050 S13.1).
+            materialSourcesFolder : FolderName
         }
 
         static member shippedCatalogueDefault : FolderName = FolderName "Catalogue"
@@ -151,6 +153,7 @@ module WorkbenchSettings =
                 exportsFolder = documents.combine exports
                 cataloguesFolder = documents.combine catalogues
                 shippedCatalogueFolder = DataLocations.shippedCatalogueDefault
+                materialSourcesFolder = FolderName "%LOCALAPPDATA%/Softellect/Berreman/OpticalConstructor/Sources"
             }
 
     /// One location of `DataLocations`, as the Data locations window lists it (spec 0050 S5.3).
@@ -170,6 +173,8 @@ module WorkbenchSettings =
         | CataloguesLocation
         /// The location in `shippedCatalogueFolder`.
         | ShippedCatalogueLocation
+        /// The location in `materialSourcesFolder` (spec 0050 S13.1).
+        | MaterialSourcesLocation
 
         /// Every kind once, in the order of the fields of `DataLocations` (spec 0050 S5.3).
         static member all : DataLocationKind list =
@@ -181,4 +186,5 @@ module WorkbenchSettings =
                 ExportsLocation
                 CataloguesLocation
                 ShippedCatalogueLocation
+                MaterialSourcesLocation
             ]

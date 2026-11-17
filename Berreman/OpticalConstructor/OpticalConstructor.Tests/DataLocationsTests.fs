@@ -25,6 +25,7 @@ module DataLocationsTests =
             exportsFolder = factFolder.combine (FolderName "Exports")
             cataloguesFolder = factFolder.combine (FolderName "Catalogues")
             shippedCatalogueFolder = factFolder.combine (FolderName "Catalogue")
+            materialSourcesFolder = factFolder.combine (FolderName "Sources")
         }
 
     let private fileLibrary : ConnectionString = ConnectionString $"Data Source={factFolder.value}/library.db"
@@ -50,6 +51,7 @@ module DataLocationsTests =
         let libraryFile = Path.GetFullPath(Path.Combine(factFolder.value, "library.db"))
 
         Assert.Equal<DataLocationKind list>(DataLocationKind.all, rows |> List.map _.kind)
+        Assert.Equal(8, rows.Length)
 
         let library = rowOf LibraryDatabaseLocation rows
         Assert.Equal(libraryFile, library.path.value)
@@ -58,6 +60,11 @@ module DataLocationsTests =
         let kits = rowOf KitsLocation rows
         Assert.Equal(locations.kitsFolder.value, kits.path.value)
         Assert.Equal<FolderName option>(Some locations.kitsFolder, kits.folderOpt)
+
+        let sources = List.last rows
+        Assert.Equal(MaterialSourcesLocation, sources.kind)
+        Assert.Equal(locations.materialSourcesFolder.value, sources.path.value)
+        Assert.Equal<FolderName option>(Some locations.materialSourcesFolder, sources.folderOpt)
 
         // Spec 0050 S5.3: the rows read no disk, so a folder not made yet is still listed.
         Assert.False(Directory.Exists locations.kitsFolder.value)

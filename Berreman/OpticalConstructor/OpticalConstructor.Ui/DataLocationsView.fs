@@ -61,7 +61,8 @@ type DataLocations with
             | KitsLocation -> folderRow kind this.kitsFolder
             | ExportsLocation -> folderRow kind this.exportsFolder
             | CataloguesLocation -> folderRow kind this.cataloguesFolder
-            | ShippedCatalogueLocation -> folderRow kind this.shippedCatalogueFolder)
+            | ShippedCatalogueLocation -> folderRow kind this.shippedCatalogueFolder
+            | MaterialSourcesLocation -> folderRow kind this.materialSourcesFolder)
 
 /// The screen's injected seams; the composition root bakes the real IO into them and tests substitute doubles.
 /// Function-valued fields compare by reference (spec 0050 S5.3).

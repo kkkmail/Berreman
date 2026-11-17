@@ -22,6 +22,7 @@ module WorkbenchSettingsTests =
         let exportsFolder = FolderName "Optical Constructor/Exports"
         let cataloguesFolder = FolderName "Optical Constructor/Catalogues"
         let shippedCatalogueFolder = FolderName "Catalogue"
+        let materialSourcesFolder = FolderName "%LOCALAPPDATA%/Softellect/Berreman/OpticalConstructor/Sources"
         let locations = DataLocations.defaultsUnder documents
 
         Assert.Equal<ConnectionString>(libraryConnection, locations.libraryConnection)
@@ -32,6 +33,7 @@ module WorkbenchSettingsTests =
         Assert.Equal<FolderName>(documents.combine cataloguesFolder, locations.cataloguesFolder)
         Assert.Equal<FolderName>(shippedCatalogueFolder, DataLocations.shippedCatalogueDefault)
         Assert.Equal<FolderName>(DataLocations.shippedCatalogueDefault, locations.shippedCatalogueFolder)
+        Assert.Equal<FolderName>(materialSourcesFolder, locations.materialSourcesFolder)
 
     [<Fact>]
     let ``every location is a data location kind, in the order of its field`` () : unit =
@@ -44,6 +46,7 @@ module WorkbenchSettingsTests =
                 "exportsFolder", ExportsLocation
                 "cataloguesFolder", CataloguesLocation
                 "shippedCatalogueFolder", ShippedCatalogueLocation
+                "materialSourcesFolder", MaterialSourcesLocation
             ]
         let fields =
             FSharpType.GetRecordFields(typeof<DataLocations>)
@@ -52,7 +55,8 @@ module WorkbenchSettingsTests =
 
         Assert.Equal<string list>(List.map fst fieldKinds, fields)
         Assert.Equal<DataLocationKind list>(List.map snd fieldKinds, DataLocationKind.all)
-        Assert.Equal(7, DataLocationKind.all |> List.distinct |> List.length)
+        Assert.Equal(8, DataLocationKind.all |> List.distinct |> List.length)
+        Assert.Equal(MaterialSourcesLocation, List.last DataLocationKind.all)
 
     [<Fact>]
     let ``defaults carry modeless select windows and the 5 / 100 / 8 thresholds`` () =

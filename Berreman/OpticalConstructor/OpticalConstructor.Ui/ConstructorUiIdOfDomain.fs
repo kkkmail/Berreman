@@ -776,6 +776,7 @@ module ConstructorUiIdOfDomain =
             | ExportsLocation -> ControlCaption "Exports"
             | CataloguesLocation -> ControlCaption "Catalogue exports"
             | ShippedCatalogueLocation -> ControlCaption "Shipped catalogue"
+            | MaterialSourcesLocation -> ControlCaption "Online source snapshots"
 
         /// The location as the key of its Data locations row's ids (spec 0050 S5.3).
         member this.uiKey : ConstructorUiKey =
@@ -787,6 +788,7 @@ module ConstructorUiIdOfDomain =
             | ExportsLocation -> ConstructorUiKey "Exports"
             | CataloguesLocation -> ConstructorUiKey "Catalogues"
             | ShippedCatalogueLocation -> ConstructorUiKey "ShippedCatalogue"
+            | MaterialSourcesLocation -> ConstructorUiKey "MaterialSources"
 
     type ConstructorUiId with
 

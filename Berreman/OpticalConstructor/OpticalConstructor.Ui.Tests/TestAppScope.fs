@@ -40,6 +40,7 @@ module TestAppScope =
         let kits = FolderName "Kits"
         let exports = FolderName "Exports"
         let catalogues = FolderName "Catalogues"
+        let sources = FolderName "Sources"
 
         {
             libraryConnection = ConnectionString "Data Source=:memory:"
@@ -49,6 +50,7 @@ module TestAppScope =
             exportsFolder = root.combine exports
             cataloguesFolder = root.combine catalogues
             shippedCatalogueFolder = install.combine DataLocations.shippedCatalogueDefault
+            materialSourcesFolder = root.combine sources
         }
 
     /// Isolate writable locations and a file library beneath a fresh owner folder (spec 0050 S2.4).

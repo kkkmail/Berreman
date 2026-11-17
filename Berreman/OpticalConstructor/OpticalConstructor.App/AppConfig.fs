@@ -68,6 +68,10 @@ module ConfigKey =
     [<Literal>]
     let shippedCatalogueFolder = "ShippedCatalogueFolder"
 
+    /// appSettings folder for DataLocations.materialSourcesFolder (spec 0050 S13.1).
+    [<Literal>]
+    let materialSourcesFolder = "MaterialSourcesFolder"
+
 /// The settings doors of the workbench settings (spec 0048 E042, the shape of STL's
 /// `BmbDesktopAppSettingsDoors`): a parse from the file's `ConfigValue` that hands back the
 /// elevated value, and the render a default is written back through.
@@ -146,6 +150,7 @@ module AppConfig =
             exportsFolder = resolveFolder configured.exportsFolder
             cataloguesFolder = resolveFolder configured.cataloguesFolder
             shippedCatalogueFolder = resolveFolder configured.shippedCatalogueFolder
+            materialSourcesFolder = resolveFolder configured.materialSourcesFolder
         }
 
     /// Read each location, writing missing or refused values back as configured defaults (spec 0050 S2.4).
@@ -177,6 +182,7 @@ module AppConfig =
                 exportsFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.exportsFolder) defaults.exportsFolder FolderName.tryCreate _.configValue
                 cataloguesFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.cataloguesFolder) defaults.cataloguesFolder FolderName.tryCreate _.configValue
                 shippedCatalogueFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.shippedCatalogueFolder) defaults.shippedCatalogueFolder FolderName.tryCreate _.configValue
+                materialSourcesFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.materialSourcesFolder) defaults.materialSourcesFolder FolderName.tryCreate _.configValue
             }
 
         resolveLocations install configured
