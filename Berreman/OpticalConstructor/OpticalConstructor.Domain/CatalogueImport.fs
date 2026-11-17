@@ -11,6 +11,7 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.MaterialSources
 
 /// The library-import seam, in-memory stores and pure per-entry decision table (spec 0050 §3.4; S3.1, 001 §B).
 /// Identifies every row before confirmed choices write through the version seam.
@@ -453,6 +454,8 @@ module CatalogueImport =
             writeEntryFile : FileName -> LibraryEntryEnvelope -> Result<unit, LibraryExportError>
             /// The configured catalogue-export folder in which export dialogs open, if any (spec 0050 001 §G).
             exportFolderOpt : FolderName option
+            /// The online material sources the library pulls from, `[]` where none is composed (spec 0050 S13.1).
+            materialSources : MaterialSourceProxy list
         }
 
         /// Reads the latest envelope and pins its version before writing its entry file (spec 0050 001 §B, §C).

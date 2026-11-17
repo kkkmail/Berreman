@@ -280,4 +280,5 @@ module CatalogueImportStore =
                     |> Result.bind (fun text -> text.writeAtomically file)
                     |> Result.mapError (fun error -> ExportFileWriteErr $"{file.value}: {error.describe}")
                 exportFolderOpt = None
+                materialSources = []
             }
