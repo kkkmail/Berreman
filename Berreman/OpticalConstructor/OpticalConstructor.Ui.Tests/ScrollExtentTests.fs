@@ -161,6 +161,46 @@ module internal StudyPublishViewFixture =
         |> updateTableAndElementRotation (SelectFitRun run.name)
         |> updateTableAndElementRotation (ShowFlowStep PublishFlowStep)
 
+// Spec 0050 S13.1: this file compiles before MaterialSourcesWindowTests, so the reachability fact and that class build
+// the Online sources window over one import context.
+module internal MaterialSourcesWindowFixture =
+
+    open OpticalConstructor.Domain.MaterialSources
+
+    let testSourceName : MaterialSourceName = MaterialSourceName "Test source"
+
+    let heldVersion : MaterialSourceVersion = MaterialSourceVersion "2026-11-01"
+
+    let siliconHit : MaterialSourceHit =
+        {
+            record = MaterialSourceRecordId "main/Si/nk/Aspnes.yml"
+            name = EntryName "Si (Silicon), Aspnes"
+        }
+
+    let private siliconRecord : InMemorySourceRecord =
+        {
+            hit = siliconHit
+            recordHash = "abc" |> System.Text.Encoding.UTF8.GetBytes |> FileByteContent |> ContentHash.ofBytes
+            citation = EntryCitation "D. E. Aspnes and A. A. Studna, Phys. Rev. B 27, 985 (1983)"
+            material = BuiltinCatalogue.material MaterialIds.silicon
+        }
+
+    /// Step 443's double over a source holding Silicon's record at 2026-11-01, installed unobserved.
+    let siliconSource () : MaterialSourceProxy =
+        let source = InMemoryMaterialSource.create testSourceName (EntryLicence "CC0-1.0")
+        source.publish heldVersion [ siliconRecord ]
+        let proxy = MaterialSourceProxy.createInMemory source
+        match proxy.updateSnapshot SourceSnapshotObserver.unobserved with
+        | Ok (SourceSnapshotUpdated _) -> proxy
+        | other -> failwith $"the test source must install its snapshot, got %A{other}"
+
+    /// The in-memory library's import context offering `sources`; `[]` is `CatalogueImportContext.create`'s own.
+    let importsOffering (sources : MaterialSourceProxy list) : CatalogueImportContext =
+        {
+            CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy with
+                materialSources = sources
+        }
+
 /// Spec 0046 (operator): "if we put a tall control above another, the window must have enough scroll length
 /// to accommodate both — a simple arithmetic that must hold", in every window. Proven as a LAW over each
 /// window at two small-screen client sizes (800 × 600, and a 125–175 %-scaled laptop's 1000 × 540): every
@@ -863,6 +903,11 @@ module ScrollExtentTests =
     let ``the Data locations window leaves everything reachable`` () : unit =
         assertReachable "DataLocations" (fun () ->
             DataLocationsWindow(TestAppScope.testLocations (FolderName "ScrollExtentTests"), ExplorerProxy.createInMemory ignore))
+
+    [<Fact>]
+    let ``the Online sources window leaves everything reachable`` () : unit =
+        assertReachable "OnlineSources" (fun () ->
+            MaterialSourcesWindow(MaterialSourcesWindowFixture.importsOffering [ MaterialSourcesWindowFixture.siliconSource () ], ignore))
 
     // ------------------------------ a window never opens larger than its screen ------------------------------
 

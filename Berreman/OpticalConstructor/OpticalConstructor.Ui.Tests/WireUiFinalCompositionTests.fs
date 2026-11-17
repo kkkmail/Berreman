@@ -37,6 +37,8 @@ module WireUiFinalCompositionTests =
             CategoryEditorWindow(ctx.categories) :> Window |> Ok
         | DataLocationsWindowKey ->
             DataLocationsWindow(TestAppScope.testLocations owner, ExplorerProxy.createInMemory ignore) :> Window |> Ok
+        | MaterialSourcesWindowKey ->
+            MaterialSourcesWindow(ctx.catalogueImports, ignore) :> Window |> Ok
         | MaterialEditorKey mintedId ->
             MaterialEditorWindow(ctx.materials, MaterialEditorView.NewMaterial mintedId, categories = ctx.categories) :> Window |> Ok
         | SampleEditorKey mintedId ->

@@ -637,6 +637,8 @@ type ConstructorUiId =
     static member importWizardCancelButton : ConstructorUiId = ConstructorUiId "ImportWizardCancelButton"
 
     // --- The Online sources window (MaterialSourcesView, MaterialSourcesWindow). ---
+    /// The single-instance Online sources window (spec 0050 S13.1).
+    static member materialSourcesWindow : ConstructorUiId = ConstructorUiId "MaterialSourcesWindow"
     /// The shown source's held snapshot version, or that it holds none yet (spec 0050 S13.1).
     static member materialSourceSnapshotText : ConstructorUiId = ConstructorUiId "MaterialSourceSnapshotText"
     /// Update snapshot: downloads the shown source's current database, then refreshes its pulls (spec 0050 S13.1).

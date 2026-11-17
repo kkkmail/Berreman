@@ -1,5 +1,6 @@
 /// Opens or activates registered windows, retargeting live selection sessions (spec 0038 Part C; spec 0050 S11.5).
-/// Materials, Library, Category and Data locations are single-instance; editors key by entity and constructors by kit.
+/// Materials, Library, Category, Data locations and Online sources are single-instance; editors key by entity and
+/// constructors by kit (spec 0050 S13.1).
 namespace OpticalConstructor.Ui
 
 open Avalonia.Controls
@@ -16,6 +17,8 @@ module WindowLauncher =
         | CategoryEditorKey
         /// The single-instance Data locations window (001 §G, spec 0050 S5.3).
         | DataLocationsWindowKey
+        /// The single-instance Online sources window (spec 0050 S13.1).
+        | MaterialSourcesWindowKey
         | MaterialEditorKey of MaterialLibrary.MaterialId
         | SampleEditorKey of Library.SampleId
         /// Spec 0046: the Library's light-source editor, keyed by the source's entry id (a new
