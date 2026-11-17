@@ -578,6 +578,8 @@ type ConstructorUiId =
     static member materialsExportShownButton : ConstructorUiId = ConstructorUiId "MaterialsExportShownButton"
     static member materialsExportStatusText : ConstructorUiId = ConstructorUiId "MaterialsExportStatusText"
     static member materialsAttributionPanel : ConstructorUiId = ConstructorUiId "MaterialsAttributionPanel"
+    // Spec 0050 S13.1: Online sources… opens the single-instance Online sources window.
+    static member materialsOnlineSourcesButton : ConstructorUiId = ConstructorUiId "MaterialsOnlineSourcesButton"
     /// The lifecycle surface (spec 0038 step 023).
     static member materialsShowInactiveToggle : ConstructorUiId = ConstructorUiId "MaterialsShowInactiveToggle"
     static member materialsMarkInactiveButton : ConstructorUiId = ConstructorUiId "MaterialsMarkInactiveButton"

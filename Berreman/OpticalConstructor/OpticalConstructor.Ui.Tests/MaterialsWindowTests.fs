@@ -8,6 +8,8 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialSources
+open OpticalConstructor.Domain.MaterialSourcePulls
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.EntryFileJson
@@ -203,6 +205,7 @@ module MaterialsWindowTests =
                             | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}"
                             | MaterialEditorView.EditMaterial entry -> "material-edit:" + entry.name.value)
                 openCategoryEditor = fun () -> calls.Add "categories-open"
+                openOnlineSources = fun () -> calls.Add "online-sources-open"
                 openImportDialog = fun _ -> calls.Add "import-open"
                 requestClose = fun () -> calls.Add "close-requested"
             }
@@ -315,6 +318,40 @@ module MaterialsWindowTests =
         |> Program.run
         window.Show()
         Dispatcher.UIThread.RunJobs()
+
+    let private siliconRecordId : MaterialSourceRecordId = MaterialSourceRecordId "main/Si/nk/Aspnes.yml"
+
+    /// Step 443's double holding Silicon's record at 2026-11-01, its snapshot installed (spec 0050 S13.1). It mirrors
+    /// `MaterialSourcesWindowFixture`, which compiles after this file, outside this step's edits.
+    let private siliconSource () : MaterialSourceProxy =
+        let record : InMemorySourceRecord =
+            {
+                hit =
+                    {
+                        record = siliconRecordId
+                        name = EntryName "Si (Silicon), Aspnes"
+                    }
+                recordHash = "abc" |> System.Text.Encoding.UTF8.GetBytes |> FileByteContent |> ContentHash.ofBytes
+                citation = EntryCitation "D. E. Aspnes and A. A. Studna, Phys. Rev. B 27, 985 (1983)"
+                material = BuiltinCatalogue.material MaterialIds.silicon
+            }
+        let source = InMemoryMaterialSource.create (MaterialSourceName "Test source") (EntryLicence "CC0-1.0")
+        source.publish (MaterialSourceVersion "2026-11-01") [ record ]
+        let proxy = MaterialSourceProxy.createInMemory source
+        match proxy.updateSnapshot SourceSnapshotObserver.unobserved with
+        | Ok (SourceSnapshotUpdated _) -> proxy
+        | other -> failwith $"the test source must install its snapshot, got %A{other}"
+
+    /// The context's import seam offering `sources`.
+    let private offeringSources (sources : MaterialSourceProxy list) (context : MW.MaterialsWindowContext) : MW.MaterialsWindowContext =
+        {
+            context with
+                catalogueImports =
+                    {
+                        context.catalogueImports with
+                            materialSources = sources
+                    }
+        }
 
     // ============================ pure: ids contract ============================
 
@@ -726,6 +763,75 @@ module MaterialsWindowTests =
                 Assert.True(isPresent failedWindow ConstructorUiId.materialsViewPanel.value)
                 Assert.False(isPresent failedWindow ConstructorUiId.materialsAttributionPanel.value)
             finally failedWindow.Close())
+
+    // ============================ Online sources (spec 0050 S13.1) ============================
+
+    [<Fact>]
+    let ``the Online sources UiId of the Materials window is the stable intent-named id`` () : unit =
+        Assert.Equal("MaterialsOnlineSourcesButton", ConstructorUiId.materialsOnlineSourcesButton.value)
+
+    [<Fact>]
+    let ``Online sources… is offered in Browse mode while the import seam carries a source`` () : unit =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let calls, unsourced = stubContext materials categories
+            let sourced = offeringSources [ siliconSource () ] unsourced
+            let browse = MW.initMaterialsWindow sourced Browse
+            let _, selection = selectContext Sample SampleSubstrateTarget
+            let selecting = MW.initMaterialsWindow sourced (Select selection)
+            let withoutSource = MW.initMaterialsWindow unsourced Browse
+            let id = ConstructorUiId.materialsOnlineSourcesButton.value
+
+            for model in [ selecting; withoutSource ] do
+                let window = HostWindow(Width = 1150.0, Height = 800.0)
+                try
+                    mountExportView window model (fun _ _ -> ())
+                    Assert.False(isPresent window id, "Online sources… is offered only in Browse mode over a source.")
+                finally window.Close()
+
+            let messages = ResizeArray<MW.MaterialsWindowMsg>()
+            let answers = ResizeArray<MW.MaterialsWindowModel>()
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView window browse (fun message updated ->
+                    messages.Add message
+                    answers.Add updated)
+                Assert.Equal("Online sources…", textOf window id)
+                Assert.Empty calls
+                clickOn window id
+                match List.ofSeq messages with
+                | [ MW.OpenOnlineSources ] -> ()
+                | other -> Assert.Fail $"the button must send OpenOnlineSources alone, got %A{other}"
+                Assert.Equal<MW.MaterialsWindowModel>(browse, Assert.Single answers)
+                Assert.Equal<string list>([ "online-sources-open" ], List.ofSeq calls)
+            finally window.Close())
+
+    [<Fact>]
+    let ``a pull's caption is the Materials window's status and the pulled material is listed`` () : unit =
+        HeadlessSession.run (fun () ->
+            let source = siliconSource ()
+            let _, exporting = freshExportContext ()
+            let context = offeringSources [ source ] exporting
+            let initial = MW.initMaterialsWindow context Browse
+            let pulledName = EntryName "Si (Silicon), Aspnes"
+            Assert.DoesNotContain(pulledName, initial.filteredEntries |> List.map _.name)
+
+            let results =
+                context.catalogueImports.pullRecord source siliconRecordId
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let pulled = Assert.Single results
+            Assert.Equal<ControlCaption>(ControlCaption "Pulled Si (Silicon), Aspnes as version 1.", pulled.caption)
+
+            let applied = MW.updateMaterialsWindow (MW.MaterialsImportApplied pulled.caption) initial
+            Assert.Equal<ControlCaption option>(Some pulled.caption, applied.importStatus)
+            let listed = applied.filteredEntries |> List.filter (fun entry -> entry.id.toLibraryEntryId = pulled.version.entryId)
+            Assert.Equal<EntryName>(pulledName, (Assert.Single listed).name)
+
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView window applied (fun _ _ -> ())
+                Assert.Equal(pulled.caption.value, textOf window ConstructorUiId.materialsImportStatusText.value)
+            finally window.Close())
 
     // ============================ pure: projection ============================
 
@@ -2070,5 +2176,39 @@ module MaterialsWindowTests =
                             "Apply must refresh the Materials tree without reopening the window.")
             finally
                 for dialog in opened do dialog.Close()
+                window.Close()
+                Dispatcher.UIThread.RunJobs())
+
+    // Spec 0050 S13.1: nothing presses Update snapshot, so nothing is downloaded.
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Online sources… opens one Online sources window over the app's refractiveindex.info source`` () : unit =
+        HeadlessSession.run (fun () ->
+            let context =
+                AppContext.create (TestAppScope.fileLocations (FolderName "MaterialsWindowTests")) WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let window = MaterialsWindow(context.materials, context.categories, context.catalogueImports)
+            let opened = ResizeArray<Window>()
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                use _subscription =
+                    Window.WindowOpenedEvent.Raised
+                    |> Observable.subscribe (fun (struct (sender, _)) ->
+                        match sender with
+                        | :? Window as opener when not (obj.ReferenceEquals(opener, window)) -> opened.Add opener
+                        | _ -> ())
+                clickOn window ConstructorUiId.materialsOnlineSourcesButton.value
+                let sources = Assert.IsType<MaterialSourcesWindow>(Assert.Single opened)
+                Assert.True(sources.IsVisible)
+                Assert.True(isPresent sources (ConstructorUiId.materialSourceChoice (MaterialSourceName "refractiveindex.info")).value,
+                            "the Online sources window must offer the app's refractiveindex.info source")
+                Assert.Equal("No snapshot yet; Update snapshot downloads the database.", textOf sources ConstructorUiId.materialSourceSnapshotText.value)
+
+                clickOn window ConstructorUiId.materialsOnlineSourcesButton.value
+                Assert.Same(sources, Assert.Single opened)
+                Assert.True(sources.IsVisible, "a second press must leave the one live Online sources window")
+            finally
+                for openedWindow in opened do openedWindow.Close()
                 window.Close()
                 Dispatcher.UIThread.RunJobs())

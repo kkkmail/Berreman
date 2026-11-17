@@ -172,6 +172,8 @@ type MaterialsWindowContext =
         openMaterialEditor : MaterialEditorView.MaterialEditorIntent -> unit
         /// Open the single-instance Category editor.
         openCategoryEditor : unit -> unit
+        /// Open the single-instance Online sources window over `catalogueImports`; the host bakes it, tests record (spec 0050 S13.1).
+        openOnlineSources : unit -> unit
         /// Close THIS window (the host passes `this.Close`; tests substitute a recording stub —
         /// the `SampleEditorContext` precedent). The Select-state verbs reach it: 'Select'
         /// closes after `onSelected`, 'Close' after `onCancelled` (spec 0038 step 016).
@@ -403,6 +405,8 @@ type MaterialsWindowMsg =
     | ConfirmRemove
     | CancelRemove
     | OpenCategories
+    /// Open the Online sources window, whose pulls come back as `MaterialsImportApplied` (spec 0050 S13.1).
+    | OpenOnlineSources
     /// The show-inactive/superseded toggle (spec 0038 step 023): flip the corpus scope between
     /// `ActiveOnly` and `IncludeInactive`.
     | ToggleShowInactive
@@ -637,6 +641,9 @@ let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) 
         // re-queries `listCategories` on its next render, so a rename there re-labels the
         // category facet in the same render pass.
         m.context.openCategoryEditor ()
+        m
+    | OpenOnlineSources ->
+        m.context.openOnlineSources ()
         m
     | ToggleShowInactive ->
         let flipped =
@@ -1117,7 +1124,8 @@ let private lifecycleButton (dispatch : MaterialsWindowMsg -> unit) (action : Li
 /// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
 /// entry loses the verb — removed, not greyed); Remove only while an entry is selected; the
 /// lifecycle verbs from `offeredLifecycleActions` (Mark inactive + Supersede… for an active
-/// selection, Mark active for a retired one — spec 0038 step 023).
+/// selection, Mark active for a retired one — spec 0038 step 023). Online sources… is Browse-only, offered while the
+/// import seam carries a source: a pick session imports nothing (spec 0050 S13.1).
 let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
@@ -1157,7 +1165,12 @@ let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -
                                         pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
                                             (fun folder -> dispatch (ExportShownMaterials (CatalogueExportTarget.ofFolder folder)))
                                     | _ -> ()
-                                | _ -> ()) ])))
+                                | _ -> ()) ])
+                   @ (match m.context.catalogueImports.materialSources with
+                      | [] -> []
+                      | _ ->
+                          [ verbButton ConstructorUiId.materialsOnlineSourcesButton (ControlCaption "Online sources…") (fun () ->
+                                dispatch OpenOnlineSources) ])))
     ] :> IView
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
