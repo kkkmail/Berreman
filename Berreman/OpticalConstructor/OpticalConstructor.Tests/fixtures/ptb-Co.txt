@@ -1,0 +1,10 @@
+# Optical constants for Co created by PTB
+# Reconstructed from reflection measurements in the wavelength range 8 - 25 nm
+# 40 nm Co thin film in a multilayer on Si (C/ Co/ Ru/ Si) (measured 4/2022)
+# n = (1-delta) - (i*beta)
+# The values are provided with their 3-sigma uncertainty bounds. HB: Higher Bound. LB: Lower Bound.
+#lambda/nm	1-delta	beta	1-delta_LB	1-delta_HB	beta_LB	beta_HB
+# ------------------------
+8.0	0.96788	0.02267	0.96772	0.96804	0.02253	0.0228
+11.2	0.95225	0.05349	0.95194	0.95256	0.05327	0.05371
+25.0	0.92771	0.10418	0.92583	0.92962	0.10319	0.10517

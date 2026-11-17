@@ -359,8 +359,116 @@ module MaterialImportTests =
                 MalformedCsvErr "row 3 has one column", "the CSV is malformed: row 3 has one column"
                 NoDataErr "no tabulated rows found", "the file holds no data: no tabulated rows found"
                 UnsupportedFormulaErr (RiiFormulaNumber 8, "a rational transform"), "formula 8 is not supported: a rational transform"
+                MalformedSourceFileErr "line 9 holds 6 values where the header names 7 columns",
+                "the source file is malformed: line 9 holds 6 values where the header names 7 columns"
             ]
         for error, rendered in errors do
             Assert.Equal(rendered, error.describe)
         let texts = errors |> List.map (fun (error, _) -> error.describe)
         Assert.Equal(List.length texts, List.length (List.distinct texts))
+
+    /// One row of `fixtures/ptb-Co.txt` written out by hand: its sample (λ in nm, 1 − δ, β) and its 3-sigma bounds
+    /// (spec 0050 S13.2).
+    type private PtbBoundedSample =
+        {
+            sample : TabulatedSample
+            nLow : float
+            nHigh : float
+            kLow : float
+            kHigh : float
+        }
+
+    let private ptbCoRows : PtbBoundedSample list =
+        [
+            { sample = { magnitude = UnitMagnitude 8.0; n = 0.96788; k = 0.02267 }; nLow = 0.96772; nHigh = 0.96804; kLow = 0.02253; kHigh = 0.0228 }
+            { sample = { magnitude = UnitMagnitude 11.2; n = 0.95225; k = 0.05349 }; nLow = 0.95194; nHigh = 0.95256; kLow = 0.05327; kHigh = 0.05371 }
+            { sample = { magnitude = UnitMagnitude 25.0; n = 0.92771; k = 0.10418 }; nLow = 0.92583; nHigh = 0.92962; kLow = 0.10319; kHigh = 0.10517 }
+        ]
+
+    let private ptbCoTable : TabulatedFixture = { waveLengthUnit = Nanometer; samples = ptbCoRows |> List.map _.sample }
+
+    /// The table of an imported entry's one isotropic segment, with no magnetic or active part.
+    let private importedTable (imported : Result<MaterialEntry, ImportError>) : TabulatedNkTable =
+        match imported with
+        | Ok { physics = ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]); magnetic = None; active = None } } -> table
+        | Ok entry -> failwith $"expected one isotropic segment carrying a TabulatedNK table, got %A{entry.physics}"
+        | Error e -> failwith e.describe
+
+    [<Fact>]
+    let ``a PTB OCDB record reads n as 1 - delta and k as beta, its 3-sigma bounds as one-sigma uncertainties`` () =
+        let record = PtbOcdbText (readFixture "ptb-Co.txt")
+        let imported = record.importMaterial
+        assertViewOnlyTabulatedSegment ptbCoTable imported
+        assertTableColumns ptbCoTable imported
+        match (importedTable imported).uncertaintyOpt with
+        | Some uncertainty ->
+            Assert.Equal(List.length ptbCoRows, uncertainty.sigmaN.Length)
+            Assert.Equal(List.length ptbCoRows, uncertainty.sigmaK.Length)
+            ptbCoRows
+            |> List.iteri (fun i row ->
+                let sigmaN = (row.nHigh - row.nLow) / 6.0
+                let sigmaK = (row.kHigh - row.kLow) / 6.0
+                Assert.True(abs (uncertainty.sigmaN.[i] - sigmaN) <= 1e-15, $"sigma n {i}: {uncertainty.sigmaN.[i]}, want {sigmaN}")
+                Assert.True(abs (uncertainty.sigmaK.[i] - sigmaK) <= 1e-15, $"sigma k {i}: {uncertainty.sigmaK.[i]}, want {sigmaK}"))
+        | None -> Assert.Fail "expected the record's 3-sigma bounds as one-sigma uncertainties"
+        match imported with
+        | Ok entry ->
+            Assert.Equal<EntryName>(EntryName "Imported (PTB OCDB)", entry.name)
+            Assert.Equal<CategoryId>(CategoryIds.semiconductor, entry.category)
+            Assert.Equal<EntryDescription option>(Some (EntryDescription "Imported tabulated n,k (PTB OCDB)."), entry.description)
+        | Error e -> Assert.Fail(e.describe)
+        Assert.Equal<EntryCitation option>(Some (EntryCitation "Optical constants for Co created by PTB"), record.headlineOpt)
+
+        // The same rows reversed under CRLF line endings: sorted by λ, each uncertainty with its sample.
+        let reversed =
+            PtbOcdbText (
+                "# Optical constants for Co created by PTB\r\n"
+                + "# The values are provided with their 3-sigma uncertainty bounds. HB: Higher Bound. LB: Lower Bound.\r\n"
+                + "#lambda/nm\t1-delta\tbeta\t1-delta_LB\t1-delta_HB\tbeta_LB\tbeta_HB\r\n"
+                + "25.0\t0.92771\t0.10418\t0.92583\t0.92962\t0.10319\t0.10517\r\n"
+                + "11.2\t0.95225\t0.05349\t0.95194\t0.95256\t0.05327\t0.05371\r\n"
+                + "8.0\t0.96788\t0.02267\t0.96772\t0.96804\t0.02253\t0.0228\r\n")
+        Assert.True((importedTable reversed.importMaterial = importedTable imported), "the reversed rows read into the fixture's table")
+
+    /// A malformed PTB OCDB text and the word its refusal names (spec 0050 S13.2).
+    type private RefusedPtbText =
+        {
+            label : string
+            text : PtbOcdbText
+            named : string
+        }
+
+    [<Fact>]
+    let ``a PTB OCDB record without bounds has no uncertainty, and a malformed record is refused`` () =
+        let headline = "# Optical constants for Ru created by PTB\n# n = (1-delta) - (i*beta)\n"
+        let sigmaLine = "# The values are provided with their 3-sigma uncertainty bounds. HB: Higher Bound. LB: Lower Bound.\n"
+        let boundedHeader = "#lambda/nm\t1-delta\tbeta\t1-delta_LB\t1-delta_HB\tbeta_LB\tbeta_HB\n# ------------------------\n"
+        let boundedRow = "13.5\t0.88\t0.017\t0.87\t0.89\t0.016\t0.018\n"
+
+        let withoutBounds = PtbOcdbText (headline + "#lambda/nm\t1-delta\tbeta\n# ------------------------\n13.5\t0.88\t0.017\n12.5\t0.91\t0.015\n")
+        let unbounded : TabulatedFixture =
+            {
+                waveLengthUnit = Nanometer
+                samples = [ { magnitude = UnitMagnitude 12.5; n = 0.91; k = 0.015 }; { magnitude = UnitMagnitude 13.5; n = 0.88; k = 0.017 } ]
+            }
+        assertViewOnlyTabulatedSegment unbounded withoutBounds.importMaterial
+        assertTableColumns unbounded withoutBounds.importMaterial
+        Assert.Equal<TabulatedNkUncertainty option>(None, (importedTable withoutBounds.importMaterial).uncertaintyOpt)
+
+        let refused : RefusedPtbText list =
+            [
+                { label = "a header without beta"; text = PtbOcdbText (headline + "#lambda/nm\t1-delta\n13.5\t0.88\n"); named = "beta" }
+                { label = "beta_LB alone"; text = PtbOcdbText (headline + sigmaLine + "#lambda/nm\t1-delta\tbeta\tbeta_LB\n13.5\t0.88\t0.017\t0.016\n"); named = "beta_HB" }
+                { label = "bounds without a sigma line"; text = PtbOcdbText (headline + boundedHeader + boundedRow); named = "sigma level" }
+                { label = "a row of six values"; text = PtbOcdbText (headline + sigmaLine + boundedHeader + boundedRow + "14.5\t0.85\t0.019\t0.84\t0.86\t0.018\n"); named = "line 7" }
+            ]
+        for case in refused do
+            match case.text.importMaterial with
+            | Error (MalformedSourceFileErr reason) -> Assert.True(reason.Contains(case.named), $"{case.label}: '{reason}' does not name {case.named}")
+            | Error e -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got {e.describe}")
+            | Ok _ -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got an entry")
+
+        match (PtbOcdbText (headline + sigmaLine + boundedHeader)).importMaterial with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a header without a row: expected NoDataErr, got {e.describe}")
+        | Ok _ -> Assert.Fail "a header without a row: expected NoDataErr, got an entry"

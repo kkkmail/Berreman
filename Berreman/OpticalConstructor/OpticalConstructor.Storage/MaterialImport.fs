@@ -17,14 +17,14 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialSources
 
-/// refractiveindex.info YAML + CSV import and CSV export (§D.9). Importers produce
+/// refractiveindex.info YAML + CSV import and CSV export (§D.9), and PTB OCDB import (spec 0050 S13.2). Importers produce
 /// in-memory `MaterialEntry` values (never FsPickler-pickled, §I.4); every parsed
 /// wavelength is reduced to the engine meter base through the sole `Units` seam
 /// (§D.2/§D.11) according to the file's declared unit. A tabulated page or CSV becomes
 /// a `TabulatedNK` axis table, read linearly in λ and clamped to its end samples (spec
 /// 0050 step 2). The error channel is `Result<_, ImportError>` — parsing never throws
 /// past the boundary. The importers read, and `exportCsv` returns, the raw file TEXT
-/// (`RefractiveIndexInfoText` / `NkCsvText`), keeping filesystem IO and its exceptions
+/// (`RefractiveIndexInfoText` / `NkCsvText` / `PtbOcdbText`), keeping filesystem IO and its exceptions
 /// out of the parser.
 module MaterialImport =
 
@@ -67,6 +67,8 @@ module MaterialImport =
         | MalformedCsvErr of string
         | NoDataErr of string
         | UnsupportedFormulaErr of formulaNumber : RiiFormulaNumber * reason : string
+        /// A source record that does not read as its format: a column, the sigma level or a numbered line (spec 0050 S13.2).
+        | MalformedSourceFileErr of reason : string
 
         /// The error's condition and its payload, so an import error renders through its own member (spec 0050 S13.1).
         member this.describe : string =
@@ -75,6 +77,7 @@ module MaterialImport =
             | MalformedCsvErr reason -> $"the CSV is malformed: {reason}"
             | NoDataErr reason -> $"the file holds no data: {reason}"
             | UnsupportedFormulaErr (formulaNumber, reason) -> $"formula {formulaNumber.value} is not supported: {reason}"
+            | MalformedSourceFileErr reason -> $"the source file is malformed: {reason}"
 
     /// The text of a refractiveindex.info YAML page.
     type RefractiveIndexInfoText =
@@ -94,6 +97,13 @@ module MaterialImport =
 
         member this.value : string = let (RefractiveIndexInfoCatalogText t) = this in t
 
+    /// The text of one PTB OCDB record (`ocdb/db/data/<name>.txt`): `#` comments, then tab-separated rows of λ in nm,
+    /// 1 − δ, β and optionally their bounds (spec 0050 S13.2).
+    type PtbOcdbText =
+        | PtbOcdbText of string
+
+        member this.value : string = let (PtbOcdbText t) = this in t
+
     let private inv = CultureInfo.InvariantCulture
 
     /// One row of an imported n,k table: λ in meters, n and k.
@@ -109,7 +119,8 @@ module MaterialImport =
     type private RiiPage =
         | RiiPage of string[]
 
-        /// A refractiveindex.info text's lines, whatever its line endings (spec 0050 S13.1).
+        /// A source text's lines, whatever its line endings: a refractiveindex.info page or catalog, a PTB OCDB record
+        /// (spec 0050 S13.1, S13.2).
         static member linesOf (text : string) : string[] = text.Replace("\r\n", "\n").Split('\n')
 
         /// The text after `key`, trimmed, when the trimmed line opens with it (spec 0050 S13.1).
@@ -207,6 +218,25 @@ module MaterialImport =
                 let nominal = toWaveLength Micrometer (UnitMagnitude 0.0)
                 { lower = nominal; upper = nominal }
 
+    type TabulatedNkTable with
+
+        /// This table as an imported entry: one isotropic dispersive segment over its sample range, no magnetic or active
+        /// part, under a freshly minted `MaterialId`; every tabulated source assembles its entry here (spec 0050 S13.2).
+        member this.isotropicEntry (name : EntryName) (category : CategoryId) (description : EntryDescription) : MaterialEntry =
+            let complexity =
+                {
+                    eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = this.sampleRange; dispersion = TabulatedNK this } ])
+                    magnetic = None
+                    active = None
+                }
+            {
+                id = MaterialId.create ()
+                name = name
+                category = category
+                description = Some description
+                physics = ComplexityPhysics complexity
+            }
+
     /// A tabulated import is axis data (spec 0050 step 2, 001 §B): its rows, sorted by λ, become
     /// one `TabulatedNK` table carried as a single isotropic dispersive segment over the sample
     /// range, view-only because a table is not editable term data. A refused table is
@@ -223,21 +253,7 @@ module MaterialImport =
         | Error (SampleCountMismatchErr reason)
         | Error (UnsortedSamplesErr reason)
         | Error (InvalidUncertaintyErr reason) -> Error (NoDataErr reason)
-        | Ok table ->
-            let complexity =
-                {
-                    eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ])
-                    magnetic = None
-                    active = None
-                }
-            Ok
-                {
-                    id = MaterialId.create ()
-                    name = name
-                    category = category
-                    description = Some (EntryDescription "Imported tabulated n,k (refractiveindex.info).")
-                    physics = ComplexityPhysics complexity
-                }
+        | Ok table -> Ok (table.isotropicEntry name category (EntryDescription "Imported tabulated n,k (refractiveindex.info)."))
 
     // ==========================================================================
     // Analytic formula blocks (spec 0033 step 025). Each refractiveindex.info
@@ -688,6 +704,117 @@ module MaterialImport =
                 if rows.Length = 0 then Error (NoDataErr "no CSV data rows found")
                 else entryFromTabulated (EntryName "Imported (CSV)") CategoryIds.glass rows
             with e -> Error (MalformedCsvErr e.Message)
+
+    /// A PTB OCDB record split into lines; each of the reader's line rules is one of its members (spec 0050 S13.2).
+    type private PtbOcdbLines =
+        | PtbOcdbLines of string[]
+
+        /// Each comment line's text in file order, its `#` and surrounding white space removed (spec 0050 S13.2).
+        member this.commentTexts : string[] =
+            let (PtbOcdbLines lines) = this
+            lines
+            |> Array.map _.Trim()
+            |> Array.filter (fun line -> line.StartsWith '#')
+            |> Array.map (fun comment -> comment.Substring(1).Trim())
+
+        /// The header's column names: the comment whose text starts with `lambda/nm`, split on tabs and spaces; none
+        /// without it (spec 0050 S13.2).
+        member this.columns : string[] =
+            this.commentTexts
+            |> Array.tryFind (fun text -> text.StartsWith("lambda/nm", StringComparison.Ordinal))
+            |> Option.map (fun header -> header.Split([| '\t'; ' ' |], StringSplitOptions.RemoveEmptyEntries))
+            |> Option.defaultValue [||]
+
+        /// The integer before `-sigma` in the first comment that states one, as 3 in `3-sigma` (spec 0050 S13.2).
+        member this.sigmaLevelOpt : int option =
+            this.commentTexts
+            |> Array.tryPick (fun text ->
+                match text.IndexOf("-sigma", StringComparison.OrdinalIgnoreCase) with
+                | at when at > 0 ->
+                    let before = text.Substring(0, at)
+                    let digitCount = before |> Seq.rev |> Seq.takeWhile Char.IsAsciiDigit |> Seq.length
+                    match Int32.TryParse(before.Substring(before.Length - digitCount), NumberStyles.None, inv) with
+                    | true, level -> Some level
+                    | _ -> None
+                | _ -> None)
+
+        /// Every non-empty line that is not a comment, trimmed, with its 1-based line number (spec 0050 S13.2).
+        member this.dataLines : (int * string)[] =
+            let (PtbOcdbLines lines) = this
+            lines
+            |> Array.mapi (fun at line -> (at + 1, line.Trim()))
+            |> Array.filter (fun (_, line) -> line.Length > 0 && not (line.StartsWith '#'))
+
+    type PtbOcdbText with
+
+        /// The record's first comment, its `#` and surrounding white space removed: PTB's headline for the material.
+        /// None for a text without one (spec 0050 S13.2).
+        member this.headlineOpt : EntryCitation option =
+            match (PtbOcdbLines (RiiPage.linesOf this.value)).commentTexts |> Array.tryHead with
+            | Some "" | None -> None
+            | Some headline -> Some (EntryCitation headline)
+
+        /// Import this record as one isotropic tabulated segment (spec 0050 S13.2): n is 1 − δ and k is β (PTB writes
+        /// n = (1 − δ) − iβ, the engine n + ik), λ in nm through the `Units` seam, and with bounds each sample's one-sigma
+        /// uncertainty is its bound interval over twice the sigma level the record states.
+        member this.importMaterial : Result<MaterialEntry, ImportError> =
+            try
+                let record = PtbOcdbLines (RiiPage.linesOf this.value)
+                let columns = record.columns
+                let lacking (names : string list) : string list = names |> List.filter (fun name -> not (Array.contains name columns))
+                let boundNames = [ "1-delta_LB"; "1-delta_HB"; "beta_LB"; "beta_HB" ]
+
+                let readRow (lineNumber : int, line : string) : Result<float[], ImportError> =
+                    let tokens = line.Split([| '\t'; ' ' |], StringSplitOptions.RemoveEmptyEntries)
+                    let values =
+                        tokens
+                        |> Array.choose (fun token ->
+                            match Double.TryParse(token, NumberStyles.Float, inv) with
+                            | true, v -> Some v
+                            | _ -> None)
+                    if tokens.Length <> columns.Length then
+                        Error (MalformedSourceFileErr $"line {lineNumber} holds {tokens.Length} values where the header names {columns.Length} columns")
+                    elif values.Length <> tokens.Length then
+                        Error (MalformedSourceFileErr $"line {lineNumber} does not read as numbers: {line}")
+                    else Ok values
+
+                let entryOf (levelOpt : int option) : Result<MaterialEntry, ImportError> =
+                    match record.dataLines |> Array.toList |> List.map readRow |> OpticalConstructor.Domain.ItemEvaluation.sequenced with
+                    | Error e -> Error e
+                    | Ok [] -> Error (NoDataErr "the record holds no row")
+                    | Ok rows ->
+                        let at (name : string) : int = Array.IndexOf(columns, name)
+                        let lambdaAt = at "lambda/nm"
+                        let wavelengthOf (values : float[]) : float<meter> = toMeters Nanometer (UnitMagnitude values.[lambdaAt])
+                        let sorted = rows |> Array.ofList |> Array.sortBy wavelengthOf
+                        let column (name : string) : float[] =
+                            let columnAt = at name
+                            sorted |> Array.map (fun values -> values.[columnAt])
+                        let sigmas (lowName : string) (highName : string) (level : int) : float[] =
+                            Array.map2 (fun low high -> (high - low) / (2.0 * float level)) (column lowName) (column highName)
+                        let table =
+                            TabulatedNkTable.tryCreate (sorted |> Array.map wavelengthOf) (column "1-delta") (column "beta")
+                            |> Result.bind (fun table ->
+                                match levelOpt with
+                                | Some level -> table.withUncertainty { sigmaN = sigmas "1-delta_LB" "1-delta_HB" level; sigmaK = sigmas "beta_LB" "beta_HB" level }
+                                | None -> Ok table)
+                        match table with
+                        | Ok table -> Ok (table.isotropicEntry (EntryName "Imported (PTB OCDB)") CategoryIds.semiconductor (EntryDescription "Imported tabulated n,k (PTB OCDB)."))
+                        | Error (EmptyTableErr reason)
+                        | Error (SampleCountMismatchErr reason)
+                        | Error (UnsortedSamplesErr reason)
+                        | Error (InvalidUncertaintyErr reason) -> Error (MalformedSourceFileErr reason)
+
+                match lacking [ "lambda/nm"; "1-delta"; "beta" ], lacking boundNames, record.sigmaLevelOpt with
+                | missing :: _, _, _ -> Error (MalformedSourceFileErr $"the column header has no {missing} column")
+                | [], absent, _ when List.length absent = List.length boundNames -> entryOf None
+                | [], [], Some level when level > 0 -> entryOf (Some level)
+                | [], [], Some level -> Error (MalformedSourceFileErr $"the sigma level {level} is not positive")
+                | [], [], None -> Error (MalformedSourceFileErr "the record has bound columns but states no sigma level, as 3 in 3-sigma")
+                | [], absent, _ ->
+                    let absentNames = String.Join(", ", absent)
+                    Error (MalformedSourceFileErr $"the bound columns come all four or none, and the column header has no {absentNames}")
+            with e -> Error (MalformedSourceFileErr e.Message)
 
     /// Export n,k sampled over a `Range<WaveLength>` to CSV text (§D.9), reading the
     /// entry's dispersion through the engine `getEps` path. n is recovered as

@@ -251,6 +251,9 @@
         <Content Include="fixtures\sample-nk.csv">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        <Content Include="fixtures\ptb-Co.txt">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <!-- Spec 0033 step 025: one minimal RII-style page per dispersion formula
              (1-7 supported and lowered to editable term data; 8/9 typed unsupported). -->
         <Content Include="fixtures\formula1.yml">
