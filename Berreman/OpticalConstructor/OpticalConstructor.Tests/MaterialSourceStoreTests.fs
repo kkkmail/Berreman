@@ -7,6 +7,7 @@ open System.Text
 open System.Threading
 open Xunit
 open Softellect.Sys.Primitives
+open Berreman.Dispersion
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialSources
@@ -14,8 +15,8 @@ open OpticalConstructor.Storage.MaterialImport
 open OpticalConstructor.Storage.MaterialSourceStore
 open OpticalConstructor.Tests.MaterialSourceFixture
 
-/// The refractiveindex.info adapter over fixture snapshots and archives under the test output: its reads, its update
-/// through the archive seam, and what a failed or cancelled update keeps (spec 0050 S13.1).
+/// The refractiveindex.info and PTB OCDB adapters over fixture snapshots and archives under the test output: their reads,
+/// their update through the archive seam, and what a failed or cancelled update keeps (spec 0050 S13.1, S13.2).
 module MaterialSourceStoreTests =
 
     let private owner : string = "MaterialSourceStoreTests"
@@ -30,8 +31,15 @@ module MaterialSourceStoreTests =
 
     let private laterClockTime : DateTime = DateTime(2026, 11, 4, 23, 59, 0, DateTimeKind.Utc)
 
+    let private coRecord : MaterialSourceRecordId = MaterialSourceRecordId "Co.txt"
+
+    let private ruRecord : MaterialSourceRecordId = MaterialSourceRecordId "Ru_2019.txt"
+
     /// The snapshot folder an adapter over `sources` reads.
     let private snapshotIn (sources : FolderName) : string = Path.Combine(sources.value, "refractiveindex.info")
+
+    /// The snapshot folder the PTB OCDB adapter over `sources` reads.
+    let private ptbSnapshotIn (sources : FolderName) : string = Path.Combine(sources.value, "ptb-ocdb")
 
     /// A downloader for the facts that never update: asking it is a failure of its own.
     let private unusedDownloader : SourceArchiveDownloader =
@@ -249,3 +257,127 @@ module MaterialSourceStoreTests =
         match errorOf "search" (proxy.searchRecords (MaterialSourceQuery "silicon")) with
         | UnsupportedSnapshotSchemaErr _ -> ()
         | error -> Assert.Fail $"search: expected UnsupportedSnapshotSchemaErr, got {error.describe}"
+
+    /// The uncertainty of a fetched material's one isotropic tabulated segment.
+    let private tabulatedUncertaintyOf (material : MaterialEntry) : TabulatedNkUncertainty option =
+        match material.physics with
+        | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]); magnetic = None; active = None } ->
+            table.uncertaintyOpt
+        | physics -> failwith $"expected one isotropic segment carrying a TabulatedNK table, got %A{physics}"
+
+    [<Fact>]
+    let ``a PTB OCDB source without a snapshot answers no version and refuses search and fetch`` () =
+        let sources = freshSources owner
+        let proxy = MaterialSourceProxy.createPtbOcdb sources unusedDownloader (fixedClock firstClockTime)
+        Assert.Equal(MaterialSourceName "PTB OCDB", proxy.sourceName)
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok None, proxy.snapshotVersion ())
+
+        match errorOf "search" (proxy.searchRecords (MaterialSourceQuery "co")) with
+        | SourceSnapshotMissingErr _ -> ()
+        | error -> Assert.Fail $"search: expected SourceSnapshotMissingErr, got {error.describe}"
+
+        match errorOf "fetch" (proxy.fetchRecord coRecord) with
+        | SourceSnapshotMissingErr _ -> ()
+        | error -> Assert.Fail $"fetch: expected SourceSnapshotMissingErr, got {error.describe}"
+
+        Assert.Empty(namesIn sources.value)
+
+    [<Fact>]
+    let ``a PTB OCDB snapshot lists its data records, and a fetched record is the reader's material with CC BY 4.0 and its citation`` () =
+        let sources = freshSources owner
+        let snapshot = ptbSnapshotIn sources
+        writePtbSnapshot snapshot (ptbRecord ())
+        let proxy = MaterialSourceProxy.createPtbOcdb sources unusedDownloader (fixedClock laterClockTime)
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some heldVersion), proxy.snapshotVersion ())
+
+        let coHit : MaterialSourceHit = { record = coRecord; name = EntryName "Co (PTB OCDB)" }
+        let ruHit : MaterialSourceHit = { record = ruRecord; name = EntryName "Ru_2019 (PTB OCDB)" }
+        Assert.Equal<Result<MaterialSourceHit list, MaterialSourceError>>(Ok [ coHit; ruHit ], proxy.searchRecords (MaterialSourceQuery ""))
+        Assert.Equal<Result<MaterialSourceHit list, MaterialSourceError>>(Ok [ coHit ], proxy.searchRecords (MaterialSourceQuery "co"))
+
+        match proxy.fetchRecord coRecord, (PtbOcdbText (ptbRecord ())).importMaterial with
+        | Ok fetched, Ok imported ->
+            Assert.Equal(imported.physics, fetched.material.physics)
+            match tabulatedUncertaintyOf fetched.material with
+            | Some _ -> ()
+            | None -> Assert.Fail "the Co record's 3-sigma bounds must be its uncertainties"
+            Assert.Equal(coHit.name, fetched.material.name)
+            let recordBytes = File.ReadAllBytes(Path.Combine(snapshot, "ocdb", "db", "data", "Co.txt")) |> FileByteContent
+            let expected : SourcePullInfo =
+                {
+                    source = MaterialSourceName "PTB OCDB"
+                    record = coRecord
+                    recordHash = ContentHash.ofBytes recordBytes
+                    sourceVersion = heldVersion
+                    licence = EntryLicence "CC-BY-4.0"
+                    citation = EntryCitation "PTB Optical Constants Database (OCDB), ocdb/db/data/Co.txt: Optical constants for Co created by PTB"
+                }
+            Assert.Equal(expected, fetched.pull)
+        | Error error, _ -> Assert.Fail $"fetch: {error.describe}"
+        | _, Error error -> Assert.Fail $"import: {error.describe}"
+
+        match proxy.fetchRecord ruRecord with
+        | Ok fetched ->
+            Assert.Equal(ruHit.name, fetched.material.name)
+            Assert.Equal<TabulatedNkUncertainty option>(None, tabulatedUncertaintyOf fetched.material)
+        | Error error -> Assert.Fail $"fetch: {error.describe}"
+
+        for unlisted in [ MaterialSourceRecordId "../Co.txt"; MaterialSourceRecordId "Ta.txt" ] do
+            match errorOf unlisted.value (proxy.fetchRecord unlisted) with
+            | SourceRecordMissingErr _ -> ()
+            | error -> Assert.Fail $"'{unlisted.value}': expected SourceRecordMissingErr, got {error.describe}"
+
+    [<Fact>]
+    let ``a PTB OCDB update keeps the data records and the licence file of the repository archive`` () =
+        let sources = freshSources owner
+        let snapshot = ptbSnapshotIn sources
+        writePtbSnapshot snapshot (ptbRecord ())
+        let zip = $"{sources.value}.zip"
+        writePtbArchive zip (changedPtbRecord ())
+        let asked = ResizeArray<SourceArchiveUrl>()
+        let proxy = MaterialSourceProxy.createPtbOcdb sources (copyingDownloader zip asked) (fixedClock laterClockTime)
+        let progress = ResizeArray<SourceSnapshotProgress>()
+        let observer : SourceSnapshotObserver = { reportSnapshotProgress = progress.Add; cancellation = CancellationToken.None }
+
+        let updated : SourceSnapshotInfo = { version = MaterialSourceVersion "2026-11-04"; files = SourceSnapshotFileCount 3 }
+        Assert.Equal<Result<SourceSnapshotOutcome, MaterialSourceError>>(Ok (SourceSnapshotUpdated updated), proxy.updateSnapshot observer)
+        Assert.Equal<SourceSnapshotProgress list>([ progressOf 1 3; progressOf 2 3; progressOf 3 3 ], List.ofSeq progress)
+        Assert.Equal<SourceArchiveUrl list>([ SourceArchiveUrl "https://github.com/PTB-SR/ocdb/archive/refs/heads/master.zip" ], List.ofSeq asked)
+
+        Assert.Equal<string list>(
+            [ ".snapshot-json"; "ocdb/db/COPYING"; "ocdb/db/data/Co.txt"; "ocdb/db/data/Ru_2019.txt" ],
+            filesUnder snapshot |> List.map fst)
+        Assert.Equal<string list>([ ".snapshot-json"; "ocdb" ], namesIn snapshot)
+        Assert.Equal<string list>([ "COPYING"; "data" ], namesIn (Path.Combine(snapshot, "ocdb", "db")))
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some updated.version), proxy.snapshotVersion ())
+
+        match proxy.fetchRecord coRecord with
+        | Ok fetched ->
+            Assert.Equal(ContentHash.ofBytes (FileByteContent (Encoding.UTF8.GetBytes (changedPtbRecord ()))), fetched.pull.recordHash)
+            Assert.Equal(updated.version, fetched.pull.sourceVersion)
+        | Error error -> Assert.Fail error.describe
+
+        Assert.Equal<string list>([ "ptb-ocdb" ], namesIn sources.value)
+
+    [<Fact>]
+    let ``a PTB OCDB archive without its licence file is refused and the held snapshot kept`` () =
+        let sources = freshSources owner
+        let snapshot = ptbSnapshotIn sources
+        writePtbSnapshot snapshot (ptbRecord ())
+        let held = filesUnder snapshot
+        let zip = $"{sources.value}.zip"
+        writePtbArchive zip (changedPtbRecord ())
+        do
+            use archive = ZipFile.Open(zip, ZipArchiveMode.Update)
+            match archive.GetEntry "ocdb-master/ocdb/db/COPYING" with
+            | null -> Assert.Fail "the fixture archive holds no licence file to remove"
+            | licence -> licence.Delete()
+        let proxy = MaterialSourceProxy.createPtbOcdb sources (copyingDownloader zip (ResizeArray ())) (fixedClock laterClockTime)
+
+        match errorOf "update" (proxy.updateSnapshot SourceSnapshotObserver.unobserved) with
+        | SourceArchiveInvalidErr _ -> ()
+        | error -> Assert.Fail $"update: expected SourceArchiveInvalidErr, got {error.describe}"
+
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some heldVersion), proxy.snapshotVersion ())
+        Assert.Equal<(string * string) list>(held, filesUnder snapshot)
+        Assert.Equal<string list>([ "ptb-ocdb" ], namesIn sources.value)
