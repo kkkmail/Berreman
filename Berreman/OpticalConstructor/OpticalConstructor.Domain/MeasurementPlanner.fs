@@ -631,6 +631,39 @@ module MeasurementPlanner =
             targets : ParameterName list
         }
 
+        /// Each plate in order under each reach, at normal and at the steepest incidence, on each branch its emission
+        /// allows: no item model publishes an angle limit (step 208), so these two bound every tilt (spec 0050 S14.1).
+        member this.looks : PlannerLook list =
+            let incidences : IncidenceAngle list = [ IncidenceAngle.normal; IncidenceAngle.maxValue ]
+
+            this.plates
+            |> List.collect (fun (plate : PlannerPlate) ->
+                let observables : Observable list =
+                    match plate.emission with
+                    | EmitBoth -> [ TransmittedMueller; ReflectedMueller ]
+                    | EmitTransmittedOnly -> [ TransmittedMueller ]
+                    | EmitReflectedOnly -> [ ReflectedMueller ]
+
+                [
+                    for reach in this.lab.reaches do
+                        for incidence in incidences do
+                            for observable in observables do
+                                let look : PlannerLook =
+                                    {
+                                        normalAxisOpt = plate.normalAxisOpt
+                                        incidence = incidence
+                                        observable = observable
+                                        reach = reach
+                                    }
+
+                                look
+                ])
+
+        /// The kit's structural report: what its looks can never recover of the targets, and its need of an off-axis
+        /// cut (spec 0050 S14.1; 001 §M).
+        member this.structuralReport : Result<RecoverabilityReport, PlannerError> =
+            this.prior.crystal.structuralReport this.targets this.looks
+
     type Study with
 
         /// The inputs for `material`: the kit's lab profile, its finite plates of the material in item order, the opened

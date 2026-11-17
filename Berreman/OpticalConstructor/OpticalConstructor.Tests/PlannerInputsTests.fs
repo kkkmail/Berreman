@@ -4,6 +4,7 @@ open System
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
@@ -13,14 +14,15 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.ItemEvaluation
+open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.PlannerSymmetry
 open OpticalConstructor.Domain.MeasurementPlanner
 open CrystalMaterialFixtures
 
 /// The Measurement Planner's inputs: the lab profile (the kit's sources, optics and detectors read from their models,
-/// and what an intensity detector reaches beside them), the kit's plates of a material, and the study's prior and targets
-/// (spec 0050 S14.1; 001 §M).
+/// and what an intensity detector reaches beside them), the kit's plates of a material, and the study's prior and targets;
+/// then the kit's looks and its structural report (spec 0050 S14.1; 001 §M).
 module PlannerInputsTests =
 
     let private itemValue (result : Result<Item, ItemError>) : Item =
@@ -496,3 +498,181 @@ module PlannerInputsTests =
 
         Assert.Equal<PlannerPlate list>([], withoutPlate.plates)
         Assert.Equal<ParameterName list>([ nE; g33 ], withoutPlate.targets)
+
+    let private nO : ParameterName = ParameterName "n_o"
+
+    let private g11 : ParameterName = ParameterName "g11"
+
+    /// The crystal the probe quartz's copy opens as.
+    let private probeCrystal : CrystalParameters = UniaxialCrystal uniaxialParameters
+
+    /// The probe crystal's component named `name`.
+    let private probeComponentOf (name : ParameterName) : CrystalComponent =
+        probeCrystal.components |> List.find (fun (held : CrystalComponent) -> held.name = name)
+
+    /// Every component of the probe crystal, in its order.
+    let private everyProbeComponent : CrystalComponent list = [ nO; nE; g11; g33 ] |> List.map probeComponentOf
+
+    /// The crystal study with n_o and g11 freed too, so every component is a target.
+    let private everyTargetStudy : Study = [ nO; g11 ] |> List.fold freedNear crystalStudy
+
+    /// The planner's inputs over the kit of `items` holding the study that frees every component.
+    let private everyTargetInputsOver (items : Item list) : PlannerInputs =
+        plannerInputsOf everyTargetStudy items choiceOf crystalVersion |> inputsValue
+
+    /// The kit's structural report; a refusal fails the fact.
+    let private kitReportOf (inputs : PlannerInputs) : RecoverabilityReport =
+        inputs.structuralReport |> Result.defaultWith (fun error -> failwith error.describe)
+
+    /// The steepest incidence the table takes, written out.
+    let private steepestIncidence : IncidenceAngle = IncidenceAngle.create (Angle.degree 89.0<deg>)
+
+    /// A look at a plate that puts `normalAxis` on its normal.
+    let private lookAt
+        (normalAxis : CrystalAxis)
+        (reach : DetectorReach)
+        (incidence : IncidenceAngle)
+        (observable : Observable)
+        : PlannerLook =
+        {
+            normalAxisOpt = Some normalAxis
+            incidence = incidence
+            observable = observable
+            reach = reach
+        }
+
+    [<Fact>]
+    let ``a kit's looks are each plate under each reach, at normal and steepest incidence, on each branch its emission allows`` () =
+        let inputs : PlannerInputs = everyTargetInputsOver [ laser; polarimeter; ellipsometer; qzZ; qzX ]
+        let normal : IncidenceAngle = IncidenceAngle.normal
+
+        Assert.Equal<ParameterName list>([ nO; nE; g11; g33 ], inputs.targets)
+        Assert.Equal<DetectorReach list>([ FullMuellerReach; EllipsometricReach ], inputs.lab.reaches)
+        Assert.Equal(steepestIncidence, IncidenceAngle.maxValue)
+
+        Assert.Equal<PlannerLook list>(
+            [
+                lookAt ThirdCrystalAxis FullMuellerReach normal TransmittedMueller
+                lookAt ThirdCrystalAxis FullMuellerReach normal ReflectedMueller
+                lookAt ThirdCrystalAxis FullMuellerReach steepestIncidence TransmittedMueller
+                lookAt ThirdCrystalAxis FullMuellerReach steepestIncidence ReflectedMueller
+                lookAt ThirdCrystalAxis EllipsometricReach normal TransmittedMueller
+                lookAt ThirdCrystalAxis EllipsometricReach normal ReflectedMueller
+                lookAt ThirdCrystalAxis EllipsometricReach steepestIncidence TransmittedMueller
+                lookAt ThirdCrystalAxis EllipsometricReach steepestIncidence ReflectedMueller
+                lookAt FirstCrystalAxis FullMuellerReach normal TransmittedMueller
+                lookAt FirstCrystalAxis FullMuellerReach steepestIncidence TransmittedMueller
+                lookAt FirstCrystalAxis EllipsometricReach normal TransmittedMueller
+                lookAt FirstCrystalAxis EllipsometricReach steepestIncidence TransmittedMueller
+            ],
+            inputs.looks
+        )
+
+        // A plate that only reflects is looked at on its reflected branch alone.
+        let reflecting : PlannerInputs = { inputs with plates = [ plateOf qzZ qzZSample EmitReflectedOnly ThirdCrystalAxis ] }
+
+        Assert.Equal<PlannerLook list>(
+            [
+                lookAt ThirdCrystalAxis FullMuellerReach normal ReflectedMueller
+                lookAt ThirdCrystalAxis FullMuellerReach steepestIncidence ReflectedMueller
+                lookAt ThirdCrystalAxis EllipsometricReach normal ReflectedMueller
+                lookAt ThirdCrystalAxis EllipsometricReach steepestIncidence ReflectedMueller
+            ],
+            reflecting.looks
+        )
+
+        // No detector, no reach, and so no look.
+        Assert.Equal<PlannerLook list>([], (everyTargetInputsOver [ laser; lp1; qzZ; qzX ]).looks)
+
+    [<Fact>]
+    let ``a kit of z-cut plates needs an off-axis cut, and one without a full Mueller reach never recovers the gyration`` () =
+        let zCutKit : RecoverabilityReport = everyTargetInputsOver [ laser; polarimeter; qzZ ] |> kitReportOf
+
+        let need : OffAxisCutNeed =
+            {
+                targets = [ probeComponentOf nE; probeComponentOf g33 ]
+                capAngle = probeCrystal.snellCap
+                cuts = [ XCut ]
+            }
+
+        Assert.Equal<CrystalComponent list>(everyProbeComponent, zCutKit.reachable)
+        Assert.Equal<PlannerFinding list>([ OffAxisCutFinding need ], zCutKit.findings)
+
+        Assert.Equal<string list>(
+            [
+                "You need an off-axis cut: n_e, g33 lie along the normal of every plate, and a tilt carries the wave at most 40.4° off it; add one x-cut plate."
+            ],
+            zCutKit.findings |> List.map (fun (finding : PlannerFinding) -> finding.text)
+        )
+
+        let bothCutsKit : RecoverabilityReport = everyTargetInputsOver [ laser; polarimeter; qzZ; qzX ] |> kitReportOf
+
+        Assert.Equal<CrystalComponent list>(everyProbeComponent, bothCutsKit.reachable)
+        Assert.Equal<OffAxisCutNeed option>(None, bothCutsKit.offAxisCutOpt)
+        Assert.Equal<PlannerFinding list>([], bothCutsKit.findings)
+
+        // A phone behind a single polarizer records S0 alone.
+        let intensityInputs : PlannerInputs = everyTargetInputsOver [ laser; lp1; phone; qzZ; qzX ]
+        Assert.Equal<DetectorReach list>([ IntensityOnlyReach ], intensityInputs.lab.reaches)
+
+        let intensityKit : RecoverabilityReport = kitReportOf intensityInputs
+
+        Assert.Equal<CrystalComponent list>([ probeComponentOf nO; probeComponentOf nE ], intensityKit.reachable)
+
+        Assert.Equal<PlannerFinding list>(
+            [
+                UnrecoverableTargetFinding
+                    {
+                        target = probeComponentOf g11
+                        reason = FullMuellerNeededReason
+                        remedies = [ FullMuellerRemedy ]
+                    }
+                UnrecoverableTargetFinding
+                    {
+                        target = probeComponentOf g33
+                        reason = FullMuellerNeededReason
+                        remedies = [ FullMuellerRemedy ]
+                    }
+            ],
+            intensityKit.findings
+        )
+
+    [<Fact>]
+    let ``a kit with no plate of the material can never recover any target`` () =
+        let inputs : PlannerInputs = everyTargetInputsOver [ laser; polarimeter; gl ]
+
+        Assert.Equal<PlannerPlate list>([], inputs.plates)
+        Assert.Equal<DetectorReach list>([ FullMuellerReach ], inputs.lab.reaches)
+        Assert.Equal<PlannerLook list>([], inputs.looks)
+
+        let report : RecoverabilityReport = kitReportOf inputs
+
+        Assert.Equal<CrystalComponent list>([], report.reachable)
+        Assert.Equal<CrystalComponent list>(everyProbeComponent, report.unrecoverable)
+        Assert.Equal<OffAxisCutNeed option>(None, report.offAxisCutOpt)
+
+        for finding in report.findings do
+            match finding with
+            | UnrecoverableTargetFinding targetFinding ->
+                Assert.Equal(NoLookReason, targetFinding.reason)
+
+                let addedPlates : SampleCut list =
+                    targetFinding.remedies
+                    |> List.choose (fun (remedy : PlannerRemedy) ->
+                        match remedy with
+                        | AddPlateRemedy cut -> Some cut
+                        | ObliqueIncidenceRemedy _
+                        | FullMuellerRemedy -> None)
+
+                Assert.NotEmpty(addedPlates)
+
+                Assert.Equal<PlannerRemedy list>(
+                    (addedPlates |> List.map AddPlateRemedy) @ [ FullMuellerRemedy ],
+                    targetFinding.remedies
+                )
+            | OffAxisCutFinding _ -> Assert.Fail "a kit with no plate of the material has no off-axis finding"
+
+        Assert.Equal(
+            "This kit can never recover n_o: no look of the kit measures a plate of it.",
+            (List.head report.findings).text
+        )
