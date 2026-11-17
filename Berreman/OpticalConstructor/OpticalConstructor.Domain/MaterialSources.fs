@@ -111,8 +111,8 @@ module MaterialSources =
         | SourceSnapshotCancelled
 
     /// One adapter's seam to its online source; it does IO only (spec 0050 S13.1, S13.2; 001 §D, §P).
-    /// Storage's `createRefractiveIndexInfo` and `createPtbOcdb` are the refractiveindex.info and PTB OCDB adapters,
-    /// `createInMemory` the double.
+    /// Storage's `createRefractiveIndexInfo`, `createPtbOcdb` and `createHenkeCompounds` are the refractiveindex.info,
+    /// PTB OCDB and CXRO Henke compound adapters, `createInMemory` the double.
     [<ReferenceEquality>]
     type MaterialSourceProxy =
         {
@@ -121,6 +121,7 @@ module MaterialSources =
             /// The held snapshot's version, None before the first update (spec 0050 S13.1).
             snapshotVersion : unit -> Result<MaterialSourceVersion option, MaterialSourceError>
             /// The held snapshot's catalog through the query's `filter`; SourceSnapshotMissingErr without a snapshot (spec 0050 S13.1).
+            /// A source without a catalog answers the one record its query names (spec 0050 S13.2).
             searchRecords : MaterialSourceQuery -> Result<MaterialSourceHit list, MaterialSourceError>
             /// One listed record, parsed, under the held version; SourceSnapshotMissingErr without a snapshot, SourceRecordMissingErr unlisted (spec 0050 S13.1).
             fetchRecord : MaterialSourceRecordId -> Result<SourceMaterialRecord, MaterialSourceError>

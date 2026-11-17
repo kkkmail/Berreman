@@ -472,3 +472,37 @@ module MaterialImportTests =
         | Error (NoDataErr _) -> ()
         | Error e -> Assert.Fail($"a header without a row: expected NoDataErr, got {e.describe}")
         | Ok _ -> Assert.Fail "a header without a row: expected NoDataErr, got an entry"
+
+    /// A malformed CXRO scattering-factor text and the line its refusal names (spec 0050 S13.2).
+    type private RefusedHenkeText =
+        {
+            label : string
+            text : HenkeScatteringText
+            named : string
+        }
+
+    [<Fact>]
+    let ``a CXRO scattering-factor file reads its energies and factors, leaving out the rows without f1`` () =
+        match (HenkeScatteringText (readFixture "si.nff")).factors with
+        | Ok factors ->
+            Assert.Equal<float list>([ 100.0; 200.0; 300.0 ], List.ofArray factors.energies)
+            Assert.Equal<float list>([ 10.0; 12.0; 13.0 ], List.ofArray factors.f1)
+            Assert.Equal<float list>([ 2.0; 1.0; 0.5 ], List.ofArray factors.f2)
+        | Error e -> Assert.Fail($"si.nff: {e.describe}")
+
+        let header = "E(eV)\tf1\tf2\n"
+        let refused : RefusedHenkeText list =
+            [
+                { label = "a header that is not CXRO's"; text = HenkeScatteringText "Energy\tf1\tf2\n100\t10\t2\n"; named = "line 1" }
+                { label = "a row that does not read"; text = HenkeScatteringText (header + "100\t10\t2\n200 x 1\n"); named = "line 3" }
+            ]
+        for case in refused do
+            match case.text.factors with
+            | Error (MalformedSourceFileErr reason) -> Assert.True(reason.Contains(case.named), $"{case.label}: '{reason}' does not name {case.named}")
+            | Error e -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got {e.describe}")
+            | Ok _ -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got factors")
+
+        match (HenkeScatteringText header).factors with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a header alone: expected NoDataErr, got {e.describe}")
+        | Ok _ -> Assert.Fail "a header alone: expected NoDataErr, got factors"

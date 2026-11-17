@@ -8,10 +8,11 @@ open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Storage.MaterialSourceStore
 
-/// refractiveindex.info and PTB OCDB snapshots and GitHub-style archives written under the test output, and the
-/// downloader and clock an update runs through (spec 0050 S13.1, S13.2).
+/// refractiveindex.info, PTB OCDB and CXRO Henke snapshots and GitHub-style archives written under the test output, and
+/// the downloaders and clock an update runs through (spec 0050 S13.1, S13.2).
 module MaterialSourceFixture =
 
     let private fixtureText (name : string) : string = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", name))
@@ -30,6 +31,13 @@ module MaterialSourceFixture =
 
     /// `ptbRecord ()` with the first row's upper 1 − δ bound changed from 0.96804 to 0.96810.
     let changedPtbRecord () : string = (ptbRecord ()).Replace("0.96804", "0.96810")
+
+    /// The bytes of `fixtures/si.nff` and `fixtures/o.nff` for `si` and `o`; for any other symbol a test-local header and two rows.
+    let henkeFile (symbol : string) : byte[] =
+        match symbol with
+        | "si"
+        | "o" -> File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "fixtures", $"{symbol}.nff"))
+        | _ -> Encoding.UTF8.GetBytes "E(eV)\tf1\tf2\n100.000\t1.00000\t0.500000\n200.000\t2.00000\t0.250000\n"
 
     /// A new, empty GUID-named folder under `<test output>/<owner>`, never under `%TEMP%`.
     let freshSources (owner : string) : FolderName =
@@ -151,6 +159,13 @@ module MaterialSourceFixture =
             ]
             (repositoryFiles @ ptbFiles record)
 
+    /// Writes under `snapshot` the fixtures' `si.nff` and `o.nff` and CXRO Henke's stamp of 2026-11-01.
+    let writeHenkeSnapshot (snapshot : string) : unit =
+        writeStampedSnapshot
+            snapshot
+            (MaterialSourceName "CXRO Henke")
+            [ for symbol in [ "si"; "o" ] -> $"{symbol}.nff", Encoding.UTF8.GetString(henkeFile symbol) ]
+
     /// Records each URL asked and copies `zip` into the file the update downloads into.
     let copyingDownloader (zip : string) (asked : ResizeArray<SourceArchiveUrl>) : SourceArchiveDownloader =
         {
@@ -159,6 +174,19 @@ module MaterialSourceFixture =
                     asked.Add url
                     File.Copy(zip, file.value, true)
                     Ok ()
+        }
+
+    /// Records each URL asked and writes the bytes `serve` gives it into the file the update downloads into; None is a 404.
+    let servingDownloader (serve : SourceArchiveUrl -> byte[] option) (asked : ResizeArray<SourceArchiveUrl>) : SourceArchiveDownloader =
+        {
+            downloadArchive =
+                fun url file _ ->
+                    asked.Add url
+                    match serve url with
+                    | Some bytes ->
+                        File.WriteAllBytes(file.value, bytes)
+                        Ok ()
+                    | None -> Error (SourceDownloadErr "404")
         }
 
     /// Answers that UTC instant every time.

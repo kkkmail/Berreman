@@ -11,12 +11,14 @@ open Berreman.Dispersion
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialSources
+open OpticalConstructor.Domain.HenkeCompounds
 open OpticalConstructor.Storage.MaterialImport
 open OpticalConstructor.Storage.MaterialSourceStore
 open OpticalConstructor.Tests.MaterialSourceFixture
 
-/// The refractiveindex.info and PTB OCDB adapters over fixture snapshots and archives under the test output: their reads,
-/// their update through the archive seam, and what a failed or cancelled update keeps (spec 0050 S13.1, S13.2).
+/// The refractiveindex.info, PTB OCDB and CXRO Henke adapters over fixture snapshots and archives under the test output:
+/// their reads, their update through the download seam, and what a failed or cancelled update keeps (spec 0050 S13.1,
+/// S13.2).
 module MaterialSourceStoreTests =
 
     let private owner : string = "MaterialSourceStoreTests"
@@ -258,12 +260,16 @@ module MaterialSourceStoreTests =
         | UnsupportedSnapshotSchemaErr _ -> ()
         | error -> Assert.Fail $"search: expected UnsupportedSnapshotSchemaErr, got {error.describe}"
 
-    /// The uncertainty of a fetched material's one isotropic tabulated segment.
-    let private tabulatedUncertaintyOf (material : MaterialEntry) : TabulatedNkUncertainty option =
+    /// The table of a fetched material's one isotropic tabulated segment.
+    let private tabulatedTableOf (material : MaterialEntry) : TabulatedNkTable =
         match material.physics with
         | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]); magnetic = None; active = None } ->
-            table.uncertaintyOpt
+            table
         | physics -> failwith $"expected one isotropic segment carrying a TabulatedNK table, got %A{physics}"
+
+    /// The uncertainty of a fetched material's one isotropic tabulated segment.
+    let private tabulatedUncertaintyOf (material : MaterialEntry) : TabulatedNkUncertainty option =
+        (tabulatedTableOf material).uncertaintyOpt
 
     [<Fact>]
     let ``a PTB OCDB source without a snapshot answers no version and refuses search and fetch`` () =
@@ -381,3 +387,177 @@ module MaterialSourceStoreTests =
         Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some heldVersion), proxy.snapshotVersion ())
         Assert.Equal<(string * string) list>(held, filesUnder snapshot)
         Assert.Equal<string list>([ "ptb-ocdb" ], namesIn sources.value)
+
+    let private silicaRecord : MaterialSourceRecordId = MaterialSourceRecordId "SiO2@2.2"
+
+    let private silicaName : EntryName = EntryName "SiO2, ρ = 2.2 g/cm³ (CXRO Henke)"
+
+    /// The snapshot folder the CXRO Henke adapter over `sources` reads.
+    let private henkeSnapshotIn (sources : FolderName) : string = Path.Combine(sources.value, "cxro-henke")
+
+    /// Where CXRO serves the factors of the element whose lower-case symbol this is.
+    let private henkeUrlOf (symbol : string) : SourceArchiveUrl = SourceArchiveUrl $"https://henke.lbl.gov/optical_constants/sf/{symbol}.nff"
+
+    /// The lower-case symbols of H to U, in atomic-number order.
+    let private henkeSymbols () : string list = ChemicalElement.all |> List.map (fun element -> element.symbol.value.ToLowerInvariant())
+
+    /// `henkeFile` of the URL's file stem, for every URL.
+    let private servedHenkeFile (url : SourceArchiveUrl) : byte[] option = Some (henkeFile (Path.GetFileNameWithoutExtension url.value))
+
+    [<Fact>]
+    let ``a Henke compound source without a snapshot answers no version and refuses search and fetch`` () =
+        let sources = freshSources owner
+        let proxy = MaterialSourceProxy.createHenkeCompounds sources unusedDownloader (fixedClock firstClockTime)
+        Assert.Equal(MaterialSourceName "CXRO Henke", proxy.sourceName)
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok None, proxy.snapshotVersion ())
+
+        match errorOf "search" (proxy.searchRecords (MaterialSourceQuery "SiO2 2.2")) with
+        | SourceSnapshotMissingErr _ -> ()
+        | error -> Assert.Fail $"search: expected SourceSnapshotMissingErr, got {error.describe}"
+
+        match errorOf "fetch" (proxy.fetchRecord silicaRecord) with
+        | SourceSnapshotMissingErr _ -> ()
+        | error -> Assert.Fail $"fetch: expected SourceSnapshotMissingErr, got {error.describe}"
+
+        Assert.Empty(namesIn sources.value)
+
+    [<Fact>]
+    let ``a Henke update downloads every element's factors once, file by file, and installs them`` () =
+        let sources = freshSources owner
+        let snapshot = henkeSnapshotIn sources
+        writeHenkeSnapshot snapshot
+        let asked = ResizeArray<SourceArchiveUrl>()
+        let proxy = MaterialSourceProxy.createHenkeCompounds sources (servingDownloader servedHenkeFile asked) (fixedClock laterClockTime)
+        let progress = ResizeArray<SourceSnapshotProgress>()
+        let observer : SourceSnapshotObserver = { reportSnapshotProgress = progress.Add; cancellation = CancellationToken.None }
+
+        let updated : SourceSnapshotInfo = { version = MaterialSourceVersion "2026-11-04"; files = SourceSnapshotFileCount 92 }
+        Assert.Equal<Result<SourceSnapshotOutcome, MaterialSourceError>>(Ok (SourceSnapshotUpdated updated), proxy.updateSnapshot observer)
+        Assert.Equal<SourceArchiveUrl list>(henkeSymbols () |> List.map henkeUrlOf, List.ofSeq asked)
+        Assert.Equal(SourceArchiveUrl "https://henke.lbl.gov/optical_constants/sf/h.nff", asked.[0])
+        Assert.Equal(SourceArchiveUrl "https://henke.lbl.gov/optical_constants/sf/u.nff", asked.[asked.Count - 1])
+        Assert.Equal<SourceSnapshotProgress list>([ for filesDone in 1 .. 92 -> progressOf filesDone 92 ], List.ofSeq progress)
+
+        let installed =
+            ".snapshot-json" :: (henkeSymbols () |> List.map (fun symbol -> $"{symbol}.nff"))
+            |> List.sortWith (fun first second -> String.CompareOrdinal(first, second))
+        Assert.Equal<string list>(installed, namesIn snapshot)
+        let files = filesUnder snapshot
+        Assert.Equal<string list>(installed, files |> List.map fst)
+        for symbol in henkeSymbols () do
+            Assert.Equal(Convert.ToHexString(henkeFile symbol), files |> List.find (fun (path, _) -> path = $"{symbol}.nff") |> snd)
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some updated.version), proxy.snapshotVersion ())
+        Assert.Equal<string list>([ "cxro-henke" ], namesIn sources.value)
+
+    [<Fact>]
+    let ``a Henke update cancelled before its next element, or failing on one, keeps the held snapshot`` () =
+        let cancelledSources = freshSources owner
+        let cancelledSnapshot = henkeSnapshotIn cancelledSources
+        writeHenkeSnapshot cancelledSnapshot
+        let cancelledHeld = filesUnder cancelledSnapshot
+        let cancelledAsked = ResizeArray<SourceArchiveUrl>()
+        let cancelledProxy =
+            MaterialSourceProxy.createHenkeCompounds cancelledSources (servingDownloader servedHenkeFile cancelledAsked) (fixedClock laterClockTime)
+        use cancelling = new CancellationTokenSource()
+        let observer : SourceSnapshotObserver = { reportSnapshotProgress = (fun _ -> cancelling.Cancel()); cancellation = cancelling.Token }
+
+        Assert.Equal<Result<SourceSnapshotOutcome, MaterialSourceError>>(Ok SourceSnapshotCancelled, cancelledProxy.updateSnapshot observer)
+        Assert.Equal<SourceArchiveUrl list>([ henkeUrlOf "h" ], List.ofSeq cancelledAsked)
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some heldVersion), cancelledProxy.snapshotVersion ())
+        Assert.Equal<(string * string) list>(cancelledHeld, filesUnder cancelledSnapshot)
+        Assert.Equal<string list>([ "cxro-henke" ], namesIn cancelledSources.value)
+
+        // Iron, Z = 26, is not served, then is served unreadable: the update stops at it and keeps the held snapshot.
+        let failures : (SourceArchiveUrl -> byte[] option) list =
+            [
+                fun url -> if url = henkeUrlOf "fe" then None else servedHenkeFile url
+                fun url -> if url = henkeUrlOf "fe" then Some (Encoding.UTF8.GetBytes "Energy\tf1\tf2\n100\t1\t1\n") else servedHenkeFile url
+            ]
+        for serve, expected in List.zip failures [ "404"; "'Fe'" ] do
+            let sources = freshSources owner
+            let snapshot = henkeSnapshotIn sources
+            writeHenkeSnapshot snapshot
+            let held = filesUnder snapshot
+            let asked = ResizeArray<SourceArchiveUrl>()
+            let proxy = MaterialSourceProxy.createHenkeCompounds sources (servingDownloader serve asked) (fixedClock laterClockTime)
+
+            match errorOf "update" (proxy.updateSnapshot SourceSnapshotObserver.unobserved) with
+            | SourceDownloadErr reason when expected = "404" -> Assert.Equal("404", reason)
+            | SourceArchiveInvalidErr reason when expected = "'Fe'" -> Assert.Contains(expected, reason)
+            | error -> Assert.Fail $"update: expected the error naming {expected}, got {error.describe}"
+
+            Assert.Equal(26, asked.Count)
+            Assert.Equal(henkeUrlOf "fe", asked.[asked.Count - 1])
+            Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some heldVersion), proxy.snapshotVersion ())
+            Assert.Equal<(string * string) list>(held, filesUnder snapshot)
+            Assert.Equal<string list>([ "cxro-henke" ], namesIn sources.value)
+
+    [<Fact>]
+    let ``a Henke search names the compound its query writes, and refuses a query that names none`` () =
+        let sources = freshSources owner
+        writeHenkeSnapshot (henkeSnapshotIn sources)
+        let proxy = MaterialSourceProxy.createHenkeCompounds sources unusedDownloader (fixedClock laterClockTime)
+        Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok (Some heldVersion), proxy.snapshotVersion ())
+
+        let silicaHit : MaterialSourceHit = { record = silicaRecord; name = silicaName }
+        Assert.Equal<Result<MaterialSourceHit list, MaterialSourceError>>(Ok [ silicaHit ], proxy.searchRecords (MaterialSourceQuery "SiO2 2.2"))
+
+        match errorOf "SiO2" (proxy.searchRecords (MaterialSourceQuery "SiO2")) with
+        | SourceRecordUnreadableErr _ -> ()
+        | error -> Assert.Fail $"SiO2: expected SourceRecordUnreadableErr, got {error.describe}"
+
+        match errorOf "Fe2O3 5.2" (proxy.searchRecords (MaterialSourceQuery "Fe2O3 5.2")) with
+        | SourceRecordMissingErr reason -> Assert.Contains("'Fe'", reason)
+        | error -> Assert.Fail $"Fe2O3 5.2: expected SourceRecordMissingErr, got {error.describe}"
+
+    [<Fact>]
+    let ``a fetched Henke compound is the index its elements' factors give, under CXRO's provenance`` () =
+        let sources = freshSources owner
+        writeHenkeSnapshot (henkeSnapshotIn sources)
+        let proxy = MaterialSourceProxy.createHenkeCompounds sources (servingDownloader servedHenkeFile (ResizeArray ())) (fixedClock laterClockTime)
+
+        // The update stamps 2026-11-04 and serves the fixtures' own si.nff and o.nff.
+        match proxy.updateSnapshot SourceSnapshotObserver.unobserved with
+        | Ok (SourceSnapshotUpdated _) -> ()
+        | Ok SourceSnapshotCancelled -> Assert.Fail "update: expected SourceSnapshotUpdated, got SourceSnapshotCancelled"
+        | Error error -> Assert.Fail $"update: {error.describe}"
+
+        let factorsOf (symbol : string) : AtomicScatteringFactors =
+            match (HenkeScatteringText (Encoding.UTF8.GetString(henkeFile symbol))).factors with
+            | Ok factors -> factors
+            | Error error -> failwith $"{symbol}.nff: {error.describe}"
+
+        let expectedTable =
+            match CompoundSpec.tryOfRecord silicaRecord with
+            | Ok spec ->
+                match spec.indexTableWith (Map.ofList [ ElementSymbol "Si", factorsOf "si"; ElementSymbol "O", factorsOf "o" ]) with
+                | Ok table -> table
+                | Error error -> failwith error.describe
+            | Error error -> failwith error.describe
+
+        match proxy.fetchRecord silicaRecord with
+        | Ok fetched ->
+            Assert.True((tabulatedTableOf fetched.material = expectedTable), "the fetched table is indexTableWith's over the fixture files")
+            Assert.Equal(silicaName, fetched.material.name)
+            Assert.Equal<CategoryId>(CategoryIds.semiconductor, fetched.material.category)
+            Assert.Equal<EntryDescription option>(
+                Some (EntryDescription "Computed from CXRO atomic scattering factors (Henke, Gullikson and Davis 1993) for SiO2 at 2.2 g/cm³."),
+                fetched.material.description)
+            let hashed = Array.concat [ Encoding.UTF8.GetBytes "SiO2@2.2"; henkeFile "si"; henkeFile "o" ]
+            let expected : SourcePullInfo =
+                {
+                    source = MaterialSourceName "CXRO Henke"
+                    record = silicaRecord
+                    recordHash = ContentHash.ofBytes (FileByteContent hashed)
+                    sourceVersion = MaterialSourceVersion "2026-11-04"
+                    licence = EntryLicence "LicenseRef-CXRO"
+                    citation =
+                        EntryCitation
+                            "B.L. Henke, E.M. Gullikson and J.C. Davis, Atomic Data and Nuclear Data Tables 54, 181-342 (1993); CXRO atomic scattering factors (henke.lbl.gov/optical_constants): SiO2 at 2.2 g/cm³"
+                }
+            Assert.Equal(expected, fetched.pull)
+        | Error error -> Assert.Fail $"fetch: {error.describe}"
+
+        match errorOf "SiO2" (proxy.fetchRecord (MaterialSourceRecordId "SiO2")) with
+        | SourceRecordMissingErr reason -> Assert.Contains("'SiO2'", reason)
+        | error -> Assert.Fail $"SiO2: expected SourceRecordMissingErr, got {error.describe}"

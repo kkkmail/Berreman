@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialSources
+open OpticalConstructor.Domain.HenkeCompounds
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.SchemaValidation
@@ -20,9 +21,9 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Storage.MaterialImport
 
-/// The online sources' adapters, each over an offline snapshot of its source's GitHub repository. Every .NET IO and HTTP
-/// exception is caught here and mapped to MaterialSourceError, and nothing above the proxy handles one (spec 0050 S13.1,
-/// S13.2; .spec-md §4).
+/// The online sources' adapters, each over an offline snapshot of its source: a GitHub repository's archive or CXRO's
+/// element files. Every .NET IO and HTTP exception is caught here and mapped to MaterialSourceError, and nothing above the
+/// proxy handles one (spec 0050 S13.1, S13.2; .spec-md §4).
 module MaterialSourceStore =
 
     /// The stamp beside a source's snapshot: the source and the version its last update installed (spec 0050 S13.1).
@@ -108,6 +109,9 @@ module MaterialSourceStore =
         /// A PTB OCDB record as the kit's one decode reads it, a leading byte-order mark dropped (spec 0050 S13.2).
         member private this.toPtbOcdbText : PtbOcdbText = PtbOcdbText this.value
 
+        /// A CXRO scattering-factor file as the kit's one decode reads it (spec 0050 S13.2).
+        member private this.toHenkeScatteringText : HenkeScatteringText = HenkeScatteringText this.value
+
     type FileName with
 
         /// A snapshot file's bytes through the kit's one decode (spec 0050 S13.1).
@@ -151,6 +155,16 @@ module MaterialSourceStore =
             url : SourceArchiveUrl
             requiredFile : KitRelativePath
             keep : KitRelativePath -> SourceArchiveEntryChoice
+        }
+
+    /// One file a file-by-file update downloads: its URL, its name in the snapshot and the check its downloaded copy passes
+    /// (spec 0050 S13.2).
+    [<ReferenceEquality>]
+    type private SourceSnapshotDownload =
+        {
+            fileUrl : SourceArchiveUrl
+            fileName : FileName
+            checkFile : FileName -> Result<unit, MaterialSourceError>
         }
 
     /// A source's snapshot folder, the one body every adapter's version, install and update run; an update works in its
@@ -219,6 +233,14 @@ module MaterialSourceStore =
         static member private deleteFolder (folder : FolderName) : unit =
             if Directory.Exists folder.value then Directory.Delete(folder.value, true)
 
+        /// Deletes what an interrupted update left beside the snapshot, creating the sources folder when it is missing
+        /// (spec 0050 S13.1, S13.2).
+        member private this.clearLeftovers () : unit =
+            Directory.CreateDirectory(Path.GetDirectoryName this.folder.value) |> ignore
+            SourceSnapshotLayout.deleteFile this.downloadedZip
+            SourceSnapshotLayout.deleteFolder this.unpackedFolder.value
+            SourceSnapshotLayout.deleteFolder this.retiredFolder
+
         /// Stamps `staged` with the clock's date and installs it whole: the held snapshot moved to `.old`, the staged one
         /// moved in, then `.old` deleted. `.old` exists only when this run moved it, so a failed move-in moves it back
         /// (spec 0050 S13.1, S13.2).
@@ -267,12 +289,6 @@ module MaterialSourceStore =
             let zip = this.downloadedZip
             let unpacked = this.unpackedFolder
             let archives = KitArchiveProxy.create ()
-
-            let clearLeftovers () : unit =
-                Directory.CreateDirectory(Path.GetDirectoryName this.folder.value) |> ignore
-                SourceSnapshotLayout.deleteFile zip
-                SourceSnapshotLayout.deleteFolder unpacked.value
-                SourceSnapshotLayout.deleteFolder this.retiredFolder
 
             let keptEntriesOf (entries : KitTreeEntry list) : Result<KitRelativePath * KitTreeEntry list, MaterialSourceError> =
                 let notTheSource =
@@ -323,7 +339,7 @@ module MaterialSourceStore =
 
             let outcome =
                 try
-                    this.snapshotIo clearLeftovers
+                    this.snapshotIo this.clearLeftovers
                     |> Result.bind (fun () ->
                         let downloaded = downloader.downloadArchive spec.url zip observer.cancellation
                         if observer.cancellation.IsCancellationRequested then
@@ -334,6 +350,53 @@ module MaterialSourceStore =
 
             SourceSnapshotLayout.cleanQuietly (fun () -> SourceSnapshotLayout.deleteFile zip)
             SourceSnapshotLayout.cleanQuietly (fun () -> SourceSnapshotLayout.deleteFolder unpacked.value)
+            outcome
+
+        /// Downloads each file in order into `<folder>.tmp` through `downloader`, reading the cancellation before each and
+        /// after its download and telling `observer` after each, then installs them whole; a file its check refuses is that
+        /// error. A failed or cancelled update keeps the held snapshot and leaves nothing behind (spec 0050 S13.2).
+        member this.updateFileByFile
+            (downloads : SourceSnapshotDownload list)
+            (downloader : SourceArchiveDownloader)
+            (clock : ClockProvider)
+            (observer : SourceSnapshotObserver)
+            : Result<SourceSnapshotOutcome, MaterialSourceError> =
+            let staged = this.unpackedFolder.value
+            let filesTotal = downloads |> List.length |> SourceSnapshotFileCount
+
+            let rec fetchFrom (pending : SourceSnapshotDownload list) (filesDone : int) : Result<SourceSnapshotOutcome, MaterialSourceError> =
+                match pending with
+                | [] -> this.installFrom staged clock filesTotal
+                | download :: rest ->
+                    if observer.cancellation.IsCancellationRequested then
+                        Ok SourceSnapshotCancelled
+                    else
+                        let target = download.fileName.combine staged
+                        let downloaded = downloader.downloadArchive download.fileUrl target observer.cancellation
+                        if observer.cancellation.IsCancellationRequested then
+                            Ok SourceSnapshotCancelled
+                        else
+                            match downloaded |> Result.bind (fun () -> download.checkFile target) with
+                            | Error error -> Error error
+                            | Ok () ->
+                                let progress : SourceSnapshotProgress =
+                                    {
+                                        filesDone = SourceSnapshotFileCount (filesDone + 1)
+                                        filesTotal = filesTotal
+                                    }
+                                observer.reportSnapshotProgress progress
+                                fetchFrom rest (filesDone + 1)
+
+            let outcome =
+                try
+                    this.snapshotIo (fun () ->
+                        this.clearLeftovers ()
+                        Directory.CreateDirectory staged.value |> ignore)
+                    |> Result.bind (fun () -> fetchFrom downloads 0)
+                with error -> Error (SourceSnapshotIoErr $"the snapshot folder '{this.folder.value}': {error.Message}")
+
+            // An install moved the staged folder in; every other end leaves it to delete (spec 0050 S13.2).
+            SourceSnapshotLayout.cleanQuietly (fun () -> SourceSnapshotLayout.deleteFolder staged)
             outcome
 
     type MaterialSourceProxy with
@@ -525,4 +588,124 @@ module MaterialSourceStore =
                 searchRecords = searchRecords
                 fetchRecord = fetchRecord
                 updateSnapshot = layout.updateFromArchive archive downloader clock
+            }
+
+        /// The CXRO Henke compound calculator: its snapshot in `<sources>/cxro-henke` holds CXRO's atomic scattering
+        /// factors of H to U, fetched file by file through `downloader`; a record is a compound it computes. Building it
+        /// touches nothing (spec 0050 S13.2; 001 §D).
+        static member createHenkeCompounds
+            (sources : FolderName)
+            (downloader : SourceArchiveDownloader)
+            (clock : ClockProvider)
+            : MaterialSourceProxy =
+            let sourceName = MaterialSourceName "CXRO Henke"
+            // CXRO states no licence; `LicenseRef-` is SPDX's form for one it does not list (spec 0050 S13.2).
+            let licence = EntryLicence "LicenseRef-CXRO"
+            let baseUrl = "https://henke.lbl.gov/optical_constants/sf/"
+            let layout : SourceSnapshotLayout = { source = sourceName; folder = sources.combine (FolderName "cxro-henke") }
+
+            let fileOf (element : ChemicalElement) : FileName = FileName $"{element.symbol.value.ToLowerInvariant()}.nff"
+
+            let elementFileOf (held : FormulaCount) : FileName = (fileOf held.element).combine layout.folder
+
+            let missingFactors (version : MaterialSourceVersion) (held : FormulaCount) : MaterialSourceError =
+                SourceRecordMissingErr $"'{sourceName.value}' {version.value} holds no factors for '{held.element.symbol.value}'"
+
+            // `CompoundSpec`'s own density text is private to Domain; this is its rule, G6 in the invariant culture.
+            let compoundText (spec : CompoundSpec) : string =
+                let density = spec.density.value.ToString("G6", CultureInfo.InvariantCulture)
+                $"{spec.formula.text} at {density} g/cm³"
+
+            let downloadOf (element : ChemicalElement) : SourceSnapshotDownload =
+                let file = fileOf element
+                let url = SourceArchiveUrl $"{baseUrl}{file.value}"
+                {
+                    fileUrl = url
+                    fileName = file
+                    checkFile =
+                        fun downloaded ->
+                            match downloaded.snapshotFileText.toHenkeScatteringText.factors with
+                            | Ok _ -> Ok ()
+                            | Error error ->
+                                Error (SourceArchiveInvalidErr $"'{element.symbol.value}' from '{url.value}': {error.describe}")
+                }
+
+            // The source has no catalog: its one hit is the compound the query writes (spec 0050 S13.2).
+            let searchRecords (query : MaterialSourceQuery) : Result<MaterialSourceHit list, MaterialSourceError> =
+                layout.heldVersion
+                |> Result.bind (fun version ->
+                    match CompoundSpec.tryOfQuery query with
+                    | Error error -> Error (SourceRecordUnreadableErr $"'{query.value}': {error.describe}")
+                    | Ok spec ->
+                        match spec.formula.counts |> List.tryFind (fun held -> not (File.Exists (elementFileOf held).value)) with
+                        | Some held -> Error (missingFactors version held)
+                        | None ->
+                            let hit : MaterialSourceHit = { record = spec.recordId; name = spec.entryName }
+                            Ok [ hit ])
+
+            let fetchCompound
+                (version : MaterialSourceVersion)
+                (record : MaterialSourceRecordId)
+                (spec : CompoundSpec)
+                : Result<SourceMaterialRecord, MaterialSourceError> =
+                let readElement (held : FormulaCount) : Result<FileByteContent, MaterialSourceError> =
+                    let file = elementFileOf held
+                    if File.Exists file.value then Ok (File.ReadAllBytes file.value |> FileByteContent) else Error (missingFactors version held)
+
+                let factorsOf (held : FormulaCount) (bytes : FileByteContent) : Result<ElementSymbol * AtomicScatteringFactors, MaterialSourceError> =
+                    match bytes.kitFileText.toHenkeScatteringText.factors with
+                    | Ok factors -> Ok (held.element.symbol, factors)
+                    | Error error -> Error (SourceRecordUnreadableErr $"'{held.element.symbol.value}' of '{record.value}': {error.describe}")
+
+                let compound = compoundText spec
+
+                spec.formula.counts
+                |> List.map readElement
+                |> OpticalConstructor.Domain.ItemEvaluation.sequenced
+                |> Result.bind (fun files ->
+                    List.map2 factorsOf spec.formula.counts files
+                    |> OpticalConstructor.Domain.ItemEvaluation.sequenced
+                    |> Result.bind (fun factors ->
+                        spec.indexTableWith (Map.ofList factors)
+                        |> Result.mapError (fun error -> SourceRecordUnreadableErr $"'{record.value}': {error.describe}"))
+                    |> Result.map (fun table ->
+                        // The record's text, then each element's file in formula order, so an update that changes one
+                        // element's factors changes the hash (spec 0050 S13.1, S13.2).
+                        let hashed = Array.concat (Encoding.UTF8.GetBytes record.value :: (files |> List.map _.value)) |> FileByteContent
+                        let pull : SourcePullInfo =
+                            {
+                                source = sourceName
+                                record = record
+                                recordHash = ContentHash.ofBytes hashed
+                                sourceVersion = version
+                                licence = licence
+                                citation =
+                                    EntryCitation
+                                        $"B.L. Henke, E.M. Gullikson and J.C. Davis, Atomic Data and Nuclear Data Tables 54, 181-342 (1993); CXRO atomic scattering factors (henke.lbl.gov/optical_constants): {compound}"
+                            }
+                        let description =
+                            EntryDescription $"Computed from CXRO atomic scattering factors (Henke, Gullikson and Davis 1993) for {compound}."
+                        let fetched : SourceMaterialRecord =
+                            {
+                                pull = pull
+                                material = table.isotropicEntry spec.entryName CategoryIds.semiconductor description
+                            }
+                        fetched))
+
+            let fetchRecord (record : MaterialSourceRecordId) : Result<SourceMaterialRecord, MaterialSourceError> =
+                layout.heldVersion
+                |> Result.bind (fun version ->
+                    match CompoundSpec.tryOfRecord record with
+                    | Error error -> Error (SourceRecordMissingErr $"'{record.value}': {error.describe}")
+                    | Ok spec ->
+                        try
+                            fetchCompound version record spec
+                        with error -> Error (SourceSnapshotIoErr $"'{layout.folder.value}': {error.Message}"))
+
+            {
+                sourceName = sourceName
+                snapshotVersion = fun () -> layout.snapshotVersion
+                searchRecords = searchRecords
+                fetchRecord = fetchRecord
+                updateSnapshot = layout.updateFileByFile (ChemicalElement.all |> List.map downloadOf) downloader clock
             }

@@ -16,6 +16,7 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialSources
+open OpticalConstructor.Domain.HenkeCompounds
 
 /// refractiveindex.info YAML + CSV import and CSV export (§D.9), and PTB OCDB import (spec 0050 S13.2). Importers produce
 /// in-memory `MaterialEntry` values (never FsPickler-pickled, §I.4); every parsed
@@ -103,6 +104,13 @@ module MaterialImport =
         | PtbOcdbText of string
 
         member this.value : string = let (PtbOcdbText t) = this in t
+
+    /// The text of one CXRO atomic scattering-factor file (`sf/<symbol>.nff`): the header `E(eV)\tf1\tf2`, then rows of
+    /// photon energy in eV, f1 and f2 (spec 0050 S13.2).
+    type HenkeScatteringText =
+        | HenkeScatteringText of string
+
+        member this.value : string = let (HenkeScatteringText t) = this in t
 
     let private inv = CultureInfo.InvariantCulture
 
@@ -814,6 +822,48 @@ module MaterialImport =
                 | [], absent, _ ->
                     let absentNames = String.Join(", ", absent)
                     Error (MalformedSourceFileErr $"the bound columns come all four or none, and the column header has no {absentNames}")
+            with e -> Error (MalformedSourceFileErr e.Message)
+
+    type HenkeScatteringText with
+
+        /// The file's rows in order, each three numbers split on tabs and spaces, a row whose f1 is CXRO's -9999 (none
+        /// tabulated) left out. A header other than `E(eV)`, a row that does not read and a table
+        /// `AtomicScatteringFactors.tryCreate` refuses are MalformedSourceFileErr; no row left is NoDataErr (spec 0050 S13.2).
+        member this.factors : Result<AtomicScatteringFactors, ImportError> =
+            try
+                let lines =
+                    RiiPage.linesOf this.value
+                    |> Array.mapi (fun at line -> (at + 1, line.Trim()))
+                    |> Array.filter (fun (_, line) -> line.Length > 0)
+                    |> Array.toList
+
+                let readRow (lineNumber : int, line : string) : Result<float[] option, ImportError> =
+                    let tokens = line.Split([| '\t'; ' ' |], StringSplitOptions.RemoveEmptyEntries)
+                    let values =
+                        tokens
+                        |> Array.choose (fun token ->
+                            match Double.TryParse(token, NumberStyles.Float, inv) with
+                            | true, v -> Some v
+                            | _ -> None)
+                    if tokens.Length <> 3 || values.Length <> 3 then
+                        Error (MalformedSourceFileErr $"line {lineNumber} is not an energy, f1 and f2: {line}")
+                    elif values.[1] = -9999.0 then Ok None
+                    else Ok (Some values)
+
+                match lines with
+                | [] -> Error (MalformedSourceFileErr "the file has no header line; CXRO's starts with E(eV)")
+                | (lineNumber, header) :: _ when not (header.StartsWith("E(eV)", StringComparison.Ordinal)) ->
+                    Error (MalformedSourceFileErr $"line {lineNumber} is '{header}' where CXRO's header starts with E(eV)")
+                | _ :: rows ->
+                    match rows |> List.map readRow |> OpticalConstructor.Domain.ItemEvaluation.sequenced with
+                    | Error e -> Error e
+                    | Ok read ->
+                        match read |> List.choose id |> Array.ofList with
+                        | [||] -> Error (NoDataErr "the file holds no row with an f1")
+                        | kept ->
+                            match AtomicScatteringFactors.tryCreate (kept |> Array.map (fun row -> row.[0])) (kept |> Array.map (fun row -> row.[1])) (kept |> Array.map (fun row -> row.[2])) with
+                            | Ok factors -> Ok factors
+                            | Error error -> Error (MalformedSourceFileErr error.describe)
             with e -> Error (MalformedSourceFileErr e.Message)
 
     /// Export n,k sampled over a `Range<WaveLength>` to CSV text (§D.9), reading the
