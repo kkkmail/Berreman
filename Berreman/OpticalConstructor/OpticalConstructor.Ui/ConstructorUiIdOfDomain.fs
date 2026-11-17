@@ -1184,3 +1184,44 @@ module ConstructorUiIdOfDomain =
 
         /// Why a group matches nothing or refuses a manually chosen setup (spec 0050 S9.3, S12.1).
         member this.caption : ControlCaption = ControlCaption this.describe
+
+    type MaterialSourceName with
+
+        /// The source as its choice in the Online sources window names it (spec 0050 S13.1).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type MaterialSourcePulls.MaterialSourcePullError with
+
+        /// Why a search, pull or update was refused, as the Online sources window tells it (spec 0050 S13.1).
+        member this.caption : ControlCaption = ControlCaption this.describe
+
+    type MaterialSourcePulls.SourcePullResult with
+
+        /// What one pull or refresh did to its entry, as the Online sources window tells it (spec 0050 S13.1).
+        member this.caption : ControlCaption =
+            let version = this.version.version.value
+            match this.change with
+            | MaterialSourcePulls.PullAddedEntry -> ControlCaption $"Pulled {this.name.value} as version {version}."
+            | MaterialSourcePulls.PullMintedVersion -> ControlCaption $"{this.name.value}: the record changed; pulled as version {version}."
+            | MaterialSourcePulls.PullFoundUnchanged -> ControlCaption $"{this.name.value} is unchanged at version {version}."
+            | MaterialSourcePulls.PullRecordAbsent ->
+                ControlCaption $"{this.name.value}: the snapshot no longer lists {this.record.value}; left at version {version}."
+
+    type MaterialSourcePulls.SourceRefreshInfo with
+
+        /// The installed snapshot and its file count, then each refreshed pull's caption, joined by spaces (spec 0050 S13.1).
+        member this.caption : ControlCaption =
+            let installed = $"Snapshot {this.snapshot.version.value} holds {this.snapshot.files.value} files."
+            installed :: (this.pulls |> List.map _.caption.value) |> String.concat " " |> ControlCaption
+
+    type ConstructorUiId with
+
+        /// A source's choice in the Online sources window: `MaterialSourceChoice_<name>` (spec 0050 S13.1).
+        static member materialSourceChoice (name : MaterialSourceName) : ConstructorUiId = ConstructorUiId $"MaterialSourceChoice_{name.value}"
+
+        /// A search hit's row: `MaterialSourceHit_<record>` (spec 0050 S13.1).
+        static member materialSourceHitRow (record : MaterialSourceRecordId) : ConstructorUiId = ConstructorUiId $"MaterialSourceHit_{record.value}"
+
+        /// A search hit's Pull: `MaterialSourcePull_<record>` (spec 0050 S13.1).
+        static member materialSourcePullButton (record : MaterialSourceRecordId) : ConstructorUiId =
+            ConstructorUiId $"MaterialSourcePull_{record.value}"

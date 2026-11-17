@@ -636,6 +636,26 @@ type ConstructorUiId =
     /// Cancel, which closes and attaches nothing.
     static member importWizardCancelButton : ConstructorUiId = ConstructorUiId "ImportWizardCancelButton"
 
+    // --- The Online sources window (MaterialSourcesView, MaterialSourcesWindow). ---
+    /// The shown source's held snapshot version, or that it holds none yet (spec 0050 S13.1).
+    static member materialSourceSnapshotText : ConstructorUiId = ConstructorUiId "MaterialSourceSnapshotText"
+    /// Update snapshot: downloads the shown source's current database, then refreshes its pulls (spec 0050 S13.1).
+    static member materialSourceUpdateButton : ConstructorUiId = ConstructorUiId "MaterialSourceUpdateButton"
+    /// The running update's files written over its files in all (spec 0050 S13.1).
+    static member materialSourceUpdateProgressBar : ConstructorUiId = ConstructorUiId "MaterialSourceUpdateProgressBar"
+    /// The running update's progress line (spec 0050 S13.1).
+    static member materialSourceUpdateProgressText : ConstructorUiId = ConstructorUiId "MaterialSourceUpdateProgressText"
+    /// Cancel: stops the running update before its next file, keeping the held snapshot (spec 0050 S13.1).
+    static member materialSourceUpdateCancelButton : ConstructorUiId = ConstructorUiId "MaterialSourceUpdateCancelButton"
+    /// The search text; Enter searches (spec 0050 S13.1).
+    static member materialSourceQueryBox : ConstructorUiId = ConstructorUiId "MaterialSourceQueryBox"
+    /// Search: lists the records of the shown source's snapshot the text finds (spec 0050 S13.1).
+    static member materialSourceSearchButton : ConstructorUiId = ConstructorUiId "MaterialSourceSearchButton"
+    /// The hits of the last search, one row each (spec 0050 S13.1).
+    static member materialSourceHitList : ConstructorUiId = ConstructorUiId "MaterialSourceHitList"
+    /// What the last pull or update did, its refusal, or that no source is configured (spec 0050 S13.1).
+    static member materialSourcesStatusText : ConstructorUiId = ConstructorUiId "MaterialSourcesStatusText"
+
     // --- The renderer test scene (`RendererTestView`). ---
     static member rendererTestCanvas : ConstructorUiId = ConstructorUiId "RendererTestCanvas"
 
