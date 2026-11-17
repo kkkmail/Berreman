@@ -580,6 +580,8 @@ type ConstructorUiId =
     static member materialsAttributionPanel : ConstructorUiId = ConstructorUiId "MaterialsAttributionPanel"
     // Spec 0050 S13.1: Online sources… opens the single-instance Online sources window.
     static member materialsOnlineSourcesButton : ConstructorUiId = ConstructorUiId "MaterialsOnlineSourcesButton"
+    // Spec 0050 S13.2: Import glass catalogue… picks a Zemax `.agf` file for the import dialog.
+    static member materialsImportGlassCatalogueButton : ConstructorUiId = ConstructorUiId "MaterialsImportGlassCatalogueButton"
     /// The lifecycle surface (spec 0038 step 023).
     static member materialsShowInactiveToggle : ConstructorUiId = ConstructorUiId "MaterialsShowInactiveToggle"
     static member materialsMarkInactiveButton : ConstructorUiId = ConstructorUiId "MaterialsMarkInactiveButton"
