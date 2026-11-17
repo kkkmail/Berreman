@@ -4,10 +4,12 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
@@ -18,9 +20,11 @@ open OpticalConstructor.Storage.KitHistoryStore
 open OpticalConstructor.Storage.LibraryBackupStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.MaterialSourceStore
 open OpticalConstructor.Storage.PresetDatabaseStore
 open OpticalConstructor.Storage.SampleDatabaseStore
 open OpticalConstructor.Storage.SourceDatabaseStore
+open OpticalConstructor.Ui.KitOpening
 open Softellect.Sys.Logging
 
 /// Shares library database stores, catalogue imports, experiment templates, exports, settings, locations and the kit history across windows.
@@ -44,7 +48,8 @@ type AppContext =
         itemModels : ItemModelProxy
         /// The library's backup store, Backups beside the database (spec 0050 001 §G).
         libraryBackups : LibraryBackupProxy
-        /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1).
+        /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1)
+        /// and pulls from refractiveindex.info over the configured sources folder (spec 0050 S13.1).
         catalogueImports : CatalogueImportContext
         /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
         pendingImports : PendingCatalogueImport list
@@ -71,6 +76,13 @@ type AppContext =
             {
                 CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database) with
                     exportFolderOpt = Some locations.cataloguesFolder
+                    materialSources =
+                        [
+                            MaterialSourceProxy.createRefractiveIndexInfo
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                        ]
             }
         let pendingImports =
             match catalogueImports.importOnStart (CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder) with
