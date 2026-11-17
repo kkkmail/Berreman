@@ -11,6 +11,8 @@ open Analytics.Variables
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Storage.MaterialImport
 open Xunit
 
@@ -303,3 +305,62 @@ module MaterialImportTests =
             let w = toWaveLength Nanometer (UnitMagnitude 500.0) // a shared sample of both tables
             Assert.True(closeC 1e-6 (epsAt entry w) (epsAt back w), "round-trip n,k at 500 nm")
         | Error e -> Assert.Fail($"{e}")
+
+    [<Fact>]
+    let ``the refractiveindex.info catalog lists each page as a hit named by its book and page`` () =
+        let fixtureHits : MaterialSourceHit list =
+            [
+                { record = MaterialSourceRecordId "main/Si/nk/Test.yml"; name = EntryName "Si (Silicon), Test 2026: n,k 0.25–0.70 µm" }
+                { record = MaterialSourceRecordId "glass/test/BK7/nk/Test.yml"; name = EntryName "BK7 (test), Test 2026: n 0.3–2.5 µm" }
+            ]
+        match (RefractiveIndexInfoCatalogText (readFixture "catalog-nk.yml")).hits with
+        | Ok hits -> Assert.Equal<MaterialSourceHit list>(fixtureHits, hits)
+        | Error e -> Assert.Fail(e.describe)
+
+        let unnamedPage =
+            RefractiveIndexInfoCatalogText
+                "- SHELF: main\n  name: \"MAIN\"\n  content:\n    - BOOK: Ge\n      name: \"Ge (Germanium)\"\n      content:\n        - PAGE: Bare\n          data: \"main/Ge/nk/Bare.yml\"\n"
+        let unnamedHits : MaterialSourceHit list =
+            [ { record = MaterialSourceRecordId "main/Ge/nk/Bare.yml"; name = EntryName "Ge (Germanium), Bare" } ]
+        match unnamedPage.hits with
+        | Ok hits -> Assert.Equal<MaterialSourceHit list>(unnamedHits, hits)
+        | Error e -> Assert.Fail(e.describe)
+
+        let headerOnly =
+            RefractiveIndexInfoCatalogText
+                "# this file is part of refractiveindex.info database\n# refractiveindex.info database is in the public domain\n# copyright and related rights waived via CC0 1.0\n"
+        match headerOnly.hits with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a catalog of header comments alone: expected NoDataErr, got {e.describe}")
+        | Ok hits -> Assert.Fail($"a catalog of header comments alone: expected NoDataErr, got {List.length hits} hit(s)")
+
+    [<Fact>]
+    let ``a page's references are its citation, a block's lines joined`` () =
+        Assert.Equal<EntryCitation option>(
+            Some (EntryCitation "Test fixture — minimal refractiveindex.info-style tabulated page (NOT real Si data)."),
+            (readYaml "Si.yml").referencesOpt)
+
+        let blockPage =
+            RefractiveIndexInfoText
+                "REFERENCES: |\n    A. Author and B. Author,\n    Test optical constants,\n    J. Test 1, 1 (2026)\nCOMMENTS: \"block test\"\nDATA:\n  - type: tabulated n\n    data: |\n      0.5 1.5\n"
+        Assert.Equal<EntryCitation option>(
+            Some (EntryCitation "A. Author and B. Author, Test optical constants, J. Test 1, 1 (2026)"),
+            blockPage.referencesOpt)
+
+        let unreferencedPage =
+            RefractiveIndexInfoText "COMMENTS: \"no references\"\nDATA:\n  - type: tabulated n\n    data: |\n      0.5 1.5\n"
+        Assert.Equal<EntryCitation option>(None, unreferencedPage.referencesOpt)
+
+    [<Fact>]
+    let ``every import error renders its condition and its payload`` () =
+        let errors : (ImportError * string) list =
+            [
+                MalformedYamlErr "a tab before the DATA key", "the page is malformed: a tab before the DATA key"
+                MalformedCsvErr "row 3 has one column", "the CSV is malformed: row 3 has one column"
+                NoDataErr "no tabulated rows found", "the file holds no data: no tabulated rows found"
+                UnsupportedFormulaErr (RiiFormulaNumber 8, "a rational transform"), "formula 8 is not supported: a rational transform"
+            ]
+        for error, rendered in errors do
+            Assert.Equal(rendered, error.describe)
+        let texts = errors |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal(List.length texts, List.length (List.distinct texts))

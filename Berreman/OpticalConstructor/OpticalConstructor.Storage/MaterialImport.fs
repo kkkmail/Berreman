@@ -14,6 +14,8 @@ open Analytics.Variables
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialSources
 
 /// refractiveindex.info YAML + CSV import and CSV export (§D.9). Importers produce
 /// in-memory `MaterialEntry` values (never FsPickler-pickled, §I.4); every parsed
@@ -66,6 +68,14 @@ module MaterialImport =
         | NoDataErr of string
         | UnsupportedFormulaErr of formulaNumber : RiiFormulaNumber * reason : string
 
+        /// The error's condition and its payload, so an import error renders through its own member (spec 0050 S13.1).
+        member this.describe : string =
+            match this with
+            | MalformedYamlErr reason -> $"the page is malformed: {reason}"
+            | MalformedCsvErr reason -> $"the CSV is malformed: {reason}"
+            | NoDataErr reason -> $"the file holds no data: {reason}"
+            | UnsupportedFormulaErr (formulaNumber, reason) -> $"formula {formulaNumber.value} is not supported: {reason}"
+
     /// The text of a refractiveindex.info YAML page.
     type RefractiveIndexInfoText =
         | RefractiveIndexInfoText of string
@@ -78,6 +88,12 @@ module MaterialImport =
 
         member this.value = let (NkCsvText t) = this in t
 
+    /// The text of a refractiveindex.info database's `catalog-nk.yml`, which lists its shelves, books and pages (spec 0050 S13.1).
+    type RefractiveIndexInfoCatalogText =
+        | RefractiveIndexInfoCatalogText of string
+
+        member this.value : string = let (RefractiveIndexInfoCatalogText t) = this in t
+
     let private inv = CultureInfo.InvariantCulture
 
     /// One row of an imported n,k table: λ in meters, n and k.
@@ -89,9 +105,48 @@ module MaterialImport =
             k : float
         }
 
-    /// A refractiveindex.info page, split into lines.
+    /// A refractiveindex.info page, split into lines; its line rules also read the catalog (spec 0050 S13.1).
     type private RiiPage =
         | RiiPage of string[]
+
+        /// A refractiveindex.info text's lines, whatever its line endings (spec 0050 S13.1).
+        static member linesOf (text : string) : string[] = text.Replace("\r\n", "\n").Split('\n')
+
+        /// The text after `key`, trimmed, when the trimmed line opens with it (spec 0050 S13.1).
+        static member valueAfter (key : string) (line : string) : string option =
+            let trimmed = line.Trim()
+            if trimmed.StartsWith(key, StringComparison.Ordinal) then Some (trimmed.Substring(key.Length).Trim()) else None
+
+        /// A value with its surrounding white space and one pair of enclosing `"` or `'` removed (spec 0050 S13.1).
+        static member unquoted (value : string) : string =
+            let trimmed = value.Trim()
+            if trimmed.Length >= 2 && (trimmed.[0] = '"' || trimmed.[0] = '\'') && trimmed.[trimmed.Length - 1] = trimmed.[0] then
+                trimmed.Substring(1, trimmed.Length - 2)
+            else trimmed
+
+        /// The `REFERENCES:` value: inline, unquoted; or, after `|`, the following lines deeper than the key (blank ones
+        /// inside the block), each trimmed, the non-empty ones joined by one space. None without the key or with an empty
+        /// value (spec 0050 S13.1).
+        member this.citationOpt : EntryCitation option =
+            let (RiiPage lines) = this
+            let indentOf (line : string) : int = line.Length - line.TrimStart().Length
+            lines
+            |> Array.indexed
+            |> Array.tryPick (fun (at, line) -> RiiPage.valueAfter "REFERENCES:" line |> Option.map (fun value -> (at, value)))
+            |> Option.bind (fun (keyAt, value) ->
+                let text =
+                    match value with
+                    | "|" ->
+                        let keyIndent = indentOf lines.[keyAt]
+                        lines.[keyAt + 1 ..]
+                        |> Array.takeWhile (fun line -> line.Trim().Length = 0 || indentOf line > keyIndent)
+                        |> Array.map _.Trim()
+                        |> Array.filter (fun line -> line.Length > 0)
+                        |> String.concat " "
+                    | inlineValue -> RiiPage.unquoted inlineValue
+                match text with
+                | "" -> None
+                | citation -> Some (EntryCitation citation))
 
         /// All floating-point tokens on a line (comma/space/tab separated).
         static member floatsOn (line : string) : float[] =
@@ -469,7 +524,7 @@ module MaterialImport =
         /// `UnsupportedFormulaErr` error.
         member this.importMaterial : Result<MaterialEntry, ImportError> =
             try
-                let lines = this.value.Replace("\r\n", "\n").Split('\n')
+                let lines = RiiPage.linesOf this.value
                 let page = RiiPage lines
                 match page.tryFormulaNumber with
                 | Some formula ->
@@ -488,6 +543,107 @@ module MaterialImport =
                     let rows = page.tabulatedRows Micrometer
                     if rows.Length = 0 then Error (NoDataErr "no tabulated rows found")
                     else entryFromTabulated (EntryName "Imported (refractiveindex.info)") CategoryIds.semiconductor rows
+            with e -> Error (MalformedYamlErr e.Message)
+
+        /// This page's citation, read from its `REFERENCES:` line with no HTML or Markdown stripped; None without one (spec 0050 S13.1).
+        member this.referencesOpt : EntryCitation option = (RiiPage (RiiPage.linesOf this.value)).citationOpt
+
+    /// The catalog item a `name:` line names: the one opened last (spec 0050 S13.1).
+    type private RiiCatalogItem =
+        | RiiShelfOpened
+        | RiiBookOpened
+        | RiiPageOpened
+
+    /// A catalog page so far: its name (its key until a `name:`) and its `data:` record (spec 0050 S13.1).
+    type private RiiCatalogPage =
+        {
+            pageName : EntryName
+            recordOpt : MaterialSourceRecordId option
+        }
+
+    /// The catalog read so far: the open book's name, the open page, the item opened last and the hits of the pages
+    /// closed, newest first (spec 0050 S13.1).
+    type private RiiCatalogReading =
+        {
+            bookNameOpt : EntryName option
+            pageOpt : RiiCatalogPage option
+            openedLastOpt : RiiCatalogItem option
+            closedHits : MaterialSourceHit list
+        }
+
+        /// Before the catalog's first line (spec 0050 S13.1).
+        static member start : RiiCatalogReading =
+            {
+                bookNameOpt = None
+                pageOpt = None
+                openedLastOpt = None
+                closedHits = []
+            }
+
+        /// The open page closed: with a `data:` it is one hit, named "<book name>, <page name>" (spec 0050 S13.1).
+        member this.pageClosed : RiiCatalogReading =
+            match this.pageOpt with
+            | Some { pageName = pageName; recordOpt = Some record } ->
+                let name =
+                    match this.bookNameOpt with
+                    | Some bookName -> EntryName $"{bookName.value}, {pageName.value}"
+                    | None -> pageName
+                let hit : MaterialSourceHit = { record = record; name = name }
+                { this with pageOpt = None; closedHits = hit :: this.closedHits }
+            | Some { recordOpt = None }
+            | None -> { this with pageOpt = None }
+
+        /// A shelf opened, closing its predecessor's book and page; a hit never names its shelf (spec 0050 S13.1).
+        member this.shelfOpened : RiiCatalogReading =
+            { this.pageClosed with bookNameOpt = None; openedLastOpt = Some RiiShelfOpened }
+
+        /// A book opened under its key, closing the open page (spec 0050 S13.1).
+        member this.bookOpened (key : EntryName) : RiiCatalogReading =
+            { this.pageClosed with bookNameOpt = Some key; openedLastOpt = Some RiiBookOpened }
+
+        /// A page opened under its key, closing the open one (spec 0050 S13.1).
+        member this.pageOpened (key : EntryName) : RiiCatalogReading =
+            let page : RiiCatalogPage = { pageName = key; recordOpt = None }
+            { this.pageClosed with pageOpt = Some page; openedLastOpt = Some RiiPageOpened }
+
+        /// The item opened last renamed by its `name:` (spec 0050 S13.1).
+        member this.named (name : EntryName) : RiiCatalogReading =
+            match this.openedLastOpt, this.pageOpt with
+            | Some RiiBookOpened, _ -> { this with bookNameOpt = Some name }
+            | Some RiiPageOpened, Some page -> { this with pageOpt = Some { page with pageName = name } }
+            | Some RiiPageOpened, None
+            | Some RiiShelfOpened, _
+            | None, _ -> this
+
+        /// The open page given its `data:` record (spec 0050 S13.1).
+        member this.recorded (record : MaterialSourceRecordId) : RiiCatalogReading =
+            match this.pageOpt with
+            | Some page -> { this with pageOpt = Some { page with recordOpt = Some record } }
+            | None -> this
+
+    type RefractiveIndexInfoCatalogText with
+
+        /// Each page with a `data:` as one hit in catalog order, named by its book and page, read line by line as a page
+        /// is; a catalog listing no page is NoDataErr (spec 0050 S13.1).
+        member this.hits : Result<MaterialSourceHit list, ImportError> =
+            try
+                let (|YamlKey|_|) (key : string) (line : string) : string option =
+                    RiiPage.valueAfter key line |> Option.map RiiPage.unquoted
+
+                let read (reading : RiiCatalogReading) (line : string) : RiiCatalogReading =
+                    match line with
+                    | comment when comment.TrimStart().StartsWith '#' -> reading
+                    | YamlKey "- SHELF:" _ -> reading.shelfOpened
+                    | YamlKey "- BOOK:" key -> reading.bookOpened (EntryName key)
+                    | YamlKey "- PAGE:" key -> reading.pageOpened (EntryName key)
+                    | YamlKey "name:" name -> reading.named (EntryName name)
+                    | YamlKey "data:" record -> reading.recorded (MaterialSourceRecordId record)
+                    | _ -> reading
+
+                let reading = RiiPage.linesOf this.value |> Array.fold read RiiCatalogReading.start
+                match List.rev reading.pageClosed.closedHits with
+                | [] -> Error (NoDataErr "the catalog lists no page with a data file")
+                | hits -> Ok hits
             with e -> Error (MalformedYamlErr e.Message)
 
     type NkCsvText with
