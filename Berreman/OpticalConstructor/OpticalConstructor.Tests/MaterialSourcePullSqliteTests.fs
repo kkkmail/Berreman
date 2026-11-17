@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Domain.MaterialSourcePulls
+open OpticalConstructor.Domain.HenkeCompounds
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
@@ -20,8 +21,8 @@ open OpticalConstructor.Storage.MaterialImport
 open OpticalConstructor.Storage.MaterialSourceStore
 open OpticalConstructor.Tests.MaterialSourceFixture
 
-/// A refractiveindex.info pull and update end to end: the real adapter over a fixture snapshot under the test output,
-/// and the real library database in SQLite `:memory:` (spec 0050 S13.1).
+/// refractiveindex.info, PTB OCDB and CXRO Henke pulls and updates end to end: the real adapters over fixture snapshots
+/// under the test output, and the real library database in SQLite `:memory:` (spec 0050 S13.1, S13.2).
 module MaterialSourcePullSqliteTests =
 
     let private owner : string = "MaterialSourcePullSqliteTests"
@@ -29,6 +30,24 @@ module MaterialSourcePullSqliteTests =
     let private siRecord : MaterialSourceRecordId = MaterialSourceRecordId "main/Si/nk/Test.yml"
 
     let private siName : EntryName = EntryName "Si (Silicon), Test 2026: n,k 0.25–0.70 µm"
+
+    let private siHit : MaterialSourceHit =
+        {
+            record = siRecord
+            name = siName
+        }
+
+    let private coHit : MaterialSourceHit =
+        {
+            record = MaterialSourceRecordId "Co.txt"
+            name = EntryName "Co (PTB OCDB)"
+        }
+
+    let private silicaHit : MaterialSourceHit =
+        {
+            record = MaterialSourceRecordId "SiO2@2.2"
+            name = EntryName "SiO2, ρ = 2.2 g/cm³ (CXRO Henke)"
+        }
 
     let private updateClockTime : DateTime = DateTime(2026, 11, 4, 12, 0, 0, DateTimeKind.Utc)
 
@@ -61,6 +80,40 @@ module MaterialSourcePullSqliteTests =
                 sourceVersion = MaterialSourceVersion "2026-11-04"
         }
 
+    /// The pull PTB's Co record answers under the snapshot `writePtbSnapshot` stamps 2026-11-01.
+    let private ptbFirstPull () : SourcePullInfo =
+        {
+            source = MaterialSourceName "PTB OCDB"
+            record = coHit.record
+            recordHash = pageHash (ptbRecord ())
+            sourceVersion = MaterialSourceVersion "2026-11-01"
+            licence = EntryLicence "CC-BY-4.0"
+            citation = EntryCitation "PTB Optical Constants Database (OCDB), ocdb/db/data/Co.txt: Optical constants for Co created by PTB"
+        }
+
+    /// The pull the changed Co record answers under the snapshot the update installs at 2026-11-04.
+    let private ptbChangedPull () : SourcePullInfo =
+        {
+            ptbFirstPull () with
+                recordHash = pageHash (changedPtbRecord ())
+                sourceVersion = MaterialSourceVersion "2026-11-04"
+        }
+
+    /// The pull `SiO2@2.2` answers under the snapshot `writeHenkeSnapshot` stamps 2026-11-01: hashed over the record's
+    /// text, then each element's file in formula order (spec 0050 S13.2).
+    let private silicaPull () : SourcePullInfo =
+        let hashed = Array.concat [ Encoding.UTF8.GetBytes silicaHit.record.value; henkeFile "si"; henkeFile "o" ]
+        {
+            source = MaterialSourceName "CXRO Henke"
+            record = silicaHit.record
+            recordHash = ContentHash.ofBytes (FileByteContent hashed)
+            sourceVersion = MaterialSourceVersion "2026-11-01"
+            licence = EntryLicence "LicenseRef-CXRO"
+            citation =
+                EntryCitation
+                    "B.L. Henke, E.M. Gullikson and J.C. Davis, Atomic Data and Nuclear Data Tables 54, 181-342 (1993); CXRO atomic scattering factors (henke.lbl.gov/optical_constants): SiO2 at 2.2 g/cm³"
+        }
+
     /// One `PulledSources` row, its columns read back as the values they hold.
     type private PulledSourceRowData =
         {
@@ -79,14 +132,8 @@ module MaterialSourcePullSqliteTests =
             adapter : MaterialSourceProxy
         }
 
-    /// The import context and the material store over `database`, beside the adapter over a fresh snapshot of
-    /// `siPage ()` whose update downloads an archive of `archivePage` at 2026-11-04.
-    let private fixtureOver (database : LibraryDatabase) (archivePage : string) : PullSqliteFixture =
-        let sources = freshSources owner
-        let zip = $"{sources.value}.zip"
-        writeArchive zip archivePage
-        let adapter = MaterialSourceProxy.createRefractiveIndexInfo sources (copyingDownloader zip (ResizeArray ())) (fixedClock updateClockTime)
-        writeSnapshot (Path.Combine(sources.value, adapter.sourceName.value)) (siPage ())
+    /// The import context, minting `pulledEntryId`, and the material store over `database`, beside `adapter`.
+    let private fixtureWith (database : LibraryDatabase) (adapter : MaterialSourceProxy) : PullSqliteFixture =
         let context = CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database)
         {
             context =
@@ -98,10 +145,29 @@ module MaterialSourcePullSqliteTests =
             adapter = adapter
         }
 
-    let private resultAt (version : VersionNumber) (change : SourcePullChange) : SourcePullResult =
+    /// The refractiveindex.info adapter over a fresh snapshot of `siPage ()` whose update downloads an archive of
+    /// `archivePage` at 2026-11-04.
+    let private fixtureOver (database : LibraryDatabase) (archivePage : string) : PullSqliteFixture =
+        let sources = freshSources owner
+        let zip = $"{sources.value}.zip"
+        writeArchive zip archivePage
+        let adapter = MaterialSourceProxy.createRefractiveIndexInfo sources (copyingDownloader zip (ResizeArray ())) (fixedClock updateClockTime)
+        writeSnapshot (Path.Combine(sources.value, adapter.sourceName.value)) (siPage ())
+        fixtureWith database adapter
+
+    /// The PTB OCDB adapter over a fresh snapshot of `ptbRecord ()` whose update downloads an archive of `archiveRecord`
+    /// at 2026-11-04.
+    let private ptbFixtureOver (database : LibraryDatabase) (archiveRecord : string) : PullSqliteFixture =
+        let sources = freshSources owner
+        let zip = $"{sources.value}.zip"
+        writePtbArchive zip archiveRecord
+        writePtbSnapshot (Path.Combine(sources.value, "ptb-ocdb")) (ptbRecord ())
+        fixtureWith database (MaterialSourceProxy.createPtbOcdb sources (copyingDownloader zip (ResizeArray ())) (fixedClock updateClockTime))
+
+    let private resultAt (hit : MaterialSourceHit) (version : VersionNumber) (change : SourcePullChange) : SourcePullResult =
         {
-            record = siRecord
-            name = siName
+            record = hit.record
+            name = hit.name
             version =
                 {
                     entryId = pulledEntryId
@@ -110,14 +176,14 @@ module MaterialSourcePullSqliteTests =
             change = change
         }
 
-    /// The fixture over `database` after its one pull added the Si page at version 1.
-    let private pulledFixture (database : LibraryDatabase) (archivePage : string) : PullSqliteFixture =
-        let fixture = fixtureOver database archivePage
+    /// The fixture after its one pull added `hit`'s record at version 1.
+    let private pulledIn (hit : MaterialSourceHit) (fixture : PullSqliteFixture) : PullSqliteFixture =
         Assert.Equal<Result<SourcePullResult list, MaterialSourcePullError>>(
-            Ok [ resultAt VersionNumber.first PullAddedEntry ],
-            fixture.context.pullRecord fixture.adapter siRecord)
+            Ok [ resultAt hit VersionNumber.first PullAddedEntry ],
+            fixture.context.pullRecord fixture.adapter hit.record)
         fixture
 
+    /// The update's outcome at 2026-11-04: the refractiveindex.info and the PTB archives each keep three files.
     let private refreshedWith (pulls : SourcePullResult list) : Result<SourceRefresh, MaterialSourcePullError> =
         let info : SourceRefreshInfo =
             {
@@ -197,27 +263,48 @@ module MaterialSourcePullSqliteTests =
         | Ok imported -> imported.physics
         | Error error -> failwith $"the page does not import: {error.describe}"
 
-    /// The n a one-table import holds at its longest wavelength, 0.70 µm on the Si page.
-    let private nAtLongestWaveLength (physics : MaterialPhysics) : float =
+    /// The table of a physics that is one isotropic tabulated n,k segment.
+    let private tabulatedTableOf (physics : MaterialPhysics) : TabulatedNkTable =
         match physics with
-        | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } -> Array.last table.n
+        | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } -> table
         | _ -> failwith "the physics is not one tabulated n,k segment"
+
+    /// The n a one-table import holds at its longest wavelength, 0.70 µm on the Si page.
+    let private nAtLongestWaveLength (physics : MaterialPhysics) : float = Array.last (tabulatedTableOf physics).n
+
+    /// The table `MaterialImport` reads from a PTB record, its one-sigma uncertainties included.
+    let private ptbTable (record : string) : TabulatedNkTable =
+        match (PtbOcdbText record).importMaterial with
+        | Ok imported -> tabulatedTableOf imported.physics
+        | Error error -> failwith $"the PTB record does not import: {error.describe}"
+
+    /// σn of a table's first sample, None for a table without uncertainties.
+    let private firstSigmaN (table : TabulatedNkTable) : float option =
+        table.uncertaintyOpt |> Option.map (fun uncertainty -> Array.head uncertainty.sigmaN)
+
+    /// The table `CompoundSpec.indexTableWith` computes for `SiO2@2.2` from the fixtures' `si.nff` and `o.nff`.
+    let private silicaTable () : TabulatedNkTable =
+        let factorsOf (symbol : string) : AtomicScatteringFactors =
+            match (HenkeScatteringText (Encoding.UTF8.GetString(henkeFile symbol))).factors with
+            | Ok factors -> factors
+            | Error error -> failwith $"{symbol}.nff does not read: {error.describe}"
+        match CompoundSpec.tryOfRecord silicaHit.record with
+        | Ok spec ->
+            match spec.indexTableWith (Map.ofList [ ElementSymbol "Si", factorsOf "si"; ElementSymbol "O", factorsOf "o" ]) with
+            | Ok table -> table
+            | Error error -> failwith $"SiO2@2.2 does not compute: {error.describe}"
+        | Error error -> failwith $"SiO2@2.2 does not read: {error.describe}"
 
     [<Fact>]
     let ``a pulled refractiveindex.info page is a user material at version 1 with its provenance and its pulled-source row`` () : unit =
         use database = BuiltinCatalogue.freshLibraryDatabase ()
         let fixture = fixtureOver database (siPage ())
-        let siHit : MaterialSourceHit =
-            {
-                record = siRecord
-                name = siName
-            }
         Assert.Equal<Result<MaterialSourceHit list, MaterialSourceError>>(
             Ok [ siHit ],
             fixture.adapter.searchRecords (MaterialSourceQuery "silicon"))
 
         Assert.Equal<Result<SourcePullResult list, MaterialSourcePullError>>(
-            Ok [ resultAt VersionNumber.first PullAddedEntry ],
+            Ok [ resultAt siHit VersionNumber.first PullAddedEntry ],
             fixture.context.pullRecord fixture.adapter siRecord)
 
         match fixture.materials.tryGetMaterial pulledMaterialId with
@@ -246,10 +333,10 @@ module MaterialSourcePullSqliteTests =
     [<Fact>]
     let ``an update whose page is unchanged mints no version`` () : unit =
         use database = BuiltinCatalogue.freshLibraryDatabase ()
-        let fixture = pulledFixture database (siPage ())
+        let fixture = fixtureOver database (siPage ()) |> pulledIn siHit
 
         Assert.Equal<Result<SourceRefresh, MaterialSourcePullError>>(
-            refreshedWith [ resultAt VersionNumber.first PullFoundUnchanged ],
+            refreshedWith [ resultAt siHit VersionNumber.first PullFoundUnchanged ],
             fixture.context.updateSourceSnapshot fixture.adapter SourceSnapshotObserver.unobserved)
 
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, fixture.materials.resolveVersion (materialVersion versionTwo))
@@ -259,12 +346,12 @@ module MaterialSourcePullSqliteTests =
     [<Fact>]
     let ``an update whose page changed mints version 2 and keeps version 1`` () : unit =
         use database = BuiltinCatalogue.freshLibraryDatabase ()
-        let fixture = pulledFixture database (changedSiPage ())
+        let fixture = fixtureOver database (changedSiPage ()) |> pulledIn siHit
         let versionOneBefore = fixture.materials.resolveVersion (materialVersion VersionNumber.first)
         let changedPhysics = importedPhysics (changedSiPage ())
 
         Assert.Equal<Result<SourceRefresh, MaterialSourcePullError>>(
-            refreshedWith [ resultAt versionTwo PullMintedVersion ],
+            refreshedWith [ resultAt siHit versionTwo PullMintedVersion ],
             fixture.context.updateSourceSnapshot fixture.adapter SourceSnapshotObserver.unobserved)
 
         let versionTwoNow = fixture.materials.resolveVersion (materialVersion versionTwo)
@@ -302,13 +389,129 @@ module MaterialSourcePullSqliteTests =
     [<Fact>]
     let ``pulling the same page twice writes it once`` () : unit =
         use database = BuiltinCatalogue.freshLibraryDatabase ()
-        let fixture = pulledFixture database (siPage ())
+        let fixture = fixtureOver database (siPage ()) |> pulledIn siHit
         let latestBefore = fixture.context.proxy.tryLatestEnvelope pulledEntryId
 
         Assert.Equal<Result<SourcePullResult list, MaterialSourcePullError>>(
-            Ok [ resultAt VersionNumber.first PullFoundUnchanged ],
+            Ok [ resultAt siHit VersionNumber.first PullFoundUnchanged ],
             fixture.context.pullRecord fixture.adapter siRecord)
 
         Assert.Equal<VersionNumber list>([ VersionNumber.first ], (heldPulled fixture).versions |> List.map _.version)
         Assert.Equal<Result<LibraryEntryEnvelope option, CatalogueImportError>>(latestBefore, fixture.context.proxy.tryLatestEnvelope pulledEntryId)
         Assert.Equal<PulledSourceRowData list>([ rowOf VersionNumber.first (firstPull ()) ], pulledSourceRows database)
+
+    [<Fact>]
+    let ``a pulled PTB OCDB record keeps its uncertainties in the library and credits PTB`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = ptbFixtureOver database (ptbRecord ())
+
+        Assert.Equal<Result<SourcePullResult list, MaterialSourcePullError>>(
+            Ok [ resultAt coHit VersionNumber.first PullAddedEntry ],
+            fixture.context.pullRecord fixture.adapter coHit.record)
+
+        match fixture.materials.resolveVersion (materialVersion VersionNumber.first) with
+        | Ok (Some material) ->
+            Assert.Equal(coHit.name, material.name)
+            let table = tabulatedTableOf material.physics
+            Assert.Equal<TabulatedNkTable>(ptbTable (ptbRecord ()), table)
+            Assert.Equal<float option>(Some ((0.96804 - 0.96772) / 6.0), firstSigmaN table)
+        | Ok None -> Assert.Fail "version 1 does not resolve"
+        | Error error -> Assert.Fail $"version 1 could not be read: {materialRefusal error}"
+
+        match fixture.context.proxy.tryLatestEnvelope pulledEntryId with
+        | Ok (Some envelope) ->
+            Assert.Equal<EntryProvenance>(SourcePullProvenance (ptbFirstPull ()), envelope.content.provenance)
+            Assert.Equal<EntryProtection>(UserManaged, envelope.content.provenance.protection)
+        | Ok None -> Assert.Fail "the pulled entry holds no latest version"
+        | Error error -> Assert.Fail $"the pulled entry's latest version could not be read: {error.describe}"
+
+        Assert.Equal<PulledSourceRowData list>([ rowOf VersionNumber.first (ptbFirstPull ()) ], pulledSourceRows database)
+
+        match fixture.context.proxy.attributionLinesOf [ pulledEntryId ] with
+        | Ok lines ->
+            Assert.Equal<string list>(
+                [
+                    "Co (PTB OCDB): Licence CC-BY-4.0 — cite: PTB Optical Constants Database (OCDB), ocdb/db/data/Co.txt: Optical constants for Co created by PTB"
+                ],
+                lines |> List.map _.text)
+        | Error error -> Assert.Fail $"the attribution lines could not be read: {error.describe}"
+
+    [<Fact>]
+    let ``an update whose PTB OCDB bounds changed mints version 2 and keeps version 1`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let fixture = ptbFixtureOver database (changedPtbRecord ()) |> pulledIn coHit
+        let versionOneBefore = fixture.materials.resolveVersion (materialVersion VersionNumber.first)
+
+        Assert.Equal<Result<SourceRefresh, MaterialSourcePullError>>(
+            refreshedWith [ resultAt coHit versionTwo PullMintedVersion ],
+            fixture.context.updateSourceSnapshot fixture.adapter SourceSnapshotObserver.unobserved)
+
+        match fixture.materials.resolveVersion (materialVersion versionTwo) with
+        | Ok (Some material) ->
+            Assert.Equal(coHit.name, material.name)
+            let table = tabulatedTableOf material.physics
+            Assert.Equal<TabulatedNkTable>(ptbTable (changedPtbRecord ()), table)
+            Assert.Equal<float option>(Some ((0.96810 - 0.96772) / 6.0), firstSigmaN table)
+        | Ok None -> Assert.Fail "version 2 does not resolve"
+        | Error error -> Assert.Fail $"version 2 could not be read: {materialRefusal error}"
+
+        match fixture.context.proxy.tryHeldEnvelope pulledEntryId versionTwo with
+        | Ok (Some envelope) -> Assert.Equal<EntryProvenance>(SourcePullProvenance (ptbChangedPull ()), envelope.content.provenance)
+        | Ok None -> Assert.Fail "the update minted no version 2"
+        | Error error -> Assert.Fail $"version 2's envelope could not be read: {error.describe}"
+
+        match versionOneBefore with
+        | Ok (Some material) ->
+            let table = tabulatedTableOf material.physics
+            Assert.Equal<TabulatedNkTable>(ptbTable (ptbRecord ()), table)
+            Assert.Equal<float option>(Some ((0.96804 - 0.96772) / 6.0), firstSigmaN table)
+        | Ok None -> Assert.Fail "version 1 did not resolve before the update"
+        | Error error -> Assert.Fail $"version 1 could not be read before the update: {materialRefusal error}"
+        Assert.Equal<Result<MaterialEntry option, MaterialError>>(versionOneBefore, fixture.materials.resolveVersion (materialVersion VersionNumber.first))
+
+        Assert.Equal<VersionNumber list>([ VersionNumber.first; versionTwo ], (heldPulled fixture).versions |> List.map _.version)
+        Assert.Equal<PulledSourceRowData list>(
+            [ rowOf VersionNumber.first (ptbFirstPull ()); rowOf versionTwo (ptbChangedPull ()) ],
+            pulledSourceRows database)
+
+    [<Fact>]
+    let ``a pulled Henke compound is a user material at version 1 under CXRO's provenance, its licence named`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let sources = freshSources owner
+        writeHenkeSnapshot (Path.Combine(sources.value, "cxro-henke"))
+        let asked = ResizeArray<SourceArchiveUrl>()
+        let fixture =
+            fixtureWith database (MaterialSourceProxy.createHenkeCompounds sources (servingDownloader (fun _ -> None) asked) (fixedClock updateClockTime))
+
+        Assert.Equal<Result<MaterialSourceHit list, MaterialSourceError>>(
+            Ok [ silicaHit ],
+            fixture.adapter.searchRecords (MaterialSourceQuery "SiO2 2.2"))
+
+        Assert.Equal<Result<SourcePullResult list, MaterialSourcePullError>>(
+            Ok [ resultAt silicaHit VersionNumber.first PullAddedEntry ],
+            fixture.context.pullRecord fixture.adapter silicaHit.record)
+
+        match fixture.context.proxy.tryLatestEnvelope pulledEntryId with
+        | Ok (Some envelope) ->
+            Assert.Equal<VersionNumber>(VersionNumber.first, envelope.content.version)
+            Assert.Equal<EntryProvenance>(SourcePullProvenance (silicaPull ()), envelope.content.provenance)
+            Assert.Equal<EntryProtection>(UserManaged, envelope.content.provenance.protection)
+        | Ok None -> Assert.Fail "the pulled entry holds no latest version"
+        | Error error -> Assert.Fail $"the pulled entry's latest version could not be read: {error.describe}"
+
+        match fixture.materials.resolveVersion (materialVersion VersionNumber.first) with
+        | Ok (Some material) ->
+            Assert.Equal(silicaHit.name, material.name)
+            Assert.Equal<TabulatedNkTable>(silicaTable (), tabulatedTableOf material.physics)
+        | Ok None -> Assert.Fail "version 1 does not resolve"
+        | Error error -> Assert.Fail $"version 1 could not be read: {materialRefusal error}"
+
+        Assert.Equal<VersionNumber list>([ VersionNumber.first ], (heldPulled fixture).versions |> List.map _.version)
+        Assert.Equal<PulledSourceRowData list>([ rowOf VersionNumber.first (silicaPull ()) ], pulledSourceRows database)
+
+        // LicenseRef-CXRO is not CC-BY, so the line names the licence alone (spec 0050 S3.3).
+        match fixture.context.proxy.attributionLinesOf [ pulledEntryId ] with
+        | Ok lines -> Assert.Equal<string list>([ "SiO2, ρ = 2.2 g/cm³ (CXRO Henke): Licence LicenseRef-CXRO" ], lines |> List.map _.text)
+        | Error error -> Assert.Fail $"the attribution lines could not be read: {error.describe}"
+
+        Assert.Empty(asked)
