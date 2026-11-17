@@ -3,6 +3,7 @@ namespace OpticalConstructor.Tests
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open Berreman.MaterialProperties
 open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain.CrystalPhysics
@@ -38,15 +39,22 @@ module PlannerReportTests =
 
     let private normalXCut : PlannerLook = { normalZCut with normalAxisOpt = Some FirstCrystalAxis }
 
+    let private normalYCut : PlannerLook = { normalZCut with normalAxisOpt = Some SecondCrystalAxis }
+
     /// A plate with no principal axis on its normal (a tilted cut) at normal incidence.
     let private normalTiltedCut : PlannerLook = { normalZCut with normalAxisOpt = None }
 
-    /// The look's sight of each named parameter of `crystal`, through the component `components` names it as.
+    /// The component `components` names `name` as.
+    let private componentNamed (crystal : CrystalParameters) (name : ParameterName) : TensorComponent =
+        (crystal.components |> List.find (fun (held : CrystalComponent) -> held.name = name)).``component``
+
+    /// The look's sight of each named parameter of `crystal`.
     let private sightsOf (look : PlannerLook) (crystal : CrystalParameters) (names : ParameterName list) : LookSight list =
-        names
-        |> List.map (fun name ->
-            let held = crystal.components |> List.find (fun (held : CrystalComponent) -> held.name = name)
-            look.sightOf crystal held.``component``)
+        names |> List.map (fun name -> look.sightOf crystal (componentNamed crystal name))
+
+    /// What `looks` recover of the named parameter of `crystal`.
+    let private targetSightOf (looks : PlannerLook list) (crystal : CrystalParameters) (name : ParameterName) : TargetSight =
+        crystal.targetSightOf looks (componentNamed crystal name)
 
     [<Fact>]
     let ``a look sees a component only through an axis transverse to its propagation`` () : unit =
@@ -165,3 +173,46 @@ module PlannerReportTests =
             zCutLook)
 
         Assert.Equal(NormalIncidenceLook, zCutLook.tilt)
+
+    [<Fact>]
+    let ``a target is reachable when any look sees it, and unreachable when there is no look`` () : unit =
+        Assert.Equal(ReachableTarget, targetSightOf [ normalZCut; normalXCut ] uniaxial (ParameterName "n_e"))
+
+        Assert.Equal<TargetSight list>(
+            List.replicate 4 (UnreachableTarget NoLookReason),
+            uniaxial.components |> List.map (fun (held : CrystalComponent) -> uniaxial.targetSightOf [] held.``component``))
+
+    [<Fact>]
+    let ``an unreachable target takes the reason of the look that came closest to seeing it`` () : unit =
+        Assert.Equal(UnreachableTarget NoRetardanceReason, targetSightOf [ normalZCut ] uniaxial (ParameterName "n_o"))
+        Assert.Equal(UnreachableTarget AlongEveryPropagationReason, targetSightOf [ normalZCut ] uniaxial (ParameterName "g33"))
+
+        Assert.Equal(
+            UnreachableTarget FullMuellerNeededReason,
+            targetSightOf [ normalZCut; { normalXCut with reach = EllipsometricReach } ] uniaxial (ParameterName "g33"))
+
+        Assert.Equal(
+            UnreachableTarget NormalIncidenceOnlyReason,
+            targetSightOf [ normalXCut; normalYCut; normalZCut ] triclinic (ParameterName "g12"))
+
+        Assert.Equal<string list>(
+            [
+                "no look of the kit measures a plate of it"
+                "every look propagates along its axes"
+                "it is seen only off normal incidence"
+                "no look carries its linear retardance or an oblique change of the Fresnel amplitudes"
+                "it needs a full Mueller polarimeter, or a polarizer and an analyzer around the plate"
+            ],
+            [
+                NoLookReason
+                AlongEveryPropagationReason
+                NormalIncidenceOnlyReason
+                NoRetardanceReason
+                FullMuellerNeededReason
+            ]
+            |> List.map (fun (reason : UnseenReason) -> reason.text))
+
+    [<Fact>]
+    let ``the Snell cap is the internal angle of the smallest principal index at the steepest incidence`` () : unit =
+        Assert.Equal(internalAngle (RefractionIndex 1.544) IncidenceAngle.maxValue, uniaxial.snellCap)
+        Assert.Equal(internalAngle triclinicParameters.index1 IncidenceAngle.maxValue, triclinic.snellCap)

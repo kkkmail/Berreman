@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Domain
 
+open Berreman.Geometry
+open Berreman.MaterialProperties
 open Berreman.Fields
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
@@ -138,3 +140,62 @@ module MeasurementPlanner =
                 observable = this.observable
                 reach = reach
             }
+
+    /// Why no look recovers a target; derived, never stored, so it carries no wire tag (spec 0050 S14.1).
+    type UnseenReason =
+        /// There is no look: the kit holds no plate of the material, or no detector (spec 0050 S14.1).
+        | NoLookReason
+        | AlongEveryPropagationReason
+        | NormalIncidenceOnlyReason
+        | NoRetardanceReason
+        | FullMuellerNeededReason
+
+        /// The reason as the report states it (spec 0050 S14.1).
+        member this.text : string =
+            match this with
+            | NoLookReason -> "no look of the kit measures a plate of it"
+            | AlongEveryPropagationReason -> "every look propagates along its axes"
+            | NormalIncidenceOnlyReason -> "it is seen only off normal incidence"
+            | NoRetardanceReason ->
+                "no look carries its linear retardance or an oblique change of the Fresnel amplitudes"
+            | FullMuellerNeededReason ->
+                "it needs a full Mueller polarimeter, or a polarizer and an analyzer around the plate"
+
+    /// Whether a set of looks recovers a target, or why not (spec 0050 S14.1; 001 §M).
+    type TargetSight =
+        | ReachableTarget
+        | UnreachableTarget of UnseenReason
+
+    type CrystalParameters with
+
+        /// Reachable when some look sees the component; otherwise the reason of the look closest to seeing it, what
+        /// that look lacks (spec 0050 S14.1; 001 §M "this kit can never recover X").
+        member this.targetSightOf (looks : PlannerLook list) (tensorComponent : TensorComponent) : TargetSight =
+            let closestFirst : (LookSight * TargetSight) list =
+                [
+                    SeenInLook, ReachableTarget
+                    ReachMissesInLook, UnreachableTarget FullMuellerNeededReason
+                    NoRetardanceInLook, UnreachableTarget NoRetardanceReason
+                    NormalIncidenceInLook, UnreachableTarget NormalIncidenceOnlyReason
+                ]
+
+            match looks with
+            | [] -> UnreachableTarget NoLookReason
+            | _ ->
+                let sights : LookSight list = looks |> List.map (fun look -> look.sightOf this tensorComponent)
+
+                closestFirst
+                |> List.tryPick (fun (sight, targetSight) -> if List.contains sight sights then Some targetSight else None)
+                |> Option.defaultValue (UnreachableTarget AlongEveryPropagationReason)
+
+        /// The largest internal angle any tilt of a plate of it reaches, Snell's law for its smallest principal index
+        /// at the steepest incidence the engine takes: no tilt carries the wave further off the plate normal
+        /// (spec 0050 S14.1; 001 §M).
+        member this.snellCap : Angle =
+            let principalIndices : RefractionIndex list =
+                match this with
+                | UniaxialCrystal parameters -> [ parameters.ordinaryIndex; parameters.extraordinaryIndex ]
+                | TriclinicCrystal parameters -> [ parameters.index1; parameters.index2; parameters.index3 ]
+                | AbsorbingTriclinicCrystal parameters -> [ parameters.index1; parameters.index2; parameters.index3 ]
+
+            internalAngle (List.min principalIndices) IncidenceAngle.maxValue
