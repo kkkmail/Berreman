@@ -4,6 +4,7 @@ open System
 open System.Collections.Concurrent
 open System.Globalization
 open System.Threading
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
@@ -13,13 +14,18 @@ open Avalonia.VisualTree
 open Elmish
 open Xunit
 open Softellect.Sys.Primitives
+open Berreman.Constants
+open Berreman.Fields
+open Berreman.Media
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MeasurementPlanner
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.PlannerInformation
 open OpticalConstructor.Optimization.PlannerRuns
+open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.JobRunner
@@ -95,9 +101,48 @@ module PlanViewTests =
         |> Seq.map (fun line -> Assert.IsType<TextBlock>(line).Text)
         |> List.ofSeq
 
-    /// Every text the window shows.
-    let private textsOf (window : Window) : string list =
-        window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None) |> List.ofSeq
+    /// Every text shown under `root`, a window or one row of it; a block holding no text is skipped.
+    let private textsOf (root : Avalonia.Visual) : string list =
+        root.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Option.ofObj text.Text | _ -> None) |> List.ofSeq
+
+    /// The list carrying `planCandidateList`.
+    let private candidateListOf (window : Window) : StackPanel =
+        Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.planCandidateList)
+
+    /// The ids the list's children carry, in order; a plain line carries none.
+    let private childIdsOf (list : StackPanel) : string list =
+        list.Children |> Seq.map (fun child -> AutomationProperties.GetAutomationId child |> Option.ofObj |> Option.defaultValue "") |> List.ofSeq
+
+    /// The caption of the row carrying `id`, its first child.
+    let private rowCaptionOf (window : Window) (id : ConstructorUiId) : string =
+        Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(SlotBarTests.controlById window id).Children[0]).Text
+
+    /// The brief's row text for the ranked step at `position` by `criterion`, written apart from the view.
+    let private expectedRowText (position : int) (criterion : PlanCriterion) (step : RankedPlanStep) : string =
+        let invariant (format : string) (number : float) : string = number.ToString(format, CultureInfo.InvariantCulture)
+        let information = step.standing.information
+        let (MuellerReconstruction.MatrixRank rank) = information.rank
+        let measure =
+            match criterion, information.traceOpt with
+            | DeterminantPlanCriterion, _ ->
+                let shown = invariant "F3" information.logDeterminant.value
+                $", log det {shown}"
+            | TargetTracePlanCriterion, Some trace ->
+                let shown = invariant "G4" trace.value
+                $", Σσ² {shown}"
+            | TargetTracePlanCriterion, None -> ""
+        let sigmas =
+            match step.standing.boundsOpt with
+            | Some bounds ->
+                let each =
+                    bounds
+                    |> List.map (fun (bound : TargetBound) ->
+                        let shown = invariant "G3" bound.sigma.value
+                        $"{bound.name.value} {shown}")
+                    |> String.concat ", "
+                $"; σ: {each}"
+            | None -> ""
+        $"{position}. {step.candidate.caption} — rank {rank}{measure}{sigmas}"
 
     [<Fact>]
     let ``the plan view UiIds are the stable intent-named ids`` () : unit =
@@ -115,8 +160,40 @@ module PlanViewTests =
         Assert.Equal("PlanConfoundedList", ConstructorUiId.planConfoundedList.value)
         Assert.Equal("PlanBoundsGrid", ConstructorUiId.planBoundsGrid.value)
         Assert.Equal("PlanInstrumentList", ConstructorUiId.planInstrumentList.value)
+        Assert.Equal("PlanCandidateList", ConstructorUiId.planCandidateList.value)
         let version = MaterialVersionId.firstOf (MaterialId (Guid.Parse "49000000-0000-4000-8000-0000000000aa"))
         Assert.Equal("PlanMaterial_49000000-0000-4000-8000-0000000000aa_v1", (ConstructorUiId.planMaterialChoice version).value)
+        let source : PlannerSource =
+            {
+                item = ItemId (Guid.Parse "49000000-0000-4000-8000-0000000000ab")
+                label = ItemLabel "Laser"
+                waveLength = WaveLength.nm 532.0<nm>
+                tunableLimitsOpt = None
+            }
+        let plate : PlannerPlate =
+            {
+                item = ItemId (Guid.Parse "49000000-0000-4000-8000-0000000000ac")
+                label = ItemLabel "QZ-Z"
+                sample = Library.SampleVersionId.firstOf (Library.SampleId (Guid.Parse "49000000-0000-4000-8000-0000000000ad"))
+                thickness = Thickness.mm 0.5<mm>
+                substrate = Library.ThickPlate
+                emission = Placement.EmitBoth
+                normalAxisOpt = Some PlannerSymmetry.ThirdCrystalAxis
+            }
+        let reflected : PlanCandidate =
+            {
+                source = source
+                plate = plate
+                cut = ZCut
+                observable = ReflectedMueller
+            }
+        Assert.Equal("PlanCandidate_49000000-0000-4000-8000-0000000000ac_r_532.0", (ConstructorUiId.planCandidateRow reflected).value)
+        Assert.Equal(
+            "AddPlanCandidate_49000000-0000-4000-8000-0000000000ac_r_532.0",
+            (ConstructorUiId.addPlanCandidateButton reflected).value)
+        Assert.Equal(
+            "PlanCandidate_49000000-0000-4000-8000-0000000000ac_t_532.0",
+            (ConstructorUiId.planCandidateRow { reflected with observable = TransmittedMueller }).value)
 
     [<Fact>]
     let ``the Plan step shows a plan's findings, rank, confounded combinations, bounds and instrument choices`` () : unit =
@@ -198,6 +275,90 @@ module PlanViewTests =
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
+    let ``the Plan step ranks the candidates and offers Add to kit for each the kit does not hold`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.planKitIn owner
+            try
+                let planned = plannedThroughPosting model |> updateTableAndElementRotation (ShowFlowStep PlanFlowStep)
+                let report =
+                    planned.planReportOpt |> Option.defaultWith (fun () -> failwith "The completed plan must be the report shown")
+                Assert.Equal(DeterminantPlanCriterion, report.criterion)
+                Assert.Empty report.inKit
+                // QZ-Z's two candidates, its transmitted and its reflected branch, both open and both ranked.
+                let first, second =
+                    match report.ranked with
+                    | [ first; second ] -> first, second
+                    | _ -> failwith "The plan must rank QZ-Z's two candidates"
+                Assert.All([ first; second ], fun (step : RankedPlanStep) -> Assert.Equal("QZ-Z", step.candidate.plate.label.value))
+                Assert.NotEqual(first.candidate.observable, second.candidate.observable)
+                let rowIds = [ first; second ] |> List.map (fun (step : RankedPlanStep) -> (ConstructorUiId.planCandidateRow step.candidate).value)
+                let noneOpen = "No candidate is open: every candidate is in the kit, or the kit has no Mueller polarimeter or placed plate."
+                withPlanWindow planned (fun window ->
+                    let list = candidateListOf window
+                    Assert.Equal<string list>(rowIds, childIdsOf list)
+                    let firstRow = rowCaptionOf window (ConstructorUiId.planCandidateRow first.candidate)
+                    Assert.StartsWith("1. QZ-Z (z-cut plate), ", firstRow)
+                    Assert.Contains("rank", firstRow)
+                    [ first; second ]
+                    |> List.iteri (fun (index : int) (step : RankedPlanStep) ->
+                        let rowId = ConstructorUiId.planCandidateRow step.candidate
+                        let addId = ConstructorUiId.addPlanCandidateButton step.candidate
+                        let row = Assert.IsType<StackPanel>(SlotBarTests.controlById window rowId)
+                        Assert.Equal(Orientation.Horizontal, row.Orientation)
+                        Assert.Equal(expectedRowText (index + 1) DeterminantPlanCriterion step, rowCaptionOf window rowId)
+                        Assert.Same(row, (SlotBarTests.controlById window addId).Parent)
+                        Assert.Equal("Add to kit", SlotBarTests.boxLabelOf window addId))
+                    Assert.DoesNotContain(noneOpen, textsOf window))
+
+                // Over the kit opened read-only the rows stay and no Add to kit is offered.
+                let readOnly =
+                    {
+                        planned with
+                            kit =
+                                {
+                                    planned.kit with access = ReadOnlyKitAccess
+                                }
+                    }
+                withPlanWindow readOnly (fun window ->
+                    Assert.Equal<string list>(rowIds, childIdsOf (candidateListOf window))
+                    for step in [ first; second ] do
+                        SlotBarTests.assertAbsent window (ConstructorUiId.addPlanCandidateButton step.candidate)
+                    Assert.DoesNotContain(textsOf window, fun (text : string) -> text.StartsWith("In the kit as ", StringComparison.Ordinal)))
+
+                // The view shows what the report holds: its held candidates first, its criterion's measure, and the line
+                // for a report with no open candidate.
+                let showing (shown : PlanReport) : TableAndElementRotationModel =
+                    {
+                        planned with
+                            planJob =
+                                {
+                                    planned.planJob with
+                                        job =
+                                            {
+                                                planned.planJob.job with committedResults = Some shown
+                                            }
+                                }
+                    }
+                let traced =
+                    {
+                        report with
+                            criterion = TargetTracePlanCriterion
+                            inKit = [ first.candidate ]
+                            ranked = [ second ]
+                    }
+                withPlanWindow (showing traced) (fun window ->
+                    let list = candidateListOf window
+                    Assert.Equal<string list>([ ""; (ConstructorUiId.planCandidateRow second.candidate).value ], childIdsOf list)
+                    Assert.Equal($"Already in the kit: {first.candidate.caption}.", Assert.IsType<TextBlock>(list.Children[0]).Text)
+                    let row = rowCaptionOf window (ConstructorUiId.planCandidateRow second.candidate)
+                    Assert.Equal(expectedRowText 1 TargetTracePlanCriterion second, row)
+                    Assert.Contains(", Σσ² ", row)
+                    Assert.Contains("; σ: g11 ", row))
+                withPlanWindow (showing { report with ranked = [] }) (fun window ->
+                    Assert.Equal<string list>([ noneOpen ], linesOf window ConstructorUiId.planCandidateList))
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``pressing Run plan starts one plan through the shell's host, and Cancel cancels it`` () : unit =
         HeadlessSession.run (fun () ->
@@ -249,4 +410,43 @@ module PlanViewTests =
                     SlotBarTests.pressBox window ConstructorUiId.planCancelButton
                     Assert.Single cancels |> ignore
                     Assert.Single jobs |> ignore)
+            finally model.kit.close () |> SceneTestFixture.kitSuccess)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing Add to kit records a planned experiment of the candidate in the kit`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model = TestAppScope.planKitIn owner
+            try
+                let planned = plannedThroughPosting model |> updateTableAndElementRotation (ShowFlowStep PlanFlowStep)
+                let report =
+                    planned.planReportOpt |> Option.defaultWith (fun () -> failwith "The completed plan must be the report shown")
+                let candidateOn (observable : Observable) : PlanCandidate =
+                    report.ranked
+                    |> List.map (fun (step : RankedPlanStep) -> step.candidate)
+                    |> List.find (fun (candidate : PlanCandidate) -> candidate.observable = observable)
+                let transmitted = candidateOn TransmittedMueller
+                let reflected = candidateOn ReflectedMueller
+                let stemsOf (kind : KitFileKind) : LibraryEntryFiles.FileStem list =
+                    model.kit.proxy.listKindFiles kind |> SceneTestFixture.kitSuccess
+                let setupsBefore = stemsOf SetupKitFile
+                Assert.Empty(stemsOf ExperimentKitFile)
+                withPlanWindow planned (fun window ->
+                    SlotBarTests.pressBox window (ConstructorUiId.addPlanCandidateButton transmitted)
+
+                    // The kit's folder holds one more setup and one planned experiment of the candidate.
+                    Assert.Equal(setupsBefore.Length + 1, (stemsOf SetupKitFile).Length)
+                    Assert.Single(stemsOf ExperimentKitFile) |> ignore
+                    let experiment = Assert.Single(model.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
+                    Assert.Equal(Experiments.PlannedRun, experiment.role)
+                    let setups = model.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess
+                    Assert.Equal(CandidateInKit experiment.name, transmitted.coverageIn setups [ experiment ])
+
+                    // Its row now reads it in the kit, with no new plan run; the other candidate still offers Add to kit.
+                    let row = SlotBarTests.controlById window (ConstructorUiId.planCandidateRow transmitted)
+                    let rowTexts = textsOf row
+                    Assert.Contains(rowTexts, fun (text : string) -> text.StartsWith("In the kit as ", StringComparison.Ordinal))
+                    Assert.Contains($"In the kit as {experiment.name.value}.", rowTexts)
+                    SlotBarTests.assertAbsent window (ConstructorUiId.addPlanCandidateButton transmitted)
+                    Assert.Equal("Add to kit", SlotBarTests.boxLabelOf window (ConstructorUiId.addPlanCandidateButton reflected)))
             finally model.kit.close () |> SceneTestFixture.kitSuccess)

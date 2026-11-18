@@ -942,6 +942,8 @@ type ConstructorUiId =
     static member planBoundsGrid : ConstructorUiId = ConstructorUiId "PlanBoundsGrid"
     /// The instrument's polarizer and compensator states (spec 0050 S14.2).
     static member planInstrumentList : ConstructorUiId = ConstructorUiId "PlanInstrumentList"
+    /// The candidates the kit holds, then the open ones in the order the plan adds them (spec 0050 S14.2).
+    static member planCandidateList : ConstructorUiId = ConstructorUiId "PlanCandidateList"
 
     // --- The study's Fit step (StudyFitView). ---
     /// Opens the Inverse constructor's Fit step (spec 0050 S11.5).

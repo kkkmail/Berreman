@@ -713,7 +713,8 @@ module ScrollExtentTests =
             window
         assertReachable "KitWindowFit" makeWindow
 
-    /// The Plan step's report and a running plan's row remain reachable on small screens (spec 0050 S14.2).
+    /// The Plan step's report, its ranked candidates and a running plan's row remain reachable on small screens (spec 0050
+    /// S14.2).
     [<Fact>]
     let ``the kit window's Plan step leaves everything reachable`` () : unit =
         let makeWindow () : Window =
@@ -755,7 +756,8 @@ module ScrollExtentTests =
                 }
             let completed = started |> updateTableAndElementRotation (StudyPlan (PlanEnded ((Assert.Single plans) unread)))
             match completed.planReportOpt with
-            | Some _ -> ()
+            // Spec 0050 S14.2: QZ-Z's two ranked candidates, each a row with Add to kit, are among the controls checked.
+            | Some report -> Assert.Equal(2, report.ranked.Length)
             | None -> Assert.Fail "The completed plan must be the report shown"
             let progress : JobProgress =
                 {

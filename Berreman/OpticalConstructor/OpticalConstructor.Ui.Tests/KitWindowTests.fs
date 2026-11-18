@@ -31,6 +31,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.StudyPublishing
+open OpticalConstructor.Optimization.PlannerRuns
 open OpticalConstructor.App
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
@@ -373,22 +374,65 @@ module KitWindowTests =
                     controlById window ConstructorUiId.publishCalibrationButton |> ignore
                     for subject in subjects do controlById window (ConstructorUiId.promoteButton subject) |> ignore)
             finally studyModel.kit.close () |> SceneTestFixture.kitSuccess
-            // Spec 0050 S14.2: a plan writes no kit file, so a read-only window still offers Run plan.
+            // Spec 0050 S14.2: a plan writes no kit file, so a read-only window still offers Run plan; Add to kit writes
+            // one, so the plan's candidates show without it. The plan runs in full as the host is handed it.
             let planModel = TestAppScope.planKitIn owner
             try
-                let readOnlyPlan =
+                let ended = ResizeArray<Result<PlanReport, MeasurementPlanner.PlannerError>> ()
+                let unread : PlanObserver =
+                    {
+                        reportCandidate = ignore
+                        cancellation = System.Threading.CancellationToken.None
+                    }
+                let host : PlanJob.PlanJobHost =
+                    {
+                        startPlan =
+                            fun plan ->
+                                ended.Add (plan unread)
+                                {
+                                    cancelPlan = ignore
+                                }
+                    }
+                let request : PlanJob.PlanRequest =
+                    match planModel.selectedStudyOpt, planModel.planMaterialOpt with
+                    | Some study, Some material ->
+                        {
+                            study = study.name
+                            material = material
+                            criterion = planModel.planSurface.criterion
+                        }
+                    | _ -> failwith "The plan fixture must choose a study that opens a crystal"
+                let started =
                     {
                         planModel with
+                            kitShell =
+                                {
+                                    planModel.kitShell with planRuns = host
+                                }
+                    }
+                    |> updateTableAndElementRotation (StudyPlan (PlanJob.RunPlan request))
+                let planned = started |> updateTableAndElementRotation (StudyPlan (PlanJob.PlanEnded (Assert.Single ended)))
+                let candidates =
+                    match planned.planReportOpt with
+                    | Some report -> report.ranked |> List.map (fun (step : RankedPlanStep) -> step.candidate)
+                    | None -> failwith "The completed plan must be the report shown"
+                Assert.NotEmpty candidates
+                let readOnlyPlan =
+                    {
+                        planned with
                             kit =
                                 {
-                                    planModel.kit with access = ReadOnlyKitAccess
+                                    planned.kit with access = ReadOnlyKitAccess
                                 }
                             flowStep = PlanFlowStep
                     }
                 Assert.Equal<ControlAvailability>(ControlWithheld, readOnlyPlan.kitWrites)
                 withKitWindow readOnlyPlan (fun window ->
                     controlById window ConstructorUiId.planPanel |> ignore
-                    Assert.Equal("Run plan", boxLabelOf window ConstructorUiId.planRunButton))
+                    Assert.Equal("Run plan", boxLabelOf window ConstructorUiId.planRunButton)
+                    for candidate in candidates do
+                        controlById window (ConstructorUiId.planCandidateRow candidate) |> ignore
+                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.addPlanCandidateButton candidate)))
             finally planModel.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]

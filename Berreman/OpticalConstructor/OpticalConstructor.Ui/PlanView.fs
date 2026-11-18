@@ -1,5 +1,6 @@
-/// The study's Plan step: Run plan with per-candidate progress and Cancel, and the recoverability report — findings,
-/// rank, confounded combinations, each target's bound and the instrument's states (001 §O; spec 0050 S14.2).
+/// The study's Plan step: Run plan with per-candidate progress and Cancel, the recoverability report — findings, rank,
+/// confounded combinations, each target's bound and the instrument's states — and the ranked candidates with Add to kit
+/// (001 §O; spec 0050 S14.2).
 module OpticalConstructor.Ui.PlanView
 
 open System.Globalization
@@ -162,8 +163,98 @@ type PlanReport with
             planLines ConstructorUiId.planInstrumentList instrument
         ]
 
-/// The study's crystal materials, the two criteria, the run row and its refusal, then the committed report (spec 0050
-/// S14.2; .spec-md §10.2, §10.3, §10.5).
+type RankedPlanStep with
+
+    /// `<caption> — rank <r>`, the criterion's measure, then each target's σ when the step bounds them; the list numbers
+    /// it (spec 0050 S14.2).
+    member private this.planStepCaption (criterion : PlanCriterion) : ControlCaption =
+        let information = this.standing.information
+        let (MatrixRank rank) = information.rank
+        let measure : string =
+            match criterion, information.traceOpt with
+            | DeterminantPlanCriterion, _ ->
+                let (InformationLogDeterminant logDeterminant) = information.logDeterminant
+                let shown = logDeterminant.ToString("F3", CultureInfo.InvariantCulture)
+                $", log det {shown}"
+            | TargetTracePlanCriterion, Some (CovarianceTrace trace) ->
+                let shown = trace.ToString("G4", CultureInfo.InvariantCulture)
+                $", Σσ² {shown}"
+            | TargetTracePlanCriterion, None -> ""
+        let sigmas : string =
+            match this.standing.boundsOpt with
+            | Some bounds ->
+                let each =
+                    bounds
+                    |> List.map (fun (bound : TargetBound) ->
+                        let (ParameterSigma sigma) = bound.sigma
+                        let shown = sigma.ToString("G3", CultureInfo.InvariantCulture)
+                        $"{bound.name.value} {shown}")
+                    |> String.concat ", "
+                $"; σ: {each}"
+            | None -> ""
+        ControlCaption $"{this.candidate.caption} — rank {rank}{measure}{sigmas}"
+
+/// The candidates the kit holds, then each ranked one, with Add to kit while the kit takes writes and lacks it; its place
+/// in the kit is read now, so one added since the plan ran shows as in the kit (spec 0050 S14.2; .spec-md §10.4).
+let private planCandidateRows
+    (model : TableAndElementRotationModel)
+    (report : PlanReport)
+    (dispatch : TableAndElementRotationMsg -> unit)
+    : IView list =
+    let held =
+        report.inKit
+        |> List.map (fun (candidate : PlanCandidate) -> (ControlCaption $"Already in the kit: {candidate.caption}.").planLine)
+    let rowOf (index : int) (step : RankedPlanStep) : IView =
+        let candidate = step.candidate
+        let id = ConstructorUiId.planCandidateRow candidate
+        let ending : IView list =
+            match candidate.coverageIn model.kitSetups model.experimentCollection.experiments, model.kitWrites with
+            | CandidateInKit name, _ ->
+                [
+                    TextBlock.create [
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                        TextBlock.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                        TextBlock.text $"In the kit as {name.value}."
+                    ]
+                ]
+            | CandidateNotInKit, ControlOffered ->
+                [
+                    MaterialsWindowView.actionButton (ConstructorUiId.addPlanCandidateButton candidate) (ControlCaption "Add to kit")
+                        MaterialsWindowView.positiveBackground (fun () -> dispatch (AddPlannedExperiment candidate))
+                ]
+            | CandidateNotInKit, ControlWithheld -> []
+        let caption : IView =
+            TextBlock.create [
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (Thickness(0.0, 0.0, 10.0, 4.0))
+                TextBlock.text $"{index + 1}. {(step.planStepCaption report.criterion).value}"
+            ]
+        StackPanel.create [
+            id.automationAttribute<StackPanel> ()
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.children (caption :: ending)
+        ]
+        |> View.withKey id.value
+        :> IView
+    let ranked : IView list =
+        match report.ranked with
+        | [] ->
+            [
+                (ControlCaption "No candidate is open: every candidate is in the kit, or the kit has no Mueller polarimeter or placed plate.")
+                    .planLine
+            ]
+        | steps -> steps |> List.mapi rowOf
+    [
+        (ControlCaption "Next experiments, in the order the plan adds them:").planHeading
+        StackPanel.create [
+            ConstructorUiId.planCandidateList.automationAttribute<StackPanel> ()
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children (held @ ranked)
+        ]
+    ]
+
+/// The study's crystal materials, the two criteria, the run row and its refusal, then the committed report and its
+/// candidates (spec 0050 S14.2; .spec-md §10.2, §10.3, §10.5).
 let private chosenStudyRows
     (model : TableAndElementRotationModel)
     (study : Study)
@@ -275,7 +366,7 @@ let private chosenStudyRows
             ]
     let report : IView list =
         match model.planReportOpt with
-        | Some held -> held.planReportRows
+        | Some held -> held.planReportRows @ planCandidateRows model held dispatch
         | None -> []
     [
         (ControlCaption "Material:").planHeading
@@ -287,8 +378,8 @@ let private chosenStudyRows
     @ error
     @ report
 
-/// The Plan step over the window's model: the study bar, then the chosen study's plan controls and its committed
-/// report, scrolling both ways (001 §O; spec 0050 S14.2).
+/// The Plan step over the window's model: the study bar, then the chosen study's plan controls, its committed report and
+/// the report's candidates, scrolling both ways (001 §O; spec 0050 S14.2).
 let planView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let selected : IView list =
         match model.selectedStudyOpt with

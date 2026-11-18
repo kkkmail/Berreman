@@ -58,6 +58,18 @@ module ConstructorUiIdOfDomain =
             | MaterialParameterRef (version, name) ->
                 ConstructorUiKey $"{version.materialId.value}_v{version.version.value}_{name.value}"
 
+    type MeasurementPlanner.PlanCandidate with
+
+        /// `<plate item GUID>_<t or r>_<line in nm, one decimal>`, the candidate's key in its ids (spec 0050 S14.2).
+        member private this.planCandidateUiKey : ConstructorUiKey =
+            let branch : string =
+                match this.observable with
+                | MuellerInverse.TransmittedMueller -> "t"
+                | MuellerInverse.ReflectedMueller -> "r"
+            let nanometres = (wavelengthToUnit Nanometer this.source.waveLength).value
+            let line = nanometres.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+            ConstructorUiKey $"{this.plate.item.value}_{branch}_{line}"
+
     type ConstructorUiId with
 
         /// Promotes the fitted material version or black-box item under its stable identity (spec 0050 S11.5).
@@ -92,6 +104,14 @@ module ConstructorUiIdOfDomain =
         /// Chooses the opened crystal material version the plan plans (spec 0050 S14.2).
         static member planMaterialChoice (version : MaterialVersionId) : ConstructorUiId =
             ConstructorUiId $"PlanMaterial_{version.materialId.value}_v{version.version.value}"
+
+        /// The Plan view's row of one ranked candidate (spec 0050 S14.2).
+        static member planCandidateRow (candidate : MeasurementPlanner.PlanCandidate) : ConstructorUiId =
+            ConstructorUiId $"PlanCandidate_{candidate.planCandidateUiKey.value}"
+
+        /// Records the candidate in the kit as a planned experiment (spec 0050 S14.2).
+        static member addPlanCandidateButton (candidate : MeasurementPlanner.PlanCandidate) : ConstructorUiId =
+            ConstructorUiId $"AddPlanCandidate_{candidate.planCandidateUiKey.value}"
 
         /// Opens the parameter editor for this owner and parameter (spec 0050 S11.5).
         static member studyParameterRow (parameter : StudyParameterRef) : ConstructorUiId =
