@@ -1123,6 +1123,8 @@ type TableAndElementRotationMsg =
     | SetPlanMaterial of MaterialLibrary.MaterialVersionId
     /// Chooses the criterion the Plan step ranks by, without writing (spec 0050 S14.2).
     | SetPlanCriterion of PlanCriterion
+    /// Add to kit: the candidate's plate in the table's Object 1 slot as a setup and a `PlannedRun` over it (spec 0050 S14.2).
+    | AddPlannedExperiment of MeasurementPlanner.PlanCandidate
     /// Publishes the run's item calibrations as their next revisions (spec 0050 S11.5).
     | PublishCalibration of FitRunName
     /// Promotes a fitted material or black-box item to its next library version (spec 0050 S11.5).
@@ -2838,6 +2840,57 @@ let private experimentTargetsOver (setups : Setups.Setup list) (model : TableAnd
     let taken = collection.experiments |> List.map (fun experiment -> experiment.name)
     model.kit.kitFile.namingTemplate.experimentTargets setups model.kitItems taken collection.nextId
 
+/// The distinct setups among `setups` the kit does not hold, in order: those a grid's recording writes (spec 0050 S8.3).
+let private unheldSetups (model : TableAndElementRotationModel) (setups : Setups.Setup list) : Setups.Setup list =
+    setups |> List.distinct |> List.filter (fun setup -> not (List.contains setup model.kitSetups))
+
+/// The grid's setups the kit lacks, then `collection`'s draft over every setup as ExpCommit records it, each appended
+/// experiment taking `role`. Answers what was written, the grid's setups and the appended experiments; else the model
+/// with step 276's text, a failed write keeping those before it (spec 0050 S8.3, S14.2).
+let private withGridRecorded
+    (grid : SetupGrids.SetupGrid)
+    (collection : Experiments.ExperimentCollection)
+    (role : Experiments.ExperimentRole)
+    (model : TableAndElementRotationModel)
+    : Result<TableAndElementRotationModel * Setups.Setup list * Experiments.Experiment list, TableAndElementRotationModel> =
+    match grid.generate model.elements model.kitItems model.tryItemModelChoice model.kit.kitFile.namingTemplate model.kitSetups with
+    | Error error ->
+        Error
+            {
+                model with kitStatus = Some (ControlCaption $"Not generated — {error.describe}")
+            }
+    | Ok setups ->
+        let library : KitLibraryContext =
+            {
+                kit = model.kit
+                imports = model.catalogueImports
+            }
+        let committing =
+            {
+                model with experimentCollection = collection
+            }
+        let committed =
+            match committing.draftCapture with
+            | Some capture ->
+                Experiments.chooseMeasurement capture collection
+                |> Experiments.commitOverSetups (experimentTargetsOver setups committing)
+            | None -> collection
+        let appended = appendedOver collection committed |> List.map (fun experiment -> experiment.withRole role)
+        let setupHeld (current : TableAndElementRotationModel) (setup : Setups.Setup) : TableAndElementRotationModel =
+            {
+                current.withSetupRecorded setup with activeSetupOpt = current.activeSetupOpt
+            }
+        let recorded =
+            writtenInOrder library.recordSetup setupHeld (unheldSetups model setups) model
+            |> Result.bind (withExperimentsRecorded committed appended)
+        match recorded with
+        | Ok generated -> Ok (generated, setups, appended)
+        | Error (written, error) ->
+            Error
+                {
+                    written with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                }
+
 /// One kit write of an applied split, in its groups' order (spec 0050 S9.3).
 type private SplitWrite =
     | SplitSetupWrite of setup : Setups.Setup
@@ -3967,43 +4020,87 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     // failed write stops the run, keeping what was written. The table, the active setup and the draft's choices stay.
     | GenerateSetupGrid grid ->
         guardKitWrite model (fun () ->
-            match grid.generate model.elements model.kitItems model.tryItemModelChoice model.kit.kitFile.namingTemplate model.kitSetups with
-            | Error error ->
+            match withGridRecorded grid model.experimentCollection Experiments.ScienceRun model with
+            | Ok (generated, setups, appended) ->
+                let made = setups |> List.distinct |> List.length
+                let fresh = unheldSetups model setups
                 {
-                    model with kitStatus = Some (ControlCaption $"Not generated — {error.describe}")
+                    generated with
+                        kitStatus = Some (ControlCaption $"Generated {made} setups ({fresh.Length} new) and {appended.Length} experiments.")
                 }
-            | Ok setups ->
-                let library : KitLibraryContext =
-                    {
-                        kit = model.kit
-                        imports = model.catalogueImports
-                    }
-                let fresh = setups |> List.distinct |> List.filter (fun setup -> not (List.contains setup model.kitSetups))
-                let committed =
-                    match model.draftCapture with
-                    | Some capture ->
-                        Experiments.chooseMeasurement capture model.experimentCollection
-                        |> Experiments.commitOverSetups (experimentTargetsOver setups model)
-                    | None -> model.experimentCollection
-                let appended = appendedOver model.experimentCollection committed
-                let setupHeld (current : TableAndElementRotationModel) (setup : Setups.Setup) : TableAndElementRotationModel =
-                    {
-                        current.withSetupRecorded setup with activeSetupOpt = current.activeSetupOpt
-                    }
-                let recorded =
-                    writtenInOrder library.recordSetup setupHeld fresh model
-                    |> Result.bind (withExperimentsRecorded committed appended)
-                match recorded with
-                | Ok generated ->
-                    let made = setups |> List.distinct |> List.length
-                    {
-                        generated with
-                            kitStatus = Some (ControlCaption $"Generated {made} setups ({fresh.Length} new) and {appended.Length} experiments.")
-                    }
-                | Error (written, error) ->
-                    {
-                        written with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                    })
+            | Error refused -> refused)
+    // Spec 0050 S14.2: the plate goes into Object 1 through the grid's recording, its scan the one block `coverageIn`
+    // reads, as a PlannedRun; the window's draft is put back. Remove takes it out again (.spec-md §10.5).
+    | AddPlannedExperiment candidate ->
+        guardKitWrite model (fun () ->
+            let refused (caption : ControlCaption) : TableAndElementRotationModel =
+                {
+                    model with kitStatus = Some caption
+                }
+            let objectOneOpt =
+                Setups.SetupSlot.inLightOrder model.elements
+                |> List.tryFind (fun roled -> roled.role = Setups.ObjectSlotRole (Setups.SlotPosition 1))
+            match objectOneOpt with
+            | None -> refused (ControlCaption "Not added — the table has no sample slot.")
+            | Some objectOne ->
+                let slotId = objectOne.slot.id
+                match candidate.coverageIn model.kitSetups model.experimentCollection.experiments with
+                | MeasurementPlanner.CandidateInKit name -> refused (ControlCaption $"Not added — {name.value} already plans it.")
+                | MeasurementPlanner.CandidateNotInKit when not (List.contains candidate.capture (availableCaptures model slotId)) ->
+                    let branch =
+                        match candidate.observable with
+                        | MuellerInverse.TransmittedMueller -> "transmitted"
+                        | MuellerInverse.ReflectedMueller -> "reflected"
+                    refused (ControlCaption $"Not added — no detector of the table captures the {branch} light of the sample.")
+                | MeasurementPlanner.CandidateNotInKit ->
+                    let choice : SetupGrids.SlotChoice =
+                        {
+                            itemOpt = Some candidate.plate.item
+                            r1 = Angle.zero
+                        }
+                    let options : SetupGrids.SlotOptions =
+                        {
+                            slot = slotId
+                            choices = [ choice ]
+                        }
+                    let grid = SetupGrids.SetupGrid.create [ options ] model.elements model.kitItems model.tryItemModelChoice
+                    // `create` unticks a combination the table cannot make, which would plan nothing: say why instead.
+                    let whyNotOpt =
+                        grid.unticked
+                        |> List.tryPick (fun combination ->
+                            match combination.slotsOver model.elements model.kitItems model.tryItemModelChoice with
+                            | Error error -> Some error
+                            | Ok _ -> None)
+                    match whyNotOpt with
+                    | Some error -> refused (ControlCaption $"Not generated — {error.describe}")
+                    | None ->
+                        let label = experimentElementLabel model slotId
+                        let planned =
+                            {
+                                model.experimentCollection with draft = Experiments.ExperimentDraft.empty
+                            }
+                            |> Experiments.chooseElement slotId label [ Experiments.VaryR2 ] candidate.capture
+                            |> Experiments.setRange MeasurementPlanner.PlanCandidate.incidenceRange
+                            |> _.addScanAxis
+                            |> Experiments.chooseElement slotId label [ Experiments.VaryR1 ] candidate.capture
+                            |> Experiments.setRange MeasurementPlanner.PlanCandidate.azimuthRange
+                            |> Experiments.chooseMeasurement candidate.capture
+                        let withDraftBack (written : TableAndElementRotationModel) : TableAndElementRotationModel =
+                            {
+                                written with
+                                    experimentCollection =
+                                        {
+                                            written.experimentCollection with draft = model.experimentCollection.draft
+                                        }
+                            }
+                        match withGridRecorded grid planned Experiments.PlannedRun model with
+                        | Ok (written, setups, appended) ->
+                            let names = appended |> List.map (fun experiment -> experiment.name.value) |> String.concat ", "
+                            let references = setups |> List.map (fun setup -> setup.reference.describe) |> String.concat ", "
+                            {
+                                withDraftBack written with kitStatus = Some (ControlCaption $"Planned {names} over {references}.")
+                            }
+                        | Error failed -> withDraftBack failed)
     // Spec 0050 S8.4: the table is recorded as ExpCommit records it, then the draft is appended over that setup, never
     // editing the draft's own; a draft that cannot be committed or that no detector captures writes nothing.
     | RecordExperiment ->

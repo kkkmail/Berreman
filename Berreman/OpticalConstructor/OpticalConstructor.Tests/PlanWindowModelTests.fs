@@ -390,3 +390,142 @@ module PlanWindowModelTests =
                 Assert.Equal<PlanReport option>(None, elsewhere.planReportOpt)
                 Assert.Equal<PlanReport option>(finished.planJob.job.committedResults, elsewhere.planJob.job.committedResults)
                 Assert.Equal<PlanReport option>(finished.planReportOpt, (elsewhere |> updateTableAndElementRotation (SelectStudy qz)).planReportOpt))
+
+    // Spec 0050 S14.2: Add to kit records a candidate as the grid generator records a combination, a PlannedRun.
+
+    let private sampleSlot : ElementId = ElementId "sample"
+    let private detectorSlot : ElementId = ElementId "det"
+
+    /// The inverse table under QZ, the Polarimeter in `det`; its draft varies the sample, so a draft put back shows.
+    let private planTable (loaded : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let ready =
+            loaded
+            |> updateTableAndElementRotation (SelectStudy qz)
+            |> updateTableAndElementRotation (AssignSlot (detectorSlot, Some polarimeter.id))
+            |> updateTableAndElementRotation (ExpChooseElement sampleSlot)
+
+        Assert.Equal<ControlCaption option>(None, ready.kitStatus)
+        Assert.Equal<ItemId option>(Some polarimeter.id, (ready.elements |> List.find (fun slot -> slot.id = detectorSlot)).content.itemOpt)
+        Assert.Equal<ElementId option>(Some sampleSlot, ready.experimentCollection.draft.elementId)
+        ready
+
+    /// QZ-Z's candidate on that branch, as the window's study QZ plans its quartz.
+    let private candidateOn (observable : Observable) (model : TableAndElementRotationModel) : PlanCandidate =
+        let forward = model.studyForwardContext
+        let inputs = (chosenStudy model).plannerInputsWith forward.kit forward.choiceOf crystalVersion |> plannerValue
+        inputs.candidates |> List.find (fun (candidate : PlanCandidate) -> candidate.observable = observable)
+
+    let private setupsOf (model : TableAndElementRotationModel) : Setups.Setup list = model.kit.proxy.readSetups () |> kitValue
+    let private experimentsOf (model : TableAndElementRotationModel) : Experiment list = model.kit.proxy.readExperiments () |> kitValue
+
+    [<Fact>]
+    let ``Add to kit records the candidate's setup and a planned experiment sweeping its angles on its branch`` () : unit =
+        withPlanWindow ReadWriteKitAccess (fun _ loaded ->
+            let ready = planTable loaded
+            let candidate = candidateOn TransmittedMueller ready
+            Assert.Equal(qzZ.id, candidate.plate.item)
+            Assert.Equal(CaptureTransmitted, candidate.capture)
+            Assert.Empty ready.kitSetups
+            Assert.Empty ready.experimentCollection.experiments
+            Assert.Equal(CandidateNotInKit, candidate.coverageIn ready.kitSetups ready.experimentCollection.experiments)
+
+            let added = ready |> updateTableAndElementRotation (AddPlannedExperiment candidate)
+
+            // The kit holds the table with QZ-Z in its sample slot, at R1 0, and the Polarimeter in `det`.
+            let setups = setupsOf added
+            let setup = Assert.Single setups
+            Assert.Equal<Setups.Setup list>(setups, added.kitSetups)
+            let slotOf (id : ElementId) : Setups.SetupSlot = setup.slots |> List.find (fun slot -> slot.id = id)
+            Assert.Equal<ItemId option>(Some qzZ.id, (slotOf sampleSlot).content.itemOpt)
+            Assert.Equal(0.0, (slotOf sampleSlot).placement.r1.value)
+            Assert.Equal<ItemId option>(Some polarimeter.id, (slotOf detectorSlot).content.itemOpt)
+
+            // Over it one planned experiment, whose one block reads the transmitted branch while the sample's R2 sweeps the
+            // incidence and then its R1 the azimuth, so the planner finds the candidate in the kit.
+            let experiments = experimentsOf added
+            let experiment = Assert.Single experiments
+            Assert.Equal<Experiment list>(experiments, added.experimentCollection.experiments)
+            Assert.Equal(PlannedRun, experiment.role)
+            Assert.Equal<SetupReference>(setup.reference, experiment.setup)
+            Assert.Equal<Berreman.Fields.WaveLength option>(None, experiment.scan.sourceWaveLengthOpt)
+            let block = Assert.Single experiment.scan.blocks
+            Assert.Equal(CaptureTransmitted, block.capture)
+            Assert.Equal<(ElementId * VariableParameter * VariableRange) list>(
+                [
+                    sampleSlot, VaryR2, PlanCandidate.incidenceRange
+                    sampleSlot, VaryR1, PlanCandidate.azimuthRange
+                ],
+                block.axes |> List.map (fun axis -> axis.elementId, axis.variable, axis.range))
+            Assert.Equal(CandidateInKit experiment.name, candidate.coverageIn added.kitSetups added.experimentCollection.experiments)
+            Assert.Equal(CandidateInKit experiment.name, candidate.coverageIn setups experiments)
+
+            match added.kitStatus with
+            | Some status ->
+                Assert.StartsWith("Planned ", status.value)
+                Assert.Equal($"Planned {experiment.name.value} over {setup.reference.describe}.", status.value)
+            | None -> Assert.Fail "Add to kit must tell what it planned in the kit status"
+
+            // The window's own draft and table stay as they were.
+            Assert.Equal<ExperimentDraft>(ready.experimentCollection.draft, added.experimentCollection.draft)
+            Assert.Equal<Setups.SetupSlot list>(ready.elements, added.elements))
+
+    [<Fact>]
+    let ``a candidate the kit already holds is not added again`` () : unit =
+        withPlanWindow ReadWriteKitAccess (fun folder loaded ->
+            let ready = planTable loaded
+            let candidate = candidateOn TransmittedMueller ready
+            let added = ready |> updateTableAndElementRotation (AddPlannedExperiment candidate)
+            let experiment = Assert.Single added.experimentCollection.experiments
+            let paths = pathsOf folder
+            let setups = setupsOf added
+            let experiments = experimentsOf added
+            Assert.Single setups |> ignore
+            Assert.Single experiments |> ignore
+
+            let again = added |> updateTableAndElementRotation (AddPlannedExperiment candidate)
+
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Not added — {experiment.name.value} already plans it."), again.kitStatus)
+            Assert.Equal<string list>(paths, pathsOf folder)
+            Assert.Equal<Setups.Setup list>(setups, setupsOf again)
+            Assert.Equal<Experiment list>(experiments, experimentsOf again)
+            Assert.Equal<TableAndElementRotationModel>({ added with kitStatus = again.kitStatus }, again))
+
+    [<Fact>]
+    let ``a candidate the table cannot capture, or a table with no sample slot, adds nothing, and a read-only kit adds nothing`` () : unit =
+        withPlanWindow ReadWriteKitAccess (fun folder loaded ->
+            let ready = planTable loaded
+            let before = pathsOf folder
+
+            // `det` sits on the main beam behind the sample, so it reads the transmitted light alone.
+            Assert.Equal<MeasurementMode list>([ CaptureTransmitted ], availableCaptures ready sampleSlot)
+            let refused = ready |> updateTableAndElementRotation (AddPlannedExperiment (candidateOn ReflectedMueller ready))
+            Assert.Equal<ControlCaption option>(
+                Some (ControlCaption "Not added — no detector of the table captures the reflected light of the sample."),
+                refused.kitStatus)
+            Assert.Equal<TableAndElementRotationModel>({ ready with kitStatus = refused.kitStatus }, refused)
+            Assert.Equal<string list>(before, pathsOf folder)
+
+            // Without its sample the table has no Object 1 slot to hold the plate.
+            let sampleIndex = ready.elements |> List.findIndex (fun slot -> slot.id = sampleSlot)
+            let bare =
+                { ready with selection = ElementSelected (SceneElementIndex sampleIndex) }
+                |> updateTableAndElementRotation RemoveSelectedElement
+            Assert.DoesNotContain<Setups.SetupSlot>(bare.elements, fun slot -> slot.id = sampleSlot)
+            let unslotted = bare |> updateTableAndElementRotation (AddPlannedExperiment (candidateOn TransmittedMueller ready))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Not added — the table has no sample slot."), unslotted.kitStatus)
+            Assert.Equal<TableAndElementRotationModel>({ bare with kitStatus = unslotted.kitStatus }, unslotted)
+            Assert.Equal<string list>(before, pathsOf folder)
+            Assert.Empty(setupsOf unslotted)
+            Assert.Empty(experimentsOf unslotted))
+
+        // A read-only kit is refused by the write guard before anything is asked.
+        withPlanWindow ReadOnlyKitAccess (fun folder loaded ->
+            let ready = planTable loaded
+            Assert.Equal(ReadOnlyKitAccess, ready.kit.access)
+            let before = pathsOf folder
+
+            let refused = ready |> updateTableAndElementRotation (AddPlannedExperiment (candidateOn TransmittedMueller ready))
+
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatus)
+            Assert.Equal<TableAndElementRotationModel>({ ready with kitStatus = refused.kitStatus }, refused)
+            Assert.Equal<string list>(before, pathsOf folder))
