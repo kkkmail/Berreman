@@ -300,7 +300,7 @@ module MeasurementPlanner =
                 | OffAxisCutFinding need -> Some need
                 | UnrecoverableTargetFinding _ -> None)
 
-    /// Why the planner refuses a report, a lab profile or its inputs (spec 0050 S14.1).
+    /// Why the planner refuses a report, a lab profile, its inputs or a candidate's information (spec 0050 S14.1, S14.2).
     type PlannerError =
         | UnknownPlannerTargetErr of reason : string
         | UnresolvedPlannerItemErr of reason : string
@@ -308,14 +308,20 @@ module MeasurementPlanner =
         | UnopenedPlannerMaterialErr of reason : string
         /// The opened copy is a tabulated table, which has no crystal to plan for (spec 0050 S14.1).
         | NonCrystalPlannerMaterialErr of reason : string
+        /// A candidate's noise variance is not finite and above zero, so its information is unbounded (spec 0050 S14.2).
+        | NoiselessPlannerCandidateErr of reason : string
+        /// A candidate's Jacobian rows do not each hold one entry per target (spec 0050 S14.2).
+        | PlannerShapeErr of reason : string
 
-        /// The refusal as the planner states it (spec 0050 S14.1).
+        /// The refusal as the planner states it (spec 0050 S14.1, S14.2).
         member this.describe : string =
             match this with
             | UnknownPlannerTargetErr reason -> $"the crystal has no such parameter: {reason}"
             | UnresolvedPlannerItemErr reason -> $"the item's model is not in the library: {reason}"
             | UnopenedPlannerMaterialErr reason -> $"the study opens no such material version: {reason}"
             | NonCrystalPlannerMaterialErr reason -> $"the opened material is not a crystal: {reason}"
+            | NoiselessPlannerCandidateErr reason -> $"the candidate's noise variance is not above zero: {reason}"
+            | PlannerShapeErr reason -> $"the candidate's Jacobian does not fit the targets: {reason}"
 
     type CrystalParameters with
 
@@ -663,6 +669,20 @@ module MeasurementPlanner =
         /// cut (spec 0050 S14.1; 001 §M).
         member this.structuralReport : Result<RecoverabilityReport, PlannerError> =
             this.prior.crystal.structuralReport this.targets this.looks
+
+    /// The variance of one residual entry of a candidate experiment, in its residual's units squared (spec 0050 S14.2).
+    type NoiseVariance =
+        | NoiseVariance of float
+
+        member this.value : float = let (NoiseVariance variance) = this in variance
+
+    /// One candidate's information: its residual Jacobian over the targets' scaled coordinates and its entries' noise
+    /// (spec 0050 S14.2).
+    type CandidateRows =
+        {
+            jacobian : ResidualJacobian
+            noise : NoiseVariance
+        }
 
     type Study with
 

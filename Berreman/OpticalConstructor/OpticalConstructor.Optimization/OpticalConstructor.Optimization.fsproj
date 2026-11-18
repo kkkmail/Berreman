@@ -47,6 +47,7 @@
         <Compile Include="FittedProblems.fs" />
         <Compile Include="StudyEngine.fs" />
         <Compile Include="Synthesis.fs" />
+        <Compile Include="PlannerInformation.fs" />
     </ItemGroup>
 
     <ItemGroup>

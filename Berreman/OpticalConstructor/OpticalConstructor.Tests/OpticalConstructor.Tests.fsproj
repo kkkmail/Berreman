@@ -243,6 +243,7 @@
         <Compile Include="PlannerSymmetryTests.fs" />
         <Compile Include="PlannerReportTests.fs" />
         <Compile Include="PlannerInputsTests.fs" />
+        <Compile Include="PlannerInformationTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
