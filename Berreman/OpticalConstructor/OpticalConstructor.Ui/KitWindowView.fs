@@ -329,7 +329,7 @@ let private kitChangesRows (model : TableAndElementRotationModel) (dispatch : Ta
 
 /// The kit window as a pure projection of the workbench model: the kit bar docked above, the flow strip left of the
 /// step's surface, keyed so a change between surfaces recreates it and Setups ↔ Experiments keeps the workbench
-/// (spec 0050 S5.3, S7.2, S9.3, S11.5).
+/// (spec 0050 S5.3, S7.2, S9.3, S11.5, S14.2).
 let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     // `View.withKey` keys a typed view, so the surface sits in a keyed `Border`, as `Ribbon.ribbonView`'s pane does.
     let surface : IView =
@@ -350,6 +350,10 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
         | UnknownsFlowStep ->
             Border.create [ Border.child (StudyUnknownsView.studyUnknownsView model dispatch) ]
             |> Avalonia.FuncUI.DSL.View.withKey "unknowns"
+            :> IView
+        | PlanFlowStep ->
+            Border.create [ Border.child (PlanView.planView model dispatch) ]
+            |> Avalonia.FuncUI.DSL.View.withKey "plan"
             :> IView
         | FitFlowStep ->
             Border.create [ Border.child (StudyFitView.studyFitView model dispatch) ]

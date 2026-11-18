@@ -120,6 +120,7 @@
         <Compile Include="FlowStripView.fs" />
         <Compile Include="DataStepView.fs" />
     <Compile Include="StudyUnknownsView.fs" />
+    <Compile Include="PlanView.fs" />
     <Compile Include="StudyFitView.fs" />
     <Compile Include="StudyResultsView.fs" />
     <Compile Include="StudyPublishView.fs" />

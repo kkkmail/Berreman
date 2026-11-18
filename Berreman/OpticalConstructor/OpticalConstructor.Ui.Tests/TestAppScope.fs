@@ -310,3 +310,113 @@ module TestAppScope =
         match opened.kitStatus with
         | None -> opened
         | Some error -> failwith error.value
+
+    /// The UI suite's one plan fixture: Laser, QZ-Z of the probe quartz and Polarimeter in a reopened kit over `context`,
+    /// the Polarimeter in `det`, and the study QZ freeing the quartz's g11 and g33 within ±50 % (spec 0050 S14.2).
+    let planKitOver (context : AppContext) (owner : FolderName) : TableAndElementRotationModel =
+        let opened = openedKitIn owner context.catalogueImports
+        let quartz : UniaxialParameters =
+            {
+                ordinaryIndex = RefractionIndex 1.544
+                extraordinaryIndex = RefractionIndex 1.553
+                g11 = RhoValue 3.0e-5
+                g33 = RhoValue (-1.0e-5)
+            }
+        let entry : MaterialEntry =
+            {
+                id = MaterialId (System.Guid.Parse "49000000-0000-4000-8000-000000000001")
+                name = EntryName "Probe quartz"
+                category = CategoryIds.crystal
+                description = None
+                physics = CrystalParameterPhysics (UniaxialCrystal quartz)
+            }
+        let version = MaterialVersionId.firstOf entry.id
+        let substrate : SampleLayer =
+            {
+                materialId = version
+                thickness = Thickness.mm 0.5<mm>
+                orientation = PrimaryAxes
+            }
+        let plate : Sample =
+            {
+                id = SampleId (System.Guid.Parse "49000000-0000-4000-8000-000000000011")
+                name = EntryName "QZ-Z"
+                structure =
+                    {
+                        films = []
+                        substrate = Some substrate
+                        lower = None
+                    }
+                substrate = ThickPlate
+                description = EntryDescription "A z-cut plate of the probe quartz"
+                supportedEmission = EmitBoth
+            }
+        let draft (id : string) (label : string) (model : ItemModelChoice) : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse id)
+                label = ItemLabel label
+                model = model
+                dial = FixedMounting
+            }
+        let laser =
+            draft "49000000-0000-4000-8000-000000000021" "Laser"
+                (SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.heNe633))
+        let qzZ =
+            draft "49000000-0000-4000-8000-000000000022" "QZ-Z"
+                (StackSampleChoice (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId, SampleVersionId.firstOf plate.id, plate))
+        let polarimeter =
+            draft "49000000-0000-4000-8000-000000000023" "Polarimeter"
+                (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.muellerPolarimeterModelId))
+        try
+            context.materials.saveMaterial entry |> Result.defaultWith (fun error -> failwith error.caption.value)
+            context.samples.saveSample plate |> Result.defaultWith (fun error -> failwith error.caption.value)
+            for item in [ laser; qzZ; polarimeter ] do
+                opened.library.recordItem item.toItem |> Result.defaultWith (fun error -> failwith error.describe)
+        finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
+        let reopened =
+            openKitAt opened.folder ReadWriteKitAccess ClockProvider.system (KitAuthor "test") context.catalogueImports
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let study = StudyName "QZ"
+        let checkedAfter (message : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+            let next = model |> updateTableAndElementRotation message
+            match next.kitStatus with
+            | None -> next
+            | Some error ->
+                next.kit.close () |> SceneTestFixture.kitSuccess
+                failwith error.value
+        let freed (model : TableAndElementRotationModel) (name : ParameterName) : TableAndElementRotationModel =
+            let copy =
+                model.planMaterials
+                |> List.tryFind (fun (material : OpenedMaterial) -> material.version = version)
+                |> Option.defaultWith (fun () -> failwith "The study QZ must open the probe quartz")
+            match copy.physics.componentValue name with
+            | Some (ParameterValue value) ->
+                let ends = [ 0.5 * value; 1.5 * value ]
+                let parameter : Parameter =
+                    {
+                        name = name
+                        state =
+                            UnknownParameter
+                                {
+                                    start = ParameterValue value
+                                    bounds =
+                                        {
+                                            lower = ParameterValue (List.min ends)
+                                            upper = ParameterValue (List.max ends)
+                                        }
+                                    priorOpt = None
+                                }
+                    }
+                model |> checkedAfter (StudyCommand (SetOpenedMaterialParameter (study, version, parameter)))
+            | None ->
+                model.kit.close () |> SceneTestFixture.kitSuccess
+                failwith $"The probe quartz's copy has no component {name.value}"
+        let prepared =
+            inverseModelOver context reopened
+            |> checkedAfter (AssignSlot (ElementId "det", Some polarimeter.id))
+            |> checkedAfter (StudyCommand (CreateStudy (study, [])))
+            |> checkedAfter (StudyCommand (OpenMaterial (study, version)))
+        [ ParameterName "g11"; ParameterName "g33" ] |> List.fold freed prepared
+
+    /// `planKitOver` over a fresh app context of `owner` (spec 0050 S14.2).
+    let planKitIn (owner : FolderName) : TableAndElementRotationModel = planKitOver (freshAppContext owner) owner

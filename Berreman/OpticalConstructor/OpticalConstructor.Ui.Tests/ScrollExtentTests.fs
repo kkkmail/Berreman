@@ -31,6 +31,8 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Optimization.StudyEngine
+open OpticalConstructor.Optimization.PlannerRuns
+open OpticalConstructor.Domain.MeasurementPlanner
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -39,6 +41,7 @@ open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.JobRunner
 open OpticalConstructor.Ui.StudyFitJob
+open OpticalConstructor.Ui.PlanJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 // Spec 0050 S11.5: this file compiles before StudyViewTests, so both UI fixtures share one history constructor.
@@ -709,6 +712,68 @@ module ScrollExtentTests =
             window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
             window
         assertReachable "KitWindowFit" makeWindow
+
+    /// The Plan step's report and a running plan's row remain reachable on small screens (spec 0050 S14.2).
+    [<Fact>]
+    let ``the kit window's Plan step leaves everything reachable`` () : unit =
+        let makeWindow () : Window =
+            let owner = FolderName "ScrollExtentPlan"
+            let model = TestAppScope.planKitIn owner
+            let plans = ResizeArray<PlanObserver -> Result<PlanReport, PlannerError>> ()
+            let host : PlanJobHost =
+                {
+                    startPlan =
+                        fun plan ->
+                            plans.Add plan
+                            {
+                                cancelPlan = ignore
+                            }
+                }
+            let shown =
+                {
+                    model with
+                        kitShell =
+                            {
+                                model.kitShell with planRuns = host
+                            }
+                }
+                |> updateTableAndElementRotation (ShowFlowStep PlanFlowStep)
+            let request : PlanRequest =
+                match shown.selectedStudyOpt, shown.planMaterialOpt with
+                | Some study, Some material ->
+                    {
+                        study = study.name
+                        material = material
+                        criterion = shown.planSurface.criterion
+                    }
+                | _ -> failwith "The plan fixture must choose a study that opens a crystal"
+            let started = shown |> updateTableAndElementRotation (StudyPlan (RunPlan request))
+            let unread : PlanObserver =
+                {
+                    reportCandidate = ignore
+                    cancellation = System.Threading.CancellationToken.None
+                }
+            let completed = started |> updateTableAndElementRotation (StudyPlan (PlanEnded ((Assert.Single plans) unread)))
+            match completed.planReportOpt with
+            | Some _ -> ()
+            | None -> Assert.Fail "The completed plan must be the report shown"
+            let progress : JobProgress =
+                {
+                    completed = JobStepCount 1
+                    total = Some (JobStepCount 2)
+                    elapsed = JobElapsed (System.TimeSpan.FromSeconds 1.5)
+                }
+            let running =
+                completed
+                |> updateTableAndElementRotation (StudyPlan (RunPlan request))
+                |> updateTableAndElementRotation (StudyPlan (PlanProgressed progress))
+            Assert.Equal(2, plans.Count)
+            Assert.True running.planJob.job.isRunning
+            Assert.Equal<JobProgress option>(Some progress, running.planJob.job.progress)
+            let window = viewWindow KitWindowView.kitWindowView running
+            window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
+            window
+        assertReachable "KitWindowPlan" makeWindow
 
     /// A full Mueller correlation table remains reachable at both small screen sizes (spec 0050 S11.5).
     [<Fact>]

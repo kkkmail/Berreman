@@ -913,6 +913,36 @@ type ConstructorUiId =
     /// The study's sessions, experiments and gain choices (spec 0050 S12.1).
     static member studySessionGrid : ConstructorUiId = ConstructorUiId "StudySessionGrid"
 
+    // --- The study's Plan step (PlanView). ---
+    /// Opens the Inverse constructor's Plan step (spec 0050 S14.2; 001 §O).
+    static member flowPlanStep : ConstructorUiId = ConstructorUiId "FlowPlanStep"
+    /// The study's Plan surface (spec 0050 S14.2).
+    static member planPanel : ConstructorUiId = ConstructorUiId "PlanPanel"
+    /// Plans the chosen material by the chosen criterion off the UI thread (spec 0050 S14.2; 001 §O).
+    static member planRunButton : ConstructorUiId = ConstructorUiId "PlanRunButton"
+    /// Ranks the candidates by the most information (spec 0050 S14.2).
+    static member planCriterionDeterminantChoice : ConstructorUiId = ConstructorUiId "PlanCriterionDeterminantChoice"
+    /// Ranks the candidates by the smallest target variances (spec 0050 S14.2).
+    static member planCriterionTraceChoice : ConstructorUiId = ConstructorUiId "PlanCriterionTraceChoice"
+    /// The running plan's candidates evaluated of its total (spec 0050 S14.2).
+    static member planProgressBar : ConstructorUiId = ConstructorUiId "PlanProgressBar"
+    /// The running plan's count and elapsed time (spec 0050 S14.2).
+    static member planProgressText : ConstructorUiId = ConstructorUiId "PlanProgressText"
+    /// Stops the running plan before its next candidate (spec 0050 S14.2).
+    static member planCancelButton : ConstructorUiId = ConstructorUiId "PlanCancelButton"
+    /// Explains the last plan's refusal (spec 0050 S14.2).
+    static member planErrorText : ConstructorUiId = ConstructorUiId "PlanErrorText"
+    /// What the kit can recover: its findings, its unplaced plates and a missing polarimeter (spec 0050 S14.2).
+    static member planFindingsList : ConstructorUiId = ConstructorUiId "PlanFindingsList"
+    /// The rank and condition of what the kit holds (spec 0050 S14.2).
+    static member planRankText : ConstructorUiId = ConstructorUiId "PlanRankText"
+    /// The combinations what the kit holds leaves confounded, then its weakest (spec 0050 S14.2).
+    static member planConfoundedList : ConstructorUiId = ConstructorUiId "PlanConfoundedList"
+    /// Each target's value, Cramér–Rao σ and relative σ from what the kit holds (spec 0050 S14.2).
+    static member planBoundsGrid : ConstructorUiId = ConstructorUiId "PlanBoundsGrid"
+    /// The instrument's polarizer and compensator states (spec 0050 S14.2).
+    static member planInstrumentList : ConstructorUiId = ConstructorUiId "PlanInstrumentList"
+
     // --- The study's Fit step (StudyFitView). ---
     /// Opens the Inverse constructor's Fit step (spec 0050 S11.5).
     static member flowFitStep : ConstructorUiId = ConstructorUiId "FlowFitStep"

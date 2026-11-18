@@ -359,6 +359,8 @@ type ConstructorFlowStep =
     | DataFlowStep
     /// The study's parameters, scopes and links, in the Inverse constructor alone (spec 0050 S11.5).
     | UnknownsFlowStep
+    /// The study's plan: what the kit can recover and the experiments that would recover more (spec 0050 S14.2).
+    | PlanFlowStep
     /// The study's pre-fit checks, run controls and fit history (spec 0050 S11.5).
     | FitFlowStep
     /// The selected fit run's stored values and diagnostics (spec 0050 S11.5).
@@ -366,18 +368,37 @@ type ConstructorFlowStep =
     /// Publishes the selected run's calibration and promotes its library subjects (spec 0050 S11.5).
     | PublishFlowStep
 
-    /// The working steps in 001 §O's order (spec 0050 S7.2, S9.3, S11.5; .spec-md §3.22).
-    static member all : ConstructorFlowStep list = [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; FitFlowStep; ResultsFlowStep; PublishFlowStep ]
+    /// The working steps in 001 §O's order (spec 0050 S7.2, S9.3, S11.5, S14.2; .spec-md §3.22).
+    static member all : ConstructorFlowStep list =
+        [
+            ItemsFlowStep
+            SetupsFlowStep
+            ExperimentsFlowStep
+            DataFlowStep
+            UnknownsFlowStep
+            PlanFlowStep
+            FitFlowStep
+            ResultsFlowStep
+            PublishFlowStep
+        ]
 
-    /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3, S11.5).
+    /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3, S11.5,
+    /// S14.2).
     static member stepsOf (mode : ConstructorMode) : ConstructorFlowStep list =
         match mode with
         | InverseConstructor -> ConstructorFlowStep.all
         | ForwardConstructor ->
             ConstructorFlowStep.all
-            |> List.filter (function DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep | PublishFlowStep -> false | _ -> true)
+            |> List.filter (function
+                | DataFlowStep
+                | UnknownsFlowStep
+                | PlanFlowStep
+                | FitFlowStep
+                | ResultsFlowStep
+                | PublishFlowStep -> false
+                | _ -> true)
 
-    /// The strip's caption of the step (spec 0050 S7.2, S11.5).
+    /// The strip's caption of the step (spec 0050 S7.2, S11.5, S14.2).
     member this.caption : ControlCaption =
         match this with
         | ItemsFlowStep -> ControlCaption "Items"
@@ -385,11 +406,12 @@ type ConstructorFlowStep =
         | ExperimentsFlowStep -> ControlCaption "Experiments"
         | DataFlowStep -> ControlCaption "Data"
         | UnknownsFlowStep -> ControlCaption "Unknowns"
+        | PlanFlowStep -> ControlCaption "Plan"
         | FitFlowStep -> ControlCaption "Fit"
         | ResultsFlowStep -> ControlCaption "Results"
         | PublishFlowStep -> ControlCaption "Publish"
 
-    /// The id of the step's box in the flow strip (spec 0050 S7.2, S11.5).
+    /// The id of the step's box in the flow strip (spec 0050 S7.2, S11.5, S14.2).
     member this.flowUiId : ConstructorUiId =
         match this with
         | ItemsFlowStep -> ConstructorUiId.flowItemsStep
@@ -397,6 +419,7 @@ type ConstructorFlowStep =
         | ExperimentsFlowStep -> ConstructorUiId.flowExperimentsStep
         | DataFlowStep -> ConstructorUiId.flowDataStep
         | UnknownsFlowStep -> ConstructorUiId.flowUnknownsStep
+        | PlanFlowStep -> ConstructorUiId.flowPlanStep
         | FitFlowStep -> ConstructorUiId.flowFitStep
         | ResultsFlowStep -> ConstructorUiId.flowResultsStep
         | PublishFlowStep -> ConstructorUiId.flowPublishStep
@@ -3261,8 +3284,8 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         let bay = if model.ribbon = BayNames.experiments then BayNames.add else model.ribbon
         { model with flowStep = SetupsFlowStep; ribbon = bay }
     | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
-    // Spec 0050 S9.3, S11.5: the Inverse surfaces keep the open bay for the workbench's return.
-    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | FitFlowStep | ResultsFlowStep | PublishFlowStep) as step) ->
+    // Spec 0050 S9.3, S11.5, S14.2: the Inverse surfaces keep the open bay for the workbench's return.
+    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | PlanFlowStep | FitFlowStep | ResultsFlowStep | PublishFlowStep) as step) ->
         {
             model with flowStep = step
         }

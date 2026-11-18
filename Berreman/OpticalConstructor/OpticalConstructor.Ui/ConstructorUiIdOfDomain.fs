@@ -89,6 +89,10 @@ module ConstructorUiIdOfDomain =
         static member openMaterialButton (version : MaterialVersionId) : ConstructorUiId =
             ConstructorUiId $"OpenMaterial_{version.materialId.value}_v{version.version.value}"
 
+        /// Chooses the opened crystal material version the plan plans (spec 0050 S14.2).
+        static member planMaterialChoice (version : MaterialVersionId) : ConstructorUiId =
+            ConstructorUiId $"PlanMaterial_{version.materialId.value}_v{version.version.value}"
+
         /// Opens the parameter editor for this owner and parameter (spec 0050 S11.5).
         static member studyParameterRow (parameter : StudyParameterRef) : ConstructorUiId =
             ConstructorUiId $"StudyParameterRow_{parameter.studyParameterUiKey.value}"

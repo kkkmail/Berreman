@@ -242,6 +242,7 @@
         <Compile Include="StudyViewTests.fs" />
         <Compile Include="KitAcceptanceTests.fs" />
         <Compile Include="MaterialSourcesWindowTests.fs" />
+        <Compile Include="PlanViewTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
