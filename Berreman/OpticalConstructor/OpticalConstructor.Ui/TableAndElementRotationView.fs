@@ -45,6 +45,9 @@ open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.StudyFitJob
+open OpticalConstructor.Optimization.PlannerInformation
+open OpticalConstructor.Optimization.PlannerRuns
+open OpticalConstructor.Ui.PlanJob
 open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Domain.KitArchive
 open Softellect.Sys.Primitives
@@ -248,6 +251,8 @@ type KitWindowShell =
         archiveJobs : KitArchiveJob.KitArchiveJobHost
         /// Runs a study fit off the UI thread, reporting progress and completion as messages (spec 0050 S11.5).
         studyFits : StudyFitJobHost
+        /// Runs a plan off the UI thread, reporting each candidate and its end as messages (spec 0050 S14.2).
+        planRuns : PlanJobHost
         /// The folder dialog that chooses the kit to copy experiments from (spec 0050 S6, step 145).
         kitPicker : KitFolderPicker
         /// Opens the column-mapping wizard over the request (spec 0050 S9.2, step 311).
@@ -255,7 +260,7 @@ type KitWindowShell =
     }
 
     /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip or kit and runs no job; its
-    /// archive is an in-memory disk of its own (spec 0050 S5.3, S6, S11.5).
+    /// archive is an in-memory disk of its own (spec 0050 S5.3, S6, S11.5, S14.2).
     static member inert : KitWindowShell =
         {
             explorer = ExplorerProxy.createInMemory ignore
@@ -264,6 +269,7 @@ type KitWindowShell =
             archive = KitArchiveProxy.createInMemory (InMemoryArchiveDisk.create ())
             archiveJobs = KitArchiveJob.KitArchiveJobHost.inert
             studyFits = StudyFitJobHost.inert
+            planRuns = PlanJobHost.inert
             kitPicker =
                 {
                     pickKitFolder = fun () -> async { return None }
@@ -621,6 +627,13 @@ type StudySurfaceState =
             newStudyExperiments = []
         }
 
+/// The Plan step's material and criterion as chosen; window state only, never stored (spec 0050 S14.2).
+type PlanSurfaceState =
+    {
+        materialOpt : MaterialLibrary.MaterialVersionId option
+        criterion : PlanCriterion
+    }
+
 /// Mints an added table slot's identity; the composition root chooses how (spec 0050 S12.1, `.manual/033`).
 [<ReferenceEquality>]
 type ElementIdProvider =
@@ -760,6 +773,10 @@ type TableAndElementRotationModel =
         studySurface : StudySurfaceState
         /// The window's fit job, its last committed run and any refusal (spec 0050 S11.5).
         studyFit : StudyFitJobState
+        /// The window's plan job, its last committed report and any refusal (spec 0050 S14.2).
+        planJob : PlanJobState
+        /// The Plan step's chosen material and criterion (spec 0050 S14.2).
+        planSurface : PlanSurfaceState
         /// The item-model store the add form offers (spec 0050 S7.2, step 209).
         itemModels : ItemModels.ItemModelProxy
         /// Mints the id of the item the add form opens for (spec 0050 S7.2).
@@ -940,6 +957,12 @@ let initWith
         kitFitRuns = []
         studySurface = StudySurfaceState.initial
         studyFit = StudyFitJobState.idle
+        planJob = PlanJobState.idle
+        planSurface =
+            {
+                materialOpt = None
+                criterion = DeterminantPlanCriterion
+            }
         itemModels = ItemModels.ItemModelProxy.createInMemory ()
         itemIds = ItemIdProvider.system
         elementIds = ElementIdProvider.system
@@ -1094,6 +1117,12 @@ type TableAndElementRotationMsg =
     | StudyCommand of StudyMsg
     /// The Fit step's verbs and the running fit's progress and completion (spec 0050 S11.5).
     | StudyFit of StudyFitMsg
+    /// The Plan step's run and the plan job's progress and end; a plan writes no kit file (spec 0050 S14.2).
+    | StudyPlan of PlanMsg
+    /// Chooses the planned material when the chosen study opens it as a crystal, else changes nothing (spec 0050 S14.2).
+    | SetPlanMaterial of MaterialLibrary.MaterialVersionId
+    /// Chooses the criterion the Plan step ranks by, without writing (spec 0050 S14.2).
+    | SetPlanCriterion of PlanCriterion
     /// Publishes the run's item calibrations as their next revisions (spec 0050 S11.5).
     | PublishCalibration of FitRunName
     /// Promotes a fitted material or black-box item to its next library version (spec 0050 S11.5).
@@ -2286,6 +2315,28 @@ type TableAndElementRotationModel with
             let fitted = model.studyFitRuns |> List.tryLast |> Option.map _.dataRead |> Option.defaultValue []
             study.prefitWith model.studyForwardContext fitted)
 
+    /// The chosen study's opened materials whose physics is a crystal, in study order: what a plan can plan (spec 0050
+    /// S14.2).
+    member model.planMaterials : OpenedMaterial list =
+        match model.selectedStudyOpt with
+        | None -> []
+        | Some study ->
+            study.materials
+            |> List.choose (fun (material : OpenedMaterial) -> material.physics.crystalOpt |> Option.map (fun _ -> material))
+
+    /// The Plan step's chosen material while `planMaterials` holds it, else the first of them (spec 0050 S14.2).
+    member model.planMaterialOpt : MaterialLibrary.MaterialVersionId option =
+        let planned = model.planMaterials |> List.map (fun (material : OpenedMaterial) -> material.version)
+        model.planSurface.materialOpt
+        |> Option.filter (fun version -> planned |> List.contains version)
+        |> Option.orElseWith (fun () -> List.tryHead planned)
+
+    /// The last completed plan's report while it is of the chosen study and the planned material (spec 0050 S14.2).
+    member model.planReportOpt : PlanReport option =
+        match model.selectedStudyOpt, model.planMaterialOpt, model.planJob.job.committedResults with
+        | Some study, Some material, Some report when report.study = study.name && report.material = material -> Some report
+        | _ -> None
+
     /// The item's model as the window's stores resolve it: its stored version through `itemModels`, its form checked
     /// against the instance, and only then its preset or sample version; `None` when any of them is unresolved, an
     /// error or of another form (spec 0050 S7.2, S8.2).
@@ -2972,6 +3023,30 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         match message with
         | RunFit _ -> guardKitWrite model updateFit
         | _ -> updateFit ()
+    | StudyPlan message ->
+        // No read-only guard: a plan writes no kit file, and a read-only kit caches nothing (spec 0050 S14.2, step 485).
+        let environment = PlanEnvironment.create model.kitShell.planRuns model.kit model.studyForwardContext
+        {
+            model with planJob = message.updateWith environment model.planJob
+        }
+    | SetPlanMaterial version ->
+        if model.planMaterials |> List.exists (fun (material : OpenedMaterial) -> material.version = version) then
+            {
+                model with
+                    planSurface =
+                        {
+                            model.planSurface with materialOpt = Some version
+                        }
+            }
+        else model
+    | SetPlanCriterion criterion ->
+        {
+            model with
+                planSurface =
+                    {
+                        model.planSurface with criterion = criterion
+                    }
+        }
     | StudyCommand message ->
         guardKitWrite model (fun () ->
             match message.applyTo model.studyContext with
