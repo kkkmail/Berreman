@@ -13,6 +13,9 @@ open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.Propagation
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.PlannerSymmetry
 
@@ -607,6 +610,16 @@ module MeasurementPlanner =
             [ FullMuellerReach; EllipsometricReach; IntensityOnlyReach ]
             |> List.filter (fun reach -> List.contains reach reached)
 
+    type Emission with
+
+        /// The branches a plate of this emission is read on, transmitted first: a look's and a candidate's (spec 0050
+        /// S14.1, S14.2).
+        member private this.plannerObservables : Observable list =
+            match this with
+            | EmitBoth -> [ TransmittedMueller; ReflectedMueller ]
+            | EmitTransmittedOnly -> [ TransmittedMueller ]
+            | EmitReflectedOnly -> [ ReflectedMueller ]
+
     /// A free-standing plate of the material in the kit, the shape spec 0044's forward model takes: its sample's
     /// substrate layer, finite, with the principal axis that layer's orientation puts on the normal (spec 0050 S14.1).
     type PlannerPlate =
@@ -644,16 +657,10 @@ module MeasurementPlanner =
 
             this.plates
             |> List.collect (fun (plate : PlannerPlate) ->
-                let observables : Observable list =
-                    match plate.emission with
-                    | EmitBoth -> [ TransmittedMueller; ReflectedMueller ]
-                    | EmitTransmittedOnly -> [ TransmittedMueller ]
-                    | EmitReflectedOnly -> [ ReflectedMueller ]
-
                 [
                     for reach in this.lab.reaches do
                         for incidence in incidences do
-                            for observable in observables do
+                            for observable in plate.emission.plannerObservables do
                                 let look : PlannerLook =
                                     {
                                         normalAxisOpt = plate.normalAxisOpt
@@ -683,6 +690,127 @@ module MeasurementPlanner =
             jacobian : ResidualJacobian
             noise : NoiseVariance
         }
+
+    /// Whether the kit already holds a candidate, and the experiment that does; derived, never stored, so it carries no
+    /// wire tag (spec 0050 S14.2).
+    type PlanCoverage =
+        | CandidateInKit of ExperimentName
+        | CandidateNotInKit
+
+    /// A candidate experiment: one plate in Object 1 at a source's line, read by the polarimeter on one branch while its
+    /// R2 sweeps the incidence and its R1 the azimuth, AT-2's shape (spec 0050 S14.2; 001 §M).
+    type PlanCandidate =
+        {
+            source : PlannerSource
+            plate : PlannerPlate
+            cut : SampleCut
+            observable : Observable
+        }
+
+        /// A2's incidences with normal incidence: 0, 20, 40 and 60°, a constant of the planner, not a setting (spec 0050
+        /// S14.2; .spec-md §8; `AbsorbingBiaxialSample.fs` `a2`).
+        static member incidenceRange : VariableRange =
+            { min = SweptValue 0.0; max = SweptValue 60.0; points = CurvePointCount 4 }
+
+        /// A1's azimuths: 0, 22.5, 45 and 67.5°, a constant of the planner, not a setting (spec 0050 S14.2; .spec-md §8;
+        /// `AbsorbingBiaxialSample.fs` `a1`).
+        static member azimuthRange : VariableRange =
+            { min = SweptValue 0.0; max = SweptValue 67.5; points = CurvePointCount 4 }
+
+        /// The branch an experiment of the candidate reads (spec 0050 S14.2).
+        member this.capture : MeasurementMode =
+            match this.observable with
+            | TransmittedMueller -> CaptureTransmitted
+            | ReflectedMueller -> CaptureReflected
+
+        /// `<plate> (<cut's plate>), transmitted|reflected, <line in nm, one decimal> nm`, as the plan lists it
+        /// (spec 0050 S14.2).
+        member this.caption : string =
+            let branch : string =
+                match this.observable with
+                | TransmittedMueller -> "transmitted"
+                | ReflectedMueller -> "reflected"
+
+            let line : string =
+                (Units.wavelengthToUnit Units.Nanometer this.source.waveLength).value.ToString("F1", CultureInfo.InvariantCulture)
+
+            $"{this.plate.label.value} ({this.cut.plateText}), {branch}, {line} nm"
+
+        /// The first experiment, whatever its role, whose setup resolves, holds the plate in Object 1, and whose one block,
+        /// read on this branch or both, sweeps that slot's R2 then R1 over the two ranges at the source's own line; labels
+        /// are not compared (spec 0050 S14.2).
+        member this.coverageIn (setups : Setup list) (experiments : Experiment list) : PlanCoverage =
+            let captures : MeasurementMode list = [ this.capture; CaptureBoth ]
+
+            let axisOn (slot : SetupSlot) (variable : VariableParameter) (range : VariableRange) : ScanAxis =
+                {
+                    elementId = slot.id
+                    label = ElementLabel.blank
+                    variable = variable
+                    range = range
+                }
+
+            let unlabelled (axis : ScanAxis) : ScanAxis = { axis with label = ElementLabel.blank }
+
+            let heldBy (experiment : Experiment) : ExperimentName option =
+                match experiment.slotsIn setups, experiment.scan with
+                | Ok slots, { blocks = [ block ]; sourceWaveLengthOpt = None } when List.contains block.capture captures ->
+                    SetupSlot.inLightOrder slots
+                    |> List.tryFind (fun (roled : RoledSlot) -> roled.role = ObjectSlotRole (SlotPosition 1))
+                    |> Option.filter (fun (objectOne : RoledSlot) ->
+                        let swept : ScanAxis list =
+                            [
+                                axisOn objectOne.slot VaryR2 PlanCandidate.incidenceRange
+                                axisOn objectOne.slot VaryR1 PlanCandidate.azimuthRange
+                            ]
+
+                        objectOne.slot.content.itemOpt = Some this.plate.item
+                        && (block.axes |> List.map unlabelled) = swept)
+                    |> Option.map (fun _ -> experiment.name)
+                | Ok _, _
+                | Error _, _ -> None
+
+            match experiments |> List.tryPick heldBy with
+            | Some name -> CandidateInKit name
+            | None -> CandidateNotInKit
+
+    type PlannerInputs with
+
+        /// The kit's first detector recording a full Mueller matrix, the one reader of every candidate (spec 0050 S14.2).
+        member this.polarimeterOpt : PlannerDetector option =
+            this.lab.detectors |> List.tryFind (fun (detector : PlannerDetector) -> detector.recording = RecordsMuellerMatrix)
+
+        /// The plates with no principal axis on their normal: the study's forward places a plate by its cut, so these have
+        /// no candidate and the plan names them (spec 0050 S14.2).
+        member this.unplacedPlates : PlannerPlate list =
+            this.plates |> List.filter (fun (plate : PlannerPlate) -> plate.normalAxisOpt = None)
+
+        /// None without a polarimeter; otherwise for each source, each plate placed by its principal cut and each branch
+        /// its emission allows, in that order (spec 0050 S14.2; 001 §M).
+        member this.candidates : PlanCandidate list =
+            let cutOf (plate : PlannerPlate) : SampleCut option =
+                [ ZCut; XCut; YCut ] |> List.tryFind (fun (cut : SampleCut) -> cut.normalAxisOpt = plate.normalAxisOpt)
+
+            match this.polarimeterOpt with
+            | None -> []
+            | Some _ ->
+                [
+                    for source in this.lab.sources do
+                        for plate in this.plates do
+                            match cutOf plate with
+                            | Some cut ->
+                                for observable in plate.emission.plannerObservables do
+                                    let candidate : PlanCandidate =
+                                        {
+                                            source = source
+                                            plate = plate
+                                            cut = cut
+                                            observable = observable
+                                        }
+
+                                    candidate
+                            | None -> ()
+                ]
 
     type Study with
 

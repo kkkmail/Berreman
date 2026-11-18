@@ -7,6 +7,9 @@ open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Propagation
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.CrystalPhysics
@@ -153,6 +156,13 @@ module PlannerInputsTests =
     let private qzInfiniteSample : Sample =
         plateSampleOf "47100000-0000-4000-8000-000000000014" "QZ-inf" (crystalLayerOf Thickness.Infinity PrimaryAxes) EmitBoth
 
+    /// A tilted cut: theta = 30 degrees under ZmYpXp puts no principal axis on the normal.
+    let private tiltedOrientation : CrystalOrientation =
+        EulerRotation { EulerAngles.convention = ZmYpXp; phi = Angle.zero; theta = Angle.degree 30.0<deg>; psi = Angle.zero }
+
+    let private qzTSample : Sample =
+        plateSampleOf "47100000-0000-4000-8000-000000000015" "QZ-T" (crystalLayerOf plateThickness tiltedOrientation) EmitBoth
+
     /// A fixed item over the shipped stack-sample model bound to version one of `sample` (steps 210, 216).
     let private sampleDraft (id : string) (sample : Sample) : ItemDraft =
         fixedDraft
@@ -168,6 +178,7 @@ module PlannerInputsTests =
     let private qzXDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000022" qzXSample
     let private qzFilmDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000023" qzFilmSample
     let private qzInfiniteDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000024" qzInfiniteSample
+    let private qzTDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000025" qzTSample
 
     let private drafts : ItemDraft list =
         [
@@ -184,6 +195,7 @@ module PlannerInputsTests =
             qzXDraft
             qzFilmDraft
             qzInfiniteDraft
+            qzTDraft
         ]
 
     /// Each item's draft model, as the library would resolve it.
@@ -203,6 +215,7 @@ module PlannerInputsTests =
     let private qzX : Item = qzXDraft.toItem
     let private qzFilm : Item = qzFilmDraft.toItem
     let private qzInfinite : Item = qzInfiniteDraft.toItem
+    let private qzT : Item = qzTDraft.toItem
 
     let private opticOf (item : Item) (role : OpticRole) : PlannerOptic = { item = item.id; label = item.label; role = role }
 
@@ -676,3 +689,212 @@ module PlannerInputsTests =
             "This kit can never recover n_o: no look of the kit measures a plate of it.",
             (List.head report.findings).text
         )
+
+    /// The kit's Laser as its lab profile reads it.
+    let private laserSource : PlannerSource =
+        {
+            item = laser.id
+            label = laser.label
+            waveLength = (BuiltinCatalogue.source Library.PresetIds.heNe633).waveLength
+            tunableLimitsOpt = None
+        }
+
+    /// The candidate of `source`, `plate`, `cut` and `observable`.
+    let private candidateOf (source : PlannerSource) (plate : PlannerPlate) (cut : SampleCut) (observable : Observable) : PlanCandidate =
+        {
+            source = source
+            plate = plate
+            cut = cut
+            observable = observable
+        }
+
+    [<Fact>]
+    let ``a kit's candidates are each placed plate on each branch it emits at each source's line, read by its polarimeter`` () =
+        let inputs : PlannerInputs =
+            plannerInputsOf crystalStudy [ laser; polarimeter; qzZ; qzX; qzT ] choiceOf crystalVersion |> inputsValue
+
+        let qzZPlate : PlannerPlate = plateOf qzZ qzZSample EmitBoth ThirdCrystalAxis
+        let qzXPlate : PlannerPlate = plateOf qzX qzXSample EmitTransmittedOnly FirstCrystalAxis
+        let qzTPlate : PlannerPlate = { plateOf qzT qzTSample EmitBoth ThirdCrystalAxis with normalAxisOpt = None }
+
+        Assert.Equal<PlannerPlate list>([ qzZPlate; qzXPlate; qzTPlate ], inputs.plates)
+        Assert.Equal<PlannerSource list>([ laserSource ], inputs.lab.sources)
+        Assert.Equal<PlannerDetector option>(Some (detectorOf polarimeter RecordsMuellerMatrix), inputs.polarimeterOpt)
+        Assert.Equal<PlannerPlate list>([ qzTPlate ], inputs.unplacedPlates)
+
+        Assert.Equal<PlanCandidate list>(
+            [
+                candidateOf laserSource qzZPlate ZCut TransmittedMueller
+                candidateOf laserSource qzZPlate ZCut ReflectedMueller
+                candidateOf laserSource qzXPlate XCut TransmittedMueller
+            ],
+            inputs.candidates
+        )
+
+        Assert.Equal<string list>(
+            [
+                "QZ-Z (z-cut plate), transmitted, 632.8 nm"
+                "QZ-Z (z-cut plate), reflected, 632.8 nm"
+                "QZ-X (x-cut plate), transmitted, 632.8 nm"
+            ],
+            inputs.candidates |> List.map (fun (candidate : PlanCandidate) -> candidate.caption)
+        )
+
+        Assert.Equal<MeasurementMode list>(
+            [ CaptureTransmitted; CaptureReflected; CaptureTransmitted ],
+            inputs.candidates |> List.map (fun (candidate : PlanCandidate) -> candidate.capture)
+        )
+
+        Assert.Equal<SweptValue list>(
+            [ SweptValue 0.0; SweptValue 20.0; SweptValue 40.0; SweptValue 60.0 ],
+            PlanCandidate.incidenceRange.sweptValues
+        )
+
+        Assert.Equal<SweptValue list>(
+            [ SweptValue 0.0; SweptValue 22.5; SweptValue 45.0; SweptValue 67.5 ],
+            PlanCandidate.azimuthRange.sweptValues
+        )
+
+        // A second line repeats every placed plate's candidates after the first source's.
+        let greenSource : PlannerSource =
+            {
+                item = ItemId (Guid.Parse "47000000-0000-4000-8000-000000000010")
+                label = ItemLabel "Green"
+                waveLength = WaveLength.nm 532.0<nm>
+                tunableLimitsOpt = None
+            }
+
+        let twoLines : PlannerInputs = { inputs with lab = { inputs.lab with sources = [ laserSource; greenSource ] } }
+
+        Assert.Equal<PlanCandidate list>(
+            inputs.candidates
+            @ [
+                candidateOf greenSource qzZPlate ZCut TransmittedMueller
+                candidateOf greenSource qzZPlate ZCut ReflectedMueller
+                candidateOf greenSource qzXPlate XCut TransmittedMueller
+            ],
+            twoLines.candidates
+        )
+
+        Assert.Equal("QZ-X (x-cut plate), transmitted, 532.0 nm", (List.last twoLines.candidates).caption)
+
+        // The Phone in place of the Polarimeter reads no Mueller matrix: no candidate, the tilted plate still unplaced.
+        let phoneInputs : PlannerInputs =
+            plannerInputsOf crystalStudy [ laser; phone; qzZ; qzX; qzT ] choiceOf crystalVersion |> inputsValue
+
+        Assert.Equal<PlannerDetector option>(None, phoneInputs.polarimeterOpt)
+        Assert.Equal<PlanCandidate list>([], phoneInputs.candidates)
+        Assert.Equal<PlannerPlate list>([ qzTPlate ], phoneInputs.unplacedPlates)
+
+    let private benchSlotOf (id : string) (kind : CatalogueKind) (point : TablePoint) : SetupSlot =
+        {
+            id = ElementId id
+            placement = ElementPlacement.create kind point
+            zoom = BeamLayout.ElementZoom 5.0
+            beam = BeamLayout.OnMainBeam
+            content = EmptySlotContent
+        }
+
+    let private srcSlot : SetupSlot = benchSlotOf "src" CatalogueKind.LightSource RayModel.defaultSourcePoint
+    let private sampleSlot : SetupSlot = benchSlotOf "sample" CatalogueKind.Sample { x = 0.0<meter>; y = 0.0<meter> }
+    let private detSlot : SetupSlot = benchSlotOf "det" CatalogueKind.Detector RayModel.defaultDetectorPoint
+
+    /// The slot holding the draft's item, as the table assigns it.
+    let private assigned (draft : ItemDraft) (slot : SetupSlot) : SetupSlot =
+        match slot.withItem draft.toItem draft.model with
+        | Ok held -> held
+        | Error error -> failwith $"'{draft.label.value}' did not fit '{slot.id.value}': {error.describe}"
+
+    /// `Bench` at its first revision: the Laser in `src`, the plate in `sample` and the Polarimeter in `det`.
+    let private benchHolding (plate : ItemDraft) : Setup =
+        let slots : SetupSlot list = [ assigned laserDraft srcSlot; assigned plate sampleSlot; assigned polarimeterDraft detSlot ]
+
+        match Setup.create (SetupName "Bench") slots [] with
+        | Ok setup -> setup
+        | Error error -> failwith $"'Bench' was refused: {error.describe}"
+
+    /// The sample slot's `variable` over `range`, under a label the coverage does not compare.
+    let private sampleAxisOf (variable : VariableParameter) (range : VariableRange) : ScanAxis =
+        {
+            elementId = sampleSlot.id
+            label = ElementLabel "Sample #1"
+            variable = variable
+            range = range
+        }
+
+    /// A science run named `name` over `setup`, one block of `axes` read on `capture`, at the source's own line.
+    let private runOver (name : string) (setup : Setup) (axes : ScanAxis list) (capture : MeasurementMode) : Experiment =
+        let block : ScanBlock = { axes = axes; capture = capture }
+
+        {
+            id = ExperimentId 1
+            name = ExperimentName name
+            setup = setup.reference
+            scan = { blocks = [ block ]; sourceWaveLengthOpt = None }
+            role = ScienceRun
+            sessionOpt = None
+            notes = ExperimentNotes.none
+            dataOpt = None
+            corrections = []
+        }
+
+    [<Fact>]
+    let ``a candidate is in the kit once an experiment over its plate sweeps its angles on its branch`` () =
+        let inputs : PlannerInputs =
+            plannerInputsOf crystalStudy [ laser; polarimeter; qzZ; qzX ] choiceOf crystalVersion |> inputsValue
+
+        let candidateOn (plate : Item) (observable : Observable) : PlanCandidate =
+            inputs.candidates
+            |> List.find (fun (candidate : PlanCandidate) -> candidate.plate.item = plate.id && candidate.observable = observable)
+
+        let transmitted : PlanCandidate = candidateOn qzZ TransmittedMueller
+        let reflected : PlanCandidate = candidateOn qzZ ReflectedMueller
+        let bench : Setup = benchHolding qzZDraft
+        let e1 : ExperimentName = ExperimentName "E1"
+
+        let sweep : ScanAxis list =
+            [ sampleAxisOf VaryR2 PlanCandidate.incidenceRange; sampleAxisOf VaryR1 PlanCandidate.azimuthRange ]
+
+        let transmittedRun : Experiment = runOver "E1" bench sweep CaptureTransmitted
+        Assert.Equal(CandidateInKit e1, transmitted.coverageIn [ bench ] [ transmittedRun ])
+        Assert.Equal(CandidateNotInKit, reflected.coverageIn [ bench ] [ transmittedRun ])
+
+        // Whatever its role: a planned run already holds the candidate.
+        Assert.Equal(CandidateInKit e1, transmitted.coverageIn [ bench ] [ transmittedRun.withRole PlannedRun ])
+
+        let bothRun : Experiment = runOver "E1" bench sweep CaptureBoth
+        Assert.Equal(CandidateInKit e1, transmitted.coverageIn [ bench ] [ bothRun ])
+        Assert.Equal(CandidateInKit e1, reflected.coverageIn [ bench ] [ bothRun ])
+
+        // The first experiment that holds it is named.
+        let swappedE0 : Experiment = runOver "E0" bench (List.rev sweep) CaptureBoth
+        let bothE2 : Experiment = runOver "E2" bench sweep CaptureBoth
+
+        Assert.Equal(
+            CandidateInKit e1,
+            reflected.coverageIn [ bench ] [ swappedE0; runOver "E1" bench sweep CaptureReflected; bothE2 ]
+        )
+
+        // The axes in the other order, another range, or a setup holding QZ-X: it holds neither.
+        let otherRange : ScanAxis list =
+            [
+                sampleAxisOf VaryR2 PlanCandidate.incidenceRange
+                sampleAxisOf VaryR1 { PlanCandidate.azimuthRange with points = CurvePointCount 5 }
+            ]
+
+        let xBench : Setup = benchHolding qzXDraft
+        let xRun : Experiment = runOver "E1" xBench sweep CaptureBoth
+
+        for setups, run in [ [ bench ], swappedE0; [ bench ], runOver "E1" bench otherRange CaptureBoth; [ xBench ], xRun ] do
+            Assert.Equal(CandidateNotInKit, transmitted.coverageIn setups [ run ])
+            Assert.Equal(CandidateNotInKit, reflected.coverageIn setups [ run ])
+
+        Assert.Equal(CandidateInKit e1, (candidateOn qzX TransmittedMueller).coverageIn [ xBench ] [ xRun ])
+
+        // A setup the kit does not hold, or a set line, holds nothing.
+        Assert.Equal(CandidateNotInKit, transmitted.coverageIn [] [ bothRun ])
+
+        let setLine : Experiment =
+            { bothRun with scan = { bothRun.scan with sourceWaveLengthOpt = Some laserSource.waveLength } }
+
+        Assert.Equal(CandidateNotInKit, transmitted.coverageIn [ bench ] [ setLine ])
