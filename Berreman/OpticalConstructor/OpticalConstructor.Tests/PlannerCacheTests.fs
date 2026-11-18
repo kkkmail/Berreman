@@ -92,12 +92,12 @@ module PlannerCacheTests =
             (fixedClock.now ())
 
     /// One in-memory folder initialised as a kit.
-    let private newKitFolder () : InMemoryKitFolder =
+    let newKitFolder () : InMemoryKitFolder =
         let folder = InMemoryKitFolder.create ()
         (KitProxy.createInMemory folder).initialiseKit (newKitFile ()) |> kitValue
         folder
 
-    let private openOver (folder : InMemoryKitFolder) (access : KitAccess) : KitContext =
+    let openOver (folder : InMemoryKitFolder) (access : KitAccess) : KitContext =
         KitContext.openKit (KitProxy.createInMemory folder) access fixedClock |> kitValue
 
     let private pathsOf (folder : InMemoryKitFolder) : string list =

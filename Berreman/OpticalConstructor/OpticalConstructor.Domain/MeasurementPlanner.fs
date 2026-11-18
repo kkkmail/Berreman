@@ -303,8 +303,8 @@ module MeasurementPlanner =
                 | OffAxisCutFinding need -> Some need
                 | UnrecoverableTargetFinding _ -> None)
 
-    /// Why the planner refuses a report, a lab profile, its inputs, a candidate's information or the instrument findings
-    /// (spec 0050 S14.1, S14.2).
+    /// Why the planner refuses a report, a lab profile, its inputs, a candidate's information, the instrument findings
+    /// or a run (spec 0050 S14.1, S14.2).
     type PlannerError =
         | UnknownPlannerTargetErr of reason : string
         | UnresolvedPlannerItemErr of reason : string
@@ -321,6 +321,10 @@ module MeasurementPlanner =
         | InstrumentEvaluationErr of reason : string
         /// `.oc/planner/` cannot be named, read or written; the reason is the store's refusal (spec 0050 S14.2).
         | PlannerCacheErr of reason : string
+        /// The run was asked to stop before a candidate; the reason counts the candidates evaluated (spec 0050 S14.2).
+        | PlanCancelledErr of reason : string
+        /// The forward model could not solve a candidate's configurations (spec 0050 S14.2).
+        | PlannerForwardErr of reason : string
 
         /// The refusal as the planner states it (spec 0050 S14.1, S14.2).
         member this.describe : string =
@@ -333,6 +337,8 @@ module MeasurementPlanner =
             | PlannerShapeErr reason -> $"the candidate's Jacobian does not fit the targets: {reason}"
             | InstrumentEvaluationErr reason -> $"an optic of the kit cannot be evaluated: {reason}"
             | PlannerCacheErr reason -> $"the planner's cache cannot be read or written: {reason}"
+            | PlanCancelledErr reason -> $"the plan was cancelled: {reason}"
+            | PlannerForwardErr reason -> $"the forward model refused a candidate: {reason}"
 
     type CrystalParameters with
 

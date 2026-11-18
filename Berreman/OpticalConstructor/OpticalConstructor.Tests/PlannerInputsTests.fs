@@ -105,7 +105,7 @@ module PlannerInputsTests =
     let crystalVersion : MaterialVersionId =
         MaterialVersionId.firstOf (MaterialId (Guid.Parse "47100000-0000-4000-8000-000000000001"))
 
-    let private crystalEntry : MaterialEntry =
+    let crystalEntry : MaterialEntry =
         {
             id = crystalVersion.materialId
             name = EntryName "Probe quartz"
@@ -176,7 +176,7 @@ module PlannerInputsTests =
                 sample
             ))
 
-    let private qzZDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000021" qzZSample
+    let qzZDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000021" qzZSample
     let private qzXDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000022" qzXSample
     let private qzFilmDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000023" qzFilmSample
     let private qzInfiniteDraft : ItemDraft = sampleDraft "47100000-0000-4000-8000-000000000024" qzInfiniteSample
@@ -214,7 +214,7 @@ module PlannerInputsTests =
     let private ellipsometer : Item = ellipsometerDraft.toItem
     let private gl : Item = glDraft.toItem
     let qzZ : Item = qzZDraft.toItem
-    let private qzX : Item = qzXDraft.toItem
+    let qzX : Item = qzXDraft.toItem
     let private qzFilm : Item = qzFilmDraft.toItem
     let private qzInfinite : Item = qzInfiniteDraft.toItem
     let private qzT : Item = qzTDraft.toItem
@@ -238,7 +238,7 @@ module PlannerInputsTests =
     let private unresolvedReasonOf (result : Result<LabProfile, PlannerError>) : string =
         match result with
         | Error (UnresolvedPlannerItemErr reason) -> reason
-        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ | PlannerCacheErr _ as error) ->
+        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ | PlannerCacheErr _ | PlanCancelledErr _ | PlannerForwardErr _ as error) ->
             failwith $"Expected an unresolved item, got: {error.describe}"
         | Ok _ -> failwith "Expected an unresolved item, got a lab profile."
 
@@ -516,7 +516,7 @@ module PlannerInputsTests =
 
     let private nO : ParameterName = ParameterName "n_o"
 
-    let private g11 : ParameterName = ParameterName "g11"
+    let g11 : ParameterName = ParameterName "g11"
 
     /// The crystal the probe quartz's copy opens as.
     let private probeCrystal : CrystalParameters = UniaxialCrystal uniaxialParameters
@@ -808,7 +808,7 @@ module PlannerInputsTests =
         | Error error -> failwith $"'{draft.label.value}' did not fit '{slot.id.value}': {error.describe}"
 
     /// `Bench` at its first revision: the Laser in `src`, the plate in `sample` and the Polarimeter in `det`.
-    let private benchHolding (plate : ItemDraft) : Setup =
+    let benchHolding (plate : ItemDraft) : Setup =
         let slots : SetupSlot list = [ assigned laserDraft srcSlot; assigned plate sampleSlot; assigned polarimeterDraft detSlot ]
 
         match Setup.create (SetupName "Bench") slots [] with
@@ -816,7 +816,7 @@ module PlannerInputsTests =
         | Error error -> failwith $"'Bench' was refused: {error.describe}"
 
     /// The sample slot's `variable` over `range`, under a label the coverage does not compare.
-    let private sampleAxisOf (variable : VariableParameter) (range : VariableRange) : ScanAxis =
+    let sampleAxisOf (variable : VariableParameter) (range : VariableRange) : ScanAxis =
         {
             elementId = sampleSlot.id
             label = ElementLabel "Sample #1"
@@ -825,7 +825,7 @@ module PlannerInputsTests =
         }
 
     /// A science run named `name` over `setup`, one block of `axes` read on `capture`, at the source's own line.
-    let private runOver (name : string) (setup : Setup) (axes : ScanAxis list) (capture : MeasurementMode) : Experiment =
+    let runOver (name : string) (setup : Setup) (axes : ScanAxis list) (capture : MeasurementMode) : Experiment =
         let block : ScanBlock = { axes = axes; capture = capture }
 
         {

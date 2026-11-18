@@ -48,6 +48,7 @@
         <Compile Include="StudyEngine.fs" />
         <Compile Include="Synthesis.fs" />
         <Compile Include="PlannerInformation.fs" />
+        <Compile Include="PlannerRuns.fs" />
     </ItemGroup>
 
     <ItemGroup>

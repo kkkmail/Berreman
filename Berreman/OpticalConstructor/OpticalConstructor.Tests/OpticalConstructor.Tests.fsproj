@@ -245,6 +245,7 @@
         <Compile Include="PlannerInputsTests.fs" />
         <Compile Include="PlannerInformationTests.fs" />
         <Compile Include="PlannerCacheTests.fs" />
+        <Compile Include="PlanRunTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
