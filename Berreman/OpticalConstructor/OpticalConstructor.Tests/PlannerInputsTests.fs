@@ -30,7 +30,7 @@ open CrystalMaterialFixtures
 /// (spec 0050 S14.1, S14.2; 001 §M).
 module PlannerInputsTests =
 
-    let private itemValue (result : Result<Item, ItemError>) : Item =
+    let itemValue (result : Result<Item, ItemError>) : Item =
         result |> Result.defaultWith (fun error -> failwith error.describe)
 
     let private profileValue (result : Result<LabProfile, PlannerError>) : LabProfile =
@@ -102,7 +102,7 @@ module PlannerInputsTests =
             ))
 
     /// The test-local uniaxial crystal the plates here are cut from.
-    let private crystalVersion : MaterialVersionId =
+    let crystalVersion : MaterialVersionId =
         MaterialVersionId.firstOf (MaterialId (Guid.Parse "47100000-0000-4000-8000-000000000001"))
 
     let private crystalEntry : MaterialEntry =
@@ -201,19 +201,19 @@ module PlannerInputsTests =
         ]
 
     /// Each item's draft model, as the library would resolve it.
-    let private choiceOf (item : Item) : ItemModelChoice option =
+    let choiceOf (item : Item) : ItemModelChoice option =
         drafts |> List.tryFind (fun draft -> draft.id = item.id) |> Option.map (fun draft -> draft.model)
 
-    let private laser : Item = laserDraft.toItem
-    let private lp1 : Item = lp1Draft.toItem
+    let laser : Item = laserDraft.toItem
+    let lp1 : Item = lp1Draft.toItem
     let private lp2 : Item = lp2Draft.toItem
     let private cpl1 : Item = cpl1Draft.toItem
     let private ret : Item = retDraft.toItem
     let private phone : Item = phoneDraft.toItem
-    let private polarimeter : Item = polarimeterDraft.toItem
+    let polarimeter : Item = polarimeterDraft.toItem
     let private ellipsometer : Item = ellipsometerDraft.toItem
     let private gl : Item = glDraft.toItem
-    let private qzZ : Item = qzZDraft.toItem
+    let qzZ : Item = qzZDraft.toItem
     let private qzX : Item = qzXDraft.toItem
     let private qzFilm : Item = qzFilmDraft.toItem
     let private qzInfinite : Item = qzInfiniteDraft.toItem
@@ -238,7 +238,7 @@ module PlannerInputsTests =
     let private unresolvedReasonOf (result : Result<LabProfile, PlannerError>) : string =
         match result with
         | Error (UnresolvedPlannerItemErr reason) -> reason
-        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ as error) ->
+        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ | PlannerCacheErr _ as error) ->
             failwith $"Expected an unresolved item, got: {error.describe}"
         | Ok _ -> failwith "Expected an unresolved item, got a lab profile."
 
@@ -357,12 +357,12 @@ module PlannerInputsTests =
     let private studyValue (result : Result<Study, StudyError>) : Study =
         result |> Result.defaultWith (fun error -> failwith error.describe)
 
-    let private inputsValue (result : Result<PlannerInputs, PlannerError>) : PlannerInputs =
+    let inputsValue (result : Result<PlannerInputs, PlannerError>) : PlannerInputs =
         result |> Result.defaultWith (fun error -> failwith error.describe)
 
-    let private nE : ParameterName = ParameterName "n_e"
+    let nE : ParameterName = ParameterName "n_e"
 
-    let private g33 : ParameterName = ParameterName "g33"
+    let g33 : ParameterName = ParameterName "g33"
 
     /// The study's copy of `version`.
     let private copyIn (study : Study) (version : MaterialVersionId) : OpenedMaterial =
@@ -385,7 +385,7 @@ module PlannerInputsTests =
         | None -> failwith $"The crystal's copy has no component {name.value}."
 
     /// A study of no experiment that opens the crystal and frees n_e and g33.
-    let private crystalStudy : Study =
+    let crystalStudy : Study =
         let opened : Study =
             Study.create (StudyName "Probe quartz plates") [] [] []
             |> Result.bind (fun study -> study.openMaterial crystalVersion crystalEntry)
@@ -404,7 +404,7 @@ module PlannerInputsTests =
         }
 
     /// The planner's inputs for `material` over the kit of `items` holding `study`.
-    let private plannerInputsOf
+    let plannerInputsOf
         (study : Study)
         (items : Item list)
         (choiceOf : Item -> ItemModelChoice option)

@@ -319,6 +319,8 @@ module MeasurementPlanner =
         /// An optic of the kit is not in the kit's items, its model is not in the library, or the item evaluator refuses
         /// it; the reason names its label and the cause (spec 0050 S14.2).
         | InstrumentEvaluationErr of reason : string
+        /// `.oc/planner/` cannot be named, read or written; the reason is the store's refusal (spec 0050 S14.2).
+        | PlannerCacheErr of reason : string
 
         /// The refusal as the planner states it (spec 0050 S14.1, S14.2).
         member this.describe : string =
@@ -330,6 +332,7 @@ module MeasurementPlanner =
             | NoiselessPlannerCandidateErr reason -> $"the candidate's noise variance is not above zero: {reason}"
             | PlannerShapeErr reason -> $"the candidate's Jacobian does not fit the targets: {reason}"
             | InstrumentEvaluationErr reason -> $"an optic of the kit cannot be evaluated: {reason}"
+            | PlannerCacheErr reason -> $"the planner's cache cannot be read or written: {reason}"
 
     type CrystalParameters with
 
@@ -1033,3 +1036,59 @@ module MeasurementPlanner =
                         }
 
                     inputs))
+
+    /// What one candidate's Jacobian depends on: its source, plate and polarimeter items with their parameter states,
+    /// its branch, the opened material (the nominal point and the targets' bounds) and the targets (spec 0050 S14.2;
+    /// 001 §M).
+    type PlannerCacheKey =
+        {
+            source : Item
+            plate : Item
+            detector : Item
+            observable : Observable
+            material : OpenedMaterial
+            targets : ParameterName list
+        }
+
+    /// One candidate's cached rows and the key they were computed for, so a stale or colliding file is a miss
+    /// (spec 0050 S14.2).
+    type PlannerCacheEntry =
+        {
+            key : PlannerCacheKey
+            rows : CandidateRows
+        }
+
+    type PlannerInputs with
+
+        /// The candidate's key over its source, its plate and the polarimeter as `items` holds them, so an item no
+        /// candidate reads is in no key; no polarimeter, or an id `items` lacks, is UnresolvedPlannerItemErr (spec 0050
+        /// S14.2).
+        member this.cacheKeyWith
+            (items : Item list)
+            (candidate : PlanCandidate)
+            : Result<PlannerCacheKey, PlannerError> =
+            let itemOf (id : ItemId) (label : ItemLabel) : Result<Item, PlannerError> =
+                match items |> List.tryFind (fun (item : Item) -> item.id = id) with
+                | Some item -> Ok item
+                | None -> Error (UnresolvedPlannerItemErr $"{label.value}: the kit holds no such item")
+
+            match this.polarimeterOpt with
+            | None -> Error (UnresolvedPlannerItemErr "no detector of the kit records a full Mueller matrix")
+            | Some polarimeter ->
+                itemOf candidate.source.item candidate.source.label
+                |> Result.bind (fun source ->
+                    itemOf candidate.plate.item candidate.plate.label
+                    |> Result.bind (fun plate ->
+                        itemOf polarimeter.item polarimeter.label
+                        |> Result.map (fun detector ->
+                            let key : PlannerCacheKey =
+                                {
+                                    source = source
+                                    plate = plate
+                                    detector = detector
+                                    observable = candidate.observable
+                                    material = this.prior.material
+                                    targets = this.targets
+                                }
+
+                            key)))
