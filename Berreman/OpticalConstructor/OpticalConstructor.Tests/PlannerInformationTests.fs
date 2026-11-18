@@ -1,19 +1,28 @@
 namespace OpticalConstructor.Tests
 
 open Xunit
+open Berreman.Constants
+open Berreman.Fields
+open Berreman.Geometry
+open Berreman.MathNetNumericsMath
+open Berreman.Media
 open Berreman.MaterialProperties
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.MeasurementPlanner
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.FitUncertainty
+open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
 open OpticalConstructor.Optimization.PlannerInformation
 open CrystalMaterialFixtures
 
-/// Spec 0050 S14.2 — the Measurement Planner's Fisher information over Jacobians written as literals.
+/// Spec 0050 S14.2 — the Measurement Planner's Fisher information over Jacobians written as literals, and a candidate's
+/// rows and noise through test-local forwards.
 module PlannerInformationTests =
 
     let private a : ParameterName = ParameterName "a"
@@ -291,3 +300,163 @@ module PlannerInformationTests =
             | Error (NoiselessPlannerCandidateErr reason) -> Assert.Contains("candidate 2", reason)
             | Error error -> failwith $"Expected a noiseless candidate under {criterion.text}, got: {error.describe}"
             | Ok ranked -> failwith $"Expected a refusal under {criterion.text}, got {ranked.Length} ranked options."
+
+    let private assertRelative (tolerance : float) (expected : float) (actual : float) : unit =
+        Assert.True(abs (actual - expected) <= tolerance * abs expected, $"expected {expected} within {tolerance} relative, got {actual}")
+
+    let private muellerOfRows (rows : float list list) : MuellerMatrix = RealMatrix4x4.create rows |> MuellerMatrix
+
+    /// The identity with m01 = 0.5 × the configuration's incidence in radians; the parameters are ignored.
+    let private incidenceForward : ForwardModelProxy<UniaxialParameters> =
+        {
+            muellerOf =
+                fun (configuration : MeasurementConfiguration) (_ : UniaxialParameters) ->
+                    let (IncidenceAngle (Angle incidence)) = configuration.incidenceAngle
+                    muellerOfRows [ [ 1.0; 0.5 * incidence; 0.0; 0.0 ]; [ 0.0; 1.0; 0.0; 0.0 ]; [ 0.0; 0.0; 1.0; 0.0 ]; [ 0.0; 0.0; 0.0; 1.0 ] ]
+                    |> Ok
+        }
+
+    /// The identity with m01 = 2 n_o and m02 = 0.5 n_e; the configuration is ignored.
+    let private indexForward : ForwardModelProxy<UniaxialParameters> =
+        {
+            muellerOf =
+                fun (_ : MeasurementConfiguration) (parameters : UniaxialParameters) ->
+                    let (RefractionIndex ordinary) = parameters.ordinaryIndex
+                    let (RefractionIndex extraordinary) = parameters.extraordinaryIndex
+
+                    muellerOfRows
+                        [ [ 1.0; 2.0 * ordinary; 0.5 * extraordinary; 0.0 ]; [ 0.0; 1.0; 0.0; 0.0 ]; [ 0.0; 0.0; 1.0; 0.0 ]; [ 0.0; 0.0; 0.0; 1.0 ] ]
+                    |> Ok
+        }
+
+    /// An X-cut 1 mm plate in transmission at 632.8 nm, azimuth 0°, at incidences 10° and 20°.
+    let private plannerConfigurations : MeasurementConfiguration list =
+        [ 10.0<deg>; 20.0<deg> ]
+        |> List.map (fun (incidence : float<deg>) ->
+            configurationOf XCut (Thickness.mm 1.0<mm>) incidence 0.0<deg> TransmittedMueller (WaveLength.nm 632.8<nm>))
+
+    [<Fact>]
+    let ``a noise budget's variance is each reading's uniform variance plus the misalignment it turns into reading error`` () : unit =
+        let varianceOf (noise : NoiseParam) : float =
+            match noise.noiseVarianceOver incidenceForward uniaxialParameters plannerConfigurations with
+            | Ok variance -> variance.value
+            | Error error -> failwith $"Expected the budget's variance, got: %A{error}"
+
+        Assert.Equal(NoiseVariance 0.0, NoiseVariance (varianceOf NoiseParam.noiseless))
+
+        // 32 entries, 30 normalized elements and 2 log-throughputs; m01 moves by −0.5 per radian of incidence, by
+        // nothing per radian of azimuth.
+        let elementVariance : float = 15.0 * 0.006 * 0.006 / 3.0 / 16.0
+        let throughputVariance : float = 0.03 * 0.03 / 3.0 / 16.0
+        let rotationVariance : float = 0.01 * 0.01 / 3.0 * 0.5 * 0.5 / 16.0
+        assertRelative 1e-9 elementVariance (varianceOf { NoiseParam.noiseless with element = ElementUncertainty 0.006 })
+        assertRelative 1e-9 throughputVariance (varianceOf { NoiseParam.noiseless with throughput = ThroughputUncertainty 0.03 })
+        assertRelative 1e-9 rotationVariance (varianceOf { NoiseParam.noiseless with rotation = AngleUncertainty (Angle 0.01) })
+
+        // A detector's values: its three noise axes and a parameter the budget does not read.
+        let noiseAxes : ItemParameterAxis list =
+            ItemParameterAxis.detectorNoiseAxes (ParameterValue 0.01) (ParameterValue 0.006) (ParameterValue 0.03)
+
+        let values : ParameterValues = (ParameterValues.defaultsOf noiseAxes).withValue ParameterName.gain (ParameterValue -5.0)
+        let evaluations : int ref = ref 0
+
+        let counting : ForwardModelProxy<UniaxialParameters> =
+            {
+                muellerOf =
+                    fun (configuration : MeasurementConfiguration) (parameters : UniaxialParameters) ->
+                        evaluations.Value <- evaluations.Value + 1
+                        incidenceForward.muellerOf configuration parameters
+            }
+
+        let varianceThrough (held : ParameterValues) : Result<float, string> =
+            held.benchNoise
+            |> Result.mapError (fun (error : ItemEvaluationError) -> error.describe)
+            |> Result.bind (fun (noise : NoiseParam) ->
+                noise.noiseVarianceOver counting uniaxialParameters plannerConfigurations
+                |> Result.map (fun (variance : NoiseVariance) -> variance.value)
+                |> Result.mapError (fun (error : MuellerFitError) -> $"%A{error}"))
+
+        let expectedBudget : NoiseParam =
+            {
+                rotation = AngleUncertainty (Angle 0.01)
+                element = ElementUncertainty 0.006
+                throughput = ThroughputUncertainty 0.03
+            }
+
+        match values.benchNoise with
+        | Ok budget -> Assert.Equal(expectedBudget, budget)
+        | Error error -> failwith $"Expected the detector's budget, got: {error.describe}"
+
+        match varianceThrough values with
+        | Ok variance -> assertRelative 1e-9 (elementVariance + throughputVariance + rotationVariance) variance
+        | Error reason -> failwith $"Expected the detector budget's variance, got: {reason}"
+
+        Assert.True(evaluations.Value > 0, "the counting forward was evaluated")
+        let evaluated : int = evaluations.Value
+
+        let missing : ParameterValues =
+            noiseAxes
+            |> List.filter (fun (axis : ItemParameterAxis) -> axis.name <> ParameterName.throughputUncertainty)
+            |> ParameterValues.defaultsOf
+
+        match varianceThrough missing with
+        | Error reason -> Assert.Equal("the values hold no number for the parameter: throughputUncertainty", reason)
+        | Ok variance -> failwith $"Expected a missing throughput uncertainty, got the variance {variance}."
+
+        Assert.Equal(evaluated, evaluations.Value)
+
+        let refusals : (ParameterName * ParameterValue) list =
+            [
+                ParameterName.rotationUncertainty, ParameterValue -0.01
+                ParameterName.rotationUncertainty, ParameterValue nan
+                ParameterName.elementUncertainty, ParameterValue -0.006
+                ParameterName.elementUncertainty, ParameterValue 1.5
+                ParameterName.throughputUncertainty, ParameterValue infinity
+                ParameterName.throughputUncertainty, ParameterValue 1.5
+            ]
+
+        for name, value in refusals do
+            match (values.withValue name value).benchNoise with
+            | Error (ParameterOutOfRangeErr reason) -> Assert.StartsWith($"{name.value} = ", reason)
+            | Error error -> failwith $"Expected {name.value} out of range, got: {error.describe}"
+            | Ok noise -> failwith $"Expected {name.value} out of range, got the budget %A{noise}."
+
+    [<Fact>]
+    let ``a candidate's rows are the study residual's Jacobian at the nominal point in its scaling's units`` () : unit =
+        let first : MeasurementConfiguration = List.head plannerConfigurations
+        let axes : ParameterAxis<UniaxialParameters> list = UniaxialParameters.axes |> List.take 2
+
+        // decentLab's rotation adds nothing: this forward ignores the configuration.
+        let expectedNoise : float = (15.0 * 0.005 * 0.005 / 3.0 + 0.01 * 0.01 / 3.0) / 16.0
+
+        for nominal in [ uniaxialParameters; { uniaxialParameters with ordinaryIndex = RefractionIndex 0.0 } ] do
+            let scale : UniaxialParameters =
+                { nominal with ordinaryIndex = RefractionIndex 1.0e-3; extraordinaryIndex = RefractionIndex 1.0e-3 }
+
+            let scaling : ParameterScaling<UniaxialParameters> = scalingAround axes scale nominal
+
+            match candidateRowsOver indexForward scaling nominal NoiseParam.decentLab [ first ] with
+            | Ok rows ->
+                let (ResidualJacobian jacobian) = rows.jacobian
+                Assert.Equal(16, jacobian.Length)
+                Assert.All(jacobian, fun (row : float[]) -> Assert.Equal(2, row.Length))
+
+                let nonZeroIn (column : int) : float[] =
+                    jacobian
+                    |> Array.map (fun (row : float[]) -> row.[column])
+                    |> Array.filter (fun (entry : float) -> abs entry > 1e-12)
+
+                // The offset frame moves an index near 1.5 by 1.49e-9, which its ulp resolves to 7.5e-8 at worst.
+                match nonZeroIn 0, nonZeroIn 1 with
+                | [| ordinary |], [| extraordinary |] ->
+                    assertRelative 1e-7 2.0e-3 (abs ordinary)
+                    assertRelative 1e-7 0.5e-3 (abs extraordinary)
+                | ordinary, extraordinary ->
+                    failwith $"Expected one non-zero entry per column, got {ordinary.Length} and {extraordinary.Length}."
+
+                match NoiseParam.decentLab.noiseVarianceOver indexForward nominal [ first ] with
+                | Ok noise -> Assert.Equal(noise, rows.noise)
+                | Error error -> failwith $"Expected the budget's variance, got: %A{error}"
+
+                assertRelative 1e-9 expectedNoise rows.noise.value
+            | Error error -> failwith $"Expected the candidate's rows, got: %A{error}"

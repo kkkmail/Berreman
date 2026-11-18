@@ -1,11 +1,13 @@
 namespace OpticalConstructor.Optimization
 
+open System.Globalization
 open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
 
@@ -81,6 +83,49 @@ module BenchNoise =
         /// The budget as a detector's noise axes, in Domain's names and order (spec 0050 S10.1).
         member this.parameterAxes : ItemParameterAxis list =
             ItemParameterAxis.detectorNoiseAxes this.rotation.parameterValue this.element.parameterValue this.throughput.parameterValue
+
+    type ParameterValue with
+
+        /// The number read as a rotation uncertainty in radians, an `AngleParameter`'s unit (spec 0050 S14.2).
+        member this.angleUncertainty : AngleUncertainty =
+            let (ParameterValue radians) = this
+            AngleUncertainty (Angle radians)
+
+        /// The number read as an element uncertainty, a fraction of full scale (spec 0050 S14.2).
+        member this.elementUncertainty : ElementUncertainty =
+            let (ParameterValue fraction) = this
+            ElementUncertainty fraction
+
+        /// The number read as a throughput uncertainty, a fraction of the reading (spec 0050 S14.2).
+        member this.throughputUncertainty : ThroughputUncertainty =
+            let (ParameterValue fraction) = this
+            ThroughputUncertainty fraction
+
+    type ParameterValues with
+
+        /// The detector's budget from its three noise values, each finite and at least zero, the element and the throughput
+        /// at most one; values of other parameters are ignored (spec 0050 S14.2; 001 §M, §Q).
+        member this.benchNoise : Result<NoiseParam, ItemEvaluationError> =
+            // `checkedFor` reads only the axes' names and kinds; an angle's kind leaves its sign to the check below.
+            this.checkedFor NoiseParam.noiseless.parameterAxes
+            |> Result.bind (fun (held : ParameterValues) ->
+                held.valueOf ParameterName.rotationUncertainty
+                |> Result.bind (fun (rotation : ParameterValue) ->
+                    held.valueOf ParameterName.elementUncertainty
+                    |> Result.bind (fun (element : ParameterValue) ->
+                        held.valueOf ParameterName.throughputUncertainty
+                        |> Result.bind (fun (throughput : ParameterValue) ->
+                            match rotation with
+                            | ParameterValue radians when radians < 0.0 ->
+                                let rendered = radians.ToString("R", CultureInfo.InvariantCulture)
+                                Error (ParameterOutOfRangeErr $"{ParameterName.rotationUncertainty.value} = {rendered} lies outside [0, ∞)")
+                            | ParameterValue _ ->
+                                Ok
+                                    {
+                                        rotation = rotation.angleUncertainty
+                                        element = element.elementUncertainty
+                                        throughput = throughput.throughputUncertainty
+                                    }))))
 
     /// The seed that fixes one noisy realization of a whole experiment.
     type NoiseSeed =

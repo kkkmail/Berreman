@@ -3,6 +3,7 @@ namespace OpticalConstructor.Optimization
 open System
 open System.Globalization
 open Berreman.MathNetNumericsMath
+open Berreman.Geometry
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MuellerReconstruction
@@ -10,6 +11,9 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.MeasurementPlanner
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.FitUncertainty
+open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.FittedProblems
 
 /// The Measurement Planner's numerical layer, the Fisher information of candidate experiments at a nominal point
 /// (spec 0050 S14.2).
@@ -325,3 +329,76 @@ module PlannerInformation =
                     rankFrom (held @ [ best.option.rows ]) (best :: ranked) (List.removeAt position left)
 
             rankFrom baseline [] options
+
+    /// The residual `MuellerFitting.residualFor` gives every entry when the forward cannot solve (step 336); the angle
+    /// sensitivity's closure uses it to stay total (spec 0050 S14.2).
+    [<Literal>]
+    let private unsolvedPenalty : float = 1.0e3
+
+    type NoiseParam with
+
+        /// The mean over the throughput residual's entries of each reading's uniform variance u² / 3 plus the rotation's,
+        /// turned through the entry's sensitivity to the incidence and the azimuth at `nominal`: the reduced χ² a fit of
+        /// the configurations' noisy data expects (spec 0050 S14.2; 001 §M, §Q).
+        member this.noiseVarianceOver
+            (forward : ForwardModelProxy<'Parameters>)
+            (nominal : 'Parameters)
+            (configurations : MeasurementConfiguration list)
+            : Result<NoiseVariance, MuellerFitError> =
+            observeWith forward nominal configurations
+            |> Result.map (fun (observations : MuellerObservation list) ->
+                let normalizedCount = 15 * List.length observations
+                let width = 16 * List.length observations
+                let atNominal : ParameterScaling<'Parameters> = scalingAround [] nominal nominal
+
+                // Readings with the sample turned by (Δi, Δa) radians, filed against the nominal configurations as
+                // `noisyObserveWith` files them, against the model at `nominal`.
+                let misalignedResidual (ScaledVector angles) : ResidualVector =
+                    let incidence = Angle angles.[0]
+                    let azimuth = Angle angles.[1]
+
+                    let turned : ForwardModelProxy<'Parameters> =
+                        {
+                            muellerOf =
+                                fun (configuration : MeasurementConfiguration) ->
+                                    forward.muellerOf (configuration.misalignedBy incidence azimuth)
+                        }
+
+                    match observeWith turned nominal configurations with
+                    | Ok readings -> throughputResidualFor forward readings atNominal (ScaledVector [||])
+                    | Error _ -> Array.create width unsolvedPenalty |> ResidualVector
+
+                let (ResidualJacobian sensitivity) = (ScaledVector [| 0.0; 0.0 |]).offsetJacobianOf misalignedResidual
+                let (AngleUncertainty (Angle rotation)) = this.rotation
+                let (ElementUncertainty element) = this.element
+                let (ThroughputUncertainty throughput) = this.throughput
+
+                let varianceOf (entry : int) (angleRow : float[]) : float =
+                    let reading = if entry < normalizedCount then element * element / 3.0 else throughput * throughput / 3.0
+                    reading + rotation * rotation / 3.0 * (angleRow |> Array.sumBy (fun (a : float) -> a * a))
+
+                match width with
+                | 0 -> NoiseVariance 0.0
+                | _ -> (sensitivity |> Array.mapi varianceOf |> Array.sum) / float width |> NoiseVariance)
+
+    /// A candidate's rows: the offset-frame Jacobian at `nominal`, in `scaling`'s units, of the throughput residual of its
+    /// noiseless observations (the study residual's there, its readings entering as constants), and the budget's variance
+    /// over its configurations (spec 0050 S14.2).
+    let candidateRowsOver
+        (forward : ForwardModelProxy<'Parameters>)
+        (scaling : ParameterScaling<'Parameters>)
+        (nominal : 'Parameters)
+        (noise : NoiseParam)
+        (configurations : MeasurementConfiguration list)
+        : Result<CandidateRows, MuellerFitError> =
+        observeWith forward nominal configurations
+        |> Result.bind (fun (observations : MuellerObservation list) ->
+            noise.noiseVarianceOver forward nominal configurations
+            |> Result.map (fun (variance : NoiseVariance) ->
+                let rows : CandidateRows =
+                    {
+                        jacobian = (toScaled scaling nominal).offsetJacobianOf (throughputResidualFor forward observations scaling)
+                        noise = variance
+                    }
+
+                rows))
