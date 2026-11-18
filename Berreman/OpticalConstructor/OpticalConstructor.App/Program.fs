@@ -1,9 +1,7 @@
-/// Runnable composition root (§A.1 / §A.6). Hosts the Avalonia `Application` +
-/// FuncUI `HostWindow` bootstrap: the launcher is the startup window, and its Main
-/// button opens the kit start screen for the `MainConstructorWindow` scene. The old Elmish
-/// constructor shell (`MainWindow` hosting `Shell.init/update/view`) was dead code
-/// for the Main flow and is retired (spec 0038 Part B.1), along with the
-/// localization startup-error surface it carried.
+/// The composition root (spec 0050 Close): it reads the settings and the locations once (`Startup`), composes
+/// `AppContext.create` over them and shows `LauncherWindow`, whose Main and Inverse open `KitStartWindow` and whose footer
+/// opens `DataLocationsWindow`; a chosen kit opens the constructor window of its mode
+/// (`KitConstructorWindows.showConstructorIn`), which runs the kit window.
 ///
 /// The bootstrap uses the public MIT `Avalonia.FuncUI` NuGet surface — the same
 /// buildable interpretation of §A.6 the Ui project compiles against. The
@@ -49,12 +47,11 @@ open OpticalConstructor.Ui.StudyFitJob
 module private Startup =
     let settings = UserEnvironment.EnvironmentSettings.load (UserEnvironment.settingsPath ())
 
-    /// Load typed workbench settings and resolved locations once, with defaults on configuration failure
-    /// (spec 0038 Part C, step 005; spec 0050 §3.9).
+    /// The settings and `DataLocations` that `appsettings.json` gives, read once (spec 0050 §3.9, Close).
     let workbenchSettings, dataLocations = AppConfig.loadWorkbenchSettings ()
 
-    /// Share one app scope, composed over configured locations and settings, across every product window
-    /// (spec 0038 Part C, step 006; spec 0050 §3.9).
+    /// The one app scope `AppContext.create` answers over them; an open failure is shown by the launcher
+    /// (spec 0050 S2.4, Close).
     let context = AppContext.create dataLocations workbenchSettings
 
 /// Mounts each constructor over its own kit and the shared app library (spec 0050 S4.3).

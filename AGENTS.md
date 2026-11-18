@@ -57,8 +57,12 @@ tests after every change; if your local build/tests are green, the matching
 gate is green too. `BerremanTests` takes about 52 minutes whole (51 min 44 s
 measured 2026-11-03; the inverse-fit classes alone run up to 997 s each, spec 0044
 `.manual/020`), so run the classes you touched; the two constructor suites take
-under a minute, `ui-tests` about three. No test, fixture or kit lives under
-`Documents`; test kits and databases go under the test run's output directory.
+under a minute, `ui-tests` about three. No test, fixture, kit or database lives
+under `Documents`, `%APPDATA%` or `%LOCALAPPDATA%`; `OpticalConstructor.Ui.Tests`'
+own `appsettings.json` and `TestAppScope` (`testLocations`, `fileLocations`) put
+every location, the SQLite library (`:memory:` or a file) included, under the
+test run's output directory, and the committed kits under `data/` are opened
+read-only (spec 0050 §3.9, §3.12).
 
 **Release only.** There is no Debug configuration: the root
 `Directory.Build.props` defaults `Configuration` to Release and the root
@@ -145,17 +149,21 @@ Berreman/                              # solution root (Berreman.slnx, x64)
   OpticalProperties/  ...OpticalProperties          # material definitions (standard / active / dispersive)
   Analytics/       ...Analytics                      # Plotly.NET charting, ranged variables, Examples/*.fsx
   BerremanTests/                                     # solver unit tests (xUnit v3 + FsCheck)
+  BerremanTestSupport/                               # shared test ground truth: crystal samples, designs, the committed-kit locator
   BerremanRunner/  / BerremanModelGenerator/         # stale console apps kept on disk, NOT in Berreman.slnx
   OpticalConstructor/
-    OpticalConstructor.Domain         # pure domain (units, rays, placement, materials, project model)
+    Catalogue/Builtin/                # the shipped built-in library catalogue, as entry files
+    OpticalConstructor.Domain         # pure domain (units, rays, placement, materials, library entries, kits, setups, experiments, studies, planner)
     OpticalConstructor.Optimization   # fitting / inverse design (Alglib adapter, merit functions)
-    OpticalConstructor.Storage        # project files, JSON (de)serialization, schema validation, export
+    OpticalConstructor.Storage        # kit folders, entry and catalogue files, canonical JSON, schema validation, SQLite library proxies, export
+    OpticalConstructor.Database       # the C# EF Core library model: SQLite, `EnsureCreated` plus a schema stamp
     OpticalConstructor.Ui             # Avalonia FuncUI views (Elmish MVU)
     OpticalConstructor.App            # composition root that hosts the FuncUI shell
     OpticalConstructor.Tests          # domain/logic tests
     OpticalConstructor.Ui.Tests       # Avalonia.Headless UI smoke/structure tests
 MathNetNumerics/                       # customized MathNet.Numerics built FROM SOURCE (referenced, not a NuGet)
 Elevation/                             # the ELEV gate driver and its known-findings list (not a project)
+data/                                  # the committed reference experiment kits, read-only to tests
 ```
 
 `Softellect.Berreman.Core` references `MathNetNumerics/FSharp` and
@@ -605,7 +613,10 @@ This is a spec-driven, gated repository.
   the table is fully in view, then zooms it (`wheelTarget`); with a modifier it is always the table's.
 - **Main ribbon:** Add (opens first) · Rotate · Move · Render · Select · Experiments · Details. Attach data
   file… lives in the Inverse constructor's Data step (`DataStepView.fs`), not in the Experiments bay; a
-  collected experiment's View opens its chart (there is no separate Open chart button).
+  collected experiment's View opens its chart (there is no separate Open chart button). The kit window's
+  left flow strip (`FlowStripView.fs`, `ConstructorFlowStep.stepsOf`) reaches Items, Setups and Experiments,
+  the last being this bay, in both constructors, and Data, Unknowns, Plan, Fit, Results and Publish in the
+  Inverse one alone.
 - **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
   `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
   the beam root is its 3-D centre, so moving it carries the whole beam — an x move included: the
@@ -625,6 +636,23 @@ This is a spec-driven, gated repository.
   resolves on the table. User light sources live in `SourceProxy` (edited by `LightSourceEditorView` /
   `LightSourceEditorWindow`); the built-in lasers and UV / EUV lithography sources named by `PresetIds`
   are protected presets. A source is its wavelength.
+- **The library is data, not code** (spec 0050 S1-S3): every material, sample, source, polarizer, detector, item model and category is a versioned
+  entry file (`<name>.material-json` and so on: canonical JSON with its SHA-256, `LibraryEntryEnvelope`) held in the SQLite library database
+  (`library.db`, the `OpticalConstructorSqlite` connection string; EF Core `EnsureCreated` plus a schema stamp, never a migration); the built-ins
+  ship as `Berreman/OpticalConstructor/Catalogue/Builtin/`, imported with every registered catalogue folder on every start by manifest hash
+  (`CatalogueImportContext.importOnStart`); code names a built-in only by its frozen GUID (`MaterialIds`, `CategoryIds`, `SampleIds`, `PresetIds`, `ItemModelIds`)
+  and holds no seed value; a library of another schema is `LibrarySchemaMismatchErr`, which the Launcher remedies with Recreate library from catalogues.
+- **Everything else lives in a kit folder** (`Kit.fs`, `KitOpening.fs`, spec 0050 S4-S12): a folder holding `.kit-json`, its root flat
+  (`<label>.item-json`, `<name>.setup-json`, `<name>.experiment-json`, `<study>.study-json`, append-only `<study>@<stamp>.fitrun-json`)
+  with three subfolders: `library/` (a snapshot of every library version the kit uses, so it opens on any machine), `data/` (lab
+  files the app only reads, referenced by relative path and SHA-256) and `.oc/` (the lock and the Planner's derived cache, never
+  sent); logic reaches it only through `KitProxy` (`KitProxy.create (folder : KitFolder)`) in a `KitContext`; every write is atomic
+  (`*.tmp`, then replace), a read-only open writes nothing, and a file of another schema version is `UnsupportedSchemaVersionErr`.
+- **Main and Inverse open the kit start screen** (`KitStartView.fs`, `KitStartWindow.fs`, spec 0050 S5-S6): New kit… (an empty folder
+  is initialised, a folder with files keeps them), Open kit…, Open kit from zip… and the history (`KitHistoryProxy` in the per-user
+  preferences, at most `KitHistoryLimit`, starred first); a chosen kit opens the constructor of that mode, one window per kit,
+  titled by the kit and its folder; Materials and Library need no kit; the Launcher's footer link opens Data locations, every
+  `DataLocations` path, each overridable in `appsettings.json`.
 - **Never touch `*.nb` files.** Mathematica notebooks are treated as pure binary
   (no EOL, no diff, no merge). Leave them alone.
 - **Vendored MathNet.Numerics** is built from source under `MathNetNumerics/`;

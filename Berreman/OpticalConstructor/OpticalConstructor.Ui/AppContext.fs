@@ -27,7 +27,8 @@ open OpticalConstructor.Storage.SourceDatabaseStore
 open OpticalConstructor.Ui.KitOpening
 open Softellect.Sys.Logging
 
-/// Shares library database stores, catalogue imports, experiment templates, exports, settings, locations and the kit history across windows.
+/// The one app scope, composed at the root over the configured locations (the SQLite library stores and the catalogue
+/// import of every start) and injected into the launcher, the start screen and every window (spec 0050 Close).
 /// Context identity is by reference; database identity comes from its configured connection.
 [<ReferenceEquality>]
 type AppContext =
