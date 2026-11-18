@@ -1,0 +1,58 @@
+# Spec 0050: arc summary
+
+This file is the narrative companion to `.stat-md` / `.stat-json`, not a substitute for them. Read the two together: the numbers are there, and the story is here.
+
+Spec 0050 moved Optical Constructor's library out of code and into versioned entry files, held in a SQLite database. Every constructor session now lives in a kit folder, and the Inverse flow runs through Data, Unknowns, Plan, Fit, Results and Publish. The plan was 494 steps, and all of them landed. The arc ended at the last step with COMPLETE.
+
+**How the arc was driven.** Every stop went through the same loop:
+
+1. A post-mortem.
+2. An independent review of it.
+3. The operator's agreement.
+4. Only then, the agreed repair.
+
+The operator recorded each binding decision under `.manual/` as a ruling and registered rulings R0001 to R0005 in the ledger. The operator committed every repair; git stayed forward-only throughout.
+
+Two operator rules shaped the second half and are worth carrying forward:
+
+- **Tests run filtered to the touched classes**, never widened to whole suites. An operator repair gets a build and is handed back, with no test or gate runs unless the operator asks for them.
+- **After an escalation the operator always commits the tree** unless the work is actually broken. That protects correct code from a later mishap.
+
+**The surprises came late and were mostly about performance.** At step 0436, AT-2's study fit ran for over 7,000 s and missed its bound.
+
+- **The first repair (R0004)** evaluated each Jacobian and report once and solved the residual's rows concurrently. It was not enough.
+- **Measuring showed why.** The 44 concurrent rows were bound by the garbage collector: each slowed from about 30 ms to 1.2 s while the process sat near idle.
+- **The root cause was in the solver.** `OpticalProperties.rhoT` builds a new conjugate transpose on every read, and the generated Berreman-matrix terms read it about a hundred times per matrix.
+- **The second repair (R0005)** reads `rhoT` once and turns on the server collector. Together they brought the fit to 811 s. Either change alone was not enough (1,397 s with only the server collector, over 1,800 s with only the single read).
+- **The bound was doubled to 1,800 s**, because 900 s was too close to the measured time.
+
+Earlier in that stretch:
+
+- **0427** needed two rulings, one on series dispatch and one on a circular-analyzer finding.
+- **0428** replaced random element ids with an injected id provider, so the kit-acceptance output became deterministic.
+
+**The final stop had nothing to do with Berreman.** Step 0494 was review-green and passed all 28 of its gates. Then the receipt check refused the commit: the ASG checkout had been fast-forwarded in the middle of the verify phase, which changed 18 validator files the receipt binds. Step 0319 had stopped for the same reason. The operator committed the tree and relaunched with `--accept-current-slice`, and the arc finalised. The lesson is to update ASG only between runs. A fail-fast drift check that names the changed input would be a reasonable ASG hardening item.
+
+**Run timing.**
+
+- **Whole arc:** 369:27:54 of calendar time, from the spec-writer's start on 2026-11-03 to the last arc event on 2026-11-18. Of that, 207:35:14 was agentic work and 161:52:40 was wait, mostly the operator turnarounds on escalations.
+- **Spec writing:** 45:51:53 of calendar time, made up of 34:04:33 of agentic work and 11:47:20 of wait.
+
+**Change size.**
+
+| File type | Files | Lines added | Lines removed |
+|---|---:|---:|---:|
+| `.fs` | 348 | 126,941 | 22,016 |
+| `.md` (the arc's own logs, plans and reviews) | 1,520 | 113,646 | 2,068 |
+| `.json` (mostly the regenerated kits and catalogue) | 28 | 406,497 | 401,995 |
+| `.test-case-counts-json` | 1 | 595,895 | 0 |
+| **All types** (552 commits) | **3,227** | **1,461,614** | **428,092** |
+
+**Escalations.** The arc stopped and asked the operator for input 25 times:
+
+- 17 were step-specific causes, grouped as "other" in the stats;
+- 4 hit the gate-failure cap;
+- 3 were tool-server or commit failures;
+- 1 was a boot health check.
+
+The operator overrode with `--accept-current-slice` seven times in all, including 0494. Resolver rescues, which keep the arc running, are not counted as escalations.

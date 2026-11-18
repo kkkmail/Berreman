@@ -1,0 +1,299 @@
+# Stats for 0050
+
+Generated: 2026-11-18T23:00:39Z (schema 8, tool 8)
+
+## TL;DR
+
+| arc_status | wall_clock (hh:mm:ss) | total_usd | slices | top_anomaly |
+| --- | --- | --- | --- | --- |
+| COMPLETE | 369:27:54 | (none) | 494 | escalations, operator_overrides |
+
+## timing (all intervals hh:mm:ss)
+
+| key | value |
+| --- | --- |
+| arc_started_at | 2026-11-03T13:27:49Z |
+| arc_ended_at | 2026-11-18T22:55:43Z |
+| total.calendar (hh:mm:ss) | 369:27:54 |
+| total.agentic_work (hh:mm:ss) | 207:35:14 |
+| total.wait (hh:mm:ss) | 161:52:40 |
+| spec_writer.calendar (hh:mm:ss) | 45:51:53 |
+| spec_writer.agentic_work (hh:mm:ss) | 34:04:33 |
+| spec_writer.wait (hh:mm:ss) | 11:47:20 |
+| splitter (hh:mm:ss) | (none) |
+| arc_runner (hh:mm:ss) | 323:25:33 |
+| arc_runner.agentic_work (hh:mm:ss) | 173:30:41 |
+| arc_runner.wait (hh:mm:ss) | 149:54:52 |
+| idle_gap (hh:mm:ss, log-quiet not wait) | 312:51:52 |
+| largest_gaps (hh:mm:ss) | 2026-11-16T06:21:07Z=+08:51:57, 2026-11-12T04:10:17Z=+07:52:45, 2026-11-06T01:34:19Z=+07:16:52, 2026-11-15T06:46:54Z=+07:07:47 |
+
+### spec-writer steps
+
+`calendar` includes the wait since the preceding completed step; therefore the
+rows add exactly to the total.
+
+| sequence | step | outcome | agentic work | calendar | wait |
+| --- | --- | --- | --- | --- | --- |
+| 1 | spec #1 | output | 00:37:34 | 00:37:34 | 00:00:00 |
+| 2 | spec #2 | escalation | 26:04:07 | 27:17:15 | 01:13:08 |
+| 3 | spec #3 | output | 00:33:44 | 01:57:42 | 01:23:58 |
+| 4 | claim-check #1 | output | 00:07:27 | 01:29:35 | 01:22:08 |
+| 5 | spec #4 | output | 00:28:17 | 00:28:44 | 00:00:27 |
+| 6 | claim-check #2 | output | 00:11:02 | 00:11:03 | 00:00:01 |
+| 7 | spec #5 | output | 00:21:36 | 00:21:52 | 00:00:16 |
+| 8 | claim-check #3 | output | 00:10:21 | 00:10:22 | 00:00:01 |
+| 9 | spec #6 | output | 00:18:19 | 00:18:35 | 00:00:16 |
+| 10 | claim-check #4 | output | 00:11:31 | 00:11:32 | 00:00:01 |
+| 11 | spec #7 | output | 00:18:08 | 00:18:24 | 00:00:16 |
+| 12 | claim-check #5 | output | 00:14:02 | 00:14:03 | 00:00:01 |
+| 13 | spec #8 | output | 00:21:27 | 00:21:43 | 00:00:16 |
+| 14 | claim-check #6 | output | 00:10:33 | 00:10:34 | 00:00:01 |
+| 15 | spec #9 | output | 00:15:31 | 00:15:47 | 00:00:16 |
+| 16 | claim-check #7 | output | 00:10:19 | 00:10:20 | 00:00:01 |
+| 17 | spec #10 | output | 00:38:21 | 00:38:36 | 00:00:15 |
+| 18 | claim-check #8 | output | 00:12:56 | 00:12:57 | 00:00:01 |
+| 19 | spec #11 | output | 00:17:16 | 00:17:32 | 00:00:16 |
+| 20 | claim-check #9 | output | 00:11:30 | 00:11:31 | 00:00:01 |
+| 21 | spec #12 | output | 00:28:08 | 00:28:24 | 00:00:16 |
+| 22 | claim-check #10 | output | 00:14:53 | 00:14:54 | 00:00:01 |
+| 23 | spec #13 | output | 00:19:04 | 00:19:20 | 00:00:16 |
+| 24 | claim-check #11 | output | 00:15:22 | 00:15:22 | 00:00:00 |
+| 25 | claim-check #12 | output | 00:12:15 | 00:30:10 | 00:17:55 |
+| 26 | spec #14 | output | 00:25:50 | 00:26:05 | 00:00:15 |
+| 27 | claim-check #13 | output | 00:12:26 | 00:12:27 | 00:00:01 |
+| 28 | handoff #1 | output | 00:02:34 | 07:29:30 | 07:26:56 |
+| **total** | **spec-writer** |  | **34:04:33** | **45:51:53** | **11:47:20** |
+
+## cost
+
+| key | value |
+| --- | --- |
+| total_usd | (none) |
+| total_tokens | (none) |
+| by_phase | (empty) |
+| by_role | splitter=(none), arc_runner_worker=(none), architecture_critic=(none), reuse_critic=(none), code_judge=(none), build_repair=(none), resolver=(none), spec_author=(none), claim_checker=(none), gate_keeper=(none), gate_author=(none), handoff_verifier=(none) |
+| by_slice | (empty) |
+| cost_per_accepted_slice | (none) |
+| review_share | (none) |
+
+## iterations
+
+| key | value |
+| --- | --- |
+| spec_writer.cycles_by_intent | spec=14, claim-check=13, handoff=1 |
+| splitter.rounds | 0 |
+| splitter.verifier_iterations_per_round | max=0 median=0.000 |
+| arc_runner.slice_attempts_total | 592 |
+| arc_runner.slices_with_retries | 64 |
+| arc_runner.review_cycles_per_slice | max=4 median=1.000 |
+| arc_runner.resolver_invocations | 14 |
+| arc_runner.route_backs_total | 20 |
+| arc_runner.max_route_backs_per_slice | 2 |
+
+## outcomes
+
+| key | value |
+| --- | --- |
+| arc_status | COMPLETE |
+| escalation_count | 25 |
+| escalations_by_reason | other=17, tool-server/commit=3, gate-failure-cap=4, health-check=1 |
+| arc_escalation_trigger (terminal) | {'slice_index': 493, 'slice_path': 'C:\\GitHub\\Berreman\\specs\\0050\\.slices\\0494.slice-md', 'reason': 'executability receipt is stale: semantic source, prompt or validator changed'} |
+| gate_pass_rate | 0.993 |
+| gates_failed_top | build: failures=33 last=2026-11-15T14:26:22+00:00 exit=1; constructor-unit-tests: failures=14 last=2026-11-14T18:27:43+00:00 exit=2; elevation: failures=10 last=2026-11-15T06:40:55+00:00 exit=1 |
+| hangup_count | 0 |
+| operator_overrides | 7 |
+| slices_skipped | 0 |
+| slices_not_reached | 0 |
+
+## sizes
+
+| key | value |
+| --- | --- |
+| spec_md_bytes | 58008 |
+| spec_md_lines | 403 |
+| spec_md_section_count | 45 |
+| slice_count | 494 |
+| gate_count_chosen | 9223 |
+| gate_count_proposed_open | 0 |
+| per_slice | slice 0001=sow:2678b impl:5340b tests:0; slice 0002=sow:4145b impl:6887b tests:0; slice 0003=sow:4117b impl:3905b tests:0; slice 0004=sow:3591b impl:6169b tests:0; slice 0005=sow:5346b impl:6472b tests:0; slice 0006=sow:3635b impl:6085b tests:0; slice 0007=sow:5267b impl:7210b tests:0; slice 0008=sow:5199b impl:7422b tests:0; slice 0009=sow:4545b impl:7385b tests:0; slice 0010=sow:4275b impl:9511b tests:0; slice 0011=sow:4387b impl:5042b tests:0; slice 0012=sow:3704b impl:3801b tests:0; slice 0013=sow:7130b impl:16649b tests:0; slice 0014=sow:3196b impl:4925b tests:0; slice 0015=sow:3899b impl:10934b tests:0; slice 0016=sow:2850b impl:6618b tests:0; slice 0017=sow:3044b impl:6575b tests:0; slice 0018=sow:3676b impl:7325b tests:0; slice 0019=sow:3530b impl:7096b tests:0; slice 0020=sow:3465b impl:5933b tests:0; slice 0021=sow:4558b impl:9668b tests:0; slice 0022=sow:4184b impl:5967b tests:0; slice 0023=sow:4338b impl:5842b tests:0; slice 0024=sow:4553b impl:6929b tests:0; slice 0025=sow:5295b impl:10642b tests:0; slice 0026=sow:4841b impl:5398b tests:0; slice 0027=sow:5487b impl:6724b tests:0; slice 0028=sow:4568b impl:7005b tests:0; slice 0029=sow:4204b impl:5128b tests:0; slice 0030=sow:5661b impl:11211b tests:0; slice 0031=sow:4185b impl:8552b tests:0; slice 0032=sow:5113b impl:10660b tests:0; slice 0033=sow:4577b impl:6292b tests:0; slice 0034=sow:3973b impl:8103b tests:0; slice 0035=sow:3519b impl:5208b tests:0; slice 0036=sow:2028b impl:2050b tests:0; slice 0037=sow:3026b impl:3553b tests:0; slice 0038=sow:2723b impl:3024b tests:0; slice 0039=sow:2687b impl:3343b tests:0; slice 0040=sow:4517b impl:5028b tests:0; slice 0041=sow:4315b impl:4610b tests:0; slice 0042=sow:4195b impl:5056b tests:0; slice 0043=sow:3319b impl:4228b tests:0; slice 0044=sow:3639b impl:6363b tests:0; slice 0045=sow:3922b impl:5156b tests:0; slice 0046=sow:5843b impl:14613b tests:0; slice 0047=sow:5098b impl:5814b tests:0; slice 0048=sow:4637b impl:5723b tests:0; slice 0049=sow:3220b impl:3875b tests:0; slice 0050=sow:2994b impl:3067b tests:0; slice 0051=sow:3509b impl:3585b tests:0; slice 0052=sow:3355b impl:5639b tests:0; slice 0053=sow:3297b impl:3730b tests:0; slice 0054=sow:3614b impl:3834b tests:0; slice 0055=sow:3839b impl:3631b tests:0; slice 0056=sow:2328b impl:4506b tests:0; slice 0057=sow:3831b impl:5211b tests:0; slice 0058=sow:3863b impl:5031b tests:0; slice 0059=sow:5260b impl:14859b tests:0; slice 0060=sow:3749b impl:3998b tests:0; slice 0061=sow:3088b impl:4313b tests:0; slice 0062=sow:3500b impl:4277b tests:0; slice 0063=sow:3406b impl:3821b tests:0; slice 0064=sow:3710b impl:5073b tests:0; slice 0065=sow:4176b impl:3741b tests:0; slice 0066=sow:3891b impl:5669b tests:0; slice 0067=sow:4403b impl:5010b tests:0; slice 0068=sow:3251b impl:3874b tests:0; slice 0069=sow:7179b impl:9698b tests:0; slice 0070=sow:2855b impl:3723b tests:0; slice 0071=sow:4014b impl:5943b tests:0; slice 0072=sow:2971b impl:3864b tests:0; slice 0073=sow:3283b impl:4890b tests:0; slice 0074=sow:4339b impl:6621b tests:0; slice 0075=sow:3643b impl:5035b tests:0; slice 0076=sow:4174b impl:5555b tests:0; slice 0077=sow:2792b impl:3442b tests:0; slice 0078=sow:3302b impl:5478b tests:0; slice 0079=sow:3952b impl:4680b tests:0; slice 0080=sow:3387b impl:4560b tests:0; slice 0081=sow:3376b impl:3843b tests:0; slice 0082=sow:3732b impl:5353b tests:0; slice 0083=sow:4044b impl:6014b tests:0; slice 0084=sow:4548b impl:7914b tests:0; slice 0085=sow:4332b impl:7941b tests:0; slice 0086=sow:4034b impl:8740b tests:0; slice 0087=sow:4395b impl:8618b tests:0; slice 0088=sow:4174b impl:5742b tests:0; slice 0089=sow:4537b impl:5763b tests:0; slice 0090=sow:4381b impl:5435b tests:0; slice 0091=sow:3362b impl:4465b tests:0; slice 0092=sow:3347b impl:4883b tests:0; slice 0093=sow:3762b impl:5167b tests:0; slice 0094=sow:3897b impl:5600b tests:0; slice 0095=sow:4138b impl:4882b tests:0; slice 0096=sow:3209b impl:4885b tests:0; slice 0097=sow:3598b impl:5478b tests:0; slice 0098=sow:4428b impl:6195b tests:0; slice 0099=sow:4359b impl:5834b tests:0; slice 0100=sow:4886b impl:5063b tests:0; slice 0101=sow:4551b impl:4259b tests:0; slice 0102=sow:3439b impl:4686b tests:0; slice 0103=sow:3648b impl:5444b tests:0; slice 0104=sow:4350b impl:6301b tests:0; slice 0105=sow:3847b impl:5342b tests:0; slice 0106=sow:4117b impl:4835b tests:0; slice 0107=sow:4008b impl:5704b tests:0; slice 0108=sow:5068b impl:15185b tests:0; slice 0109=sow:3323b impl:5741b tests:0; slice 0110=sow:3217b impl:6124b tests:0; slice 0111=sow:3942b impl:6135b tests:0; slice 0112=sow:3591b impl:6128b tests:0; slice 0113=sow:2966b impl:5181b tests:0; slice 0114=sow:3061b impl:4938b tests:0; slice 0115=sow:3745b impl:5764b tests:0; slice 0116=sow:3583b impl:4954b tests:0; slice 0117=sow:3870b impl:3702b tests:0; slice 0118=sow:5093b impl:15078b tests:0; slice 0119=sow:4598b impl:6255b tests:0; slice 0120=sow:5860b impl:7227b tests:0; slice 0121=sow:3614b impl:4186b tests:0; slice 0122=sow:2904b impl:3664b tests:0; slice 0123=sow:5010b impl:7399b tests:0; slice 0124=sow:7142b impl:8557b tests:0; slice 0125=sow:4561b impl:5088b tests:0; slice 0126=sow:5036b impl:8107b tests:0; slice 0127=sow:4215b impl:5373b tests:0; slice 0128=sow:6268b impl:9342b tests:0; slice 0129=sow:7951b impl:8967b tests:0; slice 0130=sow:4692b impl:3532b tests:0; slice 0131=sow:4798b impl:3986b tests:0; slice 0132=sow:4945b impl:16245b tests:0; slice 0133=sow:5180b impl:8818b tests:0; slice 0134=sow:3252b impl:4183b tests:0; slice 0135=sow:5172b impl:7802b tests:0; slice 0136=sow:3297b impl:4145b tests:0; slice 0137=sow:3505b impl:4494b tests:0; slice 0138=sow:3627b impl:4482b tests:0; slice 0139=sow:4677b impl:5869b tests:0; slice 0140=sow:3352b impl:4453b tests:0; slice 0141=sow:3951b impl:5680b tests:0; slice 0142=sow:6664b impl:8581b tests:0; slice 0143=sow:3920b impl:3998b tests:0; slice 0144=sow:4195b impl:5774b tests:0; slice 0145=sow:6171b impl:13917b tests:0; slice 0146=sow:5369b impl:5303b tests:0; slice 0147=sow:4346b impl:4548b tests:0; slice 0148=sow:4774b impl:5264b tests:0; slice 0149=sow:5000b impl:5945b tests:0; slice 0150=sow:6616b impl:15349b tests:0; slice 0151=sow:3459b impl:4406b tests:0; slice 0152=sow:5747b impl:6283b tests:0; slice 0153=sow:9075b impl:14782b tests:0; slice 0154=sow:5643b impl:7109b tests:0; slice 0155=sow:3820b impl:4371b tests:0; slice 0156=sow:5285b impl:6031b tests:0; slice 0157=sow:2875b impl:3611b tests:0; slice 0158=sow:2541b impl:3544b tests:0; slice 0159=sow:3252b impl:4470b tests:0; slice 0160=sow:4142b impl:26910b tests:0; slice 0161=sow:2156b impl:3754b tests:0; slice 0162=sow:2335b impl:4124b tests:0; slice 0163=sow:4241b impl:10029b tests:0; slice 0164=sow:3736b impl:6764b tests:0; slice 0165=sow:3772b impl:7523b tests:0; slice 0166=sow:2122b impl:3276b tests:0; slice 0167=sow:2880b impl:7437b tests:0; slice 0168=sow:3658b impl:8211b tests:0; slice 0169=sow:4385b impl:9208b tests:0; slice 0170=sow:3769b impl:5950b tests:0; slice 0171=sow:4115b impl:5964b tests:0; slice 0172=sow:3790b impl:4419b tests:0; slice 0173=sow:3240b impl:5313b tests:0; slice 0174=sow:3982b impl:6077b tests:0; slice 0175=sow:3135b impl:4452b tests:0; slice 0176=sow:4332b impl:6476b tests:0; slice 0177=sow:5342b impl:6969b tests:0; slice 0178=sow:6022b impl:12997b tests:0; slice 0179=sow:3798b impl:7214b tests:0; slice 0180=sow:3636b impl:9235b tests:0; slice 0181=sow:2883b impl:5635b tests:0; slice 0182=sow:3287b impl:6901b tests:0; slice 0183=sow:4061b impl:6924b tests:0; slice 0184=sow:4841b impl:13394b tests:0; slice 0185=sow:4516b impl:16704b tests:0; slice 0186=sow:3484b impl:6356b tests:0; slice 0187=sow:3996b impl:9966b tests:0; slice 0188=sow:5363b impl:9628b tests:0; slice 0189=sow:5195b impl:8751b tests:0; slice 0190=sow:4343b impl:6845b tests:0; slice 0191=sow:4594b impl:7975b tests:0; slice 0192=sow:3660b impl:6417b tests:0; slice 0193=sow:4065b impl:13374b tests:0; slice 0194=sow:3384b impl:7602b tests:0; slice 0195=sow:3596b impl:8007b tests:0; slice 0196=sow:3899b impl:7992b tests:0; slice 0197=sow:4110b impl:7750b tests:0; slice 0198=sow:2984b impl:4913b tests:0; slice 0199=sow:3776b impl:6202b tests:0; slice 0200=sow:4382b impl:5846b tests:0; slice 0201=sow:4232b impl:6689b tests:0; slice 0202=sow:3826b impl:6292b tests:0; slice 0203=sow:4152b impl:7988b tests:0; slice 0204=sow:3821b impl:6759b tests:0; slice 0205=sow:3682b impl:7041b tests:0; slice 0206=sow:3647b impl:5931b tests:0; slice 0207=sow:3782b impl:5641b tests:0; slice 0208=sow:3941b impl:8161b tests:0; slice 0209=sow:4071b impl:7197b tests:0; slice 0210=sow:7284b impl:17139b tests:0; slice 0211=sow:5001b impl:6966b tests:0; slice 0212=sow:4461b impl:5915b tests:0; slice 0213=sow:5603b impl:9716b tests:0; slice 0214=sow:4369b impl:6306b tests:0; slice 0215=sow:4772b impl:7299b tests:0; slice 0216=sow:6205b impl:9695b tests:0; slice 0217=sow:5079b impl:8822b tests:0; slice 0218=sow:4880b impl:9450b tests:0; slice 0219=sow:5198b impl:10125b tests:0; slice 0220=sow:4657b impl:6999b tests:0; slice 0221=sow:6492b impl:10700b tests:0; slice 0222=sow:5138b impl:8318b tests:0; slice 0223=sow:3905b impl:6630b tests:0; slice 0224=sow:4941b impl:9444b tests:0; slice 0225=sow:5375b impl:6015b tests:0; slice 0226=sow:6289b impl:8383b tests:0; slice 0227=sow:6763b impl:12818b tests:0; slice 0228=sow:5116b impl:11036b tests:0; slice 0229=sow:6076b impl:11234b tests:0; slice 0230=sow:4903b impl:7761b tests:0; slice 0231=sow:4193b impl:7672b tests:0; slice 0232=sow:4700b impl:8473b tests:0; slice 0233=sow:5055b impl:7463b tests:0; slice 0234=sow:3759b impl:6386b tests:0; slice 0235=sow:4383b impl:6404b tests:0; slice 0236=sow:4853b impl:6753b tests:0; slice 0237=sow:4853b impl:6562b tests:0; slice 0238=sow:5286b impl:7267b tests:0; slice 0239=sow:6627b impl:13861b tests:0; slice 0240=sow:5689b impl:14649b tests:0; slice 0241=sow:7549b impl:9147b tests:0; slice 0242=sow:7545b impl:9461b tests:0; slice 0243=sow:4646b impl:7176b tests:0; slice 0244=sow:5127b impl:7499b tests:0; slice 0245=sow:4687b impl:5257b tests:0; slice 0246=sow:5600b impl:7718b tests:0; slice 0247=sow:5143b impl:7052b tests:0; slice 0248=sow:5706b impl:8656b tests:0; slice 0249=sow:5431b impl:10824b tests:0; slice 0250=sow:5669b impl:9659b tests:0; slice 0251=sow:5548b impl:9512b tests:0; slice 0252=sow:10837b impl:19677b tests:0; slice 0253=sow:4200b impl:5103b tests:0; slice 0254=sow:4883b impl:5000b tests:0; slice 0255=sow:5233b impl:6225b tests:0; slice 0256=sow:4702b impl:5974b tests:0; slice 0257=sow:3912b impl:4839b tests:0; slice 0258=sow:4608b impl:7194b tests:0; slice 0259=sow:4354b impl:6484b tests:0; slice 0260=sow:5177b impl:11485b tests:0; slice 0261=sow:6610b impl:7118b tests:0; slice 0262=sow:6097b impl:5349b tests:0; slice 0263=sow:6465b impl:5763b tests:0; slice 0264=sow:4955b impl:5673b tests:0; slice 0265=sow:5962b impl:7889b tests:0; slice 0266=sow:6750b impl:7733b tests:0; slice 0267=sow:4520b impl:5687b tests:0; slice 0268=sow:5504b impl:7077b tests:0; slice 0269=sow:5820b impl:9422b tests:0; slice 0270=sow:5019b impl:7989b tests:0; slice 0271=sow:5608b impl:5800b tests:0; slice 0272=sow:3583b impl:4543b tests:0; slice 0273=sow:4964b impl:4565b tests:0; slice 0274=sow:4258b impl:6054b tests:0; slice 0275=sow:3264b impl:4658b tests:0; slice 0276=sow:5134b impl:8739b tests:0; slice 0277=sow:4201b impl:6401b tests:0; slice 0278=sow:5871b impl:8882b tests:0; slice 0279=sow:4421b impl:3092b tests:0; slice 0280=sow:6061b impl:8704b tests:0; slice 0281=sow:4414b impl:4832b tests:0; slice 0282=sow:5874b impl:4499b tests:0; slice 0283=sow:5830b impl:10892b tests:0; slice 0284=sow:4161b impl:6915b tests:0; slice 0285=sow:3875b impl:6145b tests:0; slice 0286=sow:4740b impl:5489b tests:0; slice 0287=sow:5380b impl:4236b tests:0; slice 0288=sow:8101b impl:6536b tests:0; slice 0289=sow:6694b impl:9460b tests:0; slice 0290=sow:7447b impl:11456b tests:0; slice 0291=sow:7168b impl:12205b tests:0; slice 0292=sow:5647b impl:9662b tests:0; slice 0293=sow:7383b impl:6860b tests:0; slice 0294=sow:6247b impl:5872b tests:0; slice 0295=sow:6776b impl:10549b tests:0; slice 0296=sow:8537b impl:3453b tests:0; slice 0297=sow:5377b impl:4022b tests:0; slice 0298=sow:5372b impl:5005b tests:0; slice 0299=sow:5823b impl:7624b tests:0; slice 0300=sow:6809b impl:8455b tests:0; slice 0301=sow:6494b impl:7910b tests:0; slice 0302=sow:6828b impl:7708b tests:0; slice 0303=sow:6682b impl:8269b tests:0; slice 0304=sow:8566b impl:11856b tests:0; slice 0305=sow:8019b impl:14007b tests:0; slice 0306=sow:6975b impl:9773b tests:0; slice 0307=sow:8446b impl:7780b tests:0; slice 0308=sow:9176b impl:4821b tests:0; slice 0309=sow:9426b impl:5901b tests:0; slice 0310=sow:7575b impl:4130b tests:0; slice 0311=sow:6817b impl:6330b tests:0; slice 0312=sow:5290b impl:4226b tests:0; slice 0313=sow:7114b impl:8732b tests:0; slice 0314=sow:6012b impl:8515b tests:0; slice 0315=sow:7604b impl:4303b tests:0; slice 0316=sow:8547b impl:5834b tests:0; slice 0317=sow:6980b impl:8040b tests:0; slice 0318=sow:6429b impl:6748b tests:0; slice 0319=sow:6181b impl:6169b tests:0; slice 0320=sow:6656b impl:6621b tests:0; slice 0321=sow:7872b impl:8810b tests:0; slice 0322=sow:5698b impl:6788b tests:0; slice 0323=sow:7199b impl:12578b tests:0; slice 0324=sow:6164b impl:11067b tests:0; slice 0325=sow:7342b impl:6941b tests:0; slice 0326=sow:7043b impl:7186b tests:0; slice 0327=sow:7623b impl:10896b tests:0; slice 0328=sow:7046b impl:7320b tests:0; slice 0329=sow:4931b impl:6030b tests:0; slice 0330=sow:6436b impl:7005b tests:0; slice 0331=sow:4550b impl:4818b tests:0; slice 0332=sow:5530b impl:5886b tests:0; slice 0333=sow:5028b impl:4526b tests:0; slice 0334=sow:5775b impl:5982b tests:0; slice 0335=sow:5800b impl:6691b tests:0; slice 0336=sow:6145b impl:6591b tests:0; slice 0337=sow:7073b impl:7416b tests:0; slice 0338=sow:4847b impl:7084b tests:0; slice 0339=sow:7258b impl:8106b tests:0; slice 0340=sow:5549b impl:5691b tests:0; slice 0341=sow:5962b impl:6635b tests:0; slice 0342=sow:6188b impl:8494b tests:0; slice 0343=sow:5498b impl:8588b tests:0; slice 0344=sow:2215b impl:3666b tests:0; slice 0345=sow:3049b impl:5802b tests:0; slice 0346=sow:3010b impl:6062b tests:0; slice 0347=sow:3241b impl:5004b tests:0; slice 0348=sow:5545b impl:7549b tests:0; slice 0349=sow:5936b impl:6479b tests:0; slice 0350=sow:4339b impl:4646b tests:0; slice 0351=sow:5340b impl:9055b tests:0; slice 0352=sow:5522b impl:8205b tests:0; slice 0353=sow:5734b impl:8832b tests:0; slice 0354=sow:6744b impl:11978b tests:0; slice 0355=sow:7537b impl:11918b tests:0; slice 0356=sow:5891b impl:6220b tests:0; slice 0357=sow:3923b impl:5172b tests:0; slice 0358=sow:4851b impl:7357b tests:0; slice 0359=sow:6040b impl:7291b tests:0; slice 0360=sow:4001b impl:5085b tests:0; slice 0361=sow:5299b impl:9075b tests:0; slice 0362=sow:4915b impl:3702b tests:0; slice 0363=sow:3726b impl:4458b tests:0; slice 0364=sow:4007b impl:6498b tests:0; slice 0365=sow:5810b impl:6722b tests:0; slice 0366=sow:5816b impl:6965b tests:0; slice 0367=sow:4644b impl:7578b tests:0; slice 0368=sow:5271b impl:8597b tests:0; slice 0369=sow:2689b impl:4780b tests:0; slice 0370=sow:2171b impl:3378b tests:0; slice 0371=sow:2872b impl:5325b tests:0; slice 0372=sow:3850b impl:6842b tests:0; slice 0373=sow:3784b impl:6324b tests:0; slice 0374=sow:5454b impl:6981b tests:0; slice 0375=sow:5303b impl:5777b tests:0; slice 0376=sow:5278b impl:7965b tests:0; slice 0377=sow:4712b impl:3877b tests:0; slice 0378=sow:6347b impl:4715b tests:0; slice 0379=sow:5483b impl:6612b tests:0; slice 0380=sow:6311b impl:9263b tests:0; slice 0381=sow:6340b impl:8564b tests:0; slice 0382=sow:4735b impl:7329b tests:0; slice 0383=sow:4876b impl:6771b tests:0; slice 0384=sow:4259b impl:6378b tests:0; slice 0385=sow:3932b impl:6214b tests:0; slice 0386=sow:6617b impl:11240b tests:0; slice 0387=sow:6467b impl:10137b tests:0; slice 0388=sow:5826b impl:6626b tests:0; slice 0389=sow:6617b impl:10133b tests:0; slice 0390=sow:8757b impl:9993b tests:0; slice 0391=sow:6098b impl:8206b tests:0; slice 0392=sow:6400b impl:5588b tests:0; slice 0393=sow:7077b impl:7679b tests:0; slice 0394=sow:4545b impl:5403b tests:0; slice 0395=sow:4476b impl:6650b tests:0; slice 0396=sow:4031b impl:4487b tests:0; slice 0397=sow:5658b impl:6235b tests:0; slice 0398=sow:5310b impl:5384b tests:0; slice 0399=sow:4425b impl:6852b tests:0; slice 0400=sow:5272b impl:10442b tests:0; slice 0401=sow:6011b impl:10067b tests:0; slice 0402=sow:6079b impl:7873b tests:0; slice 0403=sow:5254b impl:6036b tests:0; slice 0404=sow:6412b impl:10043b tests:0; slice 0405=sow:4825b impl:6910b tests:0; slice 0406=sow:4654b impl:6631b tests:0; slice 0407=sow:5224b impl:5282b tests:0; slice 0408=sow:6411b impl:5355b tests:0; slice 0409=sow:3210b impl:3268b tests:0; slice 0410=sow:7318b impl:6784b tests:0; slice 0411=sow:7591b impl:8829b tests:0; slice 0412=sow:5538b impl:4828b tests:0; slice 0413=sow:6155b impl:5599b tests:0; slice 0414=sow:6730b impl:15059b tests:0; slice 0415=sow:5977b impl:6603b tests:0; slice 0416=sow:4666b impl:5025b tests:0; slice 0417=sow:7152b impl:8265b tests:0; slice 0418=sow:5455b impl:5341b tests:0; slice 0419=sow:4475b impl:4033b tests:0; slice 0420=sow:4714b impl:4383b tests:0; slice 0421=sow:6861b impl:6697b tests:0; slice 0422=sow:5647b impl:4437b tests:0; slice 0423=sow:5846b impl:6816b tests:0; slice 0424=sow:5214b impl:3360b tests:0; slice 0425=sow:4485b impl:3947b tests:0; slice 0426=sow:7738b impl:10374b tests:0; slice 0427=sow:8134b impl:16101b tests:0; slice 0428=sow:6277b impl:14857b tests:0; slice 0429=sow:4583b impl:2743b tests:0; slice 0430=sow:4643b impl:3513b tests:0; slice 0431=sow:5121b impl:5682b tests:0; slice 0432=sow:4302b impl:6062b tests:0; slice 0433=sow:5981b impl:11784b tests:0; slice 0434=sow:4493b impl:9067b tests:0; slice 0435=sow:5120b impl:10327b tests:0; slice 0436=sow:7339b impl:25165b tests:0; slice 0437=sow:5871b impl:7404b tests:0; slice 0438=sow:5766b impl:10069b tests:0; slice 0439=sow:5707b impl:10703b tests:0; slice 0440=sow:5304b impl:4290b tests:0; slice 0441=sow:4055b impl:5395b tests:0; slice 0442=sow:5612b impl:5824b tests:0; slice 0443=sow:5373b impl:4541b tests:0; slice 0444=sow:6230b impl:6490b tests:0; slice 0445=sow:5500b impl:7984b tests:0; slice 0446=sow:4315b impl:5986b tests:0; slice 0447=sow:7403b impl:13341b tests:0; slice 0448=sow:4502b impl:5131b tests:0; slice 0449=sow:4023b impl:5325b tests:0; slice 0450=sow:5538b impl:6921b tests:0; slice 0451=sow:4345b impl:8207b tests:0; slice 0452=sow:5040b impl:7189b tests:0; slice 0453=sow:6128b impl:10286b tests:0; slice 0454=sow:6335b impl:12996b tests:0; slice 0455=sow:5602b impl:7195b tests:0; slice 0456=sow:5760b impl:9879b tests:0; slice 0457=sow:5828b impl:10343b tests:0; slice 0458=sow:3903b impl:6047b tests:0; slice 0459=sow:4199b impl:5177b tests:0; slice 0460=sow:7863b impl:9496b tests:0; slice 0461=sow:3074b impl:5534b tests:0; slice 0462=sow:5122b impl:8762b tests:0; slice 0463=sow:6321b impl:5831b tests:0; slice 0464=sow:3989b impl:9651b tests:0; slice 0465=sow:2858b impl:4534b tests:0; slice 0466=sow:4029b impl:6124b tests:0; slice 0467=sow:3511b impl:5102b tests:0; slice 0468=sow:3327b impl:4831b tests:0; slice 0469=sow:4081b impl:6714b tests:0; slice 0470=sow:4762b impl:8530b tests:0; slice 0471=sow:6123b impl:3783b tests:0; slice 0472=sow:4776b impl:4574b tests:0; slice 0473=sow:4396b impl:5531b tests:0; slice 0474=sow:5711b impl:7362b tests:0; slice 0475=sow:5084b impl:5499b tests:0; slice 0476=sow:5668b impl:6537b tests:0; slice 0477=sow:6823b impl:7948b tests:0; slice 0478=sow:4088b impl:7510b tests:0; slice 0479=sow:5770b impl:7034b tests:0; slice 0480=sow:5275b impl:9651b tests:0; slice 0481=sow:5441b impl:7564b tests:0; slice 0482=sow:4423b impl:5695b tests:0; slice 0483=sow:5203b impl:8630b tests:0; slice 0484=sow:3747b impl:6339b tests:0; slice 0485=sow:4889b impl:9397b tests:0; slice 0486=sow:6498b impl:12202b tests:0; slice 0487=sow:6120b impl:6600b tests:0; slice 0488=sow:5503b impl:8856b tests:0; slice 0489=sow:4650b impl:5168b tests:0; slice 0490=sow:5479b impl:9647b tests:0; slice 0491=sow:5871b impl:4765b tests:0; slice 0492=sow:5463b impl:4123b tests:0; slice 0493=sow:4167b impl:6783b tests:0; slice 0494=sow:4310b impl:7129b tests:0 |
+| git | files_touched=3227, lines_added=1461614, lines_removed=428092, commit_count=552 |
+
+## git_by_type
+
+Changed files and lines per file type over the git range (spec 0090 .manual/024).
+
+| type | files | added | removed | net |
+| --- | --- | --- | --- | --- |
+| .json | 28 | +406497 | -401995 | +4502 |
+| .test-case-counts-json | 1 | +595895 | -0 | +595895 |
+| .fs | 348 | +126941 | -22016 | +104925 |
+| .md | 1520 | +113646 | -2068 | +111578 |
+| .gates | 495 | +97253 | -0 | +97253 |
+| .acceptance-oracle-json | 1 | +64921 | -216 | +64705 |
+| .setup-json | 47 | +13985 | -126 | +13859 |
+| .slice-md | 494 | +11416 | -0 | +11416 |
+| .fitrun-json | 3 | +9756 | -0 | +9756 |
+| .experiment-json | 58 | +2979 | -53 | +2926 |
+| .csv | 20 | +2310 | -0 | +2310 |
+| .postmortem-review-md | 18 | +2024 | -0 | +2024 |
+| .postmortem-md | 25 | +1622 | -0 | +1622 |
+| .checkpoints-json | 1 | +1598 | -5 | +1593 |
+| .executability-json | 1 | +1299 | -203 | +1096 |
+| .item-json | 17 | +1457 | -0 | +1457 |
+| .claim-check-json | 1 | +454 | -405 | +49 |
+| .item-model-json | 20 | +693 | -0 | +693 |
+| .source-json | 21 | +672 | -0 | +672 |
+| .fsproj | 10 | +344 | -268 | +76 |
+| .material-json | 13 | +595 | -0 | +595 |
+| .expected-red-json | 1 | +550 | -19 | +531 |
+| .expected-red-observed-json | 1 | +545 | -19 | +526 |
+| .catalogue-json | 1 | +512 | -0 | +512 |
+| .manifest | 1 | +512 | -0 | +512 |
+| .study-json | 2 | +475 | -22 | +453 |
+| .sample-json | 9 | +473 | -0 | +473 |
+| .execution-contract-json | 1 | +216 | -216 | +0 |
+| .fsx | 2 | +213 | -213 | +0 |
+| .source-json" | 9 | +360 | -0 | +360 |
+| .cs | 7 | +199 | -159 | +40 |
+| .spec-gates | 1 | +206 | -0 | +206 |
+| .ps1 | 2 | +149 | -14 | +135 |
+| .sample-json" | 3 | +156 | -0 | +156 |
+| .category-json | 6 | +144 | -0 | +144 |
+| .polarizer-json | 4 | +128 | -0 | +128 |
+| .contracts-json | 2 | +55 | -23 | +32 |
+| .user-md | 1 | +74 | -2 | +72 |
+| .detector-json | 3 | +72 | -0 | +72 |
+| .diag | 1 | +29 | -28 | +1 |
+| .kit-json | 2 | +24 | -0 | +24 |
+| .yml | 1 | +24 | -0 | +24 |
+| .stat | 1 | +17 | -0 | +17 |
+| .arc-runner | 1 | +16 | -0 | +16 |
+| .gate-history | 1 | +16 | -0 | +16 |
+| .agf | 1 | +15 | -0 | +15 |
+| .spec-bundle | 1 | +12 | -2 | +10 |
+| .history | 1 | +11 | -0 | +11 |
+| .nff | 2 | +10 | -0 | +10 |
+| .txt | 1 | +10 | -0 | +10 |
+| .csproj | 1 | +0 | -8 | -8 |
+| .specrc | 1 | +4 | -4 | +0 |
+| .gitignore | 1 | +1 | -5 | -4 |
+| .jsonl | 1 | +6 | -0 | +6 |
+| .slnx | 1 | +3 | -3 | +0 |
+| .rulings-jsonl | 1 | +5 | -0 | +5 |
+| .arc-base-json | 1 | +4 | -0 | +4 |
+| .locked | 1 | +4 | -0 | +4 |
+| .operator-test-effects-jsonl | 1 | +4 | -0 | +4 |
+| .gitattributes | 1 | +3 | -0 | +3 |
+| .py | 4 | +0 | -0 | +0 |
+| .supervisor-lock | 1 | +0 | -0 | +0 |
+| .zip | 1 | +0 | -0 | +0 |
+
+## agent_mix
+
+| role | agent_name | runs | nonzero_exits |
+| --- | --- | --- | --- |
+| splitter | (none) | 0 | 0 |
+| arc_runner_worker | (none) | 0 | 0 |
+| architecture_critic | (none) | 0 | 0 |
+| reuse_critic | (none) | 0 | 0 |
+| code_judge | claude-opus-5-5[1m] | 555 | 1 |
+| build_repair | (none) | 0 | 0 |
+| resolver | claude-opus-5-5[1m] | 14 | 1 |
+| spec_author | (none) | 0 | 0 |
+| claim_checker | (none) | 0 | 0 |
+| gate_keeper | (none) | 0 | 0 |
+| gate_author | (none) | 0 | 0 |
+| handoff_verifier | (none) | 0 | 0 |
+| add_red_worker | claude-opus-5-5[1m] | 6 | 0 |
+| close_red_worker | claude-opus-5-5[1m] | 6 | 0 |
+| implement_worker | claude-opus-5-5[1m] | 515 | 2 |
+| postmortem | claude-opus-5-5[1m] | 29 | 6 |
+| add_contract_worker | claude-opus-5-5[1m] | 11 | 0 |
+| implement_contract_worker | claude-opus-5-5[1m] | 15 | 0 |
+| rename_contract_worker | gpt-6-astra | 1 | 0 |
+| wire_worker | claude-opus-5-5[1m] | 4 | 0 |
+| retire_contract_worker | claude-opus-5-5[1m] | 4 | 0 |
+| add_component_worker | gpt-6-astra | 1 | 0 |
+| wire_ui_worker | claude-opus-5-5[1m] | 29 | 0 |
+
+## anomalies
+
+| category | entries |
+| --- | --- |
+| review_cost_exceeds_worker | (none) |
+| resolver_invocations_gt_one | (none) |
+| gates_over_estimate | (none) |
+| idle_gaps_over_30min | 2026-11-06T01:34:19Z=26212.0; 2026-11-06T11:27:10Z=7140.0; 2026-11-06T14:14:21Z=5960.0; 2026-11-06T18:17:12Z=10933.0; 2026-11-07T09:58:38Z=10285.0; 2026-11-07T17:16:32Z=10593.0; 2026-11-08T00:00:41Z=9605.0; 2026-11-08T04:20:08Z=13635.0; 2026-11-08T09:41:32Z=10156.0; 2026-11-08T14:15:51Z=3057.0; 2026-11-08T15:23:45Z=5890.0; 2026-11-09T01:19:41Z=2743.0; 2026-11-09T11:55:30Z=2570.0; 2026-11-09T13:04:45Z=3717.0; 2026-11-09T21:22:17Z=2220.0; 2026-11-09T22:12:23Z=2490.0; 2026-11-09T23:05:14Z=1900.0; 2026-11-10T04:58:24Z=3075.0; 2026-11-10T06:03:44Z=2320.0; 2026-11-10T11:21:33Z=9402.0; 2026-11-10T18:05:42Z=2261.0; 2026-11-10T18:57:22Z=3006.0; 2026-11-10T21:56:00Z=1871.0; 2026-11-11T04:28:42Z=2290.0; 2026-11-11T06:14:19Z=1896.0; 2026-11-11T08:34:53Z=2495.0; 2026-11-11T12:54:37Z=1810.0; 2026-11-11T13:37:03Z=1840.0; 2026-11-11T14:33:38Z=2030.0; 2026-11-11T18:42:08Z=2321.0; 2026-11-11T22:04:37Z=2525.0; 2026-11-12T04:10:17Z=28365.0; 2026-11-12T14:30:43Z=1890.0; 2026-11-12T15:13:34Z=2380.0; 2026-11-12T16:42:25Z=2405.0; 2026-11-12T21:43:03Z=1810.0; 2026-11-13T01:26:22Z=1910.0; 2026-11-13T09:51:33Z=9551.0; 2026-11-13T17:41:55Z=1830.0; 2026-11-13T21:03:45Z=1881.0; 2026-11-13T23:28:04Z=2691.0; 2026-11-14T00:54:41Z=2450.0; 2026-11-14T01:55:45Z=1830.0; 2026-11-14T03:17:44Z=4073.0; 2026-11-14T04:38:09Z=2280.0; 2026-11-14T06:10:06Z=2380.0; 2026-11-14T08:35:25Z=2755.0; 2026-11-14T11:08:50Z=1945.0; 2026-11-14T11:49:49Z=2010.0; 2026-11-14T12:32:45Z=2000.0; 2026-11-14T13:30:16Z=2325.0; 2026-11-14T14:29:51Z=2726.0; 2026-11-14T20:46:55Z=14424.0; 2026-11-15T06:46:54Z=25667.0; 2026-11-15T14:59:22Z=13129.0; 2026-11-15T19:37:05Z=2880.0; 2026-11-15T23:23:43Z=2824.0; 2026-11-16T00:11:24Z=2075.0; 2026-11-16T03:20:57Z=9919.0; 2026-11-16T06:21:07Z=31917.0; 2026-11-16T16:03:01Z=5945.0; 2026-11-16T18:10:10Z=2570.0; 2026-11-16T19:19:23Z=2906.0; 2026-11-16T20:43:38Z=2671.0; 2026-11-16T22:21:25Z=2146.0; 2026-11-16T23:51:26Z=2421.0; 2026-11-17T01:06:28Z=2815.0; 2026-11-17T06:20:21Z=3030.0; 2026-11-17T07:46:38Z=2366.0; 2026-11-17T10:10:00Z=2800.0; 2026-11-17T12:23:48Z=4730.0; 2026-11-17T14:48:38Z=3595.0; 2026-11-17T16:24:09Z=2975.0; 2026-11-18T00:07:31Z=2215.0; 2026-11-18T01:24:03Z=2950.0; 2026-11-18T03:01:31Z=2345.0; 2026-11-18T04:28:50Z=2615.0; 2026-11-18T06:01:25Z=2356.0; 2026-11-18T09:56:11Z=4055.0; 2026-11-18T12:37:21Z=1816.0; 2026-11-18T13:23:11Z=1905.0; 2026-11-18T14:09:30Z=2566.0; 2026-11-18T15:09:10Z=2835.0; 2026-11-18T16:48:04Z=3071.0; 2026-11-18T19:24:29Z=2076.0; 2026-11-18T20:08:03Z=9935.0 |
+| escalations | slice 12=code-judge escalated on cycle 2: Authority conflict, not a code defect. The cycle-2 diff is byte-identical to the tree judged green in cycle 1 (fingerprint 969e23357ffd). Every how-to clause, test op and contract is met, and the engine measured build and elevation green and constructor-unit-tests at 736/736 with its identity census (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0013-resolver-01.md); slice 51=code-judge escalated on cycle 1: S17-REPOINT-CONSTRUCTOR and slice 0052 require every fact name to remain unchanged while prohibiting SeedSamples anywhere in the re-pointed files. The unchanged PropagationTests.fs:200 fact name contains SeedSamples, as its HEAD counterpart confirms. The immutable oracle repeats both requirements, a (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0052-resolver-01.md); slice 55=code-judge escalated on cycle 1: Slice 0056 Acceptance and oracle S17-REPOINT-UI require both test suites to contain no seed references, but the compiled BuiltInCatalogueParityTests still contains them at lines 26, 33, 46-49, 85-88, 103-104, 110 and 116. Git HEAD and commit 01240b6 establish that this bridge predates the current ch (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0056-resolver-01.md); slice 58=code-judge escalated on cycle 2: The source retirement satisfies S21-RETIRE-EF-PROOF, but measured verification exposes an authority conflict: the required seven-case deletion reduces 801 cases to 794, and the full suite passed all 794, while ASG credits only four deleted method identities and rejects the run against 797. The compl (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0059-resolver-01.md); slice 117=implementation repair budget exhausted: build: exit_code 1 != expected 0
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpticalModel -> C:\GitHub\Berreman\Berreman\OpticalModel\bin\x64\Release\net10.0\Softellect.Berreman.OpticalModel.dll
+  Numerics -> C:\GitHub\Berreman\MathNetNumerics\Numerics\bin\x64\Release\net10.0\MathNet.Numerics.dll
+  OpticalConstructor.Database -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Database\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Database.dll
+  OpticalConstructor.Controls -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Controls\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Controls.dll
+  FSharp -> C:\GitHub\Berreman\MathNetNumerics\FSharp\bin\x64\Release\net10.0\MathNet.Numerics.FSharp.dll
+  Berreman -> C:\GitHub\Berreman\Berreman\Berreman\bin\x64\Release\net10.0\Softellect.Berreman.Core.dll
+  OpticalProperties -> C:\GitHub\Berreman\Berreman\OpticalProperties\bin\x64\Release\net10.0\Softellect.Berreman.OpticalProperties.dll
+  Analytics -> C:\GitHub\Berreman\Berreman\Analytics\bin\x64\Release\net10.0\Softellect.Berreman.Analytics.dll
+  OpticalConstructor.Domain -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Domain\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Domain.dll
+  OpticalConstructor.Storage -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Storage\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Storage.dll
+  OpticalConstructor.Optimization -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Optimization\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Optimization.dll
+  OpticalConstructor.Ui -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Ui.dll
+  BerremanTests -> C:\GitHub\Berreman\Berreman\BerremanTests\bin\x64\Release\net10.0\BerremanTests.dll
+  OpticalConstructor.TestWindows -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.TestWindows\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.TestWindows.dll
+  OpticalConstructor.App -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.App\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.App.dll
+  OpticalConstructor.Tests -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Tests\bin\x64\Release\net10.0\OpticalConstructor.Tests.dll
+  OpticalConstructor.TestWindows.App -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.TestWindows.App\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.TestWindows.App.dll
+C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\AppContextTests.fs(81,13): error FS0905: A member and a local class binding both have the name 'storageProvider' [C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\OpticalConstructor.Ui.Tests.fsproj]
+
+Build FAILED.
+
+C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\AppContextTests.fs(81,13): error FS0905: A member and a local class binding both have the name 'storageProvider' [C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\OpticalConstructor.Ui.Tests.fsproj]
+    0 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:11.36
+
+; slice 131=code-judge escalated on cycle 2: S42-ATTACH-SHAPES and its four authorized facts are implemented, but the supplied all-discovered constructor-unit-tests execution remains failed: 1075 of 1076 passed, with KitProxyFolderTests stale-lock contention returning KitIoErr for access denied to .oc/lock-guard.tmp instead of KitLockedErr. Th (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0132-resolver-01.md); slice 144=code-judge escalated on cycle 1: S43-OPEN-SEAM is incomplete: KitContext.createInMemory and its declared eighth test are absent. Source inspection confirms that the prescribed Domain-only, two-argument, infallible constructor cannot reuse the current Storage-owned serialized proxy factory under the slice's fixed effects and no-addi (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0145-resolver-01.md); slice 149=code-judge escalated on cycle 1: The supplied gate roster is complete and pending execution is non-blocking. However, measured FS3369 warnings remain in KitContentFileJsonTests.fs; baseline history proves they originated in steps 0146–0147, while step 0150's authorized effects exclude their repair despite the project's zero-owned-w (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0150-resolver-01.md); slice 152=implementation repair budget exhausted: build: exit_code 1 != expected 0
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpticalModel -> C:\GitHub\Berreman\Berreman\OpticalModel\bin\x64\Release\net10.0\Softellect.Berreman.OpticalModel.dll
+  OpticalConstructor.Database -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Database\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Database.dll
+  Numerics -> C:\GitHub\Berreman\MathNetNumerics\Numerics\bin\x64\Release\net10.0\MathNet.Numerics.dll
+  OpticalConstructor.Controls -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Controls\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Controls.dll
+  FSharp -> C:\GitHub\Berreman\MathNetNumerics\FSharp\bin\x64\Release\net10.0\MathNet.Numerics.FSharp.dll
+  Berreman -> C:\GitHub\Berreman\Berreman\Berreman\bin\x64\Release\net10.0\Softellect.Berreman.Core.dll
+  OpticalProperties -> C:\GitHub\Berreman\Berreman\OpticalProperties\bin\x64\Release\net10.0\Softellect.Berreman.OpticalProperties.dll
+  Analytics -> C:\GitHub\Berreman\Berreman\Analytics\bin\x64\Release\net10.0\Softellect.Berreman.Analytics.dll
+  OpticalConstructor.Domain -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Domain\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Domain.dll
+  OpticalConstructor.Optimization -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Optimization\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Optimization.dll
+  OpticalConstructor.Storage -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Storage\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Storage.dll
+  BerremanTests -> C:\GitHub\Berreman\Berreman\BerremanTests\bin\x64\Release\net10.0\BerremanTests.dll
+  OpticalConstructor.Ui -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.Ui.dll
+  OpticalConstructor.App -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.App\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.App.dll
+  OpticalConstructor.TestWindows -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.TestWindows\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.TestWindows.dll
+  OpticalConstructor.TestWindows.App -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.TestWindows.App\bin\x64\Release\net10.0\Softellect.Berreman.OpticalConstructor.TestWindows.App.dll
+  OpticalConstructor.Tests -> C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Tests\bin\x64\Release\net10.0\OpticalConstructor.Tests.dll
+C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\SceneSaveLoadTests.fs(15,6): error FS0893: This declaration opens the namespace or module 'Avalonia.FuncUI.Elmish' through a partially qualified path. Adjust this code to use the full path of the namespace. This change will make your code more robust as new constructs are added to the F# and CLI libraries. [C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\OpticalConstructor.Ui.Tests.fsproj]
+
+Build FAILED.
+
+C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\SceneSaveLoadTests.fs(15,6): error FS0893: This declaration opens the namespace or module 'Avalonia.FuncUI.Elmish' through a partially qualified path. Adjust this code to use the full path of the namespace. This change will make your code more robust as new constructs are added to the F# and CLI libraries. [C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\OpticalConstructor.Ui.Tests.fsproj]
+    0 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:30.54
+
+; slice 159=code-judge escalated on cycle 1: Step 0160 requires copying the fixed category enum unchanged and rejecting NotACategory while retaining every ExportImportTests assertion. The accepted 0035 round-trip fact requires Glass from the caller to export and pass that same validator, and step 0046's recorded failure and accepted repair est (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0160-resolver-01.md); slice 159=code-judge escalated on cycle 1: The implementation and declared test effects satisfy slice 0160 as amended by manual 012, but S44-ELEVATION is uncovered by the selected execution command after the repair was committed as 4160378. The frozen elevation command has no -Base or {step_base}; the current working tree contains only hando; slice 159=executability receipt is stale: semantic source, prompt or validator changed; slice 184=code-judge escalated on cycle 1: Step 0185 is implemented correctly within its authorized effects: kitWrites, the single guardKitWrite over ExpCommit/ExpRemove/AttachDataFileTo/SceneSave, removalAvailability, the withheld Add/Remove/Attach/Save controls, the three declared test identities and the declared InverseConstructorTests ch (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0185-resolver-01.md); slice 209=verification environment/deadline evidence: ui-smoke: first attempt timed out after 180s
+Running tests from C:\GitHub\Berreman\Berreman\OpticalConstructor\OpticalConstructor.Ui.Tests\bin\x64\Release\net10.0\OpticalConstructor.Ui.Tests.dll (net10.0|x64)
+
+; slice 251=code-judge escalated on cycle 1: The in-scope implementation meets slice 0252, and on its merits it would be review-green. ExperimentRun folds ElementStep/ObjectStep from SourceEmission.emittedInto with no first-polarizer arm. chartForRun builds every step through ItemEvaluation. behaviorInputStokes and runInputStokes are retired.  (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0252-resolver-01.md); slice 251=a verification gate unexpectedly changed tracked source; slice 318=executability receipt is stale: semantic source, prompt or validator changed; slice 362=code-judge escalated on cycle 1: judge produced no output; slice 413=too many failures (3/2): verification gates failed: ui-smoke; arc=health-check failed: boot pre-emit step-compiler violation: executability failed:
+- EVIDENCE_INVALID step 0 [contract/inventory]: .repository-inventory-json: [Errno 2] No such file or directory: 'C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\.repository-inventory-json'; slice 425=too many failures (1/2): verification gates failed: elevation; slice 426=code-judge escalated on cycle 2: S121-AT1-STUDY remains unmet: existing supervisor evidence and source inspection show ObjectStage selecting the nonlinear engine for QZ-then-LR paths, then rejecting the required anchored session gains. The repair must distinguish independent constituent reconstruction plus a series diagnostic from  (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0427-resolver-01.md); slice 427=code-judge escalated on cycle 2: S121-COMMITTED-KIT remains unmet: three uninjected random slot IDs cause 95 reference-kit files to differ, and the supervisor reproduced the new comparison fact's failure. A conforming repair needs an element-ID provider in Berreman/OpticalConstructor/OpticalConstructor.Ui/TableAndElementRotationVie (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0428-resolver-01.md); slice 435=code-judge escalated on cycle 1: The diff implements how-to (1)-(4) faithfully inside the authorized effect (KitAcceptanceTests.fs only): one runStudyFitThroughShell shared by AT-1 (60 s, all six AT-1 facts pass) and AT-2 (1800 s), the clock move to 2026-06-01T12:01:00Z, assertAbsorbingRecovery via promotedMaterialWith and absorbin (resolver consulted: C:\GitHub\Berreman\specs\0050\.artifacts\resolver\0436-resolver-01.md); slice 493=executability receipt is stale: semantic source, prompt or validator changed |
+| hangups | (none) |
+| operator_overrides | override#1=accepted; override#2=accepted; override#3=accepted; override#4=accepted; override#5=accepted; override#6=accepted; override#7=accepted |
+
+## Warnings
+
+| code | detail |
+| --- | --- |
+| run_csv_clock_sum_mismatch | slices: 52, 56, 118, 153 |
