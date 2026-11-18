@@ -72,6 +72,26 @@ module FittedProblems =
             iterations : IterationCount
         }
 
+    /// Where the offset frame puts a point: a hundred in every coordinate (spec 0050 S11.4).
+    [<Literal>]
+    let private frameOffset : float = 100.0
+
+    type ScaledVector with
+
+        /// The residual about this point in a frame offset by a hundred, y ↦ residual (this + (y − 100))
+        /// (spec 0050 S11.4, S14.2).
+        member this.offsetResidualOf (residual : ScaledVector -> ResidualVector) : Residual =
+            let start = this.value
+            fun (DesignVector y) -> Array.map2 (fun (solved : float) (moved : float) -> solved + (moved - frameOffset)) start y |> ScaledVector |> residual
+
+        /// The vector of hundreds that stands for this point in its offset frame (spec 0050 S11.4, S14.2).
+        member this.offsetOrigin : DesignVector = Array.create this.value.Length frameOffset |> DesignVector
+
+        /// FitQuality's Jacobian in the offset frame: its step √ε · max(|x|, 1e-12) is then about 1.5e-6, the order of
+        /// ALGLIB's own 1e-6, and a coordinate at zero is still perturbed (spec 0050 S11.4, S14.2).
+        member this.offsetJacobianOf (residual : ScaledVector -> ResidualVector) : ResidualJacobian =
+            FitQuality.residualJacobian (this.offsetResidualOf residual) this.offsetOrigin
+
     /// One least-squares solve: `search.start` the solution it reached within its bounds, and coordinate k the physical
     /// value centreₖ + unitₖ · sₖ (spec 0050 S11.4).
     [<ReferenceEquality>]
@@ -85,30 +105,16 @@ module FittedProblems =
             unit : StudyParameterVector
         }
 
-        /// The residual about a frame offset by a hundred, y ↦ residual (start + (y − 100)), and the vector of hundreds
-        /// that stands for the solution in it (spec 0050 S11.4).
-        member private this.offsetFrame : Residual * DesignVector =
-            let offset = 100.0
-            let start = this.search.start.value
-
-            let shifted (DesignVector y) : ResidualVector =
-                Array.map2 (fun (solved : float) (moved : float) -> solved + (moved - offset)) start y |> ScaledVector |> this.residual
-
-            shifted, Array.create start.Length offset |> DesignVector
-
-        /// FitQuality's Jacobian in the offset frame: its step √ε · max(|x|, 1e-12) is then about 1.5e-6, the order of
-        /// ALGLIB's own 1e-6, and a coordinate at zero is still perturbed (spec 0050 S11.4).
+        /// FitQuality's Jacobian at the solution, in its offset frame (spec 0050 S11.4, S14.2).
         member this.jacobian : ResidualJacobian =
-            FittedProblemEvaluations.jacobians.GetValue(this, fun problem ->
-                let shifted, solution = problem.offsetFrame
-                FitQuality.residualJacobian shifted solution)
+            FittedProblemEvaluations.jacobians.GetValue(this, fun problem -> problem.search.start.offsetJacobianOf problem.residual)
 
         /// FitQuality's report in the offset frame with the solve's own final residuals, read for its standard errors
-        /// only: its parameters are the frame's (spec 0050 S11.4).
+        /// only: its parameters are the frame's (spec 0050 S11.4, S14.2).
         member this.report : FitQuality.FitReport =
             FittedProblemEvaluations.reports.GetValue(this, fun problem ->
-                let shifted, solution = problem.offsetFrame
-                FitQuality.reportFrom shifted solution (problem.residual problem.search.start))
+                let start = problem.search.start
+                FitQuality.reportFrom (start.offsetResidualOf problem.residual) start.offsetOrigin (problem.residual start))
 
         /// The solve's identifiability: its condition and correlation only where the Jacobian's rank is the coordinate
         /// count and the condition finite (spec 0050 S11.4).

@@ -123,8 +123,9 @@ module FitQuality =
         [| for i in 0 .. m - 1 -> [| for p in 0 .. n - 1 -> cols.[p].[i] |] |] |> ResidualJacobian
 
     /// Cov = reducedχ² · (JᵀJ)⁻¹, with the multiply and inverse routed through the
-    /// `MathNetNumericsMath` `RealMatrix` seam (NOT ALGLIB, §A.8).
-    let private covarianceMatrix (jacobian : ResidualJacobian) (reduced : ReducedChiSquared) : ParameterMatrix =
+    /// `MathNetNumericsMath` `RealMatrix` seam (NOT ALGLIB, §A.8); the study engine's reports and Layer 2 share it
+    /// (spec 0050 S14.2).
+    let covarianceOf (jacobian : ResidualJacobian) (reduced : ReducedChiSquared) : ParameterMatrix =
         let (ResidualJacobian jac) = jacobian
         let (ReducedChiSquared reducedChiSquared) = reduced
         let m = jac.Length
@@ -151,7 +152,7 @@ module FitQuality =
         let chi = finalResiduals.sumOfSquares
         let dof = max 1 (m - n)
         let reduced = chi / float dof
-        let covariance = covarianceMatrix (residualJacobian residual solution) (ReducedChiSquared reduced)
+        let covariance = covarianceOf (residualJacobian residual solution) (ReducedChiSquared reduced)
         let (ParameterMatrix cov) = covariance
         let stdErr =
             [| for i in 0 .. n - 1 ->

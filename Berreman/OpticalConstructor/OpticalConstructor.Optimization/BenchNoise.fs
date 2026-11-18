@@ -106,15 +106,22 @@ module BenchNoise =
             let rng = System.Random(seed.value)
             { nextDeviate = fun () -> 2.0 * rng.NextDouble() - 1.0 |> UniformDeviate }
 
+    type MeasurementConfiguration with
+
+        /// This configuration with its incidence and its sample azimuth turned by the given angles (spec 0050 S14.2).
+        /// `IncidenceAngle + Angle` keeps a tilt past normal signed, where `IncidenceAngle.create` folds it.
+        member this.misalignedBy (incidence : Angle) (azimuth : Angle) : MeasurementConfiguration =
+            {
+                this with
+                    incidenceAngle = this.incidenceAngle + incidence
+                    azimuth = this.azimuth.angle + azimuth |> SampleAzimuth
+            }
+
     /// Where the sample really was when a nominal configuration was recorded: incidence and azimuth wobble
-    /// independently. `IncidenceAngle + Angle` keeps a tilt past normal signed, where `IncidenceAngle.create` folds it.
+    /// independently, the incidence drawn first.
     let disturb (draws : UniformDeviateProvider) (noise : NoiseParam) (c : MeasurementConfiguration) : MeasurementConfiguration =
         let wobble () = noise.rotation.value * (draws.nextDeviate ()).value |> Angle
-        {
-            c with
-                incidenceAngle = c.incidenceAngle + wobble ()
-                azimuth = c.azimuth.angle + wobble () |> SampleAzimuth
-        }
+        c.misalignedBy (wobble ()) (wobble ())
 
     /// What the receiver reports: the matrix normalized, then each element but `m₀₀` misread, row by row.
     /// `m₀₀` stays exactly 1 because every comparison divides the absolute throughput out.

@@ -82,6 +82,13 @@ module StudyEngineTests =
         Assert.Equal<float[]>([| -50.0; -50.0; -50.0 |], search.lowerBounds.value)
         Assert.Equal<float[]>([| 50.0; 50.0; 50.0 |], search.upperBounds.value)
 
+    [<Fact>]
+    let ``an interval's search unit is its span over twice the search box's half-width`` () : unit =
+        let interval : ParameterInterval = { lower = ParameterValue 1.0; upper = ParameterValue 2.0 }
+
+        // A span of 1 over 2 · 50.
+        Assert.Equal(0.01, interval.searchUnit.value, 1e-15)
+
     // ============================ spec 0050 S11.3: the engine's automatic choice ============================
 
     let private polarizerPreset (id : ElementValueId) : PolarizerPreset =

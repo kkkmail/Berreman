@@ -394,6 +394,13 @@ module StudyEngine =
     /// its bounds, as every inverse suite searches, and ALGLIB's fixed 1e-6 step stays linear (spec 0050 S11.3).
     let studySearchBox : SearchBox = SearchBox 50.0
 
+    type ParameterInterval with
+
+        /// The scaled unit of an entry within these bounds: their span over twice `studySearchBox`'s half-width
+        /// (spec 0050 S11.3, S14.2).
+        member this.searchUnit : ParameterValue =
+            (this.upper.value - this.lower.value) / (2.0 * studySearchBox.halfWidth) |> ParameterValue
+
     /// The study residual, plus one row per prior, over a vector scaled about each entry's start; total, as ALGLIB drives
     /// it with vectors the forward model may refuse (spec 0050 S11.3).
     [<ReferenceEquality>]
@@ -423,7 +430,7 @@ module StudyEngine =
 
             let unit =
                 unknowns
-                |> List.map (fun unknown -> (unknown.bounds.upper.value - unknown.bounds.lower.value) / (2.0 * studySearchBox.halfWidth))
+                |> List.map (fun unknown -> unknown.bounds.searchUnit.value)
                 |> Array.ofList
                 |> StudyParameterVector
 

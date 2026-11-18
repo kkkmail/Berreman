@@ -15,6 +15,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.StudyForward
 open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.MuellerFitting
 open OpticalConstructor.Optimization.FittedProblems
@@ -289,3 +290,36 @@ module FitResultsTests =
         Assert.True(reports.Count >= 6, $"{reports.Count} iteration(s) were reported over six re-fits")
         Assert.Equal<IterationCount list>([ for n in 6 .. 5 + reports.Count -> IterationCount n ], List.ofSeq reports)
         Assert.Equal(IterationCount reports.Count, run.iterations)
+
+    [<Fact>]
+    let ``the offset frame differentiates a residual about any point, zero included, and covarianceOf scales the inverse normal matrix`` () : unit =
+        let design = [| [| 1.0; 2.0 |]; [| 0.0; 1.0 |]; [| 3.0; 0.0 |] |]
+
+        // r(x) = A x − b with b = 0: linear, so its Jacobian is A about every point.
+        let linear (ScaledVector x) : ResidualVector =
+            design
+            |> Array.map (fun (row : float[]) -> Array.fold2 (fun (sum : float) (a : float) (coordinate : float) -> sum + a * coordinate) 0.0 row x)
+            |> ResidualVector
+
+        for point in [ ScaledVector [| 0.0; 0.0 |]; ScaledVector [| 5.0; -3.0 |] ] do
+            let jacobian = (point.offsetJacobianOf linear).value
+            Assert.Equal(3, jacobian.Length)
+
+            Array.iter2
+                (fun (expected : float[]) (row : float[]) ->
+                    Assert.Equal(2, row.Length)
+                    Array.iter2 (fun (e : float) (actual : float) -> Assert.Equal(e, actual, 1e-6)) expected row)
+                design
+                jacobian
+
+        // AᵀA = [10 2; 2 5], so (AᵀA)⁻¹ = [5 −2; −2 10] / 46.
+        let expected = [| [| 5.0 / 46.0; -2.0 / 46.0 |]; [| -2.0 / 46.0; 10.0 / 46.0 |] |]
+        let covariance = (FitQuality.covarianceOf (ResidualJacobian design) (FitQuality.ReducedChiSquared 0.5)).value
+        Assert.Equal(2, covariance.Length)
+
+        Array.iter2
+            (fun (expectedRow : float[]) (row : float[]) ->
+                Assert.Equal(2, row.Length)
+                Array.iter2 (fun (e : float) (actual : float) -> Assert.Equal(0.5 * e, actual, 1e-12)) expectedRow row)
+            expected
+            covariance
