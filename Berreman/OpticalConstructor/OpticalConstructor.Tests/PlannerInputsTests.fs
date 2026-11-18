@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.ItemModels
@@ -25,7 +26,8 @@ open CrystalMaterialFixtures
 
 /// The Measurement Planner's inputs: the lab profile (the kit's sources, optics and detectors read from their models,
 /// and what an intensity detector reaches beside them), the kit's plates of a material, and the study's prior and targets;
-/// then the kit's looks and its structural report (spec 0050 S14.1; 001 §M).
+/// then the kit's looks and its structural report, its candidates, and its instrument's polarizer and compensator states
+/// (spec 0050 S14.1, S14.2; 001 §M).
 module PlannerInputsTests =
 
     let private itemValue (result : Result<Item, ItemError>) : Item =
@@ -236,7 +238,7 @@ module PlannerInputsTests =
     let private unresolvedReasonOf (result : Result<LabProfile, PlannerError>) : string =
         match result with
         | Error (UnresolvedPlannerItemErr reason) -> reason
-        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ as error) ->
+        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ as error) ->
             failwith $"Expected an unresolved item, got: {error.describe}"
         | Ok _ -> failwith "Expected an unresolved item, got a lab profile."
 
@@ -898,3 +900,174 @@ module PlannerInputsTests =
             { bothRun with scan = { bothRun.scan with sourceWaveLengthOpt = Some laserSource.waveLength } }
 
         Assert.Equal(CandidateNotInKit, transmitted.coverageIn [ bench ] [ setLine ])
+
+    /// An empty material store: no optic here is a stack sample.
+    let private noMaterials : MaterialProxy = MaterialProxy.createInMemory (fun _ -> [])
+
+    /// The instrument findings of the kit of `items`, its inputs read through `choiceOf` and its optics through
+    /// `evaluatedBy`.
+    let private instrumentFindingsOver
+        (items : Item list)
+        (evaluatedBy : Item -> ItemModelChoice option)
+        : Result<InstrumentFinding list, PlannerError> =
+        let inputs : PlannerInputs = plannerInputsOf crystalStudy items choiceOf crystalVersion |> inputsValue
+        inputs.instrumentFindingsWith items evaluatedBy noMaterials
+
+    let private findingsValue (result : Result<InstrumentFinding list, PlannerError>) : InstrumentFinding list =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    /// The draft's Mueller matrix through the item evaluator at `rotation`, at the Laser's line.
+    let private evaluatedMuellerOf (draft : ItemDraft) (rotation : Angle) : MuellerMatrix =
+        let item : Item = draft.toItem
+
+        draft.model.boundWith noMaterials (ParameterValues.ofParameters item.parameters)
+        |> Result.bind (fun (bound : BoundOpticalElement) ->
+            bound.muellerAt (ElementOrientation.transmittingAt rotation) laserSource.waveLength)
+        |> Result.defaultWith (fun error -> failwith error.describe)
+
+    /// The condition number of the matrix of these rows.
+    let private conditionOfRows (rows : float[] list) : float = (rows |> List.toArray |> ResidualJacobian).conditionNumber.value
+
+    [<Fact>]
+    let ``a polarizer and a retarder give the four compensator angles of least generator condition, and the instrument's condition follows`` () =
+        let choice : InstrumentChoice =
+            match instrumentFindingsOver [ laser; lp1; ret ] choiceOf |> findingsValue with
+            | [ ConditionedInstrumentFinding held ] -> held
+            | findings ->
+                let texts : string = findings |> List.map (fun (finding : InstrumentFinding) -> finding.text) |> String.concat " | "
+                failwith $"Expected one conditioned finding, got: {texts}"
+
+        Assert.Equal(opticOf lp1 PolarizerOptic, choice.polarizer)
+        Assert.Equal(opticOf ret CompensatorOptic, choice.compensator)
+
+        let grid : Angle list = InstrumentChoice.compensatorAngleGrid
+        Assert.Equal<Angle list>([ for step in 0..11 -> Angle.degree (15.0<deg> * float step) ], grid)
+
+        // Four distinct grid angles, in the grid's order.
+        Assert.Equal(4, choice.angles.Length)
+        Assert.Equal<Angle list>(grid |> List.filter (fun (angle : Angle) -> List.contains angle choice.angles), choice.angles)
+
+        // The generator: LP1 at 0 then RET turned to θ, over unpolarized light; the analyzer reads row 0 of LP1 · RET(θ).
+        let polarizing : MuellerMatrix = evaluatedMuellerOf lp1Draft Angle.zero
+        let polarized : StokesVector = polarizing * Propagation.unpolarizedStokes
+        let stateAt (angle : Angle) : StokesVector = evaluatedMuellerOf retDraft angle * polarized
+
+        let analyzerRowAt (angle : Angle) : RealVector4 =
+            let analyzing : MuellerMatrix = polarizing * evaluatedMuellerOf retDraft angle
+            RealVector4.create [ for j in 0..3 -> analyzing.element 0 j ]
+
+        let generatorConditionAt (angles : Angle list) : float =
+            angles
+            |> List.map (fun (angle : Angle) ->
+                let state : StokesVector = stateAt angle
+                [| state.s0; state.s1; state.s2; state.s3 |])
+            |> conditionOfRows
+
+        let analyzerConditionAt (angles : Angle list) : float =
+            angles
+            |> List.map (fun (angle : Angle) ->
+                let row : RealVector4 = analyzerRowAt angle
+                [| row.[0]; row.[1]; row.[2]; row.[3] |])
+            |> conditionOfRows
+
+        let sets : Angle list list =
+            [
+                for i in 0..11 do
+                    for j in i + 1 .. 11 do
+                        for k in j + 1 .. 11 do
+                            for l in k + 1 .. 11 do
+                                [ List.item i grid; List.item j grid; List.item k grid; List.item l grid ]
+            ]
+
+        Assert.Equal(495, sets.Length)
+
+        let conditions : float list = sets |> List.map generatorConditionAt
+        let chosenCondition : float = generatorConditionAt choice.angles
+
+        for (set, condition) in List.zip sets conditions do
+            Assert.True(chosenCondition <= condition, $"{set} has generator condition {condition}, below the chosen {chosenCondition}")
+
+        // A tie keeps the earliest set in the grid's lexicographic order.
+        let least : float = List.min conditions
+        Assert.Equal<Angle list>(sets |> List.find (fun (set : Angle list) -> generatorConditionAt set = least), choice.angles)
+
+        // The instrument matrix is the Kronecker product of the generator and analyzer matrices: its condition is theirs
+        // multiplied, each at least √3.
+        let kappa : float = choice.condition.value
+        Assert.True(Double.IsFinite kappa, $"the instrument's condition {kappa} is not finite")
+        Assert.True(kappa >= 3.0, $"the instrument's condition {kappa} is below 3")
+        let expectedKappa : float = chosenCondition * analyzerConditionAt choice.angles
+        Assert.Equal(expectedKappa, kappa, 1.0e-9 * expectedKappa)
+
+        let anglesText : string =
+            choice.angles
+            |> List.map (fun (angle : Angle) -> angle.degrees.ToString("F1", Globalization.CultureInfo.InvariantCulture))
+            |> String.concat ", "
+
+        let kappaText : string = kappa.ToString("F2", Globalization.CultureInfo.InvariantCulture)
+
+        Assert.Equal(
+            $"LP1 with RET at {anglesText}°: the instrument matrix's condition number is {kappaText}.",
+            (ConditionedInstrumentFinding choice).text
+        )
+
+        // Each polarizer in order, with each compensator: LP2 is the same preset, so its choice is LP1's.
+        Assert.Equal<InstrumentFinding list>(
+            [
+                ConditionedInstrumentFinding choice
+                ConditionedInstrumentFinding { choice with polarizer = opticOf lp2 PolarizerOptic }
+            ],
+            instrumentFindingsOver [ laser; lp1; lp2; ret ] choiceOf |> findingsValue
+        )
+
+    [<Fact>]
+    let ``a polarizer alone is told it needs a compensator, and a compound optic is not paired`` () =
+        let missing : InstrumentFinding = CompensatorMissingFinding (opticOf lp1 PolarizerOptic)
+
+        for items in [ [ laser; lp1 ]; [ laser; lp1; cpl1 ] ] do
+            Assert.Equal<InstrumentFinding list>([ missing ], instrumentFindingsOver items choiceOf |> findingsValue)
+
+        Assert.Equal(
+            "LP1 has no compensator to pair: it generates linear states only, so a full Mueller matrix needs a retarder.",
+            missing.text
+        )
+
+        // Beside a retarder, CPL1 is still paired with nothing: LP1 alone is, with RET.
+        match instrumentFindingsOver [ laser; lp1; cpl1; ret ] choiceOf |> findingsValue with
+        | [ ConditionedInstrumentFinding choice ] ->
+            Assert.Equal(opticOf lp1 PolarizerOptic, choice.polarizer)
+            Assert.Equal(opticOf ret CompensatorOptic, choice.compensator)
+        | findings -> failwith $"Expected LP1 with RET alone, got {findings.Length} findings."
+
+        // No source, no finding.
+        Assert.Equal<InstrumentFinding list>([], instrumentFindingsOver [ lp1 ] choiceOf |> findingsValue)
+        Assert.Equal<InstrumentFinding list>([], instrumentFindingsOver [ lp1; cpl1; ret ] choiceOf |> findingsValue)
+
+    [<Fact>]
+    let ``an optic the library does not resolve refuses the instrument findings, naming it`` () =
+        let withoutRet (item : Item) : ItemModelChoice option = if item.id = ret.id then None else choiceOf item
+
+        let refusalOf (result : Result<InstrumentFinding list, PlannerError>) : string =
+            match result with
+            | Error (InstrumentEvaluationErr reason as error) ->
+                Assert.StartsWith("an optic of the kit cannot be evaluated: ", error.describe)
+                reason
+            | Error error -> failwith $"Expected an optic the evaluator refuses, got: {error.describe}"
+            | Ok _ -> failwith "Expected an optic the evaluator refuses, got instrument findings."
+
+        Assert.Equal("RET: its model is not in the library", instrumentFindingsOver [ laser; lp1; ret ] withoutRet |> refusalOf)
+
+        // An optic missing from the items, or one the evaluator refuses, is named likewise.
+        let inputs : PlannerInputs = plannerInputsOf crystalStudy [ laser; lp1; ret ] choiceOf crystalVersion |> inputsValue
+
+        Assert.Equal(
+            "RET: the kit holds no such item",
+            inputs.instrumentFindingsWith [ laser; lp1 ] choiceOf noMaterials |> refusalOf
+        )
+
+        let withoutOffset : Item =
+            { ret with parameters = ret.parameters |> List.filter (fun held -> held.name <> ParameterName.fastAxisOffset) }
+
+        let evaluatorReason : string = inputs.instrumentFindingsWith [ laser; lp1; withoutOffset ] choiceOf noMaterials |> refusalOf
+        Assert.StartsWith("RET: the values hold no number for the parameter: ", evaluatorReason)
+        Assert.Contains(ParameterName.fastAxisOffset.value, evaluatorReason)

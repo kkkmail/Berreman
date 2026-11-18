@@ -303,7 +303,8 @@ module MeasurementPlanner =
                 | OffAxisCutFinding need -> Some need
                 | UnrecoverableTargetFinding _ -> None)
 
-    /// Why the planner refuses a report, a lab profile, its inputs or a candidate's information (spec 0050 S14.1, S14.2).
+    /// Why the planner refuses a report, a lab profile, its inputs, a candidate's information or the instrument findings
+    /// (spec 0050 S14.1, S14.2).
     type PlannerError =
         | UnknownPlannerTargetErr of reason : string
         | UnresolvedPlannerItemErr of reason : string
@@ -315,6 +316,9 @@ module MeasurementPlanner =
         | NoiselessPlannerCandidateErr of reason : string
         /// A candidate's Jacobian rows do not each hold one entry per target (spec 0050 S14.2).
         | PlannerShapeErr of reason : string
+        /// An optic of the kit is not in the kit's items, its model is not in the library, or the item evaluator refuses
+        /// it; the reason names its label and the cause (spec 0050 S14.2).
+        | InstrumentEvaluationErr of reason : string
 
         /// The refusal as the planner states it (spec 0050 S14.1, S14.2).
         member this.describe : string =
@@ -325,6 +329,7 @@ module MeasurementPlanner =
             | NonCrystalPlannerMaterialErr reason -> $"the opened material is not a crystal: {reason}"
             | NoiselessPlannerCandidateErr reason -> $"the candidate's noise variance is not above zero: {reason}"
             | PlannerShapeErr reason -> $"the candidate's Jacobian does not fit the targets: {reason}"
+            | InstrumentEvaluationErr reason -> $"an optic of the kit cannot be evaluated: {reason}"
 
     type CrystalParameters with
 
@@ -811,6 +816,152 @@ module MeasurementPlanner =
                                     candidate
                             | None -> ()
                 ]
+
+    /// A polarizer and a compensator as the state generator and, the pair reversed, the analyzer: the four compensator
+    /// angles of least generator condition and the instrument matrix's condition over them (spec 0050 S14.2; 001 §M).
+    type InstrumentChoice =
+        {
+            polarizer : PlannerOptic
+            compensator : PlannerOptic
+            angles : Angle list
+            condition : ConditionNumber
+        }
+
+        /// The compensator angles chosen among: 0°, 15°, …, 165°, a constant of the planner, not a setting (spec 0050
+        /// S14.2).
+        static member compensatorAngleGrid : Angle list =
+            List.init 12 (fun (step : int) -> Angle.degree (15.0<Berreman.Constants.deg> * float step))
+
+    /// What the planner says of a polarizer of the kit as a state generator; derived, never stored, so it carries no wire
+    /// tag (spec 0050 S14.2).
+    type InstrumentFinding =
+        | ConditionedInstrumentFinding of InstrumentChoice
+        | CompensatorMissingFinding of PlannerOptic
+
+        /// The finding as the plan states it (spec 0050 S14.2).
+        member this.text : string =
+            match this with
+            | ConditionedInstrumentFinding choice ->
+                let angles : string =
+                    choice.angles |> List.map (fun (angle : Angle) -> angle.plannerDegreesText) |> String.concat ", "
+
+                let (ConditionNumber kappa) = choice.condition
+                let condition : string = kappa.ToString("F2", CultureInfo.InvariantCulture)
+
+                $"{choice.polarizer.label.value} with {choice.compensator.label.value} at {angles}°: "
+                + $"the instrument matrix's condition number is {condition}."
+            | CompensatorMissingFinding polarizer ->
+                $"{polarizer.label.value} has no compensator to pair: it generates linear states only, "
+                + "so a full Mueller matrix needs a retarder."
+
+    type PlannerInputs with
+
+        /// None without a source; else each polarizer with each compensator, or told it has none, each optic read by the
+        /// item evaluator at the first source's line; a compound turns as one piece, so it is not paired (spec 0050 S14.2).
+        member this.instrumentFindingsWith
+            (items : Item list)
+            (choiceOf : Item -> ItemModelChoice option)
+            (materials : MaterialProxy)
+            : Result<InstrumentFinding list, PlannerError> =
+            match this.lab.sources with
+            | [] -> Ok []
+            | firstSource :: _ ->
+                let opticsOf (role : OpticRole) : PlannerOptic list =
+                    this.lab.optics |> List.filter (fun (optic : PlannerOptic) -> optic.role = role)
+
+                let refusalOf (optic : PlannerOptic) (cause : string) : PlannerError =
+                    InstrumentEvaluationErr $"{optic.label.value}: {cause}"
+
+                let boundOf (optic : PlannerOptic) : Result<BoundOpticalElement, PlannerError> =
+                    match items |> List.tryFind (fun (item : Item) -> item.id = optic.item) with
+                    | None -> Error (refusalOf optic "the kit holds no such item")
+                    | Some item ->
+                        match choiceOf item with
+                        | None -> Error (refusalOf optic "its model is not in the library")
+                        | Some choice ->
+                            choice.boundWith materials (ParameterValues.ofParameters item.parameters)
+                            |> Result.mapError (fun (error : ItemEvaluationError) -> refusalOf optic error.describe)
+
+                let turnedTo
+                    (optic : PlannerOptic)
+                    (bound : BoundOpticalElement)
+                    (rotation : Angle)
+                    : Result<MuellerMatrix, PlannerError> =
+                    bound.muellerAt (ElementOrientation.transmittingAt rotation) firstSource.waveLength
+                    |> Result.mapError (fun (error : ItemEvaluationError) -> refusalOf optic error.describe)
+
+                // Every `size` points of `pool`, in the grid's lexicographic order.
+                let rec subsetsOf
+                    (size : int)
+                    (pool : (Angle * StokesVector * RealVector4) list)
+                    : (Angle * StokesVector * RealVector4) list list =
+                    match size, pool with
+                    | 0, _ -> [ [] ]
+                    | _, [] -> []
+                    | _, first :: rest ->
+                        (subsetsOf (size - 1) rest |> List.map (fun others -> first :: others)) @ subsetsOf size rest
+
+                let generatorConditionOf (subset : (Angle * StokesVector * RealVector4) list) : ConditionNumber =
+                    let generator : ResidualJacobian =
+                        [| for (_, state, _) in subset -> [| state.s0; state.s1; state.s2; state.s3 |] |] |> ResidualJacobian
+
+                    generator.conditionNumber
+
+                let pairedWith (polarizer : PlannerOptic) (compensator : PlannerOptic) : Result<InstrumentChoice, PlannerError> =
+                    let grid : Angle list = InstrumentChoice.compensatorAngleGrid
+
+                    boundOf polarizer
+                    |> Result.bind (fun bound -> turnedTo polarizer bound Angle.zero)
+                    |> Result.bind (fun polarizing ->
+                        boundOf compensator
+                        |> Result.bind (fun bound -> grid |> List.map (turnedTo compensator bound) |> sequenced)
+                        |> Result.map (fun (turns : MuellerMatrix list) ->
+                            // s(θ) = M_C(θ) · M_P(0) · (1, 0, 0, 0), and a(θ) is row 0 of M_P(0) · M_C(θ).
+                            let polarized : StokesVector = polarizing * Propagation.unpolarizedStokes
+
+                            let points : (Angle * StokesVector * RealVector4) list =
+                                List.zip3
+                                    grid
+                                    (turns |> List.map (fun (turn : MuellerMatrix) -> turn * polarized))
+                                    (turns
+                                     |> List.map (fun (turn : MuellerMatrix) ->
+                                         let analyzing : MuellerMatrix = polarizing * turn
+                                         RealVector4.create [ for j in 0..3 -> analyzing.element 0 j ]))
+
+                            // `List.minBy` keeps the first of equal conditions: a tie keeps the earliest set.
+                            let chosen : (Angle * StokesVector * RealVector4) list =
+                                subsetsOf 4 points |> List.minBy generatorConditionOf
+
+                            let instrument : ResidualJacobian =
+                                [|
+                                    for (_, state, _) in chosen do
+                                        for (_, _, row) in chosen do
+                                            let (MuellerReconstruction.DesignRow design) = MuellerReconstruction.designRow state row
+                                            design
+                                |]
+                                |> ResidualJacobian
+
+                            let choice : InstrumentChoice =
+                                {
+                                    polarizer = polarizer
+                                    compensator = compensator
+                                    angles = chosen |> List.map (fun (angle, _, _) -> angle)
+                                    condition = instrument.conditionNumber
+                                }
+
+                            choice))
+
+                let compensators : PlannerOptic list = opticsOf CompensatorOptic
+
+                opticsOf PolarizerOptic
+                |> List.collect (fun (polarizer : PlannerOptic) ->
+                    match compensators with
+                    | [] -> [ Ok (CompensatorMissingFinding polarizer) ]
+                    | _ :: _ ->
+                        compensators
+                        |> List.map (fun (compensator : PlannerOptic) ->
+                            pairedWith polarizer compensator |> Result.map ConditionedInstrumentFinding))
+                |> sequenced
 
     type Study with
 
