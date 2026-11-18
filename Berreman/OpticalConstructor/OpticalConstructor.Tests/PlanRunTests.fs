@@ -67,14 +67,14 @@ module PlanRunTests =
         |> studyValue
 
     /// The study freeing g11 and g33, neither under a prior.
-    let private planStudy : Study = [ g11; g33 ] |> List.fold (freedWithin None) openedStudy
+    let planStudy : Study = [ g11; g33 ] |> List.fold (freedWithin None) openedStudy
 
     /// Laser, Polarimeter and QZ-Z.
     let private items : Item list = [ laser; polarimeter; qzZ ]
 
     /// The study's forward context over a kit of these items, setups and experiments: the Built-in library and
     /// materials, the data store of an empty in-memory kit, and the default solver parameters.
-    let private contextOver
+    let contextOver
         (study : Study)
         (kitItems : Item list)
         (setups : Setup list)

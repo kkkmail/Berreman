@@ -238,7 +238,7 @@ module PlannerInputsTests =
     let private unresolvedReasonOf (result : Result<LabProfile, PlannerError>) : string =
         match result with
         | Error (UnresolvedPlannerItemErr reason) -> reason
-        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ | PlannerCacheErr _ | PlanCancelledErr _ | PlannerForwardErr _ as error) ->
+        | Error (UnknownPlannerTargetErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ | PlannerCacheErr _ | PlanCancelledErr _ | PlannerForwardErr _ | PlanRaisedErr _ | UnknownPlannerStudyErr _ as error) ->
             failwith $"Expected an unresolved item, got: {error.describe}"
         | Ok _ -> failwith "Expected an unresolved item, got a lab profile."
 

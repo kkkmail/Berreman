@@ -325,6 +325,10 @@ module MeasurementPlanner =
         | PlanCancelledErr of reason : string
         /// The forward model could not solve a candidate's configurations (spec 0050 S14.2).
         | PlannerForwardErr of reason : string
+        /// The plan's job raised, or ended holding no result; the reason is the raise's message (spec 0050 S14.2).
+        | PlanRaisedErr of reason : string
+        /// The plan names a study the kit does not hold; the reason names it (spec 0050 S14.2).
+        | UnknownPlannerStudyErr of reason : string
 
         /// The refusal as the planner states it (spec 0050 S14.1, S14.2).
         member this.describe : string =
@@ -339,6 +343,8 @@ module MeasurementPlanner =
             | PlannerCacheErr reason -> $"the planner's cache cannot be read or written: {reason}"
             | PlanCancelledErr reason -> $"the plan was cancelled: {reason}"
             | PlannerForwardErr reason -> $"the forward model refused a candidate: {reason}"
+            | PlanRaisedErr reason -> $"the plan raised: {reason}"
+            | UnknownPlannerStudyErr reason -> $"the kit has no such study: {reason}"
 
     type CrystalParameters with
 

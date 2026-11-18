@@ -110,6 +110,7 @@
         <Compile Include="KitOpening.fs" />
         <Compile Include="KitArchiveJob.fs" />
         <Compile Include="StudyFitJob.fs" />
+        <Compile Include="PlanJob.fs" />
         <Compile Include="SlotBarView.fs" />
         <Compile Include="SetupGridView.fs" />
         <Compile Include="ImportWizardView.fs" />

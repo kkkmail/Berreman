@@ -330,7 +330,7 @@ module PlannerReportTests =
             Assert.Contains("n_o, n_e, g11, g33", reason)
             Assert.DoesNotContain("n9", reason)
             Assert.StartsWith("the crystal has no such parameter: ", error.describe)
-        | Error (UnresolvedPlannerItemErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ | PlannerCacheErr _ | PlanCancelledErr _ | PlannerForwardErr _ as error) ->
+        | Error (UnresolvedPlannerItemErr _ | UnopenedPlannerMaterialErr _ | NonCrystalPlannerMaterialErr _ | NoiselessPlannerCandidateErr _ | PlannerShapeErr _ | InstrumentEvaluationErr _ | PlannerCacheErr _ | PlanCancelledErr _ | PlannerForwardErr _ | PlanRaisedErr _ | UnknownPlannerStudyErr _ as error) ->
             Assert.Fail $"a target the crystal does not have refused as: {error.describe}"
         | Ok _ -> Assert.Fail "a target the crystal does not have must refuse the report"
 

@@ -1392,6 +1392,10 @@
   "485": {
     "constructor_unit_tests": 1894
   },
+  "486": {
+    "constructor_unit_tests": 1899,
+    "ui_smoke_tests": 268
+  },
   "49": {
     "constructor_unit_tests": 805
   },
