@@ -4,15 +4,24 @@ open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.MuellerReconstruction
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Domain.PlannerSymmetry
 open OpticalConstructor.Domain.MeasurementPlanner
+open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.FitUncertainty
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
+open OpticalConstructor.Optimization.PlannerInformation
 open Xunit
+open BerremanTests.InverseFitHarness
 open BerremanTestSupport
 
-/// The Measurement Planner's layer-1 report over spec 0044's own designs reproduces their ablation facts
-/// (spec 0050 S14.1).
+/// The Measurement Planner over spec 0044's own designs: its layer-1 report reproduces their ablation facts (spec 0050
+/// S14.1), and its layer-2 information their rank and covariance facts (S14.2).
 type MeasurementPlannerTests() =
 
     // The constants' names as the records' `axes` write them (`MuellerInverse.fs`).
@@ -64,6 +73,51 @@ type MeasurementPlannerTests() =
         |> Option.defaultWith (fun () ->
             let texts : string = findingTextsOf report |> String.concat " "
             failwith $"the report has no finding on {name.value}: {texts}")
+
+    /// The planner's information over the names of `axes` from one candidate; a refusal fails the fact.
+    let informationOver (axes : ParameterAxis<'Parameters> list) (candidate : CandidateRows) : PlannerInformation =
+        let coordinates : ParameterName list = axes |> List.map (fun (axis : ParameterAxis<'Parameters>) -> axis.name)
+
+        match PlannerInformation.over coordinates [ candidate ] with
+        | Ok information -> information
+        | Error error -> failwith error.describe
+
+    /// The coordinates `combination` names, in coordinate order.
+    let namesCarriedBy (coordinates : ParameterName list) (combination : CombinationText) : ParameterName list =
+        let tokens : string list = combination.value.Split(' ') |> List.ofArray
+        coordinates |> List.filter (fun (name : ParameterName) -> List.contains name.value tokens)
+
+    /// The planner's bounds at the noisy fit's own Jacobian and residual level, each over the magnitude of its axis's
+    /// value in `truth`, against the relative errors the fit's own covariance predicts (step 477).
+    let assertBoundsArePredicted (truth : 'Parameters) (first : NoisyExperiment<'Parameters>) : unit =
+        let quality : FitQuality.FitReport = first.fit.report
+        let predicted : (ParameterName * RelativeError) list = predictedRelativeErrors truth first.fit quality
+        let scaling : ParameterScaling<'Parameters> = first.fit.scaling
+
+        // `reportFrom` takes the same `FitQuality.residualJacobian` at the same point (steps 336, 477).
+        let candidate : CandidateRows =
+            {
+                jacobian = residualJacobianAt first.fit.residual first.fit.solution.solution
+                noise = quality.reducedChiSquared.noiseVariance
+            }
+
+        let information : PlannerInformation = informationOver scaling.axes candidate
+
+        match information.boundsOver scaling with
+        | Some bounds ->
+            Assert.Equal<ParameterName list>(
+                predicted |> List.map fst,
+                bounds |> List.map (fun (bound : TargetBound) -> bound.name))
+
+            for (axis, bound, (_, prediction)) in List.zip3 scaling.axes bounds predicted do
+                let relative : float = bound.sigma.value / abs (axis.read truth)
+
+                Assert.True(
+                    abs (relative - prediction.value) <= 1.0e-12 * abs prediction.value,
+                    $"{bound.name.value}: the planner's bound {relative}, the fit's prediction {prediction.value}")
+        | None ->
+            Assert.Fail
+                $"the planner bounds no constant at the fit's residual level: rank {information.rank.value} of {scaling.dimension}"
 
     [<Fact>]
     member _.``the planner finds C1 blind to g33, leaves three of the four quartz constants unrecoverable and proposes the second cut`` () : unit =
@@ -156,3 +210,72 @@ type MeasurementPlannerTests() =
 
         Assert.Equal<string list>([], findingTextsOf report)
         Assert.Equal<ParameterName list>([ n1; n2; n3; g11; g22; g33; g23; g13; g12 ], namesOf report.reachable)
+
+    [<Fact>]
+    member _.``the planner finds the full C1-C4 set full rank with every quartz constant bounded, and C1 alone blind to n_e and g33`` () : unit =
+        // `MuellerInverseTests`: the full set is well conditioned with every parameter observable, and C1 is completely
+        // blind to n_e and g33, their Jacobian columns identically zero (spec 0050 S14.2; 001 §M).
+        let scaling : ParameterScaling<UniaxialParameters> = QuartzSample.quartzScalingAround QuartzSample.quartz
+
+        let informationAtQuartz (design : MeasurementConfiguration list) : PlannerInformation =
+            candidateRowsOver QuartzSample.forward scaling QuartzSample.quartz NoiseParam.decentLab design
+            |> expectOk
+            |> informationOver UniaxialParameters.axes
+
+        let isFinitePositive (value : float) : bool = System.Double.IsFinite value && value > 0.0
+
+        let full : PlannerInformation = informationAtQuartz QuartzSample.fullConfigurations
+
+        Assert.True(full.rank = MatrixRank 4, $"the full set has rank {full.rank.value} of 4")
+        Assert.Empty(full.confounded)
+
+        match full.conditionOpt with
+        | Some condition -> Assert.True(System.Double.IsFinite condition.value, $"the full set's condition is {condition.value}")
+        | None -> Assert.Fail "the full set has no finite condition number"
+
+        match full.scaledSigmasOpt with
+        | Some (DesignVector sigmas) ->
+            let described : string = sigmas |> Array.map string |> String.concat ", "
+
+            Assert.Equal(4, sigmas.Length)
+            Assert.True(Array.forall isFinitePositive sigmas, $"the full set's scaled sigmas are {described}")
+        | None -> Assert.Fail "the full set has no Cramer-Rao bound"
+
+        match full.boundsOver scaling with
+        | Some bounds ->
+            Assert.Equal<ParameterName list>([ nO; nE; g11; g33 ], bounds |> List.map (fun (bound : TargetBound) -> bound.name))
+
+            for bound in bounds do
+                Assert.True(isFinitePositive bound.sigma.value, $"{bound.name.value} is bounded by {bound.sigma.value}")
+        | None -> Assert.Fail "the full set bounds no quartz constant"
+
+        let c1 : PlannerInformation = informationAtQuartz QuartzSample.c1
+
+        let texts : CombinationText list =
+            c1.confounded |> List.map (fun (direction : SingularDirection) -> direction.text c1.coordinates)
+
+        let described : string = texts |> List.map (fun (text : CombinationText) -> text.value) |> String.concat "; "
+
+        let carried : ParameterName list =
+            c1.coordinates
+            |> List.filter (fun (name : ParameterName) ->
+                texts |> List.exists (fun (text : CombinationText) -> List.contains name (namesCarriedBy c1.coordinates text)))
+
+        Assert.True(c1.rank = MatrixRank 2, $"C1 alone has rank {c1.rank.value} of 4, confounded: {described}")
+        Assert.True(texts.Length = 2, $"C1 alone has {texts.Length} confounded combinations: {described}")
+        Assert.Equal<ParameterName list>([ nE; g33 ], carried)
+
+    [<Fact>]
+    member _.``the planner's bounds for the noisy quartz design are what one noisy fit's own covariance predicts`` () : unit =
+        // `MuellerInverseTests`' ensemble fact: its first experiment's own covariance predicts the ensemble's scatter.
+        QuartzSample.recoverQuartzFromNoisy NoiseParam.decentLab (List.head BiaxialSample.ensembleSeeds)
+        |> expectOk
+        |> assertBoundsArePredicted QuartzSample.quartz
+
+    [<Fact>]
+    member _.``the planner's bounds for AT-2's noisy design are what one noisy fit's own covariance predicts`` () : unit =
+        // AT-2's design read at design level, `fullConfigurations` = a1 @ a2 @ a3: its kit carries each cut on its
+        // observation rows (step 433).
+        AbsorbingBiaxialSample.recoverAbsorbingFromNoisy NoiseParam.decentLab (List.head AbsorbingBiaxialSample.noisySeeds)
+        |> expectOk
+        |> assertBoundsArePredicted AbsorbingBiaxialSample.absorbing
