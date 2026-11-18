@@ -58,22 +58,6 @@ type MuellerInverseTests() =
     /// here, ahead of the members (FS0960: in a class type every `let` binding precedes the first member).
     let degree = Angle.radiansPerDegree
 
-    /// Spec R4: three internal reflections, stated explicitly at the composition root rather than
-    /// inherited from SolverParameters.defaultValue.
-    ///
-    /// This is a physics choice, not a knob. With numberOfReflections = 3 the Plate branch of the solver
-    /// accumulates five emerging beams and getMuellerMatrix SUMS their Mueller matrices, so
-    /// muellerMatrixT() is the direct beam plus the beam that has bounced twice inside the plate. A sum of
-    /// Mueller-Jones matrices is in general weakly DEPOLARIZING - which is why the realizability fact
-    /// below asserts a bounded depolarization index rather than strict non-depolarization, and why the
-    /// closed-form analytic inversion is used for starting values rather than as the reported answer.
-    /// At quartz's ~4.55 % surface reflectance the second transmitted beam carries only ~0.2 % of the
-    /// first, so the effect is small but real.
-    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
-
-    /// The real Berreman-backed forward model, wired once for the whole class.
-    let forward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) solverParameters
-
     /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters.
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
         observeWith forward quartz configurations |> expectOk
@@ -81,34 +65,6 @@ type MuellerInverseTests() =
     // =================================================================================================
     // T7 / T8 / T9 — Stage B: the nonlinear fit, its identifiability diagnostics, and the ablation.
     // =================================================================================================
-
-    /// The dimensionless fit space (spec §3.5), specialized to this material. `centre` is the START
-    /// GUESS, so the initial scaled vector is exactly zero; `scale` sets what one unit of each coordinate
-    /// means physically, and `axes` is what makes the shared, material-agnostic fit driver able to read
-    /// and write a `UniaxialParameters` without knowing its field names.
-    ///
-    /// The scale choice is the whole reason `ParameterScaling` exists. ALGLIB's Levenberg-Marquardt
-    /// differentiates with a FIXED ABSOLUTE step of 1e-6, so a unit of 1e-3 in refractive index makes
-    /// that step a 1e-9 perturbation of n, and a unit of 1e-5 in gyration makes it a 1e-11 perturbation
-    /// of g. Both are small enough to be genuinely linear and large enough to move the Mueller elements
-    /// far above the solver's own numerical noise. Handing the optimizer raw physical parameters instead
-    /// would make the same 1e-6 step a 1 % perturbation of g and a 6e-7 relative perturbation of n - four
-    /// orders of magnitude apart, and the former far outside the linear regime a Jacobian assumes.
-    ///
-    /// It deliberately shadows the general `MuellerFitting.scalingAround`: this is the uniaxial specialization
-    /// of it, and every fit in this file wants exactly these axes and exactly this scale.
-    let scalingAround (centre : UniaxialParameters) : ParameterScaling<UniaxialParameters> =
-        {
-            axes = UniaxialParameters.axes
-            centre = centre
-            scale =
-                {
-                    ordinaryIndex = RefractionIndex 1.0e-3
-                    extraordinaryIndex = RefractionIndex 1.0e-3
-                    g11 = RhoValue 1.0e-5
-                    g33 = RhoValue 1.0e-5
-                }
-        }
 
     /// The start guess shared by the fit facts: the two gyration components 30 % wrong, the two refractive
     /// indices off by +0.2 % and +0.1 %.
@@ -137,8 +93,8 @@ type MuellerInverseTests() =
 
     /// Recover the material parameters from a GIVEN set of observations, from a given start guess, over a
     /// given box — `MuellerFitting.fitObservations`, with this material's scaling baked in. Every fit in this
-    /// file, noiseless or noisy, goes through it, so the noisy facts differ from the noiseless one in
-    /// their DATA and nothing else.
+    /// file goes through it or through `recoverQuartzFromNoisy`, which runs the same fit, so the noisy facts
+    /// differ from the noiseless one in their DATA and nothing else.
     ///
     /// It deliberately takes observations rather than configurations: that is the seam noise enters
     /// through. A noisy experiment is the same fit run against data generated at slightly wrong angles
@@ -148,7 +104,7 @@ type MuellerInverseTests() =
         (observations : MuellerObservation list)
         (start : UniaxialParameters)
         : ParameterScaling<UniaxialParameters> * (ScaledVector -> ResidualVector) * NonlinearSolution =
-        let fit = MuellerFitting.fitObservations forward box observations (scalingAround start) |> expectOk
+        let fit = MuellerFitting.fitObservations forward box observations (quartzScalingAround start) |> expectOk
         fit.scaling, fit.residual, fit.solution
 
     /// Run the fit on NOISELESS data generated for a configuration set, from a given start guess.
@@ -168,55 +124,6 @@ type MuellerInverseTests() =
     // (specs/0044/.manual/011-noisy-measurement-tests.md), because it describes the APPARATUS rather
     // than this crystal, and `BiaxialInverseTests` measures its own sample on the same bench.
     // =================================================================================================
-
-    /// The BLIND start guess the noisy facts fit from: `n_o = n_e = 1.5` and no optical activity at all.
-    ///
-    /// It is the honest starting point for a material whose constants are not already known — "some
-    /// ordinary transparent glass-like solid, no measured birefringence, no measured rotation" — and it
-    /// is a far harder start than `perturbedStart`: the two indices are 2.8 % and 3.3 % low, the
-    /// BIREFRINGENCE starts at exactly zero instead of 17 % wrong, and both gyration components start at
-    /// exactly zero instead of 30 % wrong.
-    ///
-    /// It is nonetheless a legitimate start rather than a lucky one, for the structural reason the
-    /// `perturbedStart` comment gives: linear retardance enters through cos and sin of
-    /// 2 pi (n_e - n_o) d / lambda, so what matters is the distance in FRINGES. The truth is 0.286 wave
-    /// for the 20 um plates, and zero birefringence is therefore just under a third of a fringe away —
-    /// inside the same basin of attraction. The control fact below asserts exactly this by recovering
-    /// every constant to machine precision from this start on noiseless data, which is what makes the
-    /// noisy ensemble's scatter attributable to the NOISE rather than to the start guess.
-    let blindStart : UniaxialParameters =
-        {
-            ordinaryIndex = RefractionIndex 1.5
-            extraordinaryIndex = RefractionIndex 1.5
-            g11 = RhoValue 0.0
-            g33 = RhoValue 0.0
-        }
-
-    /// The box for the blind start. It must be wide enough to CONTAIN the truth: quartz's n_e is 51.65
-    /// scaled units from 1.5, so the +-50 box that comfortably brackets `perturbedStart` would exclude
-    /// the answer and the fit would converge against a bound. +-200 is +-0.2 in refractive index and
-    /// +-2e-3 in gyration — still physically sensible, and still far from the degenerate n = 0.
-    let wideBox = SearchBox 200.0
-
-    /// This suite's noisy data: the shared bench applied to quartz.
-    let noisyObserve (noise : NoiseParam) (seed : NoiseSeed) (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        noisyObserveWith forward quartz noise seed configurations |> expectOk
-
-    /// Run ONE noisy experiment end to end: generate its data, fit it, and keep everything the ensemble
-    /// will want to ask it afterwards.
-    let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<UniaxialParameters> =
-        let observations = noisyObserve noise seed fullConfigurations
-        let (scaling, residual, solution) = fitObservations wideBox observations blindStart
-        {
-            seed = seed
-            fit =
-                {
-                    recovered = ofScaled scaling solution.solution
-                    solution = solution
-                    scaling = scaling
-                    residual = residual
-                }
-        }
 
     /// The quantities the ensemble reports on: the four fitted unknowns, plus the BIREFRINGENCE, which
     /// is not a fit parameter and is nevertheless what this data determines best (see
@@ -783,7 +690,7 @@ type MuellerInverseTests() =
         // x = 0. The Jacobian must not be evaluated at the origin of the scaled space; centring the
         // scaling on the perturbed start puts the truth at a non-zero scaled point.
         let observations = observe fullConfigurations
-        let scaling = scalingAround perturbedStart
+        let scaling = quartzScalingAround perturbedStart
         let residual = residualFor forward observations scaling
         let truthPoint = toScaled scaling quartz
         Assert.True(truthPoint.value |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
@@ -862,7 +769,7 @@ type MuellerInverseTests() =
         // steps each parameter by sqrt(eps) * max(|x_p|, 1e-12), which collapses to ~1e-20 at x = 0 and
         // would report EVERY column as dead — including the one that is genuinely alive, turning this fact
         // into a false positive.
-        let scaling = scalingAround perturbedStart
+        let scaling = quartzScalingAround perturbedStart
         let truthPoint = toScaled scaling quartz
         let residual = residualFor forward (observe c1) scaling
         let jacobian = residualJacobianAt residual truthPoint
@@ -973,7 +880,7 @@ type MuellerInverseTests() =
         // THE NOISELESS BUDGET IS A PURE OVERLAY: with both uncertainties at zero the noisy path returns
         // the ground truth itself (normalized, which is what every residual compares anyway). This is
         // what proves the noisy machinery adds noise and changes nothing else.
-        let quiet = noisyObserve NoiseParam.noiseless (NoiseSeed 1) c1 |> List.exactlyOne
+        let quiet = noisyQuartzObservations NoiseParam.noiseless (NoiseSeed 1) c1 |> expectOk |> List.exactlyOne
         match clean.measured.normalized with
         | Ok trueNormalized -> assertMuellerEqual trueNormalized quiet.measured
         | Error e -> Assert.Fail($"the C1 ground-truth matrix should normalize, got %A{e}")
@@ -981,9 +888,9 @@ type MuellerInverseTests() =
         // A WHOLE EXPERIMENT is reproducible from its seed, differs between seeds, and is filed against
         // the NOMINAL configurations — the last being the property that makes the angle error a real
         // error rather than a relabelling.
-        let runA = noisyObserve NoiseParam.decentLab (NoiseSeed 4) c3
-        let runAgain = noisyObserve NoiseParam.decentLab (NoiseSeed 4) c3
-        let runOther = noisyObserve NoiseParam.decentLab (NoiseSeed 9) c3
+        let runA = noisyQuartzObservations NoiseParam.decentLab (NoiseSeed 4) c3 |> expectOk
+        let runAgain = noisyQuartzObservations NoiseParam.decentLab (NoiseSeed 4) c3 |> expectOk
+        let runOther = noisyQuartzObservations NoiseParam.decentLab (NoiseSeed 9) c3 |> expectOk
         for (x, y) in List.zip runA runAgain do
             assertMuellerEqual x.measured y.measured
         let biggestGap =
@@ -1062,7 +969,9 @@ type MuellerInverseTests() =
         // took 504 s against the 365 s this serial version measures — so the seeds are run serially,
         // deliberately. The forward solves allocate heavily, and extra threads buy contention rather than
         // throughput.
-        let experiments = BerremanTestSupport.BiaxialSample.ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments =
+            BerremanTestSupport.BiaxialSample.ensembleSeeds
+            |> List.map (fun seed -> recoverQuartzFromNoisy NoiseParam.decentLab seed |> expectOk)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")

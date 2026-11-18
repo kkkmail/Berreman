@@ -64,16 +64,6 @@ open BerremanTestSupport.AbsorbingBiaxialSample        // the fifteen-parameter 
 /// lever. A loose budget on a direct, redundant measurement beats a tight budget on an indirect one.
 type AbsorbingBiaxialNoisyTests() =
 
-    let forward = createBerremanForward buildAbsorbing solverParameters
-
-    /// Run ONE noisy absorbing experiment end to end.
-    let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<AbsorbingTriclinicParameters> =
-        let observations = noisyObserveAbsoluteWith forward absorbing noise seed fullConfigurations |> expectOk
-        {
-            seed = seed
-            fit = fitAbsorbingObservations forward searchBox observations (absorbingScalingAround perturbedStart) |> expectOk
-        }
-
     let absorptionNames = [ "e11"; "e22"; "e33"; "e23"; "e13"; "e12" ]
     let gyrationNames = [ "g11"; "g22"; "g33"; "g23"; "g13"; "g12" ]
     let indexNames = [ "n1"; "n2"; "n3" ]
@@ -86,7 +76,7 @@ type AbsorbingBiaxialNoisyTests() =
         // normalized Mueller elements wrong by up to 0.005 of full scale, absolute throughput wrong by up
         // to 1 %. Each fits fifteen unknowns from the perturbed start against the RECORDED angles. Their
         // spread is the uncertainty.
-        let experiments = noisySeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments = noisySeeds |> List.map (fun seed -> recoverAbsorbingFromNoisy NoiseParam.decentLab seed |> expectOk)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")

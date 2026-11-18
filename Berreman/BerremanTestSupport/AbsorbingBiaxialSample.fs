@@ -16,7 +16,7 @@ open BerremanTestSupport.BiaxialSample
 /// Spec 0044 — the ABSORBING triclinic sample both absorbing suites share: its ground-truth constants,
 /// the builder that turns fifteen numbers into engine tensors, its fit scaling, and the measurement set.
 /// Spec 0050 S10.2 (001 §Q AT-2): the sample and its design live in `BerremanTestSupport`, so one compiled
-/// copy serves `BerremanTests` and `OpticalConstructor.Ui.Tests`.
+/// copy serves `BerremanTests` and `OpticalConstructor.Ui.Tests`; its noisy-experiment runner joined it in S14.2.
 ///
 /// It lives in its own module for the same reason `BiaxialSample` does: `AbsorbingBiaxialInverseTests`
 /// and `AbsorbingBiaxialNoisyTests` measure the SAME crystal with the same experiment and differ only in
@@ -231,3 +231,19 @@ module AbsorbingBiaxialSample =
                         spread = spread
                         bandOpt = bandOpt
                     })
+
+    /// The Berreman-backed forward model of the absorbing plate, over the biaxial suites' solver parameters (spec 0050
+    /// S14.2).
+    let absorbingForward : ForwardModelProxy<AbsorbingTriclinicParameters> =
+        createBerremanForward buildAbsorbing solverParameters
+
+    /// One noisy absorbing experiment over the A1-A3 design, absolute throughput kept, fitted from `perturbedStart`
+    /// within `searchBox` (spec 0050 S14.2).
+    let recoverAbsorbingFromNoisy
+        (noise : NoiseParam)
+        (seed : NoiseSeed)
+        : Result<NoisyExperiment<AbsorbingTriclinicParameters>, MuellerFitError> =
+        noisyObserveAbsoluteWith absorbingForward absorbing noise seed fullConfigurations
+        |> Result.bind (fun observations ->
+            fitAbsorbingObservations absorbingForward searchBox observations (absorbingScalingAround perturbedStart))
+        |> Result.map (fun fit -> { seed = seed; fit = fit })

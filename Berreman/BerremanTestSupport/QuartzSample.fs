@@ -4,12 +4,15 @@ open Berreman.Constants
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
+open Berreman.Solvers
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
 
-/// Spec 0044's quartz ground truth and its C1-C4 measurement design, shared by `MuellerInverseTests` and the
-/// Planner's acceptance facts (spec 0050 S14.1).
+/// Spec 0044's quartz ground truth, its C1-C4 measurement design and its noisy-experiment runner, shared by
+/// `MuellerInverseTests` and the Planner's acceptance facts (spec 0050 S14.1, S14.2).
 module QuartzSample =
 
     // =================================================================================================
@@ -143,3 +146,57 @@ module QuartzSample =
                     configuration XCut thinPlate incidence azimuth observable ]
 
     let fullConfigurations = c1 @ c2 @ c3 @ c4
+
+    /// Spec R4: three internal reflections, so the transmitted matrix sums the direct and twice-bounced beams and is
+    /// weakly depolarizing — a choice of physics, not a knob (spec 0050 S14.2).
+    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
+
+    /// The Berreman-backed forward model of a uniaxial quartz plate (spec 0050 S14.2).
+    let forward : ForwardModelProxy<UniaxialParameters> =
+        createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) solverParameters
+
+    /// The uniaxial fit space around `centre`: 1e-3 per unit of refractive index and 1e-5 per unit of gyration, so
+    /// ALGLIB's fixed 1e-6 step stays linear in both (spec 0050 S14.2).
+    let quartzScalingAround (centre : UniaxialParameters) : ParameterScaling<UniaxialParameters> =
+        {
+            axes = UniaxialParameters.axes
+            centre = centre
+            scale =
+                {
+                    ordinaryIndex = RefractionIndex 1.0e-3
+                    extraordinaryIndex = RefractionIndex 1.0e-3
+                    g11 = RhoValue 1.0e-5
+                    g33 = RhoValue 1.0e-5
+                }
+        }
+
+    /// The blind start, `n_o = n_e = 1.5` with no optical activity. Zero birefringence is under a third of a fringe from
+    /// the 20 um plates' truth, so it lies in the truth's basin (spec 0050 S14.2).
+    let blindStart : UniaxialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.5
+            extraordinaryIndex = RefractionIndex 1.5
+            g11 = RhoValue 0.0
+            g33 = RhoValue 0.0
+        }
+
+    /// The blind start's box, ±0.2 in index and ±2e-3 in gyration: wide enough to contain quartz's n_e, 51.65 scaled
+    /// units from 1.5 (spec 0050 S14.2).
+    let wideBox : SearchBox = SearchBox 200.0
+
+    /// The shared bench's noisy readings of quartz over `configurations` (spec 0050 S14.2).
+    let noisyQuartzObservations
+        (noise : NoiseParam)
+        (seed : NoiseSeed)
+        (configurations : MeasurementConfiguration list)
+        : Result<MuellerObservation list, MuellerFitError> =
+        noisyObserveWith forward quartz noise seed configurations
+
+    /// One noisy quartz experiment over the C1-C4 design, fitted from `blindStart` within `wideBox` (spec 0050 S14.2).
+    let recoverQuartzFromNoisy
+        (noise : NoiseParam)
+        (seed : NoiseSeed)
+        : Result<NoisyExperiment<UniaxialParameters>, MuellerFitError> =
+        noisyQuartzObservations noise seed fullConfigurations
+        |> Result.bind (fun observations -> fitObservations forward wideBox observations (quartzScalingAround blindStart))
+        |> Result.map (fun fit -> { seed = seed; fit = fit })
