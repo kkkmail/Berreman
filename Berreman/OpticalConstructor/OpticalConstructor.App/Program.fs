@@ -40,6 +40,7 @@ open OpticalConstructor.Ui.ImportDialogView
 open OpticalConstructor.Ui.ImportWizardOpening
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
+open OpticalConstructor.Ui.PlanJob
 open OpticalConstructor.Ui.StudyFitJob
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
@@ -100,6 +101,10 @@ module private ConstructorScene =
                         StudyFitJobHost.onUiThread
                             (fun progress -> hostDispatch.Value (TableAndElementRotationView.StudyFit (StudyFitProgressed progress)))
                             (fun ended -> hostDispatch.Value (TableAndElementRotationView.StudyFit (StudyFitEnded ended)))
+                    planRuns =
+                        PlanJobHost.onUiThread
+                            (fun progress -> hostDispatch.Value (TableAndElementRotationView.StudyPlan (PlanProgressed progress)))
+                            (fun ended -> hostDispatch.Value (TableAndElementRotationView.StudyPlan (PlanEnded ended)))
             }
         let shell : TableAndElementRotationView.KitWindowShell =
             kitBarShell.withImportWizard window (fun msg -> hostDispatch.Value msg)
@@ -145,7 +150,7 @@ module private ConstructorScene =
 /// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
 /// Its kit bar sends and copies through the real dialogs (spec 0050 S6).
 /// Its Items panel reads the app's item models (spec 0050 S7.2).
-/// The Inverse window's study runs its fits off the UI thread (spec 0050 S11.5).
+/// The Inverse window's study runs its fits and its Plan step off the UI thread (spec 0050 S11.5, S14.2).
 type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     let stores = ConstructorScene.storesOf context opened
@@ -163,7 +168,7 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
 /// It runs the kit window, titled by the kit, its access, its folder and the constructor (spec 0050 S5.3).
 /// Its kit bar sends and copies through the real dialogs (spec 0050 S6).
 /// Its Items panel reads the app's item models (spec 0050 S7.2).
-/// The Inverse window's study runs its fits off the UI thread (spec 0050 S11.5).
+/// The Inverse window's study runs its fits and its Plan step off the UI thread (spec 0050 S11.5, S14.2).
 type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this =
     inherit HostWindow()
     do

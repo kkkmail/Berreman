@@ -2182,3 +2182,63 @@ module KitWindowTests =
             finally
                 window.Close()
                 Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the Inverse constructor plans a kit's next experiments off the UI thread and caches them under .oc/planner`` () : unit =
+        HeadlessSession.run (fun () ->
+            let ctx = TestAppScope.freshAppContext owner
+            let prepared = TestAppScope.planKitOver ctx owner
+            let qzZ =
+                try kitItemIdOf prepared "QZ-Z"
+                finally prepared.kit.close () |> SceneTestFixture.kitSuccess
+            let folder = prepared.kitFolderOpt |> Option.defaultWith (fun () -> failwith "The plan kit must have a folder")
+            let opened = openedAt folder ReadWriteKitAccess ctx
+            let window = InverseConstructorWindow(ctx, opened)
+            let cachedCandidates () : string list =
+                let cache = Path.Combine(folder.value.value, ".oc", "planner")
+                if Directory.Exists cache then Directory.GetFiles(cache, "*.candidate-json") |> Array.map Path.GetFileName |> List.ofArray
+                else []
+            let shownText (id : ConstructorUiId) : string option =
+                match tryControlById window id with
+                | Some control ->
+                    let text = Assert.IsType<TextBlock>(control).Text
+                    if System.String.IsNullOrWhiteSpace text then None else Some text
+                | None -> None
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Empty(cachedCandidates ())
+                pressBox window ConstructorUiId.flowPlanStep
+                pressBox window (ConstructorUiId.studyChoice (StudyName "QZ"))
+                let timeout = System.TimeSpan.FromSeconds 30.0
+                let elapsed = System.Diagnostics.Stopwatch.StartNew()
+                pressBox window ConstructorUiId.planRunButton
+                while elapsed.Elapsed < timeout
+                      && shownText ConstructorUiId.planRankText = None
+                      && shownText ConstructorUiId.planErrorText = None do
+                    Dispatcher.UIThread.RunJobs()
+
+                match shownText ConstructorUiId.planRankText, shownText ConstructorUiId.planErrorText with
+                | Some rank, None -> Assert.Equal("Rank 0 of 2 from what the kit holds: 2 combination(s) confounded.", rank)
+                | _, Some refusal -> Assert.Fail $"the plan must complete, not refuse: {refusal}"
+                | None, None -> Assert.Fail "the real plan host must post the plan's end to the window within thirty seconds"
+                let cached = cachedCandidates ()
+                Assert.Equal(2, cached.Length)
+                Assert.All(cached, fun name -> Assert.Matches("^[0-9a-f]{64}\.candidate-json$", name))
+
+                // QZ-Z's two candidates, its transmitted and its reflected branch, ranked in the Plan step.
+                let rows = Assert.IsType<StackPanel>(controlById window ConstructorUiId.planCandidateList).Children |> List.ofSeq
+                let rowIds =
+                    rows |> List.map (fun (row : Control) -> AutomationProperties.GetAutomationId row |> Option.ofObj |> Option.defaultValue "")
+                // A row's id ends in the source's wavelength, after the branch.
+                Assert.Equal<string list>(
+                    [ "r"; "t" ] |> List.map (fun branch -> $"PlanCandidate_{qzZ.value}_{branch}_"),
+                    rowIds |> List.map (fun rowId -> rowId.Substring(0, rowId.LastIndexOf('_') + 1)) |> List.sort)
+                rows
+                |> List.iteri (fun (index : int) (row : Control) ->
+                    let caption = Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(row).Children[0]).Text
+                    Assert.StartsWith($"{index + 1}. QZ-Z (z-cut plate), ", caption))
+            finally
+                window.Close()
+                Dispatcher.UIThread.RunJobs())
