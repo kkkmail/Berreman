@@ -40,6 +40,7 @@
         <Compile Include="AbsorbingBiaxialInverseTests.fs" />
         <Compile Include="AbsorbingBiaxialNoisyTests.fs" />
         <Compile Include="LangasiteInverseTests.fs" />
+        <Compile Include="MeasurementPlannerTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
