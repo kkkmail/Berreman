@@ -107,28 +107,6 @@ module KitAcceptanceTests =
             groups : AcceptanceLabGroup list
         }
 
-    /// A committed kit's relative files and directories, `.oc/` included, and each file's bytes, recorded before a read-only session (spec 0050 S12.2).
-    type private CommittedKitRecording =
-        {
-            files : FileName list
-            directories : FolderName list
-            bytes : Map<FileName, FileByteContent>
-        }
-
-    /// A committed kit opened read-only against an empty library, and its folder as recorded before the open (spec 0050 S12.2; 001 §Q 'Open').
-    type private CommittedKitSession =
-        {
-            context : OpticalConstructor.Ui.AppContext
-            opened : OpenedKit
-            /// The Inverse window over the opened kit (spec 0050 S12.2).
-            model : TableAndElementRotationModel
-            /// The start screen's clock, fixed at the kit's refit instant, which the read-only refit stamps its run with (spec 0050 S12.2).
-            clock : ClockProvider
-            recorded : CommittedKitRecording
-        }
-
-    let private kitId = KitId (Guid.Parse "e63c9d6e-7961-4d9f-9c8d-e5a151414e0e")
-    let private kitAuthor = KitAuthor "optics-mueller lab"
     let private initialTime = ClockTime (DateTime(2026, 5, 31, 12, 0, 0, DateTimeKind.Utc))
     let private calibrationTime = ClockTime (DateTime(2026, 5, 31, 12, 1, 0, DateTimeKind.Utc))
     let private objectTime = ClockTime (DateTime(2026, 5, 31, 12, 2, 0, DateTimeKind.Utc))
@@ -297,8 +275,6 @@ module KitAcceptanceTests =
             }
         ]
 
-    let private absorbingKitId = KitId (Guid.Parse "e15b30f6-b9ff-4a6b-a88d-b5401df2a7ae")
-    let private absorbingKitAuthor = KitAuthor "absorbing-biaxial-noisy bench"
     let private absorbingStartTime = ClockTime (DateTime(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc))
     let private absorbingTemplate = ControlCaption "{obj1}"
     // The detector `buildAbsorbingTable` adds on the plate's reflected ray, fixed so builds are byte-equal (`.manual/033`).
@@ -419,22 +395,6 @@ module KitAcceptanceTests =
             yCutPlate, YCut
         ]
 
-    let private expect<'Value> (file : FileName) (field : string) (expected : 'Value) (actual : 'Value) : unit =
-        try Assert.Equal<'Value>(expected, actual)
-        with :? Xunit.Sdk.XunitException as error -> Assert.Fail($"{file.value}: {field}\n{error.Message}")
-
-    let private readKitResult<'Value> (file : FileName) (result : Result<'Value, KitError>) : 'Value =
-        result |> Result.defaultWith (fun error -> failwith $"{file.value}: expected a successful read/write; actual {error.describe}")
-
-    /// The committed kit's folder under `data/`; a missing folder fails the fact naming it (spec 0050 S12.1, S12.2).
-    let private committedFolder (kit : CommittedKit) : KitFolder =
-        let name =
-            match kit with
-            | OpticsMuellerKit -> "data/optics-mueller"
-            | AbsorbingBiaxialNoisyKit -> "data/absorbing-biaxial-noisy"
-        kit.tryFindFolder
-        |> Option.defaultWith (fun () -> failwith $"{name}: expected the committed kit; actual folder missing")
-
     let private itemIdOf (label : ItemLabel) : ItemId =
         (itemSpecs |> List.find (fun item -> item.label = label)).id
 
@@ -504,7 +464,7 @@ module KitAcceptanceTests =
             opened |> apply ([ ChooseNewItemModel offer; SetNewItemLabel spec.label.caption ] @ formEdits)
         let draft = (formOf filled).itemDraftOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected an Add draft; actual none")
         let added = filled |> updateTableAndElementRotation (AddItem draft)
-        expect file "Add item status" None added.kitStatus
+        TestAppScope.expect file "Add item status" None added.kitStatus
         added, offer
 
     let private addAcceptanceItem (model : TableAndElementRotationModel) (spec : AcceptanceItem) : TableAndElementRotationModel =
@@ -517,7 +477,7 @@ module KitAcceptanceTests =
                 | UnknownParameter _ as state -> Some (SetParameterState (spec.id, axis.name, state))
                 | KnownParameter _ | CalibratedParameter _ -> None)
         let edited = added |> apply edits
-        expect file "parameter edit status" None edited.kitStatus
+        TestAppScope.expect file "parameter edit status" None edited.kitStatus
         edited
 
     let private gridOf (model : TableAndElementRotationModel) : SetupGrid =
@@ -533,7 +493,7 @@ module KitAcceptanceTests =
         [ BarDegrees 0.0; BarDegrees 45.0; BarDegrees 90.0 ] |> List.map (fun angle -> AddSetupGridAngle (slot, angle))
 
     let private generateGrid (omit : GridCombination -> bool) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
-        expect KitFile.fileName "grid draft capture" None model.draftCapture
+        TestAppScope.expect KitFile.fileName "grid draft capture" None model.draftCapture
         let exclusions = (gridOf model).combinations |> List.filter omit |> List.map ToggleSetupGridCombination
         let chosen = model |> apply exclusions
         chosen |> updateTableAndElementRotation (GenerateSetupGrid (gridOf chosen))
@@ -570,7 +530,7 @@ module KitAcceptanceTests =
                     AssignSlot (detectorSlot, Some (itemIdOf (ItemLabel "Phone")))
                 ]
         let roles = [ SourceSlotRole; prepRole; firstObjectRole; secondObjectRole; analyzerRole; detectorRole ]
-        expect KitFile.fileName "table light order" roles (SetupSlot.inLightOrder table.elements |> List.map _.role)
+        TestAppScope.expect KitFile.fileName "table light order" roles (SetupSlot.inLightOrder table.elements |> List.map _.role)
         let prep = slotFor prepRole table
         let secondObject = slotFor secondObjectRole table
         let analyzer = slotFor analyzerRole table
@@ -587,7 +547,7 @@ module KitAcceptanceTests =
             |> generateGrid (fun combination ->
                 combination.picks |> List.exists (fun pick ->
                     pick.slot = firstObjectSlot && pick.choice.itemOpt = Some air && pick.choice.r1 <> Angle.zero))
-        expect (FileName "*.setup-json") "first grid setup count" 28 singles.kitSetups.Length
+        TestAppScope.expect (FileName "*.setup-json") "first grid setup count" 28 singles.kitSetups.Length
         let secondGrid =
             singles
             |> apply [ CloseSetupGrid; OpenSetupGrid ]
@@ -599,7 +559,7 @@ module KitAcceptanceTests =
                 let first = combination.picks |> List.find (fun pick -> pick.slot = firstObjectSlot)
                 let second = combination.picks |> List.find (fun pick -> pick.slot = secondObject)
                 first.choice.r1 <> second.choice.r1)
-        expect (FileName "*.setup-json") "both grids setup count" 40 pairs.kitSetups.Length
+        TestAppScope.expect (FileName "*.setup-json") "both grids setup count" 40 pairs.kitSetups.Length
         pairs
         |> updateTableAndElementRotation CloseSetupGrid
         |> correctSetup (SetupName "CPL-(LR#90)-CPL") (SetupName "CPL-(LR#-90)-CPL") firstObjectRole
@@ -681,14 +641,14 @@ module KitAcceptanceTests =
         let file = labFileAt folder lab.path
         let split = model |> updateTableAndElementRotation (SplitByColumn (file, ImportProfileName.phoneRoiCsv))
         let preview = splitOf file split
-        expect file "split key column" (SplitKeyColumn "experiment") preview.key
-        expect file "split group order" (lab.groups |> List.map _.key) (preview.split.groups |> List.map _.key)
+        TestAppScope.expect file "split key column" (SplitKeyColumn "experiment") preview.key
+        TestAppScope.expect file "split group order" (lab.groups |> List.map _.key) (preview.split.groups |> List.map _.key)
         let offers =
             preview.split.groups
             |> List.map (fun group ->
                 match group.matching with
                 | SetupOfferForGroup offer ->
-                    expect file "template offers an existing grid setup" true (List.contains offer.setup model.kitSetups)
+                    TestAppScope.expect file "template offers an existing grid setup" true (List.contains offer.setup model.kitSetups)
                     ToggleSplitOffer group.key
                 | GroupWithoutMatch _ ->
                     let setup =
@@ -698,22 +658,22 @@ module KitAcceptanceTests =
                 | ExperimentForGroup name -> failwith $"{file.value}: {name.value} was already recorded")
         let offered = split |> apply offers
         let ready = splitOf file offered
-        expect file "unmatched groups after manual offers" [] ready.split.unmatched
-        expect file "every group selected" (lab.groups |> List.map _.key |> List.sort) (ready.creating |> List.sort)
+        TestAppScope.expect file "unmatched groups after manual offers" [] ready.split.unmatched
+        TestAppScope.expect file "every group selected" (lab.groups |> List.map _.key |> List.sort) (ready.creating |> List.sort)
         let attached = offered |> updateTableAndElementRotation MatchByTemplate
-        expect file "split completed" None attached.dataSplitOpt
+        TestAppScope.expect file "split completed" None attached.dataSplitOpt
         let appended = attached.experimentCollection.experiments |> List.skip model.experimentCollection.experiments.Length
-        expect file "created names in file group order" (lab.groups |> List.map _.name) (appended |> List.map _.name)
-        expect file "no setup added by the split" model.kitSetups attached.kitSetups
+        TestAppScope.expect file "created names in file group order" (lab.groups |> List.map _.name) (appended |> List.map _.name)
+        TestAppScope.expect file "no setup added by the split" model.kitSetups attached.kitSetups
         attached
 
     let private buildAcceptanceExperiments (folder : KitFolder) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let activated = model |> updateTableAndElementRotation (ActivateSetup (SetupName "LP-(AIR#0)-LP"))
         let analyzer = slotFor analyzerRole activated
         let analyzerSlot = activated.elements |> List.find (fun slot -> slot.id = analyzer)
-        expect KitFile.fileName "dial reading offered for LP2" true (List.contains VaryDialReading (variablesOfElement activated analyzerSlot))
+        TestAppScope.expect KitFile.fileName "dial reading offered for LP2" true (List.contains VaryDialReading (variablesOfElement activated analyzerSlot))
         let captures = availableCaptures activated analyzer
-        expect KitFile.fileName "Phone capture" [ CaptureTransmitted ] captures
+        TestAppScope.expect KitFile.fileName "Phone capture" [ CaptureTransmitted ] captures
         let captureChoice =
             match List.exactlyOne captures with
             | CaptureTransmitted -> ExperimentControls.CaptureT
@@ -721,9 +681,9 @@ module KitAcceptanceTests =
             | CaptureBoth -> ExperimentControls.CaptureBoth
         let drafted =
             activated |> apply [ ExpChooseElement analyzer; ExpChooseVariable ExperimentControls.VaryDialReading; ExpChooseMeasurement captureChoice ]
-        expect KitFile.fileName "raw dial draft" (Some VaryDialReading) drafted.experimentCollection.draft.variable
-        expect KitFile.fileName "raw dial range" analyzerDialRange drafted.experimentCollection.draft.range
-        expect KitFile.fileName "draft capture" (Some CaptureTransmitted) drafted.draftCapture
+        TestAppScope.expect KitFile.fileName "raw dial draft" (Some VaryDialReading) drafted.experimentCollection.draft.variable
+        TestAppScope.expect KitFile.fileName "raw dial range" analyzerDialRange drafted.experimentCollection.draft.range
+        TestAppScope.expect KitFile.fileName "draft capture" (Some CaptureTransmitted) drafted.draftCapture
         let files = readAcceptanceLabFiles folder
         let restart = restartTimeOf files
         let attached = files |> List.fold (attachAcceptanceLabFile folder) drafted
@@ -775,22 +735,22 @@ module KitAcceptanceTests =
                         }
             }
         let running = ready |> updateTableAndElementRotation (StudyFit (RunFit request))
-        expect file $"{requested} started" true running.studyFit.job.isRunning
+        TestAppScope.expect file $"{requested} started" true running.studyFit.job.isRunning
         if not (ended.Wait deadline) then
             Assert.Fail($"{file.value}: expected {requested} to end within {deadline.TotalSeconds} s; actual no end")
         let recorded = messages.ToArray () |> Array.toList
         let completions = recorded |> List.choose (function StudyFit (StudyFitEnded result) -> Some result | _ -> None)
-        expect file "completion message count" 1 completions.Length
+        TestAppScope.expect file "completion message count" 1 completions.Length
         let finished = running |> apply recorded
         match finished.studyFit.errorOpt with
         | Some error -> Assert.Fail($"{file.value}: expected {requested} to succeed; actual {error.describe}")
         | None -> ()
-        expect file "fit finished" false finished.studyFit.job.isRunning
-        expect file "fit handle released" None finished.studyFit.handleOpt
+        TestAppScope.expect file "fit finished" false finished.studyFit.job.isRunning
+        TestAppScope.expect file "fit handle released" None finished.studyFit.handleOpt
         match completions with
         | [ Ok run ] ->
-            expect file "committed fit run" (Some run.name) finished.studyFit.job.committedResults
-            expect file "appended fit run names" ((model.kitFitRuns |> List.map _.name) @ [ run.name ]) (finished.kitFitRuns |> List.map _.name)
+            TestAppScope.expect file "committed fit run" (Some run.name) finished.studyFit.job.committedResults
+            TestAppScope.expect file "appended fit run names" ((model.kitFitRuns |> List.map _.name) @ [ run.name ]) (finished.kitFitRuns |> List.map _.name)
         | [ Error error ] -> Assert.Fail($"{file.value}: expected {requested} to end with a fit run; actual {error.describe}")
         | _ -> Assert.Fail($"{file.value}: expected one completion of {requested}; actual {completions.Length}")
         {
@@ -811,7 +771,7 @@ module KitAcceptanceTests =
                 calibrationUse = CalibrationHeldFixed
             }
         let finished = runStudyFitThroughShell model request (TimeSpan.FromSeconds 60.0)
-        expect file "committed fit run" (Some expectedName) finished.studyFit.job.committedResults
+        TestAppScope.expect file "committed fit run" (Some expectedName) finished.studyFit.job.committedResults
         finished
 
     let private buildAcceptanceStudy
@@ -820,64 +780,26 @@ module KitAcceptanceTests =
         : TableAndElementRotationModel =
         let file = StudyKitFile.fileNameOf studyName.fileStem
         let experiments = model.experimentCollection.experiments |> List.map _.name
-        expect file "study experiment count" 53 experiments.Length
+        TestAppScope.expect file "study experiment count" 53 experiments.Length
         let configured =
             model
             |> apply
                 ([ StudyCommand (CreateStudy (studyName, experiments)); StudyCommand (SetFitMode (studyName, StagedFit)) ]
                  @ (sessionGainSettings |> List.map (fun setting -> StudyCommand (SetSessionGainModel (studyName, setting)))))
-        expect file "study configuration status" None configured.kitStatus
+        TestAppScope.expect file "study configuration status" None configured.kitStatus
         setTime calibrationTime
         let calibrated = configured |> runAcceptanceFit CalibrationStage calibrationRunName
         let calibrationFile = FitRunKitFile.fileNameOf calibrationRunName.fileStem
-        let calibrationText = calibrated.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> readKitResult calibrationFile
+        let calibrationText = calibrated.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> TestAppScope.readKitResult calibrationFile
         let published = calibrated |> updateTableAndElementRotation (PublishCalibration calibrationRunName)
         for label in [ ItemLabel "LP2"; ItemLabel "CPL1"; ItemLabel "CPL2" ] do
             let item = published.kitItems |> List.find (fun held -> held.label = label)
-            expect (ItemKitFile.fileNameOf label.fileStem) "published revision" (ItemRevision 2) item.revision
+            TestAppScope.expect (ItemKitFile.fileNameOf label.fileStem) "published revision" (ItemRevision 2) item.revision
         setTime objectTime
         let reconstructed = published |> runAcceptanceFit ObjectStage objectRunName
-        expect calibrationFile "calibration run unchanged after publication and stage two" calibrationText
-            (reconstructed.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> readKitResult calibrationFile)
+        TestAppScope.expect calibrationFile "calibration run unchanged after publication and stage two" calibrationText
+            (reconstructed.kit.proxy.readKindFile FitRunKitFile calibrationRunName.fileStem |> TestAppScope.readKitResult calibrationFile)
         reconstructed
-
-    /// A clock reading `instant` and the setter that moves it, held by the build it serves (spec 0050 S12.1, S12.2).
-    let private testClockAt (instant : ClockTime) : ClockProvider * (ClockTime -> unit) =
-        let time = ref instant
-        let clock : ClockProvider =
-            {
-                now = fun () -> time.Value
-            }
-        clock, fun at -> time.Value <- at
-
-    /// The Inverse start screen over `folder` and the cell its `showKit` keeps the opened kit in (spec 0050 S12.1, S12.2).
-    let private kitStartOver
-        (context : OpticalConstructor.Ui.AppContext)
-        (clock : ClockProvider)
-        (kitId : KitId)
-        (author : KitAuthor)
-        (folder : KitFolder)
-        : KitStartModel * OpenedKit option ref =
-        let shown : OpenedKit option ref = ref None
-        let startContext : KitStartContext =
-            {
-                kitHistory = KitHistoryProxy.createInMemory [ folder ]
-                limit = KitHistoryLimit.defaultValue
-                clock = clock
-                kitIds =
-                    {
-                        mintKitId = fun () -> kitId
-                    }
-                author = author
-                imports = context.catalogueImports
-                picker = TestAppScope.kitPickerOf folder
-                showKit = fun opened -> shown.Value <- Some opened
-                activateKitWindow = fun _ -> NoKitWindowOpen
-                zipPicker = KitZipPicker.none
-                archive = KitArchiveProxy.create ()
-                archiveJobs = KitArchiveJobHost.inert
-            }
-        initKitStart startContext InverseConstructor, shown
 
     /// Mints `ids` in order and fails on a request past the last; the cell holds the ids not yet minted (spec 0050 S12.1, S12.2).
     let private mintingFrom<'Id> (file : FileName) (what : string) (ids : 'Id list) : (unit -> 'Id) * 'Id list ref =
@@ -904,7 +826,7 @@ module KitAcceptanceTests =
         if Directory.Exists runFolder.value then failwith $"{runFolder.value}: expected a fresh run folder; actual already exists"
         let mutable openedOpt : OpenedKit option = None
         try
-            let sourceData = Path.Combine((committedFolder OpticsMuellerKit).value.value, "data")
+            let sourceData = Path.Combine((TestAppScope.committedFolder OpticsMuellerKit).value.value, "data")
             let targetData = Path.Combine(folder.value.value, "data")
             Directory.CreateDirectory targetData |> ignore
             for directory in Directory.EnumerateDirectories(sourceData, "*", SearchOption.AllDirectories) do
@@ -912,11 +834,11 @@ module KitAcceptanceTests =
             for file in Directory.EnumerateFiles(sourceData, "*", SearchOption.AllDirectories) do
                 File.Copy(file, Path.Combine(targetData, Path.GetRelativePath(sourceData, file)))
             let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
-            let clock, setTime = testClockAt initialTime
-            let start, shown = kitStartOver context clock kitId kitAuthor folder
+            let clock, setTime = TestAppScope.testClockAt initialTime
+            let start, shown = TestAppScope.kitStartOver context clock TestAppScope.kitId TestAppScope.kitAuthor folder
             let started = start |> updateKitStart (CreateKit folder)
             openedOpt <- shown.Value
-            expect KitFile.fileName "CreateKit status" None started.status
+            TestAppScope.expect KitFile.fileName "CreateKit status" None started.status
             let opened = openedOpt |> Option.defaultWith (fun () -> failwith $"{folder.value.value}: expected CreateKit to open the kit; actual no kit")
             let mintItemId, unusedItemIds = mintingFrom (FileName "*.item-json") "item-id" (itemSpecs |> List.map _.id)
             let mintElementId, unusedSlotIds = mintingFrom (FileName "*.setup-json") "added-slot id" addedSlotIds
@@ -934,10 +856,10 @@ module KitAcceptanceTests =
                 }
                 |> apply [ SetNamingTemplateText labTemplate; SaveNamingTemplate ]
             let stocked = itemSpecs |> List.fold addAcceptanceItem initial
-            expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
+            TestAppScope.expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
             let setups = buildAcceptanceSetups stocked
-            expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
-            expect (FileName "*.setup-json") "setups including both corrections" 42 setups.kitSetups.Length
+            TestAppScope.expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
+            TestAppScope.expect (FileName "*.setup-json") "setups including both corrections" 42 setups.kitSetups.Length
             let model = finish setTime folder setups
             {
                 folder = folder
@@ -949,7 +871,7 @@ module KitAcceptanceTests =
         with _ ->
             try
                 match openedOpt with
-                | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+                | Some opened -> opened.library.kit.close () |> TestAppScope.readKitResult KitFile.fileName
                 | None -> ()
             finally
                 if Directory.Exists runFolder.value then Directory.Delete(runFolder.value, true)
@@ -1019,8 +941,8 @@ module KitAcceptanceTests =
         ]
 
     let private assertStoredItems (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
-        let items = reader.readItems () |> readKitResult (FileName "*.item-json")
-        expect (FileName "*.item-json") "labels" (itemSpecs |> List.map _.label |> List.sort) (items |> List.map _.label |> List.sort)
+        let items = reader.readItems () |> TestAppScope.readKitResult (FileName "*.item-json")
+        TestAppScope.expect (FileName "*.item-json") "labels" (itemSpecs |> List.map _.label |> List.sort) (items |> List.map _.label |> List.sort)
         let models = built.context.itemModels.listItemModels () |> Result.defaultWith (fun error -> failwith error.describe)
         for spec in itemSpecs do
             let file = ItemKitFile.fileNameOf spec.label.fileStem
@@ -1030,13 +952,13 @@ module KitAcceptanceTests =
                 match spec.bindingOpt with
                 | Some preset -> PresetInstance (model.versionId, preset)
                 | None -> ItemModelVersionInstance model.versionId
-            expect file "id" spec.id item.id
-            expect file "model and version" expectedModel item.model
-            expect file "dial" spec.dial item.dial
-            expect file "revision" ItemRevision.first item.revision
-            expect file "history" [] item.history
-            expect file "photo" None item.photoOpt
-            expect file "notes" (ItemNotes "") item.notes
+            TestAppScope.expect file "id" spec.id item.id
+            TestAppScope.expect file "model and version" expectedModel item.model
+            TestAppScope.expect file "dial" spec.dial item.dial
+            TestAppScope.expect file "revision" ItemRevision.first item.revision
+            TestAppScope.expect file "history" [] item.history
+            TestAppScope.expect file "photo" None item.photoOpt
+            TestAppScope.expect file "notes" (ItemNotes "") item.notes
             let axes =
                 match spec.bindingOpt with
                 | Some preset ->
@@ -1051,7 +973,7 @@ module KitAcceptanceTests =
                         name = axis.name
                         state = parameterStateFor spec axis
                     })
-            expect file "parameters (including starts, bounds, priors and known defaults)" expectedParameters item.parameters
+            TestAppScope.expect file "parameters (including starts, bounds, priors and known defaults)" expectedParameters item.parameters
             let unknowns =
                 item.parameters
                 |> List.choose (fun parameter ->
@@ -1059,27 +981,27 @@ module KitAcceptanceTests =
                     | UnknownParameter _ -> Some parameter.name
                     | KnownParameter _ | CalibratedParameter _ -> None)
                 |> List.sort
-            expect file "unknown parameter names" (unknownNamesFor spec |> List.sort) unknowns
+            TestAppScope.expect file "unknown parameter names" (unknownNamesFor spec |> List.sort) unknowns
             if spec.label = ItemLabel "Phone" then
-                expect file "gain" (Some (KnownParameter (ParameterValue 1.0))) (item.tryFindParameter ParameterName.gain |> Option.map _.state)
-                expect file "dark offset" (Some (KnownParameter (ParameterValue 0.0))) (item.tryFindParameter ParameterName.darkOffset |> Option.map _.state)
+                TestAppScope.expect file "gain" (Some (KnownParameter (ParameterValue 1.0))) (item.tryFindParameter ParameterName.gain |> Option.map _.state)
+                TestAppScope.expect file "dark offset" (Some (KnownParameter (ParameterValue 0.0))) (item.tryFindParameter ParameterName.darkOffset |> Option.map _.state)
 
     let private assertStoredSetups (reader : KitProxy) : unit =
-        let setups = reader.readSetups () |> readKitResult (FileName "*.setup-json")
+        let setups = reader.readSetups () |> TestAppScope.readKitResult (FileName "*.setup-json")
         let expected = expectedSetups ()
-        expect (FileName "*.setup-json") "names" (expected |> List.map _.name |> List.sort) (setups |> List.map _.name |> List.sort)
+        TestAppScope.expect (FileName "*.setup-json") "names" (expected |> List.map _.name |> List.sort) (setups |> List.map _.name |> List.sort)
         for spec in expected do
             let setup = setups |> List.find (fun setup -> setup.name = spec.name)
             let file = SetupKitFile.fileNameOf spec.name.fileStem
             let ordered = setup.lightOrder
-            expect file "revision" SetupRevision.first setup.revision
-            expect file "history" [] setup.history
-            expect file "light order" [ SourceSlotRole; prepRole; firstObjectRole; secondObjectRole; analyzerRole; detectorRole ] (ordered |> List.map _.role)
+            TestAppScope.expect file "revision" SetupRevision.first setup.revision
+            TestAppScope.expect file "history" [] setup.history
+            TestAppScope.expect file "light order" [ SourceSlotRole; prepRole; firstObjectRole; secondObjectRole; analyzerRole; detectorRole ] (ordered |> List.map _.role)
             let slot (role : SlotRole) : SetupSlot = (ordered |> List.find (fun held -> held.role = role)).slot
             let fixedItem (role : SlotRole) (label : ItemLabel) (angle : Angle) : unit =
                 let held = slot role
-                expect file $"{role.text} content" (ItemInSlot (itemIdOf label, PlacementTurn)) held.content
-                expect file $"{role.text} angle" angle held.placement.r1
+                TestAppScope.expect file $"{role.text} content" (ItemInSlot (itemIdOf label, PlacementTurn)) held.content
+                TestAppScope.expect file $"{role.text} angle" angle held.placement.r1
             fixedItem SourceSlotRole (ItemLabel "Laser") Angle.zero
             fixedItem prepRole spec.prep Angle.zero
             let firstLabel, firstAngle = spec.objects.first
@@ -1087,35 +1009,22 @@ module KitAcceptanceTests =
             match spec.objects.secondOpt with
             | Some (label, angle) -> fixedItem secondObjectRole label angle
             | None ->
-                expect file "Obj 2 content" EmptySlotContent (slot secondObjectRole).content
-                expect file "Obj 2 angle" Angle.zero (slot secondObjectRole).placement.r1
+                TestAppScope.expect file "Obj 2 content" EmptySlotContent (slot secondObjectRole).content
+                TestAppScope.expect file "Obj 2 angle" Angle.zero (slot secondObjectRole).placement.r1
             let reading = if spec.analyzer = ItemLabel "LP2" then Angle.degree 152.0<deg> else Angle.degree 80.0<deg>
-            expect file "Analyzer 1 content and raw dial reading" (ItemInSlot (itemIdOf spec.analyzer, DialTurn reading)) (slot analyzerRole).content
-            expect file "Analyzer 1 physical angle" Angle.zero (slot analyzerRole).placement.r1
+            TestAppScope.expect file "Analyzer 1 content and raw dial reading" (ItemInSlot (itemIdOf spec.analyzer, DialTurn reading)) (slot analyzerRole).content
+            TestAppScope.expect file "Analyzer 1 physical angle" Angle.zero (slot analyzerRole).placement.r1
             fixedItem detectorRole (ItemLabel "Phone") Angle.zero
 
-    let private relativeFiles (folder : FolderName) : FileName list =
-        Directory.GetFiles(folder.value, "*", SearchOption.AllDirectories)
-        |> Array.map (fun file -> FileName (Path.GetRelativePath(folder.value, file)))
-        |> Array.sort
-        |> List.ofArray
-
-    /// Every directory under `folder`, empty ones included, relative to it and sorted (spec 0050 S12.1, S12.2).
-    let private relativeDirectories (folder : FolderName) : FolderName list =
-        Directory.GetDirectories(folder.value, "*", SearchOption.AllDirectories)
-        |> Array.map (fun directory -> FolderName (Path.GetRelativePath(folder.value, directory)))
-        |> Array.sort
-        |> List.ofArray
-
     let private kitContentFiles (folder : KitFolder) : Set<FileName> =
-        relativeFiles folder.value
+        TestAppScope.relativeFiles folder.value
         |> List.filter (fun file -> not (file.value.StartsWith($".oc{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
         |> Set.ofList
 
     let private assertSameBytes (expected : FileName) (actual : FileName) : unit =
         let expectedBytes = File.ReadAllBytes expected.value
         let actualBytes = File.ReadAllBytes actual.value
-        expect actual $"bytes against {expected.value}" expectedBytes actualBytes
+        TestAppScope.expect actual $"bytes against {expected.value}" expectedBytes actualBytes
 
     /// Fails at the first relative path, `.oc/` left out of both, that `other` lacks, adds or holds in other bytes, naming `built`'s folder (spec 0050 S12.2).
     let private assertSameKitFiles (built : KitFolder) (other : KitFolder) : unit =
@@ -1141,24 +1050,24 @@ module KitAcceptanceTests =
         (instant : ClockTime)
         (template : ControlCaption)
         : unit =
-        let metadata = reader.readKitFile () |> readKitResult KitFile.fileName
-        expect KitFile.fileName "schema version" KitFile.currentSchemaVersion metadata.schemaVersion
-        expect KitFile.fileName "id" kitId metadata.id
-        expect KitFile.fileName "name" name metadata.name
-        expect KitFile.fileName "author" author metadata.author
-        expect KitFile.fileName "notes" (KitNotes "") metadata.notes
-        expect KitFile.fileName "created" instant metadata.created
-        expect KitFile.fileName "modified" instant metadata.modified
-        expect KitFile.fileName "naming template" template.value metadata.namingTemplate.value
-        expect KitFile.fileName "import profiles" [] metadata.importProfiles
-        expect KitFile.fileName "send exclusions" [] metadata.sendExclude
+        let metadata = reader.readKitFile () |> TestAppScope.readKitResult KitFile.fileName
+        TestAppScope.expect KitFile.fileName "schema version" KitFile.currentSchemaVersion metadata.schemaVersion
+        TestAppScope.expect KitFile.fileName "id" kitId metadata.id
+        TestAppScope.expect KitFile.fileName "name" name metadata.name
+        TestAppScope.expect KitFile.fileName "author" author metadata.author
+        TestAppScope.expect KitFile.fileName "notes" (KitNotes "") metadata.notes
+        TestAppScope.expect KitFile.fileName "created" instant metadata.created
+        TestAppScope.expect KitFile.fileName "modified" instant metadata.modified
+        TestAppScope.expect KitFile.fileName "naming template" template.value metadata.namingTemplate.value
+        TestAppScope.expect KitFile.fileName "import profiles" [] metadata.importProfiles
+        TestAppScope.expect KitFile.fileName "send exclusions" [] metadata.sendExclude
 
     let private assertLibrarySnapshots (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
-        let snapshots = reader.listSnapshots () |> readKitResult (FileName "library/*")
+        let snapshots = reader.listSnapshots () |> TestAppScope.readKitResult (FileName "library/*")
         let library = built.folder.value.combine (FolderName "library")
-        expect (FileName library.value) "snapshot files" (snapshots |> List.map _.snapshotFileName |> List.sort) (relativeFiles library)
+        TestAppScope.expect (FileName library.value) "snapshot files" (snapshots |> List.map _.snapshotFileName |> List.sort) (TestAppScope.relativeFiles library)
         let requiredModels = itemSpecs |> List.map _.modelId |> List.distinct |> List.sort
-        expect (FileName "library/*.item-model-json") "instantiated model count" 6 requiredModels.Length
+        TestAppScope.expect (FileName "library/*.item-model-json") "instantiated model count" 6 requiredModels.Length
         let storedModels =
             snapshots
             |> List.choose (fun envelope ->
@@ -1167,19 +1076,19 @@ module KitAcceptanceTests =
                 | Error _ -> None)
             |> List.filter (fun id -> List.contains id requiredModels)
             |> List.sort
-        expect (FileName "library/*.item-model-json") "instantiated models" requiredModels storedModels
+        TestAppScope.expect (FileName "library/*.item-model-json") "instantiated models" requiredModels storedModels
         let builtIn = CatalogueProxy.builtInFolderUnder built.context.locations.shippedCatalogueFolder
         for envelope in snapshots do
             let source = envelope.content.fileName.combine builtIn
             let target = envelope.snapshotFileName.combine library
-            expect target $"built-in entry {source.value} exists" true (File.Exists source.value)
+            TestAppScope.expect target $"built-in entry {source.value} exists" true (File.Exists source.value)
             assertSameBytes source target
 
     let private assertLabBytes (folder : KitFolder) : unit =
-        let original = (committedFolder OpticsMuellerKit).value.combine (FolderName "data")
+        let original = (TestAppScope.committedFolder OpticsMuellerKit).value.combine (FolderName "data")
         let copied = folder.value.combine (FolderName "data")
-        let files = relativeFiles original
-        expect (FileName copied.value) "lab files" files (relativeFiles copied)
+        let files = TestAppScope.relativeFiles original
+        TestAppScope.expect (FileName copied.value) "lab files" files (TestAppScope.relativeFiles copied)
         for file in files do assertSameBytes (file.combine original) (file.combine copied)
 
     let private hashOfFile (file : FileName) : ContentHash =
@@ -1188,7 +1097,7 @@ module KitAcceptanceTests =
 
     let private labHashes (folder : KitFolder) : Map<FileName, ContentHash> =
         let data = folder.value.combine (FolderName "data")
-        relativeFiles data |> List.map (fun file -> file, hashOfFile (file.combine data)) |> Map.ofList
+        TestAppScope.relativeFiles data |> List.map (fun file -> file, hashOfFile (file.combine data)) |> Map.ofList
 
     let private labelledSetupFor (template : NamingTemplate) (group : AcceptanceLabGroup) : SetupName =
         match manualSetups |> Map.tryFind group.key with
@@ -1208,23 +1117,23 @@ module KitAcceptanceTests =
 
     let private assertStoredExperiments (built : BuiltAcceptanceKit) (reader : KitProxy) (files : AcceptanceLabFile list) : unit =
         let experimentsFile = FileName "*.experiment-json"
-        let experiments = reader.readExperiments () |> readKitResult experimentsFile
-        let setups = reader.readSetups () |> readKitResult (FileName "*.setup-json")
-        let metadata = reader.readKitFile () |> readKitResult KitFile.fileName
+        let experiments = reader.readExperiments () |> TestAppScope.readKitResult experimentsFile
+        let setups = reader.readSetups () |> TestAppScope.readKitResult (FileName "*.setup-json")
+        let metadata = reader.readKitFile () |> TestAppScope.readKitResult KitFile.fileName
         let groups = files |> List.collect _.groups
-        expect experimentsFile "lab group count" 53 groups.Length
-        expect experimentsFile "experiment count" 53 experiments.Length
-        expect experimentsFile "experiment order" (groups |> List.map _.name) (experiments |> List.map _.name)
-        expect experimentsFile "ids in file group order" (groups |> List.mapi (fun index _ -> ExperimentId (index + 1))) (experiments |> List.map _.id)
-        expect experimentsFile "stored model" built.model.experimentCollection.experiments experiments
-        expect experimentsFile "Calibration runs" (calibrationNames |> List.sort) (experiments |> List.filter (fun experiment -> experiment.role = CalibrationRun) |> List.map _.name |> List.sort)
+        TestAppScope.expect experimentsFile "lab group count" 53 groups.Length
+        TestAppScope.expect experimentsFile "experiment count" 53 experiments.Length
+        TestAppScope.expect experimentsFile "experiment order" (groups |> List.map _.name) (experiments |> List.map _.name)
+        TestAppScope.expect experimentsFile "ids in file group order" (groups |> List.mapi (fun index _ -> ExperimentId (index + 1))) (experiments |> List.map _.id)
+        TestAppScope.expect experimentsFile "stored model" built.model.experimentCollection.experiments experiments
+        TestAppScope.expect experimentsFile "Calibration runs" (calibrationNames |> List.sort) (experiments |> List.filter (fun experiment -> experiment.role = CalibrationRun) |> List.map _.name |> List.sort)
         for role, count in [ ScienceRun, 36; CalibrationRun, 9; DarkRun, 6; DiagnosticRun, 2 ] do
-            expect experimentsFile $"{role.text} count" count (experiments |> List.filter (fun experiment -> experiment.role = role) |> List.length)
-        expect experimentsFile "gain session count" 6 (experiments |> List.choose _.sessionOpt |> List.distinct |> List.length)
-        expect experimentsFile "setup corrections" 2 (experiments |> List.sumBy (fun experiment -> experiment.corrections.Length))
-        expect experimentsFile "excluded frames" 1 (experiments |> List.sumBy (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.exclusions.Length) |> Option.defaultValue 0))
+            TestAppScope.expect experimentsFile $"{role.text} count" count (experiments |> List.filter (fun experiment -> experiment.role = role) |> List.length)
+        TestAppScope.expect experimentsFile "gain session count" 6 (experiments |> List.choose _.sessionOpt |> List.distinct |> List.length)
+        TestAppScope.expect experimentsFile "setup corrections" 2 (experiments |> List.sumBy (fun experiment -> experiment.corrections.Length))
+        TestAppScope.expect experimentsFile "excluded frames" 1 (experiments |> List.sumBy (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.exclusions.Length) |> Option.defaultValue 0))
         let restart = restartTimeOf files
-        let original = committedFolder OpticsMuellerKit
+        let original = TestAppScope.committedFolder OpticsMuellerKit
         for lab in files do
             let source = labFileAt original lab.path
             let attachment : DataAttachment =
@@ -1240,14 +1149,14 @@ module KitAcceptanceTests =
                 let correctedNameOpt = correctedSetups |> Map.tryFind group.name
                 let expectedName = correctedNameOpt |> Option.defaultValue labelledName
                 let expectedSetup = setups |> List.find (fun setup -> setup.name = expectedName)
-                expect file "setup and revision" expectedSetup.reference experiment.setup
+                TestAppScope.expect file "setup and revision" expectedSetup.reference experiment.setup
                 match correctedNameOpt with
                 | Some _ ->
                     let correction = experiment.corrections |> List.exactlyOne
-                    expect file "correction's labelled setup" labelled.reference correction.previous
-                    expect file "correction's actual setup" expectedSetup.reference correction.corrected
-                    expect file "correction audit note" lrCorrectionNote.value correction.note.value
-                | None -> expect file "no correction" [] experiment.corrections
+                    TestAppScope.expect file "correction's labelled setup" labelled.reference correction.previous
+                    TestAppScope.expect file "correction's actual setup" expectedSetup.reference correction.corrected
+                    TestAppScope.expect file "correction audit note" lrCorrectionNote.value correction.note.value
+                | None -> TestAppScope.expect file "no correction" [] experiment.corrections
                 let analyzer = expectedSetup.lightOrder |> List.find (fun slot -> slot.role = analyzerRole)
                 let axis : ScanAxis =
                     {
@@ -1257,24 +1166,24 @@ module KitAcceptanceTests =
                         range = analyzerDialRange
                     }
                 let expectedScan = ExperimentScan.oneAxis axis CaptureTransmitted None
-                expect file "analyzer raw-dial sweep and Phone capture" expectedScan experiment.scan
+                TestAppScope.expect file "analyzer raw-dial sweep and Phone capture" expectedScan experiment.scan
                 let dialReadings = analyzerDialRange.sweptValues |> List.map (fun reading -> Angle.degree (reading.value * 1.0<deg>))
                 for row in group.captures do
-                    expect file $"capture {row.captureIndex.value} at {row.description.degrees} degrees is on the dial sweep" true (List.contains row.description dialReadings)
-                expect file "role" (roleForGroup lab group) experiment.role
-                expect file "session" (sessionForGroup restart lab group) experiment.sessionOpt
-                expect file "notes" ExperimentNotes.none experiment.notes
+                    TestAppScope.expect file $"capture {row.captureIndex.value} at {row.description.degrees} degrees is on the dial sweep" true (List.contains row.description dialReadings)
+                TestAppScope.expect file "role" (roleForGroup lab group) experiment.role
+                TestAppScope.expect file "session" (sessionForGroup restart lab group) experiment.sessionOpt
+                TestAppScope.expect file "notes" ExperimentNotes.none experiment.notes
                 let data = experiment.dataOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its lab attachment")
-                expect file "attachment path and committed SHA-256" attachment data.attachment
-                expect file "import profile" ImportProfileName.phoneRoiCsv data.profile
-                expect file "keyed selection" (KeyedDataRows group.key) data.rows
-                expect file "excluded point numbers in group order" (excludedNumbersOf group) (data.exclusions |> List.map _.point)
-                for exclusion in data.exclusions do expect file "exclusion reason" frameExclusionReason.value exclusion.reason.value
+                TestAppScope.expect file "attachment path and committed SHA-256" attachment data.attachment
+                TestAppScope.expect file "import profile" ImportProfileName.phoneRoiCsv data.profile
+                TestAppScope.expect file "keyed selection" (KeyedDataRows group.key) data.rows
+                TestAppScope.expect file "excluded point numbers in group order" (excludedNumbersOf group) (data.exclusions |> List.map _.point)
+                for exclusion in data.exclusions do TestAppScope.expect file "exclusion reason" frameExclusionReason.value exclusion.reason.value
                 let mapped =
                     built.model.experimentData.readMapped data
                     |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.caption.value}")
-                expect file "mapped captures, including excluded frames" (CapturePoints group.captures) mapped
-                expect file "all capture descriptions validate against the scan" (Ok mapped) (mapped.validatedFor Intensity experiment.scan)
+                TestAppScope.expect file "mapped captures, including excluded frames" (CapturePoints group.captures) mapped
+                TestAppScope.expect file "all capture descriptions validate against the scan" (Ok mapped) (mapped.validatedFor Intensity experiment.scan)
                 let kept =
                     group.captures
                     |> List.filter (fun row ->
@@ -1282,7 +1191,7 @@ module KitAcceptanceTests =
                         |> List.exists (fun excluded ->
                             excluded.experiment = row.experiment && excluded.captureIndex = row.captureIndex && excluded.description = row.description)
                         |> not)
-                expect file "keptBy removes only the reference's contaminated frame" (CapturePoints kept) (mapped.keptBy data.exclusions)
+                TestAppScope.expect file "keptBy removes only the reference's contaminated frame" (CapturePoints kept) (mapped.keptBy data.exclusions)
 
     let private referenceInstrumentAngles : (ItemLabel * ParameterName * BarDegrees) list =
         [
@@ -1315,18 +1224,18 @@ module KitAcceptanceTests =
         let lr = itemIdOf (ItemLabel "LR")
         let references : (ItemId list * MuellerMatrix) list =
             [ [ qz ], MuellerReference.qzMatrix; [ lr ], MuellerReference.lrMatrix; [ qz; lr ], MuellerReference.combinedMatrix ]
-        expect file "object matrix groups" (references |> List.map fst |> List.sort) (run.objectMatrices |> List.map _.items |> List.sort)
+        TestAppScope.expect file "object matrix groups" (references |> List.map fst |> List.sort) (run.objectMatrices |> List.map _.items |> List.sort)
         for ids, reference in references do
             let labels = ids |> List.map (fun id -> (itemSpecs |> List.find (fun item -> item.id = id)).label.value) |> String.concat " then "
             let fitted = run.objectMatrices |> List.find (fun matrix -> matrix.items = ids)
-            expect file $"{labels} matrix element count" 16 fitted.elements.Length
+            TestAppScope.expect file $"{labels} matrix element count" 16 fitted.elements.Length
             let expectedElements = reference.rowMajorValues
             fitted.elements |> List.iteri (fun index actual ->
                 let quantity = ControlCaption $"{file.value}: {labels}.{muellerNames.[index].value}"
                 expectReferenceValue quantity expectedElements.[index].value actual.value)
-        expect file "product check count" 1 run.results.productChecks.Length
+        TestAppScope.expect file "product check count" 1 run.results.productChecks.Length
         let check = List.exactlyOne run.results.productChecks
-        expect file "product check objects in light order" [ qz; lr ] check.items
+        TestAppScope.expect file "product check objects in light order" [ qz; lr ] check.items
         let ratio = ControlCaption $"{file.value}: QZ then LR product-check RMSE ratio"
         expectReferenceValue ratio MuellerReference.productCheckRmseRatio.value check.rmseRatio.value
 
@@ -1355,94 +1264,14 @@ module KitAcceptanceTests =
     let ``the built optics-mueller kit equals the committed kit file by file`` () : unit =
         let run = FolderName (Guid.NewGuid().ToString("N"))
         let built = buildOpticsMuellerKit run
-        try assertSameKitFiles built.folder (committedFolder OpticsMuellerKit)
+        try assertSameKitFiles built.folder (TestAppScope.committedFolder OpticsMuellerKit)
         finally
-            built.model.kit.close () |> readKitResult KitFile.fileName
+            built.model.kit.close () |> TestAppScope.readKitResult KitFile.fileName
         // Spec 0050 S12.1 / step 0428: a failed comparison retains the named kit for regeneration.
         Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
 
-    /// The instant a read-only session's clock reads, after the kit's own fits: AT-1's refit at 12:03, AT-2's at 12:02 (spec 0050 S12.1, S12.2).
-    let private refitTimeOf (kit : CommittedKit) : ClockTime =
-        match kit with
-        | OpticsMuellerKit -> ClockTime (DateTime(2026, 5, 31, 12, 3, 0, DateTimeKind.Utc))
-        | AbsorbingBiaxialNoisyKit -> ClockTime (DateTime(2026, 6, 1, 12, 2, 0, DateTimeKind.Utc))
-
-    /// The context's item-model, live-library, material, sample and source stores list no entry (spec 0050 S12.1, S12.2; 001 §Q 'Open').
-    let private assertEmptyLibrary (context : OpticalConstructor.Ui.AppContext) : unit =
-        expect KitFile.fileName "empty item-model database" (Ok []) (context.itemModels.listItemModels ())
-        expect KitFile.fileName "empty live library" (Ok [ LibraryTree.byKind [] ]) (context.library.libraryTrees ())
-        expect KitFile.fileName "empty material database" (Ok []) (context.materials.listMaterials IncludeInactive)
-        expect KitFile.fileName "empty sample database" (Ok []) (context.samples.listSamples IncludeInactive)
-        expect KitFile.fileName "empty source database" (Ok []) (context.sources.listSources ())
-
-    /// The committed kit's folder holds exactly the recorded relative paths, directories and bytes: nothing written, no lock, stamp, snapshot or cache (spec 0050 S12.2; .spec-md §3.12).
-    let private assertCommittedUnchanged (kit : CommittedKit) (recorded : CommittedKitRecording) : unit =
-        let original = committedFolder kit
-        let folderFile = FileName original.value.value
-        expect folderFile "every relative file path unchanged, including .oc" recorded.files (relativeFiles original.value)
-        expect folderFile "every directory unchanged, including empty cache folders" recorded.directories (relativeDirectories original.value)
-        for KeyValue(file, expected) in recorded.bytes do
-            let actual = File.ReadAllBytes (file.combine original.value).value |> FileByteContent
-            expect file "committed bytes unchanged by the read-only session" expected.value actual.value
-
-    /// Records the committed kit's folder, then opens it read-only against an empty library through the start screen, the Inverse window over it; a failure after the recording closes the kit and checks the folder first (spec 0050 S12.2; 001 §Q 'Open').
-    let private openCommittedReadOnly (kit : CommittedKit) : CommittedKitSession =
-        let original = committedFolder kit
-        let originalFiles = relativeFiles original.value
-        let recorded : CommittedKitRecording =
-            {
-                files = originalFiles
-                directories = relativeDirectories original.value
-                bytes =
-                    originalFiles
-                    |> List.map (fun file -> file, FileByteContent (File.ReadAllBytes (file.combine original.value).value))
-                    |> Map.ofList
-            }
-        let committedId, committedAuthor =
-            match kit with
-            | OpticsMuellerKit -> kitId, kitAuthor
-            | AbsorbingBiaxialNoisyKit -> absorbingKitId, absorbingKitAuthor
-        let mutable openedOpt : OpenedKit option = None
-        try
-            let context = TestAppScope.emptyLibraryAppContext (FolderName "KitAcceptanceTests")
-            assertEmptyLibrary context
-            let clock, _ = testClockAt (refitTimeOf kit)
-            let start, shown = kitStartOver context clock committedId committedAuthor original
-            let started = start |> updateKitStart (OpenKitReadOnly original)
-            openedOpt <- shown.Value
-            expect KitFile.fileName "OpenKitReadOnly status" None started.status
-            let opened =
-                openedOpt
-                |> Option.defaultWith (fun () -> failwith $"{original.value.value}: OpenKitReadOnly did not open the committed kit")
-            expect KitFile.fileName "opened folder" original opened.folder
-            expect KitFile.fileName "read-only access" ReadOnlyKitAccess opened.library.kit.access
-            let model = TestAppScope.inverseModelOver context opened
-            expect KitFile.fileName "window's read-only access" ReadOnlyKitAccess model.kit.access
-            expect KitFile.fileName "window's experiments" opened.experiments model.experimentCollection.experiments
-            expect KitFile.fileName "window's setups" opened.setups model.kitSetups
-            expect KitFile.fileName "window's items" opened.items model.kitItems
-            expect (FileName "*.study-json") "window's studies" opened.studies model.kitStudies
-            expect (FileName "*.fitrun-json") "window's fit runs" opened.fitRuns model.kitFitRuns
-            let session : CommittedKitSession =
-                {
-                    context = context
-                    opened = opened
-                    model = model
-                    clock = clock
-                    recorded = recorded
-                }
-            session
-        with _ ->
-            try
-                match openedOpt with
-                | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
-                | None -> ()
-            finally
-                assertCommittedUnchanged kit recorded
-            reraise ()
-
     /// The study engine's fit over a read-only window: the session's clock, the solver and deviates `StudyFitEnvironment.create` composes, and the window's fit runs (spec 0050 S12.1, S12.2).
-    let private readOnlyStudyFit (session : CommittedKitSession) : StudyFitParam =
+    let private readOnlyStudyFit (session : TestAppScope.CommittedKitSession) : StudyFitParam =
         let fit : StudyFitParam =
             {
                 forward = session.model.studyForwardContext
@@ -1454,51 +1283,51 @@ module KitAcceptanceTests =
         fit
 
     /// Closes the session's kit, then checks the committed folder is as recorded, even when the close fails (spec 0050 S12.2).
-    let private closeCommittedReadOnly (kit : CommittedKit) (session : CommittedKitSession) : unit =
-        try session.opened.library.kit.close () |> readKitResult KitFile.fileName
-        finally assertCommittedUnchanged kit session.recorded
+    let private closeCommittedReadOnly (kit : CommittedKit) (session : TestAppScope.CommittedKitSession) : unit =
+        try session.opened.library.kit.close () |> TestAppScope.readKitResult KitFile.fileName
+        finally TestAppScope.assertCommittedUnchanged kit session.recorded
 
     /// Reconstruct from committed snapshots and lab bytes without changing the kit (spec 0050 S12.1; 001 §Q 'Open').
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``the committed optics-mueller kit opens read-only against an empty library, writes nothing, and its study reproduces the reference reconstruction`` () : unit =
-        let session = openCommittedReadOnly OpticsMuellerKit
+        let session = TestAppScope.openCommittedReadOnly (FolderName "KitAcceptanceTests") OpticsMuellerKit
         let context = session.context
         let opened = session.opened
         let model = session.model
         try
-            expect KitFile.fileName "experiment count" 53 opened.experiments.Length
-            expect KitFile.fileName "setup count" 42 opened.setups.Length
-            expect KitFile.fileName "item count" 9 opened.items.Length
+            TestAppScope.expect KitFile.fileName "experiment count" 53 opened.experiments.Length
+            TestAppScope.expect KitFile.fileName "setup count" 42 opened.setups.Length
+            TestAppScope.expect KitFile.fileName "item count" 9 opened.items.Length
             let studyFile = StudyKitFile.fileNameOf studyName.fileStem
-            expect studyFile "study names" [ studyName ] (opened.studies |> List.map _.name)
+            TestAppScope.expect studyFile "study names" [ studyName ] (opened.studies |> List.map _.name)
             let study = List.exactlyOne opened.studies
-            expect studyFile "all experiments in the study" (opened.experiments |> List.map _.name) study.experiments
-            expect studyFile "staged fit" StagedFit study.settings.mode
+            TestAppScope.expect studyFile "all experiments in the study" (opened.experiments |> List.map _.name) study.experiments
+            TestAppScope.expect studyFile "staged fit" StagedFit study.settings.mode
             let fitFile = FileName "QZ-LR@*.fitrun-json"
-            expect fitFile "two stored fit runs" [ calibrationRunName; objectRunName ] (opened.fitRuns |> List.map _.name)
-            expect fitFile "stored fit stages" [ CalibrationStage; ObjectStage ] (opened.fitRuns |> List.map _.stage)
-            expect (FileName "*.item-json") "all nine item identities"
+            TestAppScope.expect fitFile "two stored fit runs" [ calibrationRunName; objectRunName ] (opened.fitRuns |> List.map _.name)
+            TestAppScope.expect fitFile "stored fit stages" [ CalibrationStage; ObjectStage ] (opened.fitRuns |> List.map _.stage)
+            TestAppScope.expect (FileName "*.item-json") "all nine item identities"
                 (itemSpecs |> List.map _.id |> List.sort) (model.kitItems |> List.map _.id |> List.sort)
-            assertCommittedUnchanged OpticsMuellerKit session.recorded
-            assertEmptyLibrary context
+            TestAppScope.assertCommittedUnchanged OpticsMuellerKit session.recorded
+            TestAppScope.assertEmptyLibrary context
             for item in model.kitItems do
                 let file = ItemKitFile.fileNameOf item.label.fileStem
                 let choice =
                     model.tryItemModelChoice item
                     |> Option.defaultWith (fun () -> failwith $"{file.value}: the kit snapshots did not resolve its stored model")
-                expect file "resolved stored model and binding" item.model choice.instance
+                TestAppScope.expect file "resolved stored model and binding" item.model choice.instance
                 let version =
                     match choice with
                     | LibraryModelChoice version
                     | SourcePresetChoice (version, _)
                     | PolarizerPresetChoice (version, _)
                     | StackSampleChoice (version, _, _) -> version
-                expect file "model absent from the database" (Ok None) (context.itemModels.resolveItemModelVersion version.versionId)
-                expect file "model present in the snapshot overlay" (Ok (Some version)) (model.itemModels.resolveItemModelVersion version.versionId)
+                TestAppScope.expect file "model absent from the database" (Ok None) (context.itemModels.resolveItemModelVersion version.versionId)
+                TestAppScope.expect file "model present in the snapshot overlay" (Ok (Some version)) (model.itemModels.resolveItemModelVersion version.versionId)
                 match item.model with
                 | PresetInstance (_, preset) ->
-                    expect file "bound preset absent from the database" (Ok None) (context.library.tryGetEntry preset)
+                    TestAppScope.expect file "bound preset absent from the database" (Ok None) (context.library.tryGetEntry preset)
                 | ItemModelVersionInstance _
                 | SampleInstance _ -> ()
 
@@ -1510,14 +1339,14 @@ module KitAcceptanceTests =
                     |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its lab attachment")
                 let lab = labFiles |> List.find (fun lab -> lab.path = data.attachment.path)
                 let group = lab.groups |> List.find (fun group -> group.name = experiment.name)
-                expect file "recorded attachment hash unchanged" (Ok AttachedDataUnchanged)
+                TestAppScope.expect file "recorded attachment hash unchanged" (Ok AttachedDataUnchanged)
                     (model.experimentData.attachmentStatus data.attachment)
-                expect file "Phone ROI CSV profile" ImportProfileName.phoneRoiCsv data.profile
-                expect file "attachment's own group" (KeyedDataRows group.key) data.rows
+                TestAppScope.expect file "Phone ROI CSV profile" ImportProfileName.phoneRoiCsv data.profile
+                TestAppScope.expect file "attachment's own group" (KeyedDataRows group.key) data.rows
                 let mapped =
                     model.experimentData.readMapped data
                     |> Result.defaultWith (fun error -> failwith $"{file.value}: {error.caption.value}")
-                expect file "all mapped group points" (CapturePoints group.captures) mapped
+                TestAppScope.expect file "all mapped group points" (CapturePoints group.captures) mapped
             assertReferenceInstruments model.kitItems
 
             let fit = readOnlyStudyFit session
@@ -1530,14 +1359,14 @@ module KitAcceptanceTests =
             let run =
                 fit.runFit request UnwatchedIterations
                 |> Result.defaultWith (fun error -> failwith $"{studyFile.value}: {error.describe}")
-            expect fitFile "refit study" studyName run.study
-            expect fitFile "refit stamp" (refitTimeOf OpticsMuellerKit) run.stamp
-            expect fitFile "refit stage" ObjectStage run.stage
-            expect fitFile "fixed calibrations" CalibrationHeldFixed run.calibrationUse
-            expect fitFile "linear reconstruction" LinearStudyEngine run.engine
+            TestAppScope.expect fitFile "refit study" studyName run.study
+            TestAppScope.expect fitFile "refit stamp" (TestAppScope.refitTimeOf OpticsMuellerKit) run.stamp
+            TestAppScope.expect fitFile "refit stage" ObjectStage run.stage
+            TestAppScope.expect fitFile "fixed calibrations" CalibrationHeldFixed run.calibrationUse
+            TestAppScope.expect fitFile "linear reconstruction" LinearStudyEngine run.engine
             assertReferenceObjects run
-            assertEmptyLibrary context
-            assertCommittedUnchanged OpticsMuellerKit session.recorded
+            TestAppScope.assertEmptyLibrary context
+            TestAppScope.assertCommittedUnchanged OpticsMuellerKit session.recorded
         finally
             closeCommittedReadOnly OpticsMuellerKit session
 
@@ -1577,12 +1406,12 @@ module KitAcceptanceTests =
                         }
             }
             |> updateTableAndElementRotation (SendKit zip)
-        expect zip "send started" true sending.kitSend.job.isRunning
+        TestAppScope.expect zip "send started" true sending.kitSend.job.isRunning
         let recordedSend = List.ofSeq sendMessages
         match List.rev recordedSend with
         | SendKitEnded (Ok (KitArchiveFinished files)) :: progresses ->
-            expect zip "sent file count" expectedFiles.Count files.value
-            expect zip "one send progress per file" files.value progresses.Length
+            TestAppScope.expect zip "sent file count" expectedFiles.Count files.value
+            TestAppScope.expect zip "one send progress per file" files.value progresses.Length
             for message in progresses do
                 match message with
                 | SendKitProgressed _ -> ()
@@ -1590,10 +1419,10 @@ module KitAcceptanceTests =
         | SendKitEnded (Error error) :: _ -> Assert.Fail($"{zip.value}: SendKit failed: {error.describe}")
         | _ -> Assert.Fail($"{zip.value}: expected SendKitEnded with a successfully finished archive")
         let sent = sending |> apply recordedSend
-        expect zip "send job returned to idle" KitArchiveJobState.idle sent.kitSend
-        expect zip "send completion status"
+        TestAppScope.expect zip "send job returned to idle" KitArchiveJobState.idle sent.kitSend
+        TestAppScope.expect zip "send completion status"
             (Some (ControlCaption $"The kit was sent: {expectedFiles.Count} file(s) zipped.")) sent.kitStatus
-        expect zip "zip written outside the kit" true (File.Exists zip.value)
+        TestAppScope.expect zip "zip written outside the kit" true (File.Exists zip.value)
         let entries =
             archive.listZipEntries zip
             |> Result.defaultWith (fun error -> failwith $"{zip.value}: {error.describe}")
@@ -1603,7 +1432,7 @@ module KitAcceptanceTests =
             | KitContentPath -> ()
 
         let target = KitFolder (FolderName (Path.Combine(runFolder.value, "received", kitFile.name.fileStem.value)))
-        expect zip "fresh extraction target" false (Directory.Exists target.value.value)
+        TestAppScope.expect zip "fresh extraction target" false (Directory.Exists target.value.value)
         Directory.CreateDirectory target.value.value |> ignore
         let mutable openedOpt : OpenedKit option = None
         try
@@ -1632,15 +1461,15 @@ module KitAcceptanceTests =
                     target = target
                 }
             let extracting = initKitStart startContext InverseConstructor |> updateKitStart (OpenKitZip opening)
-            expect zip "extraction started" true extracting.zipJob.job.isRunning
+            TestAppScope.expect zip "extraction started" true extracting.zipJob.job.isRunning
             match openedOpt with
             | None -> ()
             | Some _ -> Assert.Fail($"{zip.value}: the kit must open only after OpenKitZipEnded is handled")
             let recordedOpen = List.ofSeq openMessages
             match List.rev recordedOpen with
             | OpenKitZipEnded (Ok (KitArchiveFinished files)) :: progresses ->
-                expect zip "extracted file count" expectedFiles.Count files.value
-                expect zip "one extraction progress per file" files.value progresses.Length
+                TestAppScope.expect zip "extracted file count" expectedFiles.Count files.value
+                TestAppScope.expect zip "one extraction progress per file" files.value progresses.Length
                 for message in progresses do
                     match message with
                     | OpenKitZipProgressed _ -> ()
@@ -1648,19 +1477,19 @@ module KitAcceptanceTests =
             | OpenKitZipEnded (Error error) :: _ -> Assert.Fail($"{zip.value}: OpenKitZip failed: {error.describe}")
             | _ -> Assert.Fail($"{zip.value}: expected OpenKitZipEnded with a successfully finished extraction")
             let ended = recordedOpen |> List.fold (fun start message -> updateKitStart message start) extracting
-            expect zip "open status" None ended.status
-            expect zip "extraction job returned to idle" KitArchiveJobState.idle ended.zipJob
-            expect zip "completed extraction cleared" None ended.zipOpeningOpt
-            expect zip "no unresolved open offer" NoKitStartOffer ended.offer
+            TestAppScope.expect zip "open status" None ended.status
+            TestAppScope.expect zip "extraction job returned to idle" KitArchiveJobState.idle ended.zipJob
+            TestAppScope.expect zip "completed extraction cleared" None ended.zipOpeningOpt
+            TestAppScope.expect zip "no unresolved open offer" NoKitStartOffer ended.offer
             let opened =
                 openedOpt
                 |> Option.defaultWith (fun () -> failwith $"{target.value.value}: OpenKitZip did not open the extracted kit")
-            expect KitFile.fileName "reopened folder" target opened.folder
-            expect KitFile.fileName "reopened access" ReadWriteKitAccess opened.library.kit.access
+            TestAppScope.expect KitFile.fileName "reopened folder" target opened.folder
+            TestAppScope.expect KitFile.fileName "reopened access" ReadWriteKitAccess opened.library.kit.access
             target, TestAppScope.inverseModelOver context opened
         with _ ->
             match openedOpt with
-            | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+            | Some opened -> opened.library.kit.close () |> TestAppScope.readKitResult KitFile.fileName
             | None -> ()
             reraise ()
 
@@ -1678,12 +1507,12 @@ module KitAcceptanceTests =
                 assertSameKitFiles built.folder target
 
                 let reopenedResidual = startResidualOf reopened studyName
-                expect studyFile "start-point residual after SendKit and OpenKitZip, element for element"
+                TestAppScope.expect studyFile "start-point residual after SendKit and OpenKitZip, element for element"
                     builtResidual.value reopenedResidual.value
             finally
-                reopened.kit.close () |> readKitResult KitFile.fileName
+                reopened.kit.close () |> TestAppScope.readKitResult KitFile.fileName
         finally
-            try built.model.kit.close () |> readKitResult KitFile.fileName
+            try built.model.kit.close () |> TestAppScope.readKitResult KitFile.fileName
             finally Directory.Delete((runFolderOf run).value, true)
 
     [<Fact>]
@@ -1693,21 +1522,21 @@ module KitAcceptanceTests =
         let built = buildOpticsMuellerKitWith (fun _ _ model -> model) run
         try
             let reader = KitProxy.create built.folder
-            assertKitFile reader kitId (KitName "optics-mueller") kitAuthor initialTime labTemplate
-            expect KitFile.fileName "clock" initialTime (built.clock.now ())
-            expect (FileName "*.experiment-json") "setups-only build" [] (reader.readExperiments () |> readKitResult (FileName "*.experiment-json"))
+            assertKitFile reader TestAppScope.kitId (KitName "optics-mueller") TestAppScope.kitAuthor initialTime labTemplate
+            TestAppScope.expect KitFile.fileName "clock" initialTime (built.clock.now ())
+            TestAppScope.expect (FileName "*.experiment-json") "setups-only build" [] (reader.readExperiments () |> TestAppScope.readKitResult (FileName "*.experiment-json"))
             assertStoredItems built reader
             assertStoredSetups reader
             assertLibrarySnapshots built reader
             assertLabBytes built.folder
         finally
-            try built.model.kit.close () |> readKitResult KitFile.fileName
+            try built.model.kit.close () |> TestAppScope.readKitResult KitFile.fileName
             finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
 
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``AT-1 attaches every lab group of the final data files through the Phone ROI CSV profile, with its role, session, correction and exclusion`` () : unit =
-        let original = committedFolder OpticsMuellerKit
+        let original = TestAppScope.committedFolder OpticsMuellerKit
         let originalHashes = labHashes original
         let files = readAcceptanceLabFiles original
         let run = FolderName (Guid.NewGuid().ToString("N"))
@@ -1719,10 +1548,10 @@ module KitAcceptanceTests =
             assertStoredSetups reader
             assertLibrarySnapshots built reader
             assertLabBytes built.folder
-            expect (FileName "data/*") "built lab file inventory and SHA-256 unchanged" originalHashes (labHashes built.folder)
-            expect (FileName "data/optics-mueller/data/*") "committed lab file inventory and SHA-256 unchanged" originalHashes (labHashes original)
+            TestAppScope.expect (FileName "data/*") "built lab file inventory and SHA-256 unchanged" originalHashes (labHashes built.folder)
+            TestAppScope.expect (FileName "data/optics-mueller/data/*") "committed lab file inventory and SHA-256 unchanged" originalHashes (labHashes original)
         finally
-            try built.model.kit.close () |> readKitResult KitFile.fileName
+            try built.model.kit.close () |> TestAppScope.readKitResult KitFile.fileName
             finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
 
     [<Fact>]
@@ -1733,35 +1562,35 @@ module KitAcceptanceTests =
         try
             let reader = KitProxy.create built.folder
             let studyFile = StudyKitFile.fileNameOf studyName.fileStem
-            let studies = reader.readStudies () |> readKitResult studyFile
-            expect studyFile "study names" [ studyName ] (studies |> List.map _.name)
+            let studies = reader.readStudies () |> TestAppScope.readKitResult studyFile
+            TestAppScope.expect studyFile "study names" [ studyName ] (studies |> List.map _.name)
             let study = List.exactlyOne studies
-            let experiments = reader.readExperiments () |> readKitResult (FileName "*.experiment-json")
-            expect studyFile "experiment count" 53 study.experiments.Length
-            expect studyFile "experiments in kit order" (experiments |> List.map _.name) study.experiments
-            expect studyFile "fit mode" StagedFit study.settings.mode
-            expect studyFile "six session gain settings" sessionGainSettings study.sessionGains
+            let experiments = reader.readExperiments () |> TestAppScope.readKitResult (FileName "*.experiment-json")
+            TestAppScope.expect studyFile "experiment count" 53 study.experiments.Length
+            TestAppScope.expect studyFile "experiments in kit order" (experiments |> List.map _.name) study.experiments
+            TestAppScope.expect studyFile "fit mode" StagedFit study.settings.mode
+            TestAppScope.expect studyFile "six session gain settings" sessionGainSettings study.sessionGains
             let sessions = study.sessionsIn experiments
             let darkRuns = experiments |> List.filter (fun experiment -> experiment.role = DarkRun) |> List.map _.name
-            expect studyFile "shared dark run count" 6 darkRuns.Length
+            TestAppScope.expect studyFile "shared dark run count" 6 darkRuns.Length
             for setting in sessionGainSettings do
                 let session = sessions |> List.find (fun session -> session.name = setting.session)
-                expect studyFile $"{setting.session.value} gain is offered" true (List.contains setting.model (session.gainModelOffers experiments))
-                expect studyFile $"{setting.session.value} has no own dark run" [] (session.experiments |> List.filter (fun name -> List.contains name darkRuns))
-                expect studyFile $"{setting.session.value} uses all dark runs" darkRuns (session.darkRunsIn experiments)
+                TestAppScope.expect studyFile $"{setting.session.value} gain is offered" true (List.contains setting.model (session.gainModelOffers experiments))
+                TestAppScope.expect studyFile $"{setting.session.value} has no own dark run" [] (session.experiments |> List.filter (fun name -> List.contains name darkRuns))
+                TestAppScope.expect studyFile $"{setting.session.value} uses all dark runs" darkRuns (session.darkRunsIn experiments)
 
             let fitFile = FileName "QZ-LR@*.fitrun-json"
-            let runs = reader.readFitRuns studyName |> readKitResult fitFile
-            expect fitFile "fit runs in stamp order" [ calibrationRunName; objectRunName ] (runs |> List.map _.name)
-            expect fitFile "fit stamps" [ calibrationTime; objectTime ] (runs |> List.map _.stamp)
-            expect fitFile "fit stages" [ CalibrationStage; ObjectStage ] (runs |> List.map _.stage)
-            expect fitFile "stored fit runs match completed window jobs" built.model.kitFitRuns runs
+            let runs = reader.readFitRuns studyName |> TestAppScope.readKitResult fitFile
+            TestAppScope.expect fitFile "fit runs in stamp order" [ calibrationRunName; objectRunName ] (runs |> List.map _.name)
+            TestAppScope.expect fitFile "fit stamps" [ calibrationTime; objectTime ] (runs |> List.map _.stamp)
+            TestAppScope.expect fitFile "fit stages" [ CalibrationStage; ObjectStage ] (runs |> List.map _.stage)
+            TestAppScope.expect fitFile "stored fit runs match completed window jobs" built.model.kitFitRuns runs
             for fitted in runs do
                 let file = FitRunKitFile.fileNameOf fitted.name.fileStem
-                expect file "study" studyName fitted.study
-                expect file "fit mode" StagedFit fitted.mode
-                expect file "engine" LinearStudyEngine fitted.engine
-                expect file "calibration use" CalibrationHeldFixed fitted.calibrationUse
+                TestAppScope.expect file "study" studyName fitted.study
+                TestAppScope.expect file "fit mode" StagedFit fitted.mode
+                TestAppScope.expect file "engine" LinearStudyEngine fitted.engine
+                TestAppScope.expect file "calibration use" CalibrationHeldFixed fitted.calibrationUse
             let calibration = List.head runs
             let reconstructed = List.last runs
             let expectedEntries : FitEntryRef list =
@@ -1778,21 +1607,21 @@ module KitAcceptanceTests =
                         parameter = entry.parameter
                         owner = entry.owner
                     })
-            expect fitFile "five instrument unknowns" (expectedEntries |> List.sort) (actualEntries |> List.sort)
-            expect fitFile "five instrument sigma entries" (expectedEntries |> List.sort) (calibration.results.sigmas |> List.map _.entry |> List.sort)
-            expect fitFile "calibration AIR runs in kit order"
+            TestAppScope.expect fitFile "five instrument unknowns" (expectedEntries |> List.sort) (actualEntries |> List.sort)
+            TestAppScope.expect fitFile "five instrument sigma entries" (expectedEntries |> List.sort) (calibration.results.sigmas |> List.map _.entry |> List.sort)
+            TestAppScope.expect fitFile "calibration AIR runs in kit order"
                 (experiments |> List.filter (fun experiment -> experiment.role = CalibrationRun) |> List.map _.name) calibration.runs
-            expect fitFile "object Science runs in kit order"
+            TestAppScope.expect fitFile "object Science runs in kit order"
                 (experiments |> List.filter (fun experiment -> experiment.role = ScienceRun) |> List.map _.name) reconstructed.runs
 
             let itemsFile = FileName "*.item-json"
-            let items = reader.readItems () |> readKitResult itemsFile
-            expect itemsFile "item identities" (itemSpecs |> List.map _.id |> List.sort) (items |> List.map _.id |> List.sort)
+            let items = reader.readItems () |> TestAppScope.readKitResult itemsFile
+            TestAppScope.expect itemsFile "item identities" (itemSpecs |> List.map _.id |> List.sort) (items |> List.map _.id |> List.sort)
             let calibratedIds = referenceInstrumentAngles |> List.map (fun (label, _, _) -> itemIdOf label) |> List.distinct
             for item in items do
                 let file = ItemKitFile.fileNameOf item.label.fileStem
                 let expectedRevision = if List.contains item.id calibratedIds then ItemRevision 2 else ItemRevision.first
-                expect file "revision after calibration publication" expectedRevision item.revision
+                TestAppScope.expect file "revision after calibration publication" expectedRevision item.revision
             for label, name, _ in referenceInstrumentAngles do
                 let item = items |> List.find (fun item -> item.label = label)
                 let file = ItemKitFile.fileNameOf label.fileStem
@@ -1814,17 +1643,17 @@ module KitAcceptanceTests =
                         sigma = sigma
                         fitRun = calibrationRunName
                     }
-                expect file $"{name.value} fitted value, sigma and fit-run provenance"
+                TestAppScope.expect file $"{name.value} fitted value, sigma and fit-run provenance"
                     (Some (CalibratedParameter expected)) (item.tryFindParameter name |> Option.map _.state)
                 let heldByStageTwo = reconstructed.parameters |> List.find (fun held -> held.parameter = parameter)
-                expect file $"{name.value} held by stage two" (CalibratedParameter expected) heldByStageTwo.state
+                TestAppScope.expect file $"{name.value} held by stage two" (CalibratedParameter expected) heldByStageTwo.state
 
-            expect KitFile.fileName "clock after the object fit" objectTime (built.clock.now ())
+            TestAppScope.expect KitFile.fileName "clock after the object fit" objectTime (built.clock.now ())
             assertReferenceInstruments items
             assertReferenceObjects reconstructed
             assertLabBytes built.folder
         finally
-            try built.model.kit.close () |> readKitResult KitFile.fileName
+            try built.model.kit.close () |> TestAppScope.readKitResult KitFile.fileName
             finally Directory.Delete(Path.GetDirectoryName built.folder.value.value, true)
 
     /// The folder beside an AT-2 kit that holds the entry files its build drops (spec 0050 S12.2).
@@ -1864,7 +1693,7 @@ module KitAcceptanceTests =
         let dropped =
             LibraryWindowView.initLibraryWindow windowContext WindowMode.Browse
             |> LibraryWindowView.updateLibraryWindow (LibraryWindowView.DropLibraryEntryFiles files)
-        expect drop "drop refusal" None dropped.lastError
+        TestAppScope.expect drop "drop refusal" None dropped.lastError
         let request =
             match List.ofSeq requests with
             | [ only ] -> only
@@ -1873,8 +1702,8 @@ module KitAcceptanceTests =
             match request with
             | ApplyDroppedEntries decisions -> decisions
             | SettlePendingCatalogue _ | ResolveKitSnapshot _ -> failwith $"{drop.value}: expected the dropped files' rows; actual {request.heading.value}"
-        expect drop "dropped rows" added (decisions |> List.map _.entryId)
-        expect drop "each row's default action" (added |> List.map (fun _ -> CatalogueImport.AddIncomingEntry)) (decisions |> List.map _.defaultAction)
+        TestAppScope.expect drop "dropped rows" added (decisions |> List.map _.entryId)
+        TestAppScope.expect drop "each row's default action" (added |> List.map (fun _ -> CatalogueImport.AddIncomingEntry)) (decisions |> List.map _.defaultAction)
         let applied : ImportDialogApplied option ref = ref None
         let dialog : ImportDialogContext =
             {
@@ -1884,17 +1713,17 @@ module KitAcceptanceTests =
                 requestClose = fun () -> ()
             }
         let confirmed = dialog.initImportDialog |> updateImportDialog ApplyImportChoices
-        expect drop "import refusal" None confirmed.lastError
+        TestAppScope.expect drop "import refusal" None confirmed.lastError
         let result = applied.Value |> Option.defaultWith (fun () -> failwith $"{drop.value}: expected the import dialog to apply; actual nothing applied")
         let completed = dropped |> LibraryWindowView.updateLibraryWindow (LibraryWindowView.LibraryImportApplied result)
-        expect drop "Library window refusal" None completed.lastError
-        expect drop "Library window status" (Some result.summary) completed.importStatus
+        TestAppScope.expect drop "Library window refusal" None completed.lastError
+        TestAppScope.expect drop "Library window status" (Some result.summary) completed.importStatus
 
     /// Fills the table's slots, then adds Polarimeter R's detector on the plate's reflected ray, so the plate is captured in T and R (spec 0050 S12.2).
     let private buildAbsorbingTable (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let assigned (slot : ElementId) (spec : AcceptanceItem) (current : TableAndElementRotationModel) : TableAndElementRotationModel =
             let next = current |> updateTableAndElementRotation (AssignSlot (slot, Some spec.id))
-            expect KitFile.fileName $"{spec.label.value} assigned to {slot.value}" None next.kitStatus
+            TestAppScope.expect KitFile.fileName $"{spec.label.value} assigned to {slot.value}" None next.kitStatus
             next
         let table =
             model
@@ -1903,7 +1732,7 @@ module KitAcceptanceTests =
             |> assigned detectorSlot polarimeterT
             |> apply [ AddElement Detector; PlaceOnBeam (reflectedDetectorSlot, BeamLayout.OnReflectedBeamOf firstObjectSlot) ]
             |> assigned reflectedDetectorSlot polarimeterR
-        expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures table firstObjectSlot)
+        TestAppScope.expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures table firstObjectSlot)
         table
 
     /// The draft's edited axis: the plate's `variable` over `low`…`high` in `points`, as the Experiments bay sets one (spec 0050 S12.2).
@@ -1961,9 +1790,9 @@ module KitAcceptanceTests =
         let names = plates |> List.map _.label.value
         let heldSetups = opened.kitSetups |> List.map _.name
         let addedSetups = generated.kitSetups |> List.map _.name |> List.filter (fun name -> not (List.contains name heldSetups))
-        expect (FileName "*.setup-json") $"setups the grid added (status: {status})" (List.sort names) (addedSetups |> List.map _.value |> List.sort)
+        TestAppScope.expect (FileName "*.setup-json") $"setups the grid added (status: {status})" (List.sort names) (addedSetups |> List.map _.value |> List.sort)
         let appended = generated.experimentCollection.experiments |> List.skip opened.experimentCollection.experiments.Length
-        expect (FileName "*.experiment-json") $"experiments the grid appended (status: {status})" names (appended |> List.map _.name.value)
+        TestAppScope.expect (FileName "*.experiment-json") $"experiments the grid appended (status: {status})" names (appended |> List.map _.name.value)
         generated |> updateTableAndElementRotation CloseSetupGrid
 
     /// Three grids record the five setups and one experiment per plate, whose scans read the design's 44 configurations (spec 0050 S12.2; 001 §Q AT-2).
@@ -2046,17 +1875,17 @@ module KitAcceptanceTests =
                 | ExperimentForGroup name -> group.key, Some name
                 | SetupOfferForGroup _
                 | GroupWithoutMatch _ -> group.key, None)
-        expect file "split key column" (SplitKeyColumn "sample") preview.key
-        expect file $"groups in file order, each matched to the experiment its key names (status: {statusOf split})" experimentForEach matched
+        TestAppScope.expect file "split key column" (SplitKeyColumn "sample") preview.key
+        TestAppScope.expect file $"groups in file order, each matched to the experiment its key names (status: {statusOf split})" experimentForEach matched
         let attached = split |> updateTableAndElementRotation MatchByTemplate
-        expect file $"split completed (status: {statusOf attached})" None attached.dataSplitOpt
-        expect file "experiments after the split" (model.experimentCollection.experiments |> List.map _.name) (attached.experimentCollection.experiments |> List.map _.name)
-        expect file "no setup added by the split" model.kitSetups attached.kitSetups
+        TestAppScope.expect file $"split completed (status: {statusOf attached})" None attached.dataSplitOpt
+        TestAppScope.expect file "experiments after the split" (model.experimentCollection.experiments |> List.map _.name) (attached.experimentCollection.experiments |> List.map _.name)
+        TestAppScope.expect file "no setup added by the split" model.kitSetups attached.kitSetups
         let profiles = attached.experimentCollection.experiments |> List.map (fun experiment -> experiment.dataOpt |> Option.map _.profile)
-        expect file "every experiment attached through the profile" (plates |> List.map (fun _ -> Some ImportProfileName.muellerObservations)) profiles
+        TestAppScope.expect file "every experiment attached through the profile" (plates |> List.map (fun _ -> Some ImportProfileName.muellerObservations)) profiles
         let attachments = attached.experimentCollection.experiments |> List.map (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.attachment.path, data.rows))
         let keyedRows = plates |> List.map (fun plate -> Some (noisyObservationsFile seed, KeyedDataRows (DataRowKey plate.label.value)))
-        expect file "each experiment holding this file's rows of its key" keyedRows attachments
+        TestAppScope.expect file "each experiment holding this file's rows of its key" keyedRows attachments
         attached
 
     /// Writes each seed's observation file into `data/`, then attaches seed 1's (spec 0050 S12.2; 001 §K).
@@ -2102,7 +1931,7 @@ module KitAcceptanceTests =
         let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
         let sent (current : TableAndElementRotationModel) (message : StudyMsg) : TableAndElementRotationModel =
             let next = current |> updateTableAndElementRotation (StudyCommand message)
-            expect file "study command status" None next.kitStatus
+            TestAppScope.expect file "study command status" None next.kitStatus
             next
         let experiments = model.experimentCollection.experiments |> List.map _.name
         let opened =
@@ -2126,24 +1955,24 @@ module KitAcceptanceTests =
         Directory.CreateDirectory folder.value.value |> ignore
         Directory.CreateDirectory entries.value |> ignore
         let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
-        let clock, setTime = testClockAt absorbingStartTime
+        let clock, setTime = TestAppScope.testClockAt absorbingStartTime
         let material = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance absorbingMaterial
         let sample = LibraryEntryContent.ofSample VersionNumber.first UserProvenance absorbingPlate
         dropOnLibraryWindow context [ writeEntryFile entries material; writeEntryFile entries sample ] [ material.id; sample.id ]
         let heldMaterial =
             context.materials.resolveVersion absorbingMaterialVersion
             |> Result.map (Option.map (fun (held : MaterialEntry) -> held.id))
-        expect material.fileName "material held at version 1" (Ok (Some absorbingMaterial.id)) heldMaterial
+        TestAppScope.expect material.fileName "material held at version 1" (Ok (Some absorbingMaterial.id)) heldMaterial
         let heldSample =
             context.samples.resolveVersion (Library.SampleVersionId.firstOf absorbingPlate.id)
             |> Result.map (Option.map (fun (held : Library.Sample) -> held.id))
-        expect sample.fileName "sample held at version 1" (Ok (Some absorbingPlate.id)) heldSample
+        TestAppScope.expect sample.fileName "sample held at version 1" (Ok (Some absorbingPlate.id)) heldSample
         let mutable openedOpt : OpenedKit option = None
         try
-            let start, shown = kitStartOver context clock absorbingKitId absorbingKitAuthor folder
+            let start, shown = TestAppScope.kitStartOver context clock TestAppScope.absorbingKitId TestAppScope.absorbingKitAuthor folder
             let started = start |> updateKitStart (CreateKit folder)
             openedOpt <- shown.Value
-            expect KitFile.fileName "CreateKit status" None started.status
+            TestAppScope.expect KitFile.fileName "CreateKit status" None started.status
             let opened = openedOpt |> Option.defaultWith (fun () -> failwith $"{folder.value.value}: expected CreateKit to open the kit; actual no kit")
             let mintItemId, unusedItemIds = mintingFrom (FileName "*.item-json") "item-id" (absorbingItemSpecs |> List.map _.id)
             let mintElementId, unusedSlotIds = mintingFrom (FileName "*.setup-json") "added-slot id" [ reflectedDetectorSlot ]
@@ -2161,15 +1990,15 @@ module KitAcceptanceTests =
                 }
                 |> apply [ SetNamingTemplateText absorbingTemplate; SaveNamingTemplate ]
             let stocked = absorbingItemSpecs |> List.fold (fun model spec -> addItemThroughForm [] spec model |> fst) initial
-            expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
+            TestAppScope.expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
             let table = buildAbsorbingTable stocked
-            expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
+            TestAppScope.expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
             let recorded = buildAbsorbingGrids table
             let attached = attachNoisyObservations folder recorded
             let studied = buildAbsorbingStudy attached
             setTime absorbingFitTime
             let fitted = runStudyFitThroughShell studied absorbingFitRequest (TimeSpan.FromSeconds 1800.0)
-            expect (FitRunKitFile.fileNameOf absorbingFitRunName.fileStem) "committed fit run" (Some absorbingFitRunName) fitted.studyFit.job.committedResults
+            TestAppScope.expect (FitRunKitFile.fileNameOf absorbingFitRunName.fileStem) "committed fit run" (Some absorbingFitRunName) fitted.studyFit.job.committedResults
             {
                 folder = folder
                 context = context
@@ -2179,7 +2008,7 @@ module KitAcceptanceTests =
             }
         with _ ->
             match openedOpt with
-            | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+            | Some opened -> opened.library.kit.close () |> TestAppScope.readKitResult KitFile.fileName
             | None -> ()
             reraise ()
 
@@ -2206,8 +2035,8 @@ module KitAcceptanceTests =
     /// The eight items as added, every parameter known at its default: the decent lab's noise budget, the plate's thickness (spec 0050 S12.2).
     let private assertAbsorbingItems (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
         let itemsFile = FileName "*.item-json"
-        let items = reader.readItems () |> readKitResult itemsFile
-        expect itemsFile "labels" (absorbingItemSpecs |> List.map _.label |> List.sort) (items |> List.map _.label |> List.sort)
+        let items = reader.readItems () |> TestAppScope.readKitResult itemsFile
+        TestAppScope.expect itemsFile "labels" (absorbingItemSpecs |> List.map _.label |> List.sort) (items |> List.map _.label |> List.sort)
         for spec in absorbingItemSpecs do
             let file = ItemKitFile.fileNameOf spec.label.fileStem
             let item = items |> List.find (fun held -> held.label = spec.label)
@@ -2220,17 +2049,17 @@ module KitAcceptanceTests =
                         state = KnownParameter axis.defaultValue
                     })
             let stateOf (name : ParameterName) : ParameterState option = item.tryFindParameter name |> Option.map _.state
-            expect file "id" spec.id item.id
-            expect file "model and version" choice.instance item.model
-            expect file "dial" FixedMounting item.dial
-            expect file "revision" ItemRevision.first item.revision
-            expect file "history" [] item.history
-            expect file "every parameter known at its default" known item.parameters
+            TestAppScope.expect file "id" spec.id item.id
+            TestAppScope.expect file "model and version" choice.instance item.model
+            TestAppScope.expect file "dial" FixedMounting item.dial
+            TestAppScope.expect file "revision" ItemRevision.first item.revision
+            TestAppScope.expect file "history" [] item.history
+            TestAppScope.expect file "every parameter known at its default" known item.parameters
             if spec.modelId = ItemModelIds.muellerPolarimeterModelId then
                 for axis in NoiseParam.decentLab.parameterAxes do
-                    expect file $"{axis.name.value} at the decent lab's budget" (Some (KnownParameter axis.defaultValue)) (stateOf axis.name)
+                    TestAppScope.expect file $"{axis.name.value} at the decent lab's budget" (Some (KnownParameter axis.defaultValue)) (stateOf axis.name)
             elif spec.modelId = ItemModelIds.stackSampleItemModelId then
-                expect file "substrate.thickness in metres" (AbsorbingBiaxialSample.plate.parameterValueOpt |> Option.map KnownParameter)
+                TestAppScope.expect file "substrate.thickness in metres" (AbsorbingBiaxialSample.plate.parameterValueOpt |> Option.map KnownParameter)
                     (stateOf ParameterName.substrateThickness)
 
     /// The library entry a preset's value id names (spec 0050 S12.2).
@@ -2240,10 +2069,10 @@ module KitAcceptanceTests =
 
     /// `library/` holds the dropped entries as dropped and the shipped closure as shipped, byte for byte (spec 0050 S12.2; 0432-impl-log.md, 0433-impl-log.md).
     let private assertAbsorbingLibrary (built : BuiltAcceptanceKit) (reader : KitProxy) : unit =
-        let snapshots = reader.listSnapshots () |> readKitResult (FileName "library/*")
+        let snapshots = reader.listSnapshots () |> TestAppScope.readKitResult (FileName "library/*")
         let library = built.folder.value.combine (FolderName "library")
         let libraryFile = FileName library.value
-        expect libraryFile "snapshot files" (snapshots |> List.map _.snapshotFileName |> List.sort) (relativeFiles library)
+        TestAppScope.expect libraryFile "snapshot files" (snapshots |> List.map _.snapshotFileName |> List.sort) (TestAppScope.relativeFiles library)
         let dropped = [ absorbingMaterial.id.toLibraryEntryId; absorbingPlate.id.toLibraryEntryId ]
         let shipped =
             [
@@ -2265,14 +2094,14 @@ module KitAcceptanceTests =
                     }
                 reference)
             |> List.sort
-        expect libraryFile "snapshot entries at version 1" expected (snapshots |> List.map _.libraryVersionRef |> List.sort)
+        TestAppScope.expect libraryFile "snapshot entries at version 1" expected (snapshots |> List.map _.libraryVersionRef |> List.sort)
         let builtIn = CatalogueProxy.builtInFolderUnder built.context.locations.shippedCatalogueFolder
         let entries = droppedEntriesFolderOf built.folder
         for envelope in snapshots do
             let origin = if List.contains envelope.content.id dropped then entries else builtIn
             let source = envelope.content.fileName.combine origin
             let target = envelope.snapshotFileName.combine library
-            expect target $"entry file {source.value} exists" true (File.Exists source.value)
+            TestAppScope.expect target $"entry file {source.value} exists" true (File.Exists source.value)
             assertSameBytes source target
 
     /// The table's and every AT-2 setup's slots: the laser, `plate` and both polarimeters, Polarimeter R on the plate's reflected ray (spec 0050 S12.2).
@@ -2281,15 +2110,15 @@ module KitAcceptanceTests =
             slots
             |> List.tryFind (fun element -> element.id = slot)
             |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the slot {slot.value}; actual none")
-        expect file "slots" [ sourceSlot; firstObjectSlot; detectorSlot; reflectedDetectorSlot ] (slots |> List.map _.id)
+        TestAppScope.expect file "slots" [ sourceSlot; firstObjectSlot; detectorSlot; reflectedDetectorSlot ] (slots |> List.map _.id)
         for slot, spec in [ sourceSlot, absorbingLaser; firstObjectSlot, plate; detectorSlot, polarimeterT; reflectedDetectorSlot, polarimeterR ] do
-            expect file $"{slot.value} content" (ItemInSlot (spec.id, PlacementTurn)) (slotOf slot).content
-        expect file "the added detector's ray" (BeamLayout.OnReflectedBeamOf firstObjectSlot) (slotOf reflectedDetectorSlot).beam
+            TestAppScope.expect file $"{slot.value} content" (ItemInSlot (spec.id, PlacementTurn)) (slotOf slot).content
+        TestAppScope.expect file "the added detector's ray" (BeamLayout.OnReflectedBeamOf firstObjectSlot) (slotOf reflectedDetectorSlot).beam
 
     /// The table holds the laser, the plate and both polarimeters, Polarimeter R on the plate's reflected ray (spec 0050 S12.2).
     let private assertAbsorbingTable (model : TableAndElementRotationModel) : unit =
         assertAbsorbingSlots KitFile.fileName opticAxisCutPlate model.elements
-        expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures model firstObjectSlot)
+        TestAppScope.expect KitFile.fileName "plate captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures model firstObjectSlot)
 
     /// The configurations the experiment's scan reads: each point in order on its capture, T then R for both, as `AbsorbingBiaxialSample.configuration` (spec 0050 S12.2).
     let private configurationsOf (setups : Setup list) (experiment : Experiment) : MeasurementConfiguration list =
@@ -2329,20 +2158,20 @@ module KitAcceptanceTests =
             plates
             |> List.map (fun plate -> SetupName plate.label.value)
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
-        expect (FileName "*.setup-json") "the five setups in their names' ordinal order" names (setups |> List.map _.name)
+        TestAppScope.expect (FileName "*.setup-json") "the five setups in their names' ordinal order" names (setups |> List.map _.name)
         for plate in plates do
             let setup = setups |> List.find (fun held -> held.name.value = plate.label.value)
             let file = SetupKitFile.fileNameOf setup.name.fileStem
-            expect file "revision" SetupRevision.first setup.revision
-            expect file "history" [] setup.history
+            TestAppScope.expect file "revision" SetupRevision.first setup.revision
+            TestAppScope.expect file "history" [] setup.history
             assertAbsorbingSlots file plate setup.slots
 
     /// One experiment per plate in id order, a `ScienceRun` in no session over its setup's first revision; OpticAxisCut's scan has two blocks (spec 0050 S12.2).
     let private assertAbsorbingExperiments (experiments : Experiment list) : unit =
         let experimentsFile = FileName "*.experiment-json"
         let plates = absorbingPlateCuts |> List.map fst
-        expect experimentsFile "the five experiments in id order" (plates |> List.map (fun plate -> ExperimentName plate.label.value)) (experiments |> List.map _.name)
-        expect experimentsFile "ids" (plates |> List.mapi (fun index _ -> ExperimentId (index + 1))) (experiments |> List.map _.id)
+        TestAppScope.expect experimentsFile "the five experiments in id order" (plates |> List.map (fun plate -> ExperimentName plate.label.value)) (experiments |> List.map _.name)
+        TestAppScope.expect experimentsFile "ids" (plates |> List.mapi (fun index _ -> ExperimentId (index + 1))) (experiments |> List.map _.id)
         for plate, experiment in List.zip plates experiments do
             let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
             let setup : SetupReference =
@@ -2350,10 +2179,10 @@ module KitAcceptanceTests =
                     name = SetupName plate.label.value
                     revision = SetupRevision.first
                 }
-            expect file "setup and revision" setup experiment.setup
-            expect file "role" ScienceRun experiment.role
-            expect file "session" None experiment.sessionOpt
-            expect file "scan blocks" (if plate = opticAxisCutPlate then 2 else 1) experiment.scan.blocks.Length
+            TestAppScope.expect file "setup and revision" setup experiment.setup
+            TestAppScope.expect file "role" ScienceRun experiment.role
+            TestAppScope.expect file "session" None experiment.sessionOpt
+            TestAppScope.expect file "scan blocks" (if plate = opticAxisCutPlate then 2 else 1) experiment.scan.blocks.Length
 
     /// The experiments' configurations in kit order are A1–A3 with each plate's together, 16, 4, 8, 8 and 8 of them (spec 0050 S12.2; 001 §Q AT-2).
     let private assertAbsorbingConfigurations (setups : Setup list) (experiments : Experiment list) : unit =
@@ -2363,10 +2192,10 @@ module KitAcceptanceTests =
         let full = AbsorbingBiaxialSample.fullConfigurations
         let holdsAll (configurations : MeasurementConfiguration list) (others : MeasurementConfiguration list) : bool =
             others |> List.forall (fun configuration -> List.contains configuration configurations)
-        expect experimentsFile "expected configuration count" full.Length expected.Length
-        expect experimentsFile "the expected order holds fullConfigurations, each plate's together" true (holdsAll expected full && holdsAll full expected)
+        TestAppScope.expect experimentsFile "expected configuration count" full.Length expected.Length
+        TestAppScope.expect experimentsFile "the expected order holds fullConfigurations, each plate's together" true (holdsAll expected full && holdsAll full expected)
         let read = experiments |> List.map (fun experiment -> experiment.name, configurationsOf setups experiment)
-        expect experimentsFile "configurations per experiment" [ 16; 4; 8; 8; 8 ] (read |> List.map (fun (_, configurations) -> configurations.Length))
+        TestAppScope.expect experimentsFile "configurations per experiment" [ 16; 4; 8; 8; 8 ] (read |> List.map (fun (_, configurations) -> configurations.Length))
         let numbered =
             read |> List.collect (fun (name, configurations) -> configurations |> List.mapi (fun index configuration -> name, index + 1, configuration))
         List.zip expected numbered
@@ -2377,7 +2206,7 @@ module KitAcceptanceTests =
 
     /// The kit's plate and Laser are the plate and the wavelength `AbsorbingBiaxialSample.configuration` builds with (spec 0050 S12.2).
     let private assertConfigurationInputs (folder : KitFolder) (reader : KitProxy) : unit =
-        let snapshots = reader.listSnapshots () |> readKitResult (FileName "library/*")
+        let snapshots = reader.listSnapshots () |> TestAppScope.readKitResult (FileName "library/*")
         let library = folder.value.combine (FolderName "library")
         let snapshotOf (entryId : LibraryEntryId) : LibraryEntryContent * FileName =
             match snapshots |> List.tryFind (fun envelope -> envelope.content.id = entryId) with
@@ -2385,40 +2214,40 @@ module KitAcceptanceTests =
             | None -> failwith $"{library.value}: expected the snapshot of {entryId.value}; actual none"
         let plateEntry, plateFile = snapshotOf absorbingPlate.id.toLibraryEntryId
         match plateEntry.toSample |> Result.map _.structure.substrate with
-        | Ok (Some substrate) -> expect plateFile "substrate thickness" AbsorbingBiaxialSample.plate substrate.thickness
+        | Ok (Some substrate) -> TestAppScope.expect plateFile "substrate thickness" AbsorbingBiaxialSample.plate substrate.thickness
         | Ok None -> Assert.Fail($"{plateFile.value}: expected a substrate; actual none")
         | Error error -> Assert.Fail($"{plateFile.value}: expected a sample; actual {error.describe}")
         let laserEntry, laserFile = snapshotOf (presetEntryIdOf PresetIds.heNe633)
         match laserEntry.toSourcePreset with
-        | Ok source -> expect laserFile "wavelength" AbsorbingBiaxialSample.waveLength source.waveLength
+        | Ok source -> TestAppScope.expect laserFile "wavelength" AbsorbingBiaxialSample.waveLength source.waveLength
         | Error error -> Assert.Fail($"{laserFile.value}: expected a source preset; actual {error.describe}")
 
     /// `actual` is `expected`: its configuration and every `measured.element i j`, exactly (spec 0050 S12.2).
     let private assertSameObservation (file : FileName) (row : ControlCaption) (expected : MuellerObservation) (actual : MuellerObservation) : unit =
-        expect file $"{row.value}: configuration" expected.configuration actual.configuration
+        TestAppScope.expect file $"{row.value}: configuration" expected.configuration actual.configuration
         for i in 0 .. 3 do
             for j in 0 .. 3 do
-                expect file $"{row.value}: m{i}{j}" (expected.measured.element i j) (actual.measured.element i j)
+                TestAppScope.expect file $"{row.value}: m{i}{j}" (expected.measured.element i j) (actual.measured.element i j)
 
     /// `actual` is `expected` in order: every key, every configuration and every `measured.element i j` exactly (spec 0050 S12.2).
     let private assertSameObservations (file : FileName) (expected : KeyedObservation list) (actual : KeyedObservation list) : unit =
-        expect file "observation count" expected.Length actual.Length
+        TestAppScope.expect file "observation count" expected.Length actual.Length
         List.zip expected actual
         |> List.iteri (fun index (wanted, read) ->
             let row = ControlCaption $"observation {index + 1}"
-            expect file $"{row.value}: key" wanted.key read.key
+            TestAppScope.expect file $"{row.value}: key" wanted.key read.key
             assertSameObservation file row wanted.observation read.observation)
 
     /// `data/` holds exactly the five seeds' files, each regenerated byte for byte and parsed back to its observations (spec 0050 S12.2).
     let private assertNoisyObservationFiles (folder : KitFolder) : unit =
         let data = folder.value.combine (FolderName "data")
         let seeds = AbsorbingBiaxialSample.noisySeeds
-        expect (FileName data.value) "data files" (seeds |> List.map (fun seed -> (noisyObservationsFile seed).leafName) |> List.sort) (relativeFiles data)
+        TestAppScope.expect (FileName data.value) "data files" (seeds |> List.map (fun seed -> (noisyObservationsFile seed).leafName) |> List.sort) (TestAppScope.relativeFiles data)
         for seed in seeds do
             let file = labFileAt folder (noisyObservationsFile seed)
             let regenerated = observationFileOf seed
             let bytes = File.ReadAllBytes file.value
-            expect file "bytes against the regenerated observation file" (System.Text.UTF8Encoding(false).GetBytes regenerated.value) bytes
+            TestAppScope.expect file "bytes against the regenerated observation file" (System.Text.UTF8Encoding(false).GetBytes regenerated.value) bytes
             match (FileByteContent bytes).kitFileText.parseMuellerObservations with
             | Ok readBack -> assertSameObservations file (plateKeyedObservationsOf seed) readBack
             | Error error -> Assert.Fail($"{file.value}: expected the observation profile to read it; actual {error.caption.value}")
@@ -2426,7 +2255,7 @@ module KitAcceptanceTests =
     /// Each experiment holds seed 1's file in place, keyed by its name, and reads to its plate's observations in file order (spec 0050 S12.2).
     let private assertNoisyObservationAttachments (model : TableAndElementRotationModel) (reader : KitProxy) : unit =
         let experimentsFile = FileName "*.experiment-json"
-        let experiments = reader.readExperiments () |> readKitResult experimentsFile
+        let experiments = reader.readExperiments () |> TestAppScope.readKitResult experimentsFile
         let seedOne = NoiseSeed 1
         let attachment : DataAttachment =
             {
@@ -2434,8 +2263,8 @@ module KitAcceptanceTests =
                 contentHash = ContentHash.ofBytes (FileByteContent (System.Text.UTF8Encoding(false).GetBytes (observationFileOf seedOne).value))
             }
         let seedOneObservations = plateKeyedObservationsOf seedOne
-        expect experimentsFile "stored model" model.experimentCollection.experiments experiments
-        expect experimentsFile "experiments" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) (experiments |> List.map _.name)
+        TestAppScope.expect experimentsFile "stored model" model.experimentCollection.experiments experiments
+        TestAppScope.expect experimentsFile "experiments" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) (experiments |> List.map _.name)
         for experiment in experiments do
             let file = ExperimentKitFile.fileNameOf experiment.name.fileStem
             let key = DataRowKey experiment.name.value
@@ -2446,7 +2275,7 @@ module KitAcceptanceTests =
                     rows = KeyedDataRows key
                     exclusions = []
                 }
-            expect file "data attachment" (Some expected) experiment.dataOpt
+            TestAppScope.expect file "data attachment" (Some expected) experiment.dataOpt
             let data = experiment.dataOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its data attachment; actual none")
             match model.experimentData.readMapped data with
             | Ok (ObservationPoints observations) ->
@@ -2465,50 +2294,50 @@ module KitAcceptanceTests =
     let private assertAbsorbingAxes (file : FileName) (crystal : CrystalPhysics.CrystalParameters) : unit =
         let generated = crystal.parameterAxes
         let records = CrystalPhysics.AbsorbingTriclinicParameters.axes
-        expect file "fifteen record axes" 15 records.Length
-        expect file "generated axis names in the record's order" (records |> List.map _.name) (generated |> List.map _.name)
-        expect file "generated field cases" (records |> List.map (fun r -> fieldCaseOf r.field)) (generated |> List.map (fun a -> fieldCaseOf a.field))
+        TestAppScope.expect file "fifteen record axes" 15 records.Length
+        TestAppScope.expect file "generated axis names in the record's order" (records |> List.map _.name) (generated |> List.map _.name)
+        TestAppScope.expect file "generated field cases" (records |> List.map (fun r -> fieldCaseOf r.field)) (generated |> List.map (fun a -> fieldCaseOf a.field))
         let start = CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.perturbedStart
         List.zip records generated
         |> List.iteri (fun index (r, a) ->
-            expect file $"axis {index + 1} ({r.name.value}): the generated read of perturbedStart"
+            TestAppScope.expect file $"axis {index + 1} ({r.name.value}): the generated read of perturbedStart"
                 (r.parameterValueOf AbsorbingBiaxialSample.perturbedStart) (a.parameterValueOf start))
 
     /// `AbsorbingTriclinic.study-json` holds the five experiments and the material at version 1, its components freed as set, no scope, link or session; each is per material (spec 0050 S12.2).
     let private assertAbsorbingStudy (model : TableAndElementRotationModel) (reader : KitProxy) : unit =
         let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
-        let studies = reader.readStudies () |> readKitResult file
-        expect file "study names" [ absorbingStudyName ] (studies |> List.map _.name)
+        let studies = reader.readStudies () |> TestAppScope.readKitResult file
+        TestAppScope.expect file "study names" [ absorbingStudyName ] (studies |> List.map _.name)
         let study = List.exactlyOne studies
-        expect file "the five experiments in kit order" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) study.experiments
+        TestAppScope.expect file "the five experiments in kit order" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) study.experiments
         let material =
             match study.materials with
             | [ only ] -> only
             | held -> failwith $"{file.value}: expected one opened material; actual {held.Length}"
-        expect file "opened version" absorbingMaterialVersion material.version
-        expect file "opened name" absorbingMaterial.name material.name
-        expect file "opened crystal" (OpenedCrystalPhysics (CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.absorbing)) material.physics
+        TestAppScope.expect file "opened version" absorbingMaterialVersion material.version
+        TestAppScope.expect file "opened name" absorbingMaterial.name material.name
+        TestAppScope.expect file "opened crystal" (OpenedCrystalPhysics (CrystalPhysics.AbsorbingTriclinicCrystal AbsorbingBiaxialSample.absorbing)) material.physics
         let unknowns =
             material.parameters
             |> List.choose (fun parameter ->
                 match parameter.state with
                 | UnknownParameter _ -> Some parameter.name
                 | KnownParameter _ | CalibratedParameter _ -> None)
-        expect file "fifteen unknown components" 15 unknowns.Length
-        expect file "components freed from perturbedStart within the harness's box" (perturbedStartUnknownsOf (openedCrystalOf material)) material.parameters
-        expect file "scopes" [] study.scopes
-        expect file "links" [] study.links
-        expect file "session gains" [] study.sessionGains
+        TestAppScope.expect file "fifteen unknown components" 15 unknowns.Length
+        TestAppScope.expect file "components freed from perturbedStart within the harness's box" (perturbedStartUnknownsOf (openedCrystalOf material)) material.parameters
+        TestAppScope.expect file "scopes" [] study.scopes
+        TestAppScope.expect file "links" [] study.links
+        TestAppScope.expect file "session gains" [] study.sessionGains
         let held = studyIn model absorbingStudyName
-        expect file "the window's study" held study
+        TestAppScope.expect file "the window's study" held study
         for parameter in material.parameters do
             let reference = MaterialParameterRef (material.version, parameter.name)
-            expect file $"{reference.describe} scope" MaterialScope (held.scopeOf reference)
+            TestAppScope.expect file $"{reference.describe} scope" MaterialScope (held.scopeOf reference)
         let shared =
             CrystalPhysics.AbsorbingTriclinicParameters.axes
             |> List.map (fun r -> MaterialParameterRef (material.version, r.name), MaterialOwner material.version)
         let layout = held.parameterLayoutWith model.studyForwardContext
-        expect file "one vector entry per component, shared by the five plates" shared (layout.entries |> List.map (fun entry -> entry.unknown.parameter, entry.owner))
+        TestAppScope.expect file "one vector entry per component, shared by the five plates" shared (layout.entries |> List.map (fun entry -> entry.unknown.parameter, entry.owner))
         assertAbsorbingAxes file (openedCrystalOf material)
 
     /// `studyDataOf`'s runs are the five experiments in study order, holding only observation rows that equal `expected` exactly (spec 0050 S12.2).
@@ -2517,7 +2346,7 @@ module KitAcceptanceTests =
         let data =
             studyDataOf model absorbingStudyName
             |> Result.defaultWith (fun error -> failwith $"{file.value}: expected the study's data; actual {error.describe}")
-        expect file "fitted runs in study order" (studyIn model absorbingStudyName).experiments (data.runs |> List.map _.experiment.name)
+        TestAppScope.expect file "fitted runs in study order" (studyIn model absorbingStudyName).experiments (data.runs |> List.map _.experiment.name)
         let observations =
             data.runs
             |> List.collect (fun run ->
@@ -2526,7 +2355,7 @@ module KitAcceptanceTests =
                     match row with
                     | ObservationRow observation -> observation
                     | SettingsRow _ -> failwith $"{file.value}: {run.experiment.name.value} row {index + 1}: expected an observation row; actual a settings row"))
-        expect file "observation count" expected.Length observations.Length
+        TestAppScope.expect file "observation count" expected.Length observations.Length
         List.zip expected observations
         |> List.iteri (fun index (wanted, read) -> assertSameObservation file (ControlCaption $"observation {index + 1}") wanted read)
 
@@ -2539,8 +2368,8 @@ module KitAcceptanceTests =
         let residual =
             studyResidualAtStart model absorbingStudyName
             |> Result.defaultWith (fun error -> failwith $"{file.value}: expected the residual at perturbedStart; actual {error.describe}")
-        expect file "residual entries, 16 per observation" (16 * observations.Length) residual.value.Length
-        expect file "residual entries" 704 residual.value.Length
+        TestAppScope.expect file "residual entries, 16 per observation" (16 * observations.Length) residual.value.Length
+        TestAppScope.expect file "residual entries" 704 residual.value.Length
         let mismatches =
             Array.zip harness residual.value
             |> Array.indexed
@@ -2554,13 +2383,13 @@ module KitAcceptanceTests =
     /// `run` is AT-2's one fit: the study's joint fit at its stamp over the five plates, nonlinear, one member converged from the entries' starts, and the material's fifteen components in the axes' order from `perturbedStart` (spec 0050 S12.2; 001 §Q AT-2).
     let private assertAbsorbingFitRun (run : FitRun) : unit =
         let file = FitRunKitFile.fileNameOf run.name.fileStem
-        expect file "name" absorbingFitRunName run.name
-        expect file "study" absorbingStudyName run.study
-        expect file "stamp" absorbingFitTime run.stamp
-        expect file "stage" JointStage run.stage
-        expect file "calibration use" CalibrationHeldFixed run.calibrationUse
-        expect file "engine" NonlinearStudyEngine run.engine
-        expect file "fitted runs, the five plates' experiments in kit order" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) run.runs
+        TestAppScope.expect file "name" absorbingFitRunName run.name
+        TestAppScope.expect file "study" absorbingStudyName run.study
+        TestAppScope.expect file "stamp" absorbingFitTime run.stamp
+        TestAppScope.expect file "stage" JointStage run.stage
+        TestAppScope.expect file "calibration use" CalibrationHeldFixed run.calibrationUse
+        TestAppScope.expect file "engine" NonlinearStudyEngine run.engine
+        TestAppScope.expect file "fitted runs, the five plates' experiments in kit order" (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) run.runs
         let expected : (FitEntryRef * ParameterValue) list =
             CrystalPhysics.AbsorbingTriclinicParameters.axes
             |> List.map (fun r ->
@@ -2579,11 +2408,11 @@ module KitAcceptanceTests =
                         owner = held.owner
                     }
                 entry, held.start)
-        expect file "fifteen entries, the material's components in the axes' order, each starting at perturbedStart's value" expected actual
+        TestAppScope.expect file "fifteen entries, the material's components in the axes' order, each starting at perturbedStart's value" expected actual
         match run.members with
         | [ only ] ->
             match only.outcome with
-            | MemberConverged _ -> expect file "the member's start, the entries' starts" (run.entries |> List.map _.start) only.start
+            | MemberConverged _ -> TestAppScope.expect file "the member's start, the entries' starts" (run.entries |> List.map _.start) only.start
             | MemberFailed failure -> Assert.Fail($"{file.value}: expected its one member to converge; actual {failure.value}")
         | members -> Assert.Fail($"{file.value}: expected one member, the study's single start; actual {members.Length}")
 
@@ -2620,7 +2449,7 @@ module KitAcceptanceTests =
     let private storedAbsorbingStudy (reader : KitProxy) : Study =
         let studyFile = StudyKitFile.fileNameOf absorbingStudyName.fileStem
         reader.readStudies ()
-        |> readKitResult studyFile
+        |> TestAppScope.readKitResult studyFile
         |> List.tryFind (fun held -> held.name = absorbingStudyName)
         |> Option.defaultWith (fun () -> failwith $"{studyFile.value}: expected the stored study; actual none")
 
@@ -2629,7 +2458,7 @@ module KitAcceptanceTests =
     let ``AT-2 builds the absorbing-biaxial-noisy kit's library entries, items and table through the app's messages`` () : unit =
         let built = absorbingBuild.Force ()
         let reader = KitProxy.create built.folder
-        assertKitFile reader absorbingKitId (KitName "absorbing-biaxial-noisy") absorbingKitAuthor absorbingStartTime absorbingTemplate
+        assertKitFile reader TestAppScope.absorbingKitId (KitName "absorbing-biaxial-noisy") TestAppScope.absorbingKitAuthor absorbingStartTime absorbingTemplate
         assertAbsorbingItems built reader
         assertAbsorbingLibrary built reader
         assertAbsorbingTable built.model
@@ -2642,8 +2471,8 @@ module KitAcceptanceTests =
     let ``AT-2's grid generator records one experiment per plate whose multi-variable scan reproduces a1, a2 and a3 configuration by configuration`` () : unit =
         let built = absorbingBuild.Force ()
         let reader = KitProxy.create built.folder
-        let setups = reader.readSetups () |> readKitResult (FileName "*.setup-json")
-        let experiments = reader.readExperiments () |> readKitResult (FileName "*.experiment-json")
+        let setups = reader.readSetups () |> TestAppScope.readKitResult (FileName "*.setup-json")
+        let experiments = reader.readExperiments () |> TestAppScope.readKitResult (FileName "*.experiment-json")
         assertAbsorbingSetups setups
         assertAbsorbingExperiments experiments
         assertAbsorbingConfigurations setups experiments
@@ -2673,12 +2502,12 @@ module KitAcceptanceTests =
         let built = absorbingBuild.Force ()
         let reader = KitProxy.create built.folder
         let fitFile = FileName $"{absorbingStudyName.fileStem.value}@*.fitrun-json"
-        let runs = reader.readFitRuns absorbingStudyName |> readKitResult fitFile
+        let runs = reader.readFitRuns absorbingStudyName |> TestAppScope.readKitResult fitFile
         let run =
             match runs with
             | [ only ] -> only
             | held -> failwith $"{fitFile.value}: expected exactly one fit run; actual {held.Length}"
-        expect fitFile "the stored fit run, the window's completed job" built.model.kitFitRuns runs
+        TestAppScope.expect fitFile "the stored fit run, the window's completed job" built.model.kitFitRuns runs
         assertAbsorbingFitRun run
         assertAbsorbingRecovery (storedAbsorbingStudy reader) run
 
@@ -2692,10 +2521,10 @@ module KitAcceptanceTests =
         | None -> Assert.Fail($"Built kit: {built.folder.value.value}\ndata/absorbing-biaxial-noisy: expected the committed kit; actual folder missing")
 
     /// Each AT-2 item resolves through the kit's snapshots alone: its shipped model, the laser's preset, and each plate's dropped sample, whose material version resolves from the material's snapshot (spec 0050 S12.2; 001 §Q 'Open').
-    let private assertAbsorbingSnapshotResolution (session : CommittedKitSession) : unit =
+    let private assertAbsorbingSnapshotResolution (session : TestAppScope.CommittedKitSession) : unit =
         let context = session.context
         let model = session.model
-        expect (FileName "*.item-json") "the eight item identities"
+        TestAppScope.expect (FileName "*.item-json") "the eight item identities"
             (absorbingItemSpecs |> List.map _.id |> List.sort) (model.kitItems |> List.map _.id |> List.sort)
         for item in model.kitItems do
             let file = ItemKitFile.fileNameOf item.label.fileStem
@@ -2703,29 +2532,29 @@ module KitAcceptanceTests =
             let choice =
                 model.tryItemModelChoice item
                 |> Option.defaultWith (fun () -> failwith $"{file.value}: expected the kit snapshots to resolve its stored model; actual none")
-            expect file "resolved stored model and binding" item.model choice.instance
+            TestAppScope.expect file "resolved stored model and binding" item.model choice.instance
             let version =
                 match choice with
                 | LibraryModelChoice version
                 | SourcePresetChoice (version, _)
                 | PolarizerPresetChoice (version, _)
                 | StackSampleChoice (version, _, _) -> version
-            expect file "the shipped model entry" spec.modelId version.entry.id
-            expect file "model absent from the database" (Ok None) (context.itemModels.resolveItemModelVersion version.versionId)
-            expect file "model present in the snapshot overlay" (Ok (Some version)) (model.itemModels.resolveItemModelVersion version.versionId)
+            TestAppScope.expect file "the shipped model entry" spec.modelId version.entry.id
+            TestAppScope.expect file "model absent from the database" (Ok None) (context.itemModels.resolveItemModelVersion version.versionId)
+            TestAppScope.expect file "model present in the snapshot overlay" (Ok (Some version)) (model.itemModels.resolveItemModelVersion version.versionId)
             match choice with
             | SourcePresetChoice (_, source) ->
-                expect file "bound preset" spec.bindingOpt (Some source.id)
-                expect file "bound preset absent from the database" (Ok None) (context.library.tryGetEntry source.id)
+                TestAppScope.expect file "bound preset" spec.bindingOpt (Some source.id)
+                TestAppScope.expect file "bound preset absent from the database" (Ok None) (context.library.tryGetEntry source.id)
             | StackSampleChoice (_, sampleVersion, sample) ->
-                expect file "the dropped sample's first version" (Library.SampleVersionId.firstOf absorbingPlate.id) sampleVersion
-                expect file "the dropped sample, as the kit's snapshot holds it" absorbingPlate sample
-                expect file "sample absent from the database" (Ok None) (context.samples.resolveVersion sampleVersion)
+                TestAppScope.expect file "the dropped sample's first version" (Library.SampleVersionId.firstOf absorbingPlate.id) sampleVersion
+                TestAppScope.expect file "the dropped sample, as the kit's snapshot holds it" absorbingPlate sample
+                TestAppScope.expect file "sample absent from the database" (Ok None) (context.samples.resolveVersion sampleVersion)
                 match sample.structure.substrate with
                 | Some substrate ->
-                    expect file "the sample's material version" absorbingMaterialVersion substrate.materialId
-                    expect file "material absent from the database" (Ok None) (context.materials.resolveVersion substrate.materialId)
-                    expect file "material resolved from the kit's snapshot" (Ok (Some absorbingMaterial)) (model.materials.resolveVersion substrate.materialId)
+                    TestAppScope.expect file "the sample's material version" absorbingMaterialVersion substrate.materialId
+                    TestAppScope.expect file "material absent from the database" (Ok None) (context.materials.resolveVersion substrate.materialId)
+                    TestAppScope.expect file "material resolved from the kit's snapshot" (Ok (Some absorbingMaterial)) (model.materials.resolveVersion substrate.materialId)
                 | None -> Assert.Fail($"{file.value}: expected the dropped sample's substrate; actual none")
             | LibraryModelChoice _
             | PolarizerPresetChoice _ -> ()
@@ -2734,17 +2563,17 @@ module KitAcceptanceTests =
     [<Fact>]
     [<Trait("Category", "kit-acceptance")>]
     let ``the committed absorbing-biaxial-noisy kit opens read-only against an empty library, writes nothing, and reproduces AT-2's data, model and fit`` () : unit =
-        let session = openCommittedReadOnly AbsorbingBiaxialNoisyKit
+        let session = TestAppScope.openCommittedReadOnly (FolderName "KitAcceptanceTests") AbsorbingBiaxialNoisyKit
         let opened = session.opened
         let model = session.model
         let reader = model.kit.proxy
         try
             assertNoisyObservationFiles opened.folder
 
-            assertEmptyLibrary session.context
+            TestAppScope.assertEmptyLibrary session.context
             assertAbsorbingSnapshotResolution session
 
-            assertKitFile reader absorbingKitId (KitName "absorbing-biaxial-noisy") absorbingKitAuthor absorbingStartTime absorbingTemplate
+            assertKitFile reader TestAppScope.absorbingKitId (KitName "absorbing-biaxial-noisy") TestAppScope.absorbingKitAuthor absorbingStartTime absorbingTemplate
             assertAbsorbingSetups opened.setups
             assertAbsorbingExperiments opened.experiments
             assertAbsorbingConfigurations opened.setups opened.experiments
@@ -2759,9 +2588,9 @@ module KitAcceptanceTests =
                 let data =
                     experiment.dataOpt
                     |> Option.defaultWith (fun () -> failwith $"{file.value}: expected its data attachment; actual none")
-                expect file "recorded attachment hash unchanged" (Ok AttachedDataUnchanged) (model.experimentData.attachmentStatus data.attachment)
+                TestAppScope.expect file "recorded attachment hash unchanged" (Ok AttachedDataUnchanged) (model.experimentData.attachmentStatus data.attachment)
             assertNoisyObservationAttachments model reader
-            assertCommittedUnchanged AbsorbingBiaxialNoisyKit session.recorded
+            TestAppScope.assertCommittedUnchanged AbsorbingBiaxialNoisyKit session.recorded
 
             let observations = byPlate (noisyObservationsOf attachedSeed)
             assertAbsorbingStudyData model observations
@@ -2770,16 +2599,16 @@ module KitAcceptanceTests =
             let run =
                 (readOnlyStudyFit session).runFit absorbingFitRequest UnwatchedIterations
                 |> Result.defaultWith (fun error -> failwith $"{fitFile.value}: expected the study engine's fit run; actual {error.describe}")
-            expect fitFile "refit study" absorbingStudyName run.study
-            expect fitFile "refit stamp" (refitTimeOf AbsorbingBiaxialNoisyKit) run.stamp
-            expect fitFile "refit stage" JointStage run.stage
-            expect fitFile "fixed calibrations" CalibrationHeldFixed run.calibrationUse
-            expect fitFile "nonlinear engine" NonlinearStudyEngine run.engine
-            expect fitFile "refit runs, the five plates' experiments in kit order"
+            TestAppScope.expect fitFile "refit study" absorbingStudyName run.study
+            TestAppScope.expect fitFile "refit stamp" (TestAppScope.refitTimeOf AbsorbingBiaxialNoisyKit) run.stamp
+            TestAppScope.expect fitFile "refit stage" JointStage run.stage
+            TestAppScope.expect fitFile "fixed calibrations" CalibrationHeldFixed run.calibrationUse
+            TestAppScope.expect fitFile "nonlinear engine" NonlinearStudyEngine run.engine
+            TestAppScope.expect fitFile "refit runs, the five plates' experiments in kit order"
                 (absorbingPlateCuts |> List.map (fun (plate, _) -> ExperimentName plate.label.value)) run.runs
             assertAbsorbingRecovery (studyIn model absorbingStudyName) run
-            assertEmptyLibrary session.context
-            assertCommittedUnchanged AbsorbingBiaxialNoisyKit session.recorded
+            TestAppScope.assertEmptyLibrary session.context
+            TestAppScope.assertCommittedUnchanged AbsorbingBiaxialNoisyKit session.recorded
         finally
             closeCommittedReadOnly AbsorbingBiaxialNoisyKit session
 
@@ -2801,10 +2630,10 @@ module KitAcceptanceTests =
                 assertNoisyObservationFiles target
 
                 let reopenedResidual = startResidualOf reopened absorbingStudyName
-                expect studyFile "start-point residual after SendKit and OpenKitZip, element for element"
+                TestAppScope.expect studyFile "start-point residual after SendKit and OpenKitZip, element for element"
                     builtResidual.value reopenedResidual.value
             finally
-                reopened.kit.close () |> readKitResult KitFile.fileName
+                reopened.kit.close () |> TestAppScope.readKitResult KitFile.fileName
         finally
             if Directory.Exists runFolder.value then Directory.Delete(runFolder.value, true)
 
@@ -2820,14 +2649,14 @@ module KitAcceptanceTests =
                 assertAbsorbingStudyData attached (byPlate (noisyObservationsOf seed))
                 let fitted = runStudyFitThroughShell attached absorbingFitRequest (TimeSpan.FromSeconds 1800.0)
                 let name = absorbingStudyName.fitRunNameAt at
-                expect (FitRunKitFile.fileNameOf name.fileStem) "committed fit run" (Some name) fitted.studyFit.job.committedResults
+                TestAppScope.expect (FitRunKitFile.fileNameOf name.fileStem) "committed fit run" (Some name) fitted.studyFit.job.committedResults
                 fitted
             let fitted = ensembleFitTimes |> List.tail |> List.fold refit built.model
             let reader = KitProxy.create built.folder
             let fitFile = FileName $"{absorbingStudyName.fileStem.value}@*.fitrun-json"
-            let runs = reader.readFitRuns absorbingStudyName |> readKitResult fitFile
-            expect fitFile "the five seeds' fit runs in seed order" (ensembleFitTimes |> List.map (fun (_, at) -> absorbingStudyName.fitRunNameAt at)) (runs |> List.map _.name)
-            expect fitFile "the stored fit runs, the window's completed jobs" fitted.kitFitRuns runs
+            let runs = reader.readFitRuns absorbingStudyName |> TestAppScope.readKitResult fitFile
+            TestAppScope.expect fitFile "the five seeds' fit runs in seed order" (ensembleFitTimes |> List.map (fun (_, at) -> absorbingStudyName.fitRunNameAt at)) (runs |> List.map _.name)
+            TestAppScope.expect fitFile "the stored fit runs, the window's completed jobs" fitted.kitFitRuns runs
             let study = storedAbsorbingStudy reader
             let crystals = runs |> List.map (recoveredCrystalOf study)
             let table =
@@ -2835,7 +2664,7 @@ module KitAcceptanceTests =
                 |> List.map (RecoveryEnsembles.statisticsFor AbsorbingBiaxialSample.absorbing crystals)
             let report = table |> List.map _.describe |> String.concat "; "
             let unscattered = table |> List.filter (fun row -> row.scatter.value <= 0.0) |> List.map _.quantity.name
-            expect fitFile $"quantities whose seed-to-seed scatter is zero, the noise never reaching the fit ({report})" [] unscattered
+            TestAppScope.expect fitFile $"quantities whose seed-to-seed scatter is zero, the noise never reaching the fit ({report})" [] unscattered
             let scatterOf (quantity : RecoveryEnsembles.RecoveredQuantity<CrystalPhysics.AbsorbingTriclinicParameters>) : MuellerFitting.RelativeError =
                 match RecoveryEnsembles.rowFor table quantity.name with
                 | Ok row -> row.scatter
@@ -2845,4 +2674,4 @@ module KitAcceptanceTests =
                 let listed = breaches |> List.map _.describe |> String.concat "; "
                 Assert.Fail($"{fitFile.value}: {breaches.Length} reported quantities scatter out of the noisy suite's bands: {listed} ({report})")
         finally
-            built.model.kit.close () |> readKitResult KitFile.fileName
+            built.model.kit.close () |> TestAppScope.readKitResult KitFile.fileName

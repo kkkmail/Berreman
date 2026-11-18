@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System
 open System.IO
+open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Kit
@@ -13,11 +15,14 @@ open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Media
 open Berreman.MaterialProperties
+open BerremanTestSupport
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.KitArchive
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
@@ -25,8 +30,11 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Tests
+open OpticalConstructor.Ui.KitArchiveJob
+open OpticalConstructor.Ui.KitStartView
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 module TestAppScope =
@@ -131,6 +139,188 @@ module TestAppScope =
                     experimentExport = context.experimentExport
             }
         initial.loadKit opened
+
+    /// A committed kit's relative files and directories, `.oc/` included, and each file's bytes, recorded before a read-only session (spec 0050 S12.2, Close).
+    type CommittedKitRecording =
+        {
+            files : FileName list
+            directories : FolderName list
+            bytes : Map<FileName, FileByteContent>
+        }
+
+    /// A committed kit opened read-only against an empty library, and its folder as recorded before the open (spec 0050 S12.2, Close; 001 §Q 'Open').
+    type CommittedKitSession =
+        {
+            context : OpticalConstructor.Ui.AppContext
+            opened : OpenedKit
+            /// The Inverse window over the opened kit (spec 0050 S12.2).
+            model : TableAndElementRotationModel
+            /// The start screen's clock, fixed at the kit's refit instant, which the read-only refit stamps its run with (spec 0050 S12.2).
+            clock : ClockProvider
+            recorded : CommittedKitRecording
+        }
+
+    /// AT-1's optics-mueller kit id, the one its start screen mints (spec 0050 S12.1, Close).
+    let kitId : KitId = KitId (Guid.Parse "e63c9d6e-7961-4d9f-9c8d-e5a151414e0e")
+
+    /// AT-1's optics-mueller kit author (spec 0050 S12.1, Close).
+    let kitAuthor : KitAuthor = KitAuthor "optics-mueller lab"
+
+    /// AT-2's absorbing-biaxial-noisy kit id, the one its start screen mints (spec 0050 S12.2, Close).
+    let absorbingKitId : KitId = KitId (Guid.Parse "e15b30f6-b9ff-4a6b-a88d-b5401df2a7ae")
+
+    /// AT-2's absorbing-biaxial-noisy kit author (spec 0050 S12.2, Close).
+    let absorbingKitAuthor : KitAuthor = KitAuthor "absorbing-biaxial-noisy bench"
+
+    /// Asserts `actual` equals `expected`, a failure naming the file and the field (spec 0050 S12.1, Close).
+    let expect<'Value> (file : FileName) (field : string) (expected : 'Value) (actual : 'Value) : unit =
+        try Assert.Equal<'Value>(expected, actual)
+        with :? Xunit.Sdk.XunitException as error -> Assert.Fail($"{file.value}: {field}\n{error.Message}")
+
+    /// The result's value; a kit error fails the fact naming the file (spec 0050 S12.1, Close).
+    let readKitResult<'Value> (file : FileName) (result : Result<'Value, KitError>) : 'Value =
+        result |> Result.defaultWith (fun error -> failwith $"{file.value}: expected a successful read/write; actual {error.describe}")
+
+    /// The committed kit's folder under `data/`; a missing folder fails the fact naming it (spec 0050 S12.1, S12.2, Close).
+    let committedFolder (kit : CommittedKit) : KitFolder =
+        let name =
+            match kit with
+            | OpticsMuellerKit -> "data/optics-mueller"
+            | AbsorbingBiaxialNoisyKit -> "data/absorbing-biaxial-noisy"
+        kit.tryFindFolder
+        |> Option.defaultWith (fun () -> failwith $"{name}: expected the committed kit; actual folder missing")
+
+    /// A clock reading `instant` and the setter that moves it, held by the build it serves (spec 0050 S12.1, S12.2, Close).
+    let testClockAt (instant : ClockTime) : ClockProvider * (ClockTime -> unit) =
+        let time = ref instant
+        let clock : ClockProvider =
+            {
+                now = fun () -> time.Value
+            }
+        clock, fun at -> time.Value <- at
+
+    /// The Inverse start screen over `folder` and the cell its `showKit` keeps the opened kit in (spec 0050 S12.1, S12.2, Close).
+    let kitStartOver
+        (context : OpticalConstructor.Ui.AppContext)
+        (clock : ClockProvider)
+        (kitId : KitId)
+        (author : KitAuthor)
+        (folder : KitFolder)
+        : KitStartModel * OpenedKit option ref =
+        let shown : OpenedKit option ref = ref None
+        let startContext : KitStartContext =
+            {
+                kitHistory = KitHistoryProxy.createInMemory [ folder ]
+                limit = KitHistoryLimit.defaultValue
+                clock = clock
+                kitIds =
+                    {
+                        mintKitId = fun () -> kitId
+                    }
+                author = author
+                imports = context.catalogueImports
+                picker = kitPickerOf folder
+                showKit = fun opened -> shown.Value <- Some opened
+                activateKitWindow = fun _ -> NoKitWindowOpen
+                zipPicker = KitZipPicker.none
+                archive = KitArchiveProxy.create ()
+                archiveJobs = KitArchiveJobHost.inert
+            }
+        initKitStart startContext InverseConstructor, shown
+
+    /// Every file under `folder`, relative to it and sorted (spec 0050 S12.1, S12.2, Close).
+    let relativeFiles (folder : FolderName) : FileName list =
+        Directory.GetFiles(folder.value, "*", SearchOption.AllDirectories)
+        |> Array.map (fun file -> FileName (Path.GetRelativePath(folder.value, file)))
+        |> Array.sort
+        |> List.ofArray
+
+    /// Every directory under `folder`, empty ones included, relative to it and sorted (spec 0050 S12.1, S12.2, Close).
+    let private relativeDirectories (folder : FolderName) : FolderName list =
+        Directory.GetDirectories(folder.value, "*", SearchOption.AllDirectories)
+        |> Array.map (fun directory -> FolderName (Path.GetRelativePath(folder.value, directory)))
+        |> Array.sort
+        |> List.ofArray
+
+    /// The instant a read-only session's clock reads, after the kit's own fits: AT-1's refit at 12:03, AT-2's at 12:02 (spec 0050 S12.1, S12.2, Close).
+    let refitTimeOf (kit : CommittedKit) : ClockTime =
+        match kit with
+        | OpticsMuellerKit -> ClockTime (DateTime(2026, 5, 31, 12, 3, 0, DateTimeKind.Utc))
+        | AbsorbingBiaxialNoisyKit -> ClockTime (DateTime(2026, 6, 1, 12, 2, 0, DateTimeKind.Utc))
+
+    /// The context's item-model, live-library, material, sample and source stores list no entry (spec 0050 S12.1, S12.2, Close; 001 §Q 'Open').
+    let assertEmptyLibrary (context : OpticalConstructor.Ui.AppContext) : unit =
+        expect KitFile.fileName "empty item-model database" (Ok []) (context.itemModels.listItemModels ())
+        expect KitFile.fileName "empty live library" (Ok [ LibraryTree.byKind [] ]) (context.library.libraryTrees ())
+        expect KitFile.fileName "empty material database" (Ok []) (context.materials.listMaterials IncludeInactive)
+        expect KitFile.fileName "empty sample database" (Ok []) (context.samples.listSamples IncludeInactive)
+        expect KitFile.fileName "empty source database" (Ok []) (context.sources.listSources ())
+
+    /// The committed kit's folder holds exactly the recorded relative paths, directories and bytes: nothing written, no lock, stamp, snapshot or cache (spec 0050 S12.2, Close; .spec-md §3.12).
+    let assertCommittedUnchanged (kit : CommittedKit) (recorded : CommittedKitRecording) : unit =
+        let original = committedFolder kit
+        let folderFile = FileName original.value.value
+        expect folderFile "every relative file path unchanged, including .oc" recorded.files (relativeFiles original.value)
+        expect folderFile "every directory unchanged, including empty cache folders" recorded.directories (relativeDirectories original.value)
+        for KeyValue(file, expected) in recorded.bytes do
+            let actual = File.ReadAllBytes (file.combine original.value).value |> FileByteContent
+            expect file "committed bytes unchanged by the read-only session" expected.value actual.value
+
+    /// Records the committed kit's folder, then opens it read-only against an empty library of `owner` through the start screen, the Inverse window over it; a failure after the recording closes the kit and checks the folder first (spec 0050 S12.2, Close; 001 §Q 'Open').
+    let openCommittedReadOnly (owner : FolderName) (kit : CommittedKit) : CommittedKitSession =
+        let original = committedFolder kit
+        let originalFiles = relativeFiles original.value
+        let recorded : CommittedKitRecording =
+            {
+                files = originalFiles
+                directories = relativeDirectories original.value
+                bytes =
+                    originalFiles
+                    |> List.map (fun file -> file, FileByteContent (File.ReadAllBytes (file.combine original.value).value))
+                    |> Map.ofList
+            }
+        let committedId, committedAuthor =
+            match kit with
+            | OpticsMuellerKit -> kitId, kitAuthor
+            | AbsorbingBiaxialNoisyKit -> absorbingKitId, absorbingKitAuthor
+        let mutable openedOpt : OpenedKit option = None
+        try
+            let context = emptyLibraryAppContext owner
+            assertEmptyLibrary context
+            let clock, _ = testClockAt (refitTimeOf kit)
+            let start, shown = kitStartOver context clock committedId committedAuthor original
+            let started = start |> updateKitStart (OpenKitReadOnly original)
+            openedOpt <- shown.Value
+            expect KitFile.fileName "OpenKitReadOnly status" None started.status
+            let opened =
+                openedOpt
+                |> Option.defaultWith (fun () -> failwith $"{original.value.value}: OpenKitReadOnly did not open the committed kit")
+            expect KitFile.fileName "opened folder" original opened.folder
+            expect KitFile.fileName "read-only access" ReadOnlyKitAccess opened.library.kit.access
+            let model = inverseModelOver context opened
+            expect KitFile.fileName "window's read-only access" ReadOnlyKitAccess model.kit.access
+            expect KitFile.fileName "window's experiments" opened.experiments model.experimentCollection.experiments
+            expect KitFile.fileName "window's setups" opened.setups model.kitSetups
+            expect KitFile.fileName "window's items" opened.items model.kitItems
+            expect (FileName "*.study-json") "window's studies" opened.studies model.kitStudies
+            expect (FileName "*.fitrun-json") "window's fit runs" opened.fitRuns model.kitFitRuns
+            let session : CommittedKitSession =
+                {
+                    context = context
+                    opened = opened
+                    model = model
+                    clock = clock
+                    recorded = recorded
+                }
+            session
+        with _ ->
+            try
+                match openedOpt with
+                | Some opened -> opened.library.kit.close () |> readKitResult KitFile.fileName
+                | None -> ()
+            finally
+                assertCommittedUnchanged kit recorded
+            reraise ()
 
     /// A reopened folder kit holding CPL1, CPL2, Phone and three Science scans in the study QZ-LR (spec 0050 S11.5).
     let studyKitIn (owner : FolderName) : TableAndElementRotationModel =
