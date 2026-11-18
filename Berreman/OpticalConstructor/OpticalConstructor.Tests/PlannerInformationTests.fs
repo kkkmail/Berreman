@@ -200,3 +200,94 @@ module PlannerInformationTests =
         Assert.Equal(2.0 * log 2.0 + 2.0 * log 3.0 - 2.0 * log 4.0, fourfold.logDeterminant.value, 1e-12)
 
         Assert.Equal(NoiseVariance 0.25, (FitQuality.ReducedChiSquared 0.25).noiseVariance)
+
+    /// The candidate of `jacobian` at unit noise.
+    let private atUnitNoise (jacobian : ResidualJacobian) : CandidateRows = { jacobian = jacobian; noise = NoiseVariance 1.0 }
+
+    let private bothCriteria : PlanCriterion list = [ DeterminantPlanCriterion; TargetTracePlanCriterion ]
+
+    /// The ranking of `options` over a and b under `criterion`, failing on a refusal.
+    let private rankedOver
+        (criterion : PlanCriterion)
+        (baseline : CandidateRows list)
+        (options : PlanOption<string> list)
+        : RankedOption<string> list =
+        match PlannerInformation.rankWith criterion [ a; b ] baseline options with
+        | Ok ranked -> ranked
+        | Error error -> failwith $"Expected a ranking under {criterion.text}, got: {error.describe}"
+
+    let private candidatesOf (ranked : RankedOption<string> list) : string list =
+        ranked |> List.map (fun (rankedOption : RankedOption<string>) -> rankedOption.option.candidate)
+
+    let private traceOf (information : PlannerInformation) : float =
+        match information.traceOpt with
+        | Some trace -> trace.value
+        | None -> failwith "Expected the covariance trace at full rank, got none."
+
+    [<Fact>]
+    let ``the planner adds first the candidate that makes a confounded combination identifiable`` () : unit =
+        // The baseline knows a + b only; X measures a + b again, Y measures a − b.
+        let baseline : CandidateRows list = [ atUnitNoise (ResidualJacobian [| [| 1.0; 1.0 |] |]) ]
+        let x : PlanOption<string> = { candidate = "X"; rows = atUnitNoise (ResidualJacobian [| [| 2.0; 2.0 |] |]) }
+        let y : PlanOption<string> = { candidate = "Y"; rows = atUnitNoise (ResidualJacobian [| [| 0.1; -0.1 |] |]) }
+        Assert.Equal(1, (informationOver [ a; b ] baseline).confounded.Length)
+
+        // Rank decides: X's pseudo-determinant (10) is larger than Y's determinant (2 · 0.02), yet Y goes first.
+        Assert.Equal(log 10.0, (informationOver [ a; b ] (baseline @ [ x.rows ])).logDeterminant.value, 1e-12)
+
+        for criterion in bothCriteria do
+            for options in [ [ x; y ]; [ y; x ] ] do
+                match rankedOver criterion baseline options with
+                | [ first; second ] as ranked ->
+                    Assert.Equal<string list>([ "Y"; "X" ], candidatesOf ranked)
+                    Assert.Equal(MatrixRank 2, first.information.rank)
+                    Assert.Empty(first.information.confounded)
+                    Assert.Equal(log 0.04, first.information.logDeterminant.value, 1e-12)
+                    Assert.Equal(MatrixRank 2, second.information.rank)
+                | ranked -> failwith $"Expected two ranked options under {criterion.text}, got {ranked.Length}."
+
+    [<Fact>]
+    let ``D-optimality takes the larger determinant and A-optimality the smaller sum of variances`` () : unit =
+        // JᵀJ = diag(1, 4): P makes it diag(4, 4), determinant 16, and Q diag(1, 24), determinant 24.
+        let baseline : CandidateRows list = [ atUnitNoise (ResidualJacobian [| [| 1.0; 0.0 |]; [| 0.0; 2.0 |] |]) ]
+        let p : PlanOption<string> = { candidate = "P"; rows = atUnitNoise (ResidualJacobian [| [| sqrt 3.0; 0.0 |] |]) }
+        let q : PlanOption<string> = { candidate = "Q"; rows = atUnitNoise (ResidualJacobian [| [| 0.0; sqrt 20.0 |] |]) }
+        Assert.Equal(log 16.0, (informationOver [ a; b ] (baseline @ [ p.rows ])).logDeterminant.value, 1e-12)
+        Assert.Equal(1.0 + 1.0 / 24.0, traceOf (informationOver [ a; b ] (baseline @ [ q.rows ])), 1e-12)
+
+        for options in [ [ p; q ]; [ q; p ] ] do
+            match rankedOver DeterminantPlanCriterion baseline options with
+            | [ first; second ] as ranked ->
+                Assert.Equal<string list>([ "Q"; "P" ], candidatesOf ranked)
+                Assert.Equal(log 24.0, first.information.logDeterminant.value, 1e-12)
+                Assert.Equal(log 96.0, second.information.logDeterminant.value, 1e-12)
+            | ranked -> failwith $"Expected two D-ranked options, got {ranked.Length}."
+
+            match rankedOver TargetTracePlanCriterion baseline options with
+            | [ first; second ] as ranked ->
+                Assert.Equal<string list>([ "P"; "Q" ], candidatesOf ranked)
+                Assert.Equal(1.0 / 4.0 + 1.0 / 4.0, traceOf first.information, 1e-12)
+                Assert.Equal(1.0 / 4.0 + 1.0 / 24.0, traceOf second.information, 1e-12)
+            | ranked -> failwith $"Expected two A-ranked options, got {ranked.Length}."
+
+        Assert.Equal("D-optimal: most information", DeterminantPlanCriterion.text)
+        Assert.Equal("A-optimal: smallest target variances", TargetTracePlanCriterion.text)
+
+    [<Fact>]
+    let ``equal candidates keep their given order, and a refused candidate stops the ranking`` () : unit =
+        let baseline : CandidateRows list = [ atUnitNoise (ResidualJacobian [| [| 1.0; 0.0 |] |]) ]
+        let rows : CandidateRows = atUnitNoise (ResidualJacobian [| [| 0.0; 1.0 |] |])
+        let first : PlanOption<string> = { candidate = "first"; rows = rows }
+        let second : PlanOption<string> = { candidate = "second"; rows = rows }
+        let noiseless : PlanOption<string> = { candidate = "noiseless"; rows = { rows with noise = NoiseVariance 0.0 } }
+
+        for criterion in bothCriteria do
+            Assert.Equal<string list>([ "first"; "second" ], candidatesOf (rankedOver criterion baseline [ first; second ]))
+            Assert.Equal<string list>([ "second"; "first" ], candidatesOf (rankedOver criterion baseline [ second; first ]))
+            Assert.Empty(rankedOver criterion baseline [])
+
+            // The valid option before it is not ranked in part: the refusal answers the whole.
+            match PlannerInformation.rankWith criterion [ a; b ] baseline [ first; noiseless ] with
+            | Error (NoiselessPlannerCandidateErr reason) -> Assert.Contains("candidate 2", reason)
+            | Error error -> failwith $"Expected a noiseless candidate under {criterion.text}, got: {error.describe}"
+            | Ok ranked -> failwith $"Expected a refusal under {criterion.text}, got {ranked.Length} ranked options."

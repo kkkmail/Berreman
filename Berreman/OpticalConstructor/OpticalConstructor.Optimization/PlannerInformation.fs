@@ -238,3 +238,90 @@ module PlannerInformation =
         /// The noise variance a fit's reduced χ² estimates: the residual level of measured data read as a candidate's
         /// noise (spec 0050 S14.2).
         member this.noiseVariance : NoiseVariance = NoiseVariance this.value
+
+    /// What the planner ranks candidates by: the most information or the smallest target variances; window state,
+    /// never stored, so it carries no wire tag (spec 0050 S14.2).
+    type PlanCriterion =
+        | DeterminantPlanCriterion
+        | TargetTracePlanCriterion
+
+        /// The criterion as the Plan view names it (spec 0050 S14.2).
+        member this.text : string =
+            match this with
+            | DeterminantPlanCriterion -> "D-optimal: most information"
+            | TargetTracePlanCriterion -> "A-optimal: smallest target variances"
+
+    /// One candidate and its information (spec 0050 S14.2).
+    type PlanOption<'Candidate> =
+        {
+            candidate : 'Candidate
+            rows : CandidateRows
+        }
+
+    /// An option with the information the baseline and every option ranked up to it hold (spec 0050 S14.2).
+    type RankedOption<'Candidate> =
+        {
+            option : PlanOption<'Candidate>
+            information : PlannerInformation
+        }
+
+    type PlannerInformation with
+
+        /// Every option once, greedily: each round the option left that, joined to the baseline and the options ranked,
+        /// gives the higher rank, then the larger log determinant (D) or the smaller trace at full rank (A); a tie keeps
+        /// `options`' order, and the first refusal answers whole (spec 0050 S14.2; 001 §M).
+        static member rankWith
+            (criterion : PlanCriterion)
+            (coordinates : ParameterName list)
+            (baseline : CandidateRows list)
+            (options : PlanOption<'Candidate> list)
+            : Result<RankedOption<'Candidate> list, PlannerError> =
+            // A trace exists only at full rank, so A falls back on the determinant below it (spec 0050 S14.2).
+            let better (challenger : PlannerInformation) (held : PlannerInformation) : bool =
+                let (MatrixRank challengerRank) = challenger.rank
+                let (MatrixRank heldRank) = held.rank
+                let (InformationLogDeterminant challengerLog) = challenger.logDeterminant
+                let (InformationLogDeterminant heldLog) = held.logDeterminant
+
+                if challengerRank <> heldRank then
+                    challengerRank > heldRank
+                else
+                    match criterion, challenger.traceOpt, held.traceOpt with
+                    | TargetTracePlanCriterion, Some (CovarianceTrace challengerTrace), Some (CovarianceTrace heldTrace) ->
+                        challengerTrace < heldTrace
+                    | TargetTracePlanCriterion, _, _
+                    | DeterminantPlanCriterion, _, _ -> challengerLog > heldLog
+
+            // The best of `left` joining `held`, beside its position in `left`.
+            let rec bestFrom
+                (held : CandidateRows list)
+                (position : int)
+                (bestOpt : (int * RankedOption<'Candidate>) option)
+                (left : PlanOption<'Candidate> list)
+                : Result<(int * RankedOption<'Candidate>) option, PlannerError> =
+                match left with
+                | [] -> Ok bestOpt
+                | planOption :: rest ->
+                    match PlannerInformation.over coordinates (held @ [ planOption.rows ]) with
+                    | Error error -> Error error
+                    | Ok information ->
+                        let nextOpt =
+                            match bestOpt with
+                            | Some (_, best) when not (better information best.information) -> bestOpt
+                            | Some _
+                            | None -> Some (position, { option = planOption; information = information })
+
+                        bestFrom held (position + 1) nextOpt rest
+
+            let rec rankFrom
+                (held : CandidateRows list)
+                (ranked : RankedOption<'Candidate> list)
+                (left : PlanOption<'Candidate> list)
+                : Result<RankedOption<'Candidate> list, PlannerError> =
+                match bestFrom held 0 None left with
+                | Error error -> Error error
+                | Ok None -> Ok (List.rev ranked)
+                | Ok (Some (position, best)) ->
+                    rankFrom (held @ [ best.option.rows ]) (best :: ranked) (List.removeAt position left)
+
+            rankFrom baseline [] options
