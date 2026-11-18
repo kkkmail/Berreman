@@ -183,8 +183,10 @@ module KitFolderStore =
             let mutable heldLockOpt : KitLockHolder option = None
             let mutable recordedStamps : Map<FileName, ContentHash> = Map.empty
             let proxySync = obj ()
+            let fileAt (path : KitRelativePath) : FileName =
+                FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
             let cacheFolder = FolderName (Path.Combine(folder.value.value, KitRelativePath.appCacheFolder.value))
-            let lockFile = FileName (Path.Combine(folder.value.value, KitRelativePath.kitLockPath.value.Replace('/', Path.DirectorySeparatorChar)))
+            let lockFile = fileAt KitRelativePath.kitLockPath
             let guardName = FileName "lock-guard.tmp"
             let guardFile = guardName.combine cacheFolder
             let guardProxy = KitLockGuardProxy.create guardFile
@@ -211,12 +213,16 @@ module KitFolderStore =
                     |> Option.map (fun holder -> Error (KitLockedErr holder))
                 | _ -> None
 
-            let writeText (file : FileName) (text : KitFileText) : Result<unit, KitError> =
+            let writeTextBytes (file : FileName) (text : KitFileText) : Result<FileByteContent, KitError> =
                 let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
                 file.writeBytesAtomically bytes
                 |> Result.mapError (fun (error : StorageError) ->
                     KitIoErr $"kit folder '{folder.value.value}': the file '{file.value}' is not written: {error.describe}")
-                |> Result.map (fun () ->
+                |> Result.map (fun () -> bytes)
+
+            let writeText (file : FileName) (text : KitFileText) : Result<unit, KitError> =
+                writeTextBytes file text
+                |> Result.map (fun bytes ->
                     // Stamp the bytes we wrote; a later outside replacement must still be reported (spec 0050 step 0130).
                     let stamp = ContentHash.ofBytes bytes
                     recordedStamps <- updateKitFileStamp file.leafName (Some stamp) recordedStamps)
@@ -227,7 +233,7 @@ module KitFolderStore =
 
             let readLabSource (path : KitRelativePath) : Result<LabFileSource, KitError> =
                 tryKitFolderIo folder (fun () ->
-                    let file = FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
+                    let file = fileAt path
                     try
                         let source : LabFileSource =
                             {
@@ -314,7 +320,7 @@ module KitFolderStore =
                                 |> Array.toList
                             destination.copyTargetFor source.leafName taken
                             |> Result.bind (fun path ->
-                                let file = FileName (Path.Combine(folder.value.value, path.value.Replace('/', Path.DirectorySeparatorChar)))
+                                let file = fileAt path
                                 file.writeNewBytesAtomically bytes
                                 |> Result.mapError (fun error ->
                                     KitIoErr $"kit folder '{folder.value.value}': the file '{file.value}' is not written: {error.describe}")
@@ -359,6 +365,25 @@ module KitFolderStore =
                                     |> Result.mapError (fun error ->
                                         if File.Exists file.value then existsError
                                         else KitIoErr $"kit folder '{folder.value.value}': the snapshot '{envelope.snapshotPath.value}' is not written: {error.describe}")))
+                readPlannerCacheFile =
+                    fun (name : FileName) ->
+                        KitRelativePath.plannerCacheFileOf name
+                        |> Result.bind (fun path ->
+                            tryKitFolderIo folder (fun () ->
+                                try
+                                    Ok (Some ((fileAt path).readKitText ()))
+                                with
+                                | :? FileNotFoundException
+                                | :? DirectoryNotFoundException -> Ok None))
+                writePlannerCacheFile =
+                    fun (name : FileName) (text : KitFileText) ->
+                        KitRelativePath.plannerCacheFileOf name
+                        |> Result.bind (fun path ->
+                            tryKitFolderIo folder (fun () ->
+                                let file = fileAt path
+                                Directory.CreateDirectory(Path.GetDirectoryName file.value) |> ignore
+                                // A cache file is not a kit file, so it is never stamped (spec 0050 S14.2).
+                                writeTextBytes file text |> Result.map ignore))
                 recordStamps =
                     fun () ->
                         tryKitFolderIo folder (fun () ->

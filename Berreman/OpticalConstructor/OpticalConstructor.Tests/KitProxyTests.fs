@@ -1181,6 +1181,84 @@ type KitProxyContract () =
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxyC.readKitFile ())
 
+    /// The Planner's cache lives directly under `.oc/planner/`, UTF-8 without a byte-order mark (spec 0050 S14.2).
+    [<Fact>]
+    member this.``a planner cache file is written under .oc/planner and read back, and a name reaching outside it is refused`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let name = FileName "a.candidate-json"
+        let first = KitFileText "{}"
+        let second = KitFileText "{\"rows\":[]}\n"
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok None, proxy.readPlannerCacheFile name)
+        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writePlannerCacheFile name first)
+        let written = [ ".kit-json"; ".oc"; ".oc/planner"; ".oc/planner/a.candidate-json"; "data"; "library" ]
+        Assert.Equal<string list>(written, folder.paths ())
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some first), proxy.readPlannerCacheFile name)
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some first), (folder.openProxy ()).readPlannerCacheFile name)
+
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writePlannerCacheFile name second)
+        Assert.Equal<string list>(written, folder.paths ())
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some second), proxy.readPlannerCacheFile name)
+        let stored =
+            proxy.readLabFile (KitRelativePath ".oc/planner/a.candidate-json")
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<byte>(Encoding.UTF8.GetBytes second.value, stored.content.value)
+        Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
+
+        folder.placeLabFile ".oc/planner/b.candidate-json" "﻿{}"
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some first), proxy.readPlannerCacheFile (FileName "b.candidate-json"))
+
+        let before = folder.paths ()
+        let outsideNames =
+            [ "../x.candidate-json"; "p/x.candidate-json"; "p\\x.candidate-json"; ".."; "."; "" ] |> List.map FileName
+        for outside in outsideNames do
+            match proxy.writePlannerCacheFile outside first with
+            | Error (InvalidKitPathErr reason) -> Assert.Contains(outside.value, reason)
+            | Error error -> Assert.Fail($"Expected InvalidKitPathErr writing '{outside.value}', got {error.describe}")
+            | Ok () -> Assert.Fail($"The planner cache name '{outside.value}' must not be written.")
+            match proxy.readPlannerCacheFile outside with
+            | Error (InvalidKitPathErr reason) -> Assert.Contains(outside.value, reason)
+            | Error error -> Assert.Fail($"Expected InvalidKitPathErr reading '{outside.value}', got {error.describe}")
+            | Ok _ -> Assert.Fail($"The planner cache name '{outside.value}' must not be read.")
+            Assert.Equal<string list>(before, folder.paths ())
+
+    /// A read-only open writes no `.oc/planner/`, yet reads what a read-write proxy cached (spec 0050 S14.2; .spec-md §3.12).
+    [<Fact>]
+    member this.``a read-only kit refuses a planner cache write and still reads the cache`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let clock = steppingClock ()
+        let kit = newKitFile clock
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let reader = proxy.readOnlyView
+        let name = FileName "a.candidate-json"
+        let cached = KitFileText "{}"
+        let refused = KitFileText "{\"refused\":true}\n"
+        let empty = folder.paths ()
+        Assert.Equal<Result<unit, KitError>>(Error (KitReadOnlyErr "writePlannerCacheFile"), reader.writePlannerCacheFile name cached)
+        Assert.Equal<string list>(empty, folder.paths ())
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok None, reader.readPlannerCacheFile name)
+
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writePlannerCacheFile name cached)
+        let written = folder.paths ()
+        Assert.Contains(".oc/planner/a.candidate-json", written)
+        Assert.Equal<Result<unit, KitError>>(Error (KitReadOnlyErr "writePlannerCacheFile"), reader.writePlannerCacheFile name refused)
+        Assert.Equal<string list>(written, folder.paths ())
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some cached), reader.readPlannerCacheFile name)
+
+        let context =
+            KitContext.openKit (folder.openProxy ()) ReadOnlyKitAccess clock
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<Result<unit, KitError>>(Error (KitReadOnlyErr "writePlannerCacheFile"), context.proxy.writePlannerCacheFile name refused)
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some cached), context.proxy.readPlannerCacheFile name)
+        Assert.Equal<Result<unit, KitError>>(Ok (), context.close ())
+        Assert.Equal<string list>(written, folder.paths ())
+        Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some cached), proxy.readPlannerCacheFile name)
+
     [<Fact>]
     member this.``opening a folder that holds no kit initialises it and opens it read-write`` () : unit =
         let labPath = KitRelativePath "data/raw/run.csv"

@@ -476,6 +476,9 @@ module Kit =
         /// The app-owned cache and lock folder, safe to delete and never sent (spec 0050 S6; 001 §A).
         static member appCacheFolder : KitRelativePath = KitRelativePath ".oc"
 
+        /// The Planner's derived cache inside the app cache, safe to delete and never sent (spec 0050 S14.2; 001 §M).
+        static member plannerCacheFolder : KitRelativePath = KitRelativePath $"{KitRelativePath.appCacheFolder.value}/planner"
+
         static member kitLockPath : KitRelativePath = KitRelativePath $"{KitRelativePath.appCacheFolder.value}/lock"
 
         /// The app's cache when the first segment names its folder, ignoring case (spec 0050 S6).
@@ -506,6 +509,14 @@ module Kit =
                     Error (InvalidKitPathErr $"'{text}': a kit-relative path must not contain empty, '.' or '..' segments")
                 else
                     Ok (KitRelativePath path)
+
+        /// The file directly under `plannerCacheFolder`; a blank name, `.`, `..` or a separator is InvalidKitPathErr (spec 0050 S14.2).
+        static member plannerCacheFileOf (name : FileName) : Result<KitRelativePath, KitError> =
+            let text = name.value
+            if String.IsNullOrWhiteSpace text || text = "." || text = ".." || text.Contains('/') || text.Contains('\\') then
+                Error (InvalidKitPathErr $"'{text}': a planner cache file must be a bare file name")
+            else
+                KitRelativePath.tryCreate $"{KitRelativePath.plannerCacheFolder.value}/{text}"
 
     type LibraryEntryEnvelope with
 

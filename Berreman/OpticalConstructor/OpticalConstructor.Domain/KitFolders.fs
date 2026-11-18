@@ -39,6 +39,10 @@ module KitFolders =
             listSnapshots : unit -> Result<LibraryEntryEnvelope list, KitError>
             /// Writes a version once under library, refusing an existing snapshot without changes (spec 0050 001 §A).
             writeSnapshot : LibraryEntryEnvelope -> Result<unit, KitError>
+            /// Reads `.oc/planner/<name>` with a leading byte-order mark dropped, or None when there is none (spec 0050 S14.2).
+            readPlannerCacheFile : FileName -> Result<KitFileText option, KitError>
+            /// Creates or replaces `.oc/planner/<name>` whole, creating its folders when missing (spec 0050 S14.2).
+            writePlannerCacheFile : FileName -> KitFileText -> Result<unit, KitError>
             /// Replaces this proxy's in-memory record of all current kit-file stamps without writing (spec 0050 S4.1).
             recordStamps : unit -> Result<unit, KitError>
             /// Lists added, changed or removed kit files in ordinal order, excluding this proxy's own writes (spec 0050 S4.1).
@@ -164,14 +168,17 @@ module KitFolders =
         member private this.readInMemoryKitDataFile (path : KitRelativePath) : Result<KitDataFile, KitError> =
             this.readInMemoryLabFile path |> Result.map (fun source -> source.content.kitDataFile path)
 
+        member private this.placeText (path : KitRelativePath) (text : KitFileText) : unit =
+            let heldPath = this.tryFindTextPath path |> Option.defaultValue path
+            texts <- Map.add heldPath text texts
+            folders <- Set.union folders (Set.ofList path.parentFolders)
+
         /// Places an outside writer's text and its parents, refusing the reserved kit filename (spec 0050 S4.1).
         member this.placeLabFile (path : KitRelativePath) (text : KitFileText) : Result<unit, KitError> =
             if String.Equals(path.value, kitFilePath.value, StringComparison.OrdinalIgnoreCase) then
                 Error (InvalidKitPathErr $"in-memory kit folder: '{path.value}' is reserved for kit metadata")
             else
-                let heldPath = this.tryFindTextPath path |> Option.defaultValue path
-                texts <- Map.add heldPath text texts
-                folders <- Set.union folders (Set.ofList path.parentFolders)
+                this.placeText path text
                 Ok ()
 
         /// Removes an outside writer's file, refusing metadata and reporting missing paths (spec 0050 S4.2).
@@ -316,6 +323,18 @@ module KitFolders =
                                 let library = KitRelativePath "library"
                                 folders <- Set.add library folders
                                 Ok ())
+                readPlannerCacheFile =
+                    fun name ->
+                        KitRelativePath.plannerCacheFileOf name
+                        |> Result.map (fun path ->
+                            lock folderSync (fun () ->
+                                this.tryFindTextPath path
+                                |> Option.bind (fun held -> Map.tryFind held texts)
+                                |> Option.map (fun text -> text.withoutByteOrderMark)))
+                writePlannerCacheFile =
+                    fun name text ->
+                        KitRelativePath.plannerCacheFileOf name
+                        |> Result.map (fun path -> lock folderSync (fun () -> this.placeText path text))
                 recordStamps =
                     fun () ->
                         recordedStamps <- currentStamps ()
@@ -376,6 +395,8 @@ module KitFolders =
                 copyInFile = fun _ _ _ -> Error (KitReadOnlyErr "copyInFile")
                 listSnapshots = this.listSnapshots
                 writeSnapshot = fun _ -> Error (KitReadOnlyErr "writeSnapshot")
+                readPlannerCacheFile = this.readPlannerCacheFile
+                writePlannerCacheFile = fun _ _ -> Error (KitReadOnlyErr "writePlannerCacheFile")
                 recordStamps = this.recordStamps
                 changedKitFiles = this.changedKitFiles
                 acquireLock = fun _ -> Error (KitReadOnlyErr "acquireLock")
