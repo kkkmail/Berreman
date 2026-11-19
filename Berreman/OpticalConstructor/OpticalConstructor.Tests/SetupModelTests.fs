@@ -545,7 +545,7 @@ module SetupModelTests =
             let benchWritten = File.GetLastWriteTimeUtc benchFile
             let unchanged = created |> updateTableAndElementRotation SaveSetup
             Assert.Equal<string list>([ "Bench.setup-json" ], setupFilesIn folder)
-            Assert.Equal<byte[]>(benchBytes, File.ReadAllBytes benchFile)
+            Assert.Equal<byte>(benchBytes, File.ReadAllBytes benchFile)
             Assert.Equal(benchWritten, File.GetLastWriteTimeUtc benchFile)
             Assert.Equal<Setups.Setup list>(created.kitSetups, unchanged.kitSetups)
             Assert.Equal<Setups.Setup option>(created.activeSetupOpt, unchanged.activeSetupOpt)
@@ -764,7 +764,7 @@ module SetupModelTests =
             let swapped = benchA |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
 
             Assert.Equal<string list>([ "Bench A (2).setup-json"; "Bench A.setup-json" ], setupFilesIn folder)
-            Assert.Equal<byte[]>(benchABytes, File.ReadAllBytes benchAFile)
+            Assert.Equal<byte>(benchABytes, File.ReadAllBytes benchAFile)
             let created = heldSetup "Bench A (2)" swapped
             Assert.Equal<SetupRevision>(SetupRevision.first, created.revision)
             Assert.Empty(created.history)
@@ -852,7 +852,7 @@ module SetupModelTests =
             let swapped = committed |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
 
             Assert.Equal<string list>([ "LP1-(QZ#45)-LPd.setup-json"; "LP1-(QZ2#45)-LPd.setup-json" ], setupFilesIn folder)
-            Assert.Equal<byte[]>(heldBytes, File.ReadAllBytes heldFile)
+            Assert.Equal<byte>(heldBytes, File.ReadAllBytes heldFile)
             let created = heldSetup "LP1-(QZ2#45)-LPd" swapped
             Assert.Equal<SetupRevision>(SetupRevision.first, created.revision)
             Assert.Empty(created.history)
@@ -1051,7 +1051,7 @@ module SetupModelTests =
                 Assert.Equal<Experiments.Experiment list>([ e1; e2 ], second.experimentCollection.experiments)
             | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
             Assert.Equal<string list>([ "Bench.setup-json" ], setupFilesIn folder)
-            Assert.Equal<byte[]>(benchBytes, File.ReadAllBytes benchFile)
+            Assert.Equal<byte>(benchBytes, File.ReadAllBytes benchFile)
             Assert.Equal<Setups.Setup list>([ bench ], second.kitSetups)
             Assert.Equal<Setups.Setup option>(Some bench, second.activeSetupOpt)
             Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Bench' revision 1."), second.kitStatus)
@@ -1077,7 +1077,7 @@ module SetupModelTests =
             let second = editing |> updateTableAndElementRotation RecordExperiment
 
             Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
-            Assert.Equal<byte[]>(e1Bytes, File.ReadAllBytes e1File)
+            Assert.Equal<byte>(e1Bytes, File.ReadAllBytes e1File)
             match second.kit.proxy.readExperiments () |> kitValue with
             | [ storedE1; e2 ] ->
                 Assert.Equal<Experiments.Experiment>(e1, storedE1)

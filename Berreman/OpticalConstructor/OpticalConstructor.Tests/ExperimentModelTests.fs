@@ -494,7 +494,7 @@ module ExperimentModelTests =
             // Only the experiment's file is written: the attached file and the lab file keep their bytes.
             Assert.NotEqual<FileByteContent>(e1FileBefore, (kitFileBytes folder).[experimentFileOf kit.e1])
             Assert.Equal<Map<string, FileByteContent>>(othersBefore, otherFileBytes folder kit.e1)
-            Assert.Equal<byte[]>(labBefore, File.ReadAllBytes kit.labFile.value)
+            Assert.Equal<byte>(labBefore, File.ReadAllBytes kit.labFile.value)
 
             let included = excluded |> updateTableAndElementRotation (IncludePoint (kit.e1.id, MappedPointNumber 2))
             Assert.Equal<ControlCaption option>(Some (ControlCaption "Included point 2 of E1 again."), included.kitStatus)
@@ -506,7 +506,7 @@ module ExperimentModelTests =
                 ExperimentDataLoad.ValidatedDataBadge (MeasuredData.MeasuredPointCount 3),
                 included.dataBadgeOf heldIncluded)
             Assert.Equal<Map<string, FileByteContent>>(othersBefore, otherFileBytes folder kit.e1)
-            Assert.Equal<byte[]>(labBefore, File.ReadAllBytes kit.labFile.value)
+            Assert.Equal<byte>(labBefore, File.ReadAllBytes kit.labFile.value)
 
             // The point holds no exclusion now: a second IncludePoint changes nothing and writes nothing.
             let before = everyFileBytes folder kit
@@ -632,8 +632,8 @@ module ExperimentModelTests =
             Assert.Equal<string list>([ "E1.experiment-json"; "E2.experiment-json" ], experimentFilesIn folder)
             Assert.NotEqual<FileByteContent>(e1FileBefore, (kitFileBytes folder).[experimentFileOf kit.e1])
             Assert.Equal<Map<string, FileByteContent>>(othersBefore, otherFileBytes folder kit.e1)
-            Assert.Equal<byte[]>(attachedBefore, File.ReadAllBytes attachedFile)
-            Assert.Equal<byte[]>(labBefore, File.ReadAllBytes kit.labFile.value))
+            Assert.Equal<byte>(attachedBefore, File.ReadAllBytes attachedFile)
+            Assert.Equal<byte>(labBefore, File.ReadAllBytes kit.labFile.value))
 
     [<Fact>]
     let ``a correction without a note, to a setup the kit lacks, or to the setup it already references writes nothing`` () : unit =

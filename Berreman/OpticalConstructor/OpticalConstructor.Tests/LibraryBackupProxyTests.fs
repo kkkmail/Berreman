@@ -208,7 +208,7 @@ type LibraryBackupProxySqliteTests () =
 
         Assert.Equal<Result<LibraryBackupName list, LibraryBackupError>>(Ok [ backup ], store.listBackups ())
         Assert.Single(Directory.GetFiles(backups.value)) |> ignore
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backupFile.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(backupFile.value))
         LibraryBackupProxySqliteTests.assertBuiltInSamples samples
         Assert.Equal<Result<Sample option, SampleError>>(Ok (Some userSample), samples.tryGetSample userSample.id)
 

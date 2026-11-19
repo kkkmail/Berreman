@@ -1250,7 +1250,7 @@ module KitWindowTests =
             let benchBytes = File.ReadAllBytes benchFile
             copyE1Choosing bench (MapOntoKitItem benchLaser600.id) "Copied 1 experiment(s) from"
             Assert.Equal<string list>([ "Laser600 bench.item-json"; "Laser600.item-json" ], itemFilesIn bench.folder)
-            Assert.Equal<byte[]>(benchBytes, File.ReadAllBytes benchFile)
+            Assert.Equal<byte>(benchBytes, File.ReadAllBytes benchFile)
             let mapped = reopenedCopy bench.folder
             match mapped.experiments, mapped.resolved with
             | [ copiedE1 ], Ok [ piece ] ->
@@ -1871,7 +1871,7 @@ module KitWindowTests =
                 Assert.Equal<DataRowSelection>(AllDataRows, expected.rows)
                 let copied = Path.Combine(folder.value.value, "data", leaf)
                 Assert.True(File.Exists copied, $"the kit must hold the picked file at data/{leaf}")
-                Assert.Equal<byte[]>(phoneRoiBytes, File.ReadAllBytes copied)
+                Assert.Equal<byte>(phoneRoiBytes, File.ReadAllBytes copied)
                 let storedE1 = Assert.Single((KitProxy.create folder).readExperiments () |> SceneTestFixture.kitSuccess)
                 Assert.Equal<Experiments.ExperimentId>(e1Id, storedE1.id)
                 Assert.Equal<MappedAttachment option>(Some expected, storedE1.dataOpt)
@@ -2035,8 +2035,8 @@ module KitWindowTests =
                 let assertLabFileKept () : unit =
                     let held = Directory.GetFiles dataFolder |> Array.map Path.GetFileName |> List.ofArray
                     Assert.Equal<string list>([ leaf ], held)
-                    Assert.Equal<byte[]>(splitPhoneRoiBytes, File.ReadAllBytes(Path.Combine(dataFolder, leaf)))
-                    Assert.Equal<byte[]>(splitPhoneRoiBytes, File.ReadAllBytes labFile.value)
+                    Assert.Equal<byte>(splitPhoneRoiBytes, File.ReadAllBytes(Path.Combine(dataFolder, leaf)))
+                    Assert.Equal<byte>(splitPhoneRoiBytes, File.ReadAllBytes labFile.value)
                 // The experiment of that name as its kit file reads back.
                 let storedNamed (name : Experiments.ExperimentName) : Experiments.Experiment =
                     let stored = (KitProxy.create folder).readExperiments () |> SceneTestFixture.kitSuccess

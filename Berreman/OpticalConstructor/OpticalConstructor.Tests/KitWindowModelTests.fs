@@ -1077,7 +1077,7 @@ module KitWindowModelTests =
                 Assert.Equal<string list>([ "E2.experiment-json" ], experimentFilesIn folder)
                 let copiedData = Path.Combine(folder.value.value, "data", "measured.csv")
                 Assert.True(File.Exists copiedData, "E2's data file must be copied under data")
-                Assert.Equal<byte[]>(File.ReadAllBytes(Path.Combine(source.sourceFolder.value.value, "data", "measured.csv")), File.ReadAllBytes copiedData)
+                Assert.Equal<byte>(File.ReadAllBytes(Path.Combine(source.sourceFolder.value.value, "data", "measured.csv")), File.ReadAllBytes copiedData)
                 Assert.Equal<KitCopySource option>(None, copied.kitCopyOpt)
                 Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatus)
                 Assert.Equal<Item list>(model.kitItems, copied.kitItems)

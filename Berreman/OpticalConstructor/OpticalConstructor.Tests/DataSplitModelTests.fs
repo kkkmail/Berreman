@@ -259,7 +259,7 @@ module DataSplitModelTests =
             // Nothing is attached or created until the split is applied (spec 0050 S9.3).
             Assert.Equal<TableAndElementRotationModel>({ kit.committed with dataSplitOpt = split.dataSplitOpt; kitStatus = split.kitStatus }, split)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
-            Assert.Equal<byte[]>(fileBefore, File.ReadAllBytes kit.phoneRoiFile.value))
+            Assert.Equal<byte>(fileBefore, File.ReadAllBytes kit.phoneRoiFile.value))
 
     [<Fact>]
     let ``a split offer is ticked and unticked, and cancelling the split forgets it`` () : unit =
@@ -659,4 +659,4 @@ module DataSplitModelTests =
             Assert.Equal<TableAndElementRotationModel>(cancelled, cancelled |> updateTableAndElementRotation MatchByTemplate)
             Assert.Equal<TableAndElementRotationModel>(kit.committed, kit.committed |> updateTableAndElementRotation MatchByTemplate)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
-            Assert.Equal<byte[]>(fileBefore, File.ReadAllBytes kit.phoneRoiFile.value))
+            Assert.Equal<byte>(fileBefore, File.ReadAllBytes kit.phoneRoiFile.value))

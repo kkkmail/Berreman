@@ -373,7 +373,7 @@ module LibraryDatabaseTests =
                 use unexpected = unexpected
                 Assert.Fail("recreation succeeded while the source could not be copied")
 
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(fixture.databaseFile.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(fixture.databaseFile.value))
         Assert.Empty(Directory.GetFiles(backups.value))
         for sidecar in sidecars do
             Assert.Equal("old library sidecar", File.ReadAllText(sidecar.value))
@@ -393,7 +393,7 @@ module LibraryDatabaseTests =
 
         let backup = FileName (Path.Combine(backups.value, "library-20261106-143000.db"))
         Assert.Equal<string>(backup.value, Assert.Single<string>(Directory.GetFiles(backups.value)))
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(backup.value))
 
         do
             let backupString = fixture.connectionStringFor backup
@@ -412,7 +412,7 @@ module LibraryDatabaseTests =
 
         let numberedBackup = FileName (Path.Combine(backups.value, "library-20261106-143000-2.db"))
         Assert.Equal<Set<string>>(set [ backup.value; numberedBackup.value ], Directory.GetFiles(backups.value) |> Set.ofArray)
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(backup.value))
 
         use missing = new LibraryDatabaseFixture()
         use created =
@@ -499,7 +499,7 @@ module LibraryDatabaseTests =
         | Error error -> Assert.Fail(error.describe)
         | Ok () -> Assert.Fail("VACUUM INTO overwrote an existing backup")
 
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(backup.value))
         assertBackup ()
 
         let emptyTarget = fixture.fileNamed "empty-backup.db"
@@ -589,7 +589,7 @@ module LibraryDatabaseTests =
             | Ok () -> Assert.Fail("restore accepted an incompatible schema")
 
             Assert.False(File.Exists(target.value))
-            Assert.Equal<byte[]>(sourceBytes, File.ReadAllBytes(source.value))
+            Assert.Equal<byte>(sourceBytes, File.ReadAllBytes(source.value))
             assertLiveRestored ()
 
         let rejectedTarget = fixture.fileNamed "rejected-before-restore.db"
@@ -649,7 +649,7 @@ module LibraryDatabaseTests =
         | Error error -> Assert.Fail(error.describe)
         | Ok () -> Assert.Fail("restore replaced the library after its safety backup failed")
 
-        Assert.Equal<byte[]>(previousBytes, File.ReadAllBytes(beforeRestore.value))
+        Assert.Equal<byte>(previousBytes, File.ReadAllBytes(beforeRestore.value))
         assertLiveRestored ()
 
     [<Fact>]
@@ -666,7 +666,7 @@ module LibraryDatabaseTests =
         let incompatibleBytes = File.ReadAllBytes(incompatible.databaseFile.value)
         assertSchemaMismatch (Some incompatibleVersion) incompatible.connectionString
         assertSchemaMismatch (Some incompatibleVersion) incompatible.connectionString
-        Assert.Equal<byte[]>(incompatibleBytes, File.ReadAllBytes(incompatible.databaseFile.value))
+        Assert.Equal<byte>(incompatibleBytes, File.ReadAllBytes(incompatible.databaseFile.value))
 
         do
             use connection = new SqliteConnection(incompatible.connectionString.value)
@@ -687,7 +687,7 @@ module LibraryDatabaseTests =
         let unrelatedBytes = File.ReadAllBytes(unrelated.databaseFile.value)
         assertSchemaMismatch None unrelated.connectionString
         assertSchemaMismatch None unrelated.connectionString
-        Assert.Equal<byte[]>(unrelatedBytes, File.ReadAllBytes(unrelated.databaseFile.value))
+        Assert.Equal<byte>(unrelatedBytes, File.ReadAllBytes(unrelated.databaseFile.value))
 
         do
             use connection = new SqliteConnection(unrelated.connectionString.value)
@@ -707,7 +707,7 @@ module LibraryDatabaseTests =
 
         let unstampedBytes = File.ReadAllBytes(unstamped.databaseFile.value)
         assertSchemaMismatch None unstamped.connectionString
-        Assert.Equal<byte[]>(unstampedBytes, File.ReadAllBytes(unstamped.databaseFile.value))
+        Assert.Equal<byte>(unstampedBytes, File.ReadAllBytes(unstamped.databaseFile.value))
 
         do
             use connection = new SqliteConnection(unstamped.connectionString.value)
@@ -809,7 +809,7 @@ module LibraryDatabaseTests =
                 let expected = expectedVersions |> Map.find (content.id, content.version)
                 Assert.Equal<StoredEntryVersion>(expected, version)
                 let file = FileName (Path.Combine(AppContext.BaseDirectory, "Catalogue", "Builtin", content.fileName.value))
-                Assert.Equal<byte[]>(File.ReadAllBytes(file.value), Encoding.UTF8.GetBytes(row.PayloadText))
+                Assert.Equal<byte>(File.ReadAllBytes(file.value), Encoding.UTF8.GetBytes(row.PayloadText))
                 version)
 
         let kinds = restored |> List.map (fun version -> version.envelope.content.schema.kind) |> Set.ofList
