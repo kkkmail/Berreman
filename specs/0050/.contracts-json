@@ -40,41 +40,41 @@
     "temporaries": []
   },
   "STORE_BigBoy_0005": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 165,
-    "implementStep": null,
+    "implementStep": 168,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
   },
   "SVC_BigBoy_0001": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 182,
-    "implementStep": null,
+    "implementStep": 183,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
   },
   "FILE_BigBoy_0001": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 197,
-    "implementStep": null,
+    "implementStep": 199,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
   },
   "STORE_BigBoy_0006": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 216,
-    "implementStep": null,
+    "implementStep": 211,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
   },
   "SVC_BigBoy_0002": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 443,
-    "implementStep": null,
+    "implementStep": 447,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []

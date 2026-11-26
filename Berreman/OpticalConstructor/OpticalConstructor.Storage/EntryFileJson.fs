@@ -3,6 +3,7 @@ namespace OpticalConstructor.Storage
 open System.Text.Json
 open System.Text.Json.Nodes
 open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.EntryTextDiff
 open OpticalConstructor.Storage.Errors
@@ -24,6 +25,73 @@ module EntryFileJson =
         if found = expected then Ok ()
         else Error (UnsupportedSchemaVersionErr { fileExtension = extension; found = found; expected = expected })
 
+    /// The noise axes a detector item model stores, the only place an entry holds a `ParameterKind` (spec 0050 S7.1):
+    /// an item-model payload's `Fields[0]` is its form, and a detector form's own `Fields[0]` is its axis list.
+    let private detectorAxisNodes (entry : JsonObject) : JsonObject list =
+        // The canonical stack writes a union case with fields as { "Case": <name>, "Fields": [ ... ] }.
+        let firstFieldOf (caseNames : string list) (node : JsonNode) : JsonNode option =
+            match node with
+            | :? JsonObject as union ->
+                match union["Case"], union["Fields"] with
+                | (:? JsonValue as case), (:? JsonArray as fields) when fields.Count > 0 ->
+                    match case.TryGetValue<string>() with
+                    | true, name when List.contains name caseNames -> Some (fields[0])
+                    | _ -> None
+                | _ -> None
+            | _ -> None
+
+        entry[nameof Unchecked.defaultof<LibraryEntryContent>.payload]
+        |> Option.ofObj
+        |> Option.bind (firstFieldOf [ nameof ItemModelPayload ])
+        |> Option.bind (firstFieldOf [ nameof IntensityDetectorModel; nameof MuellerPolarimeterModel; nameof EllipsometerModel ])
+        |> Option.map (fun axes ->
+            match axes with
+            | :? JsonArray as list -> list |> Seq.choose (fun axis -> match axis with :? JsonObject as o -> Some o | _ -> None) |> List.ofSeq
+            | _ -> [])
+        |> Option.defaultValue []
+
+    /// Writes each detector noise axis's `ParameterKind` as its int `value`, a closed set's wire tag (AGENTS.md; spec
+    /// 0050 S7.1), in place of the case name the canonical stack writes.
+    let private writeParameterKindTags (entry : JsonObject) : Result<unit, StorageError> =
+        let kindKey = nameof Unchecked.defaultof<ItemParameterAxis>.kind
+        tryRead (fun () ->
+            for axis in detectorAxisNodes entry do
+                let kind = axis[kindKey].Deserialize<ParameterKind> options
+                axis[kindKey] <- JsonValue.Create kind.value)
+
+    /// Reads each detector noise axis's int tag through `ParameterKind.tryOfWire` back to the node the canonical stack
+    /// binds; any other tag is `MalformedJsonErr`, here at the file seam (spec 0050 S7.1).
+    let private readParameterKindTags (entry : JsonObject) : Result<unit, StorageError> =
+        let kindKey = nameof Unchecked.defaultof<ItemParameterAxis>.kind
+        detectorAxisNodes entry
+        |> List.fold (fun result axis ->
+            result |> Result.bind (fun () ->
+                let tag = axis[kindKey]
+                let kindOpt =
+                    match tag with
+                    | :? JsonValue as value ->
+                        match value.TryGetValue<int>() with
+                        | true, wire -> ParameterKind.tryOfWire wire
+                        | false, _ -> None
+                    | _ -> None
+                match kindOpt with
+                | Some kind -> nodeOf kind |> Result.map (fun node -> axis[kindKey] <- node)
+                | None -> Error (MalformedJsonErr $"'{tag}' is not a {nameof ParameterKind} tag"))) (Ok ())
+
+    type LibraryEntryContent with
+
+        /// The content as its entry file holds it, which is exactly what the hash covers: the canonical node, with
+        /// each detector noise axis's `ParameterKind` as its int tag (spec 0050 001 §B; S7.1).
+        member private this.fileNode : Result<JsonObject, StorageError> =
+            nodeOf this
+            |> Result.bind (fun node ->
+                match node with
+                | :? JsonObject as entry -> writeParameterKindTags entry |> Result.map (fun () -> entry)
+                | _ -> Error (MalformedJsonErr "an entry's content is not a JSON object"))
+
+        /// The hash over exactly `fileNode`, the one hash `sealed` records and `parseEntry` checks (spec 0050 001 §B).
+        member private this.fileHash : Result<ContentHash, StorageError> = this.fileNode |> Result.bind contentHashOf
+
     /// A library file's text, UTF-8 without a BOM (spec 0050 001 §B). S2's database payload and S4's kit
     /// snapshot hold it byte for byte.
     type LibraryFileText =
@@ -44,19 +112,24 @@ module EntryFileJson =
 
         /// The entry this file holds, checked in order (spec 0050 001 §B): the text parses (`MalformedJsonErr`);
         /// it is a `kind` file of its schema (`SchemaValidationErr`); its schema version is the kind's current
-        /// one, judged before anything binds (`UnsupportedSchemaVersionErr`); the content binds without its hash
-        /// (`MalformedJsonErr`); and the recorded hash is the content's (`ContentHashMismatchErr`).
+        /// one, judged before anything binds (`UnsupportedSchemaVersionErr`); the content binds without its hash,
+        /// every `ParameterKind` tag included (`MalformedJsonErr`, S7.1); and the recorded hash is the content's
+        /// (`ContentHashMismatchErr`).
         member this.parseEntry (kind : LibraryEntryKind) : Result<LibraryEntryEnvelope, StorageError> =
             this.readRoot (fun (root : JsonElement) ->
                 let hashKey = nameof Unchecked.defaultof<LibraryEntryEnvelope>.contentHash
 
-                let bindContent () : LibraryEntryContent =
-                    let body = JsonObject.Create root
-                    body.Remove hashKey |> ignore
-                    body.Deserialize<LibraryEntryContent> options
+                let bindContent () : Result<LibraryEntryContent, StorageError> =
+                    tryRead (fun () ->
+                        let body = JsonObject.Create root
+                        body.Remove hashKey |> ignore
+                        body)
+                    |> Result.bind (fun body ->
+                        readParameterKindTags body
+                        |> Result.bind (fun () -> tryRead (fun () -> body.Deserialize<LibraryEntryContent> options)))
 
                 let checkHash (recorded : ContentHash) (content : LibraryEntryContent) : Result<LibraryEntryEnvelope, StorageError> =
-                    contentHashOf content
+                    content.fileHash
                     |> Result.bind (fun computed ->
                         if computed = recorded then Ok { content = content; contentHash = recorded }
                         else Error (ContentHashMismatchErr { entryId = content.id; recorded = recorded; computed = computed }))
@@ -65,7 +138,7 @@ module EntryFileJson =
                 |> Result.bind (fun () -> tryRead (fun () -> root.GetProperty("schema").GetProperty("version").Deserialize<FileSchemaVersion> options))
                 |> Result.bind (checkSchemaVersion kind.extension kind.currentSchemaVersion)
                 |> Result.bind (fun () -> tryRead (fun () -> root.GetProperty(hashKey).Deserialize<ContentHash> options))
-                |> Result.bind (fun recorded -> tryRead bindContent |> Result.bind (checkHash recorded)))
+                |> Result.bind (fun recorded -> bindContent () |> Result.bind (checkHash recorded)))
 
         /// The catalogue manifest this file holds, checked in order (spec 0050 001 §A, §B): the text parses
         /// (`MalformedJsonErr`); it is a manifest of its schema (`SchemaValidationErr`); its schema version is the
@@ -79,23 +152,20 @@ module EntryFileJson =
         /// The content with the hash over exactly it (spec 0050 001 §B). `sealed` is reserved by F#, hence the
         /// backticks.
         member this.``sealed`` : Result<LibraryEntryEnvelope, StorageError> =
-            contentHashOf this |> Result.map (fun hash -> { content = this; contentHash = hash })
+            this.fileHash |> Result.map (fun hash -> { content = this; contentHash = hash })
 
     type LibraryEntryEnvelope with
 
-        /// The entry's file: the content's canonical node with `contentHash` beside its keys, indented and
+        /// The entry's file: the content's file node with `contentHash` beside its keys, indented and
         /// ending with one `\n` (spec 0050 001 §B / S4.4). The
         /// file is flat, so the hash's key is the envelope's field name.
         member this.fileText : Result<LibraryFileText, StorageError> =
-            match nodeOf this.content, nodeOf this.contentHash with
+            match this.content.fileNode, nodeOf this.contentHash with
             | Error e, _
             | _, Error e -> Error e
-            | Ok contentNode, Ok hashNode ->
-                match contentNode with
-                | :? JsonObject as entry ->
-                    entry[nameof this.contentHash] <- hashNode
-                    entry.canonicalFileText |> LibraryFileText |> Ok
-                | _ -> Error (MalformedJsonErr "an entry's content is not a JSON object")
+            | Ok entry, Ok hashNode ->
+                entry[nameof this.contentHash] <- hashNode
+                entry.canonicalFileText |> LibraryFileText |> Ok
 
         /// Compares the held file with this incoming file, preserving rendering failures (spec 0050 S3.2).
         member this.diffFrom (held : LibraryEntryEnvelope) : Result<EntryDiffLine list, StorageError> =

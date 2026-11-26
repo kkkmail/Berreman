@@ -29,6 +29,8 @@ module KitFolders =
             deleteKindFile : KitFileKind -> FileStem -> Result<unit, KitError>
             /// Reads the kit-relative file's text and ContentHash.ofBytes of its stored bytes, or MissingKitFileErr naming the path (spec 0050 S4.1).
             readDataFile : KitRelativePath -> Result<KitDataFile, KitError>
+            /// Reads any kit file whole, its absolute name in the kit and its bytes as stored, or MissingKitFileErr naming the path (spec 0050 S6).
+            readLabFile : KitRelativePath -> Result<LabFileSource, KitError>
             /// Locates an absolute name inside the kit without requiring the file to exist (spec 0050 S4.2).
             tryKitPathOf : FileName -> KitRelativePath option
             /// Copies bytes into data under a free name, creating parents and never replacing a lab file (spec 0050 S4.2).
@@ -37,6 +39,10 @@ module KitFolders =
             listSnapshots : unit -> Result<LibraryEntryEnvelope list, KitError>
             /// Writes a version once under library, refusing an existing snapshot without changes (spec 0050 001 §A).
             writeSnapshot : LibraryEntryEnvelope -> Result<unit, KitError>
+            /// Reads `.oc/planner/<name>` with a leading byte-order mark dropped, or None when there is none (spec 0050 S14.2).
+            readPlannerCacheFile : FileName -> Result<KitFileText option, KitError>
+            /// Creates or replaces `.oc/planner/<name>` whole, creating its folders when missing (spec 0050 S14.2).
+            writePlannerCacheFile : FileName -> KitFileText -> Result<unit, KitError>
             /// Replaces this proxy's in-memory record of all current kit-file stamps without writing (spec 0050 S4.1).
             recordStamps : unit -> Result<unit, KitError>
             /// Lists added, changed or removed kit files in ordinal order, excluding this proxy's own writes (spec 0050 S4.1).
@@ -92,12 +98,9 @@ module KitFolders =
 
         /// The parent folders an outside writer needs for this path (spec 0050 S4.1).
         member private this.parentFolders : KitRelativePath list =
-            let separator = this.value.LastIndexOf('/')
-            if separator < 0 then
-                []
-            else
-                let parent = KitRelativePath (this.value.Substring(0, separator))
-                parent :: parent.parentFolders
+            match this.parentOpt with
+            | None -> []
+            | Some parent -> parent :: parent.parentFolders
 
     type KitFileKind with
 
@@ -114,23 +117,11 @@ module KitFolders =
                         None))
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.value, second.value))
 
-    type KitFileText with
-
-        /// Removes only the leading UTF-8 byte-order mark from decoded text (spec 0050 S4.1).
-        member this.withoutByteOrderMark : KitFileText =
-            if this.value.StartsWith('\uFEFF') then KitFileText (this.value.Substring 1)
-            else this
-
     type private InMemoryKitFileStamp =
         | InMemoryKitMetadataStamp of KitFile
         | InMemoryKitTextStamp of KitFileText
 
     type FileByteContent with
-
-        /// Decodes UTF-8 text and removes only a leading byte-order mark (spec 0050 S4.1; S4.2).
-        member this.kitFileText : KitFileText =
-            let text = KitFileText (Encoding.UTF8.GetString this.value)
-            text.withoutByteOrderMark
 
         /// Describes a kit file with the hash of its stored bytes (spec 0050 S4.1; S4.2).
         member this.kitDataFile (path : KitRelativePath) : KitDataFile =
@@ -163,21 +154,31 @@ module KitFolders =
             |> Map.keys
             |> Seq.tryFind (fun held -> String.Equals(held.value, path.value, StringComparison.OrdinalIgnoreCase))
 
-        member private this.readInMemoryKitDataFile (path : KitRelativePath) : Result<KitDataFile, KitError> =
+        member private this.readInMemoryLabFile (path : KitRelativePath) : Result<LabFileSource, KitError> =
             match this.tryFindTextPath path |> Option.bind (fun held -> Map.tryFind held texts) with
             | Some text ->
-                let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
-                Ok (bytes.kitDataFile path)
+                let source : LabFileSource =
+                    {
+                        file = FileName $"{this.kitFolder.value.value}/{path.value}"
+                        content = Encoding.UTF8.GetBytes text.value |> FileByteContent
+                    }
+                Ok source
             | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
+
+        member private this.readInMemoryKitDataFile (path : KitRelativePath) : Result<KitDataFile, KitError> =
+            this.readInMemoryLabFile path |> Result.map (fun source -> source.content.kitDataFile path)
+
+        member private this.placeText (path : KitRelativePath) (text : KitFileText) : unit =
+            let heldPath = this.tryFindTextPath path |> Option.defaultValue path
+            texts <- Map.add heldPath text texts
+            folders <- Set.union folders (Set.ofList path.parentFolders)
 
         /// Places an outside writer's text and its parents, refusing the reserved kit filename (spec 0050 S4.1).
         member this.placeLabFile (path : KitRelativePath) (text : KitFileText) : Result<unit, KitError> =
             if String.Equals(path.value, kitFilePath.value, StringComparison.OrdinalIgnoreCase) then
                 Error (InvalidKitPathErr $"in-memory kit folder: '{path.value}' is reserved for kit metadata")
             else
-                let heldPath = this.tryFindTextPath path |> Option.defaultValue path
-                texts <- Map.add heldPath text texts
-                folders <- Set.union folders (Set.ofList path.parentFolders)
+                this.placeText path text
                 Ok ()
 
         /// Removes an outside writer's file, refusing metadata and reporting missing paths (spec 0050 S4.2).
@@ -292,6 +293,7 @@ module KitFolders =
                             Ok ()
                         | None -> Error (MissingKitFileErr $"in-memory kit folder: '{path.value}'")
                 readDataFile = this.readInMemoryKitDataFile
+                readLabFile = this.readInMemoryLabFile
                 tryKitPathOf = this.kitFolder.tryKitPathOf
                 copyInFile =
                     fun destination file bytes ->
@@ -321,6 +323,18 @@ module KitFolders =
                                 let library = KitRelativePath "library"
                                 folders <- Set.add library folders
                                 Ok ())
+                readPlannerCacheFile =
+                    fun name ->
+                        KitRelativePath.plannerCacheFileOf name
+                        |> Result.map (fun path ->
+                            lock folderSync (fun () ->
+                                this.tryFindTextPath path
+                                |> Option.bind (fun held -> Map.tryFind held texts)
+                                |> Option.map (fun text -> text.withoutByteOrderMark)))
+                writePlannerCacheFile =
+                    fun name text ->
+                        KitRelativePath.plannerCacheFileOf name
+                        |> Result.map (fun path -> lock folderSync (fun () -> this.placeText path text))
                 recordStamps =
                     fun () ->
                         recordedStamps <- currentStamps ()
@@ -345,7 +359,7 @@ module KitFolders =
                                 |> Result.map (fun text ->
                                     let heldPath = this.tryFindTextPath lockPath |> Option.defaultValue lockPath
                                     texts <- Map.add heldPath text texts
-                                    folders <- Set.add KitRelativePath.kitCachePath folders
+                                    folders <- Set.add KitRelativePath.appCacheFolder folders
                                     heldLockOpt <- Some holder
                                     holder))
                 releaseLock =
@@ -376,10 +390,13 @@ module KitFolders =
                 writeKindFile = fun _ _ _ -> Error (KitReadOnlyErr "writeKindFile")
                 deleteKindFile = fun _ _ -> Error (KitReadOnlyErr "deleteKindFile")
                 readDataFile = this.readDataFile
+                readLabFile = this.readLabFile
                 tryKitPathOf = this.tryKitPathOf
                 copyInFile = fun _ _ _ -> Error (KitReadOnlyErr "copyInFile")
                 listSnapshots = this.listSnapshots
                 writeSnapshot = fun _ -> Error (KitReadOnlyErr "writeSnapshot")
+                readPlannerCacheFile = this.readPlannerCacheFile
+                writePlannerCacheFile = fun _ _ -> Error (KitReadOnlyErr "writePlannerCacheFile")
                 recordStamps = this.recordStamps
                 changedKitFiles = this.changedKitFiles
                 acquireLock = fun _ -> Error (KitReadOnlyErr "acquireLock")
@@ -460,6 +477,37 @@ module KitFolders =
         {
             pickKitFolder : unit -> Async<KitFolder option>
         }
+
+    /// Why a folder could not be shown in the system's file browser (spec 0050 S5.3).
+    type ExplorerError =
+        /// The folder does not exist, so nothing is shown (spec 0050 S5.3).
+        | MissingFolderErr of reason : string
+        /// The file browser could not be started (spec 0050 S5.3).
+        | ExplorerLaunchErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | MissingFolderErr reason -> $"the folder does not exist: {reason}"
+            | ExplorerLaunchErr reason -> $"the folder could not be shown: {reason}"
+
+    /// Shows a folder in the system's file browser: Ui's `ExplorerProxy.system`, or `createInMemory` the double (spec 0050 S5.3).
+    [<ReferenceEquality>]
+    type ExplorerProxy =
+        {
+            /// Opens the folder in the file browser and answers at once, never waiting for the browser (spec 0050 S5.3).
+            showFolder : FolderName -> Result<unit, ExplorerError>
+        }
+
+    type ExplorerProxy with
+
+        /// The double: hands every folder it is asked to show to `record` and answers `Ok ()`, starting nothing (spec 0050 S5.3).
+        static member createInMemory (record : FolderName -> unit) : ExplorerProxy =
+            {
+                showFolder =
+                    fun folder ->
+                        record folder
+                        Ok ()
+            }
 
     type KitContext with
 

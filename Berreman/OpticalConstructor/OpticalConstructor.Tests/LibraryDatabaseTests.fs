@@ -373,7 +373,7 @@ module LibraryDatabaseTests =
                 use unexpected = unexpected
                 Assert.Fail("recreation succeeded while the source could not be copied")
 
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(fixture.databaseFile.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(fixture.databaseFile.value))
         Assert.Empty(Directory.GetFiles(backups.value))
         for sidecar in sidecars do
             Assert.Equal("old library sidecar", File.ReadAllText(sidecar.value))
@@ -393,7 +393,7 @@ module LibraryDatabaseTests =
 
         let backup = FileName (Path.Combine(backups.value, "library-20261106-143000.db"))
         Assert.Equal<string>(backup.value, Assert.Single<string>(Directory.GetFiles(backups.value)))
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(backup.value))
 
         do
             let backupString = fixture.connectionStringFor backup
@@ -412,7 +412,7 @@ module LibraryDatabaseTests =
 
         let numberedBackup = FileName (Path.Combine(backups.value, "library-20261106-143000-2.db"))
         Assert.Equal<Set<string>>(set [ backup.value; numberedBackup.value ], Directory.GetFiles(backups.value) |> Set.ofArray)
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(backup.value))
 
         use missing = new LibraryDatabaseFixture()
         use created =
@@ -455,6 +455,21 @@ module LibraryDatabaseTests =
             Assert.False(Directory.Exists(fixture.backupsFolder.value))
 
     [<Fact>]
+    let ``tryFileOf answers the library's file, and nothing for an in-memory library`` () : unit =
+        use fixture = new LibraryDatabaseFixture()
+        let memoryString = ConnectionString "Data Source=:memory:"
+        let sharedMemoryString = ConnectionString "Data Source=lib;Mode=Memory;Cache=Shared"
+        let folder = Path.GetDirectoryName(fixture.databaseFile.value)
+        let fileString = ConnectionString $"Data Source={folder}/library.db"
+        let expected = FileName (Path.GetFullPath(fixture.databaseFile.value))
+
+        Assert.Equal<FileName option>(None, LibraryDatabase.tryFileOf memoryString)
+        Assert.Equal<FileName option>(None, LibraryDatabase.tryFileOf sharedMemoryString)
+        Assert.Equal<FileName option>(Some expected, LibraryDatabase.tryFileOf fileString)
+        Assert.False(File.Exists(expected.value), $"tryFileOf created the library file: {expected.value}")
+        Assert.Empty(Directory.GetFileSystemEntries(folder))
+
+    [<Fact>]
     let ``vacuumInto writes a stamped copy of the library and refuses a target that exists`` () : unit =
         use fixture = new LibraryDatabaseFixture()
         use database = LibraryDatabase.openOrCreate fixture.connectionString |> expectDatabaseOk
@@ -484,7 +499,7 @@ module LibraryDatabaseTests =
         | Error error -> Assert.Fail(error.describe)
         | Ok () -> Assert.Fail("VACUUM INTO overwrote an existing backup")
 
-        Assert.Equal<byte[]>(originalBytes, File.ReadAllBytes(backup.value))
+        Assert.Equal<byte>(originalBytes, File.ReadAllBytes(backup.value))
         assertBackup ()
 
         let emptyTarget = fixture.fileNamed "empty-backup.db"
@@ -574,7 +589,7 @@ module LibraryDatabaseTests =
             | Ok () -> Assert.Fail("restore accepted an incompatible schema")
 
             Assert.False(File.Exists(target.value))
-            Assert.Equal<byte[]>(sourceBytes, File.ReadAllBytes(source.value))
+            Assert.Equal<byte>(sourceBytes, File.ReadAllBytes(source.value))
             assertLiveRestored ()
 
         let rejectedTarget = fixture.fileNamed "rejected-before-restore.db"
@@ -634,7 +649,7 @@ module LibraryDatabaseTests =
         | Error error -> Assert.Fail(error.describe)
         | Ok () -> Assert.Fail("restore replaced the library after its safety backup failed")
 
-        Assert.Equal<byte[]>(previousBytes, File.ReadAllBytes(beforeRestore.value))
+        Assert.Equal<byte>(previousBytes, File.ReadAllBytes(beforeRestore.value))
         assertLiveRestored ()
 
     [<Fact>]
@@ -651,7 +666,7 @@ module LibraryDatabaseTests =
         let incompatibleBytes = File.ReadAllBytes(incompatible.databaseFile.value)
         assertSchemaMismatch (Some incompatibleVersion) incompatible.connectionString
         assertSchemaMismatch (Some incompatibleVersion) incompatible.connectionString
-        Assert.Equal<byte[]>(incompatibleBytes, File.ReadAllBytes(incompatible.databaseFile.value))
+        Assert.Equal<byte>(incompatibleBytes, File.ReadAllBytes(incompatible.databaseFile.value))
 
         do
             use connection = new SqliteConnection(incompatible.connectionString.value)
@@ -672,7 +687,7 @@ module LibraryDatabaseTests =
         let unrelatedBytes = File.ReadAllBytes(unrelated.databaseFile.value)
         assertSchemaMismatch None unrelated.connectionString
         assertSchemaMismatch None unrelated.connectionString
-        Assert.Equal<byte[]>(unrelatedBytes, File.ReadAllBytes(unrelated.databaseFile.value))
+        Assert.Equal<byte>(unrelatedBytes, File.ReadAllBytes(unrelated.databaseFile.value))
 
         do
             use connection = new SqliteConnection(unrelated.connectionString.value)
@@ -692,7 +707,7 @@ module LibraryDatabaseTests =
 
         let unstampedBytes = File.ReadAllBytes(unstamped.databaseFile.value)
         assertSchemaMismatch None unstamped.connectionString
-        Assert.Equal<byte[]>(unstampedBytes, File.ReadAllBytes(unstamped.databaseFile.value))
+        Assert.Equal<byte>(unstampedBytes, File.ReadAllBytes(unstamped.databaseFile.value))
 
         do
             use connection = new SqliteConnection(unstamped.connectionString.value)
@@ -794,7 +809,7 @@ module LibraryDatabaseTests =
                 let expected = expectedVersions |> Map.find (content.id, content.version)
                 Assert.Equal<StoredEntryVersion>(expected, version)
                 let file = FileName (Path.Combine(AppContext.BaseDirectory, "Catalogue", "Builtin", content.fileName.value))
-                Assert.Equal<byte[]>(File.ReadAllBytes(file.value), Encoding.UTF8.GetBytes(row.PayloadText))
+                Assert.Equal<byte>(File.ReadAllBytes(file.value), Encoding.UTF8.GetBytes(row.PayloadText))
                 version)
 
         let kinds = restored |> List.map (fun version -> version.envelope.content.schema.kind) |> Set.ofList
@@ -1378,4 +1393,55 @@ module LibraryDatabaseTests =
             Assert.Empty(context.SampleMaterials |> Seq.filter (fun row -> row.SampleId = sampleId.value))
             Assert.Empty(context.EntryFacets |> Seq.filter (fun row -> row.EntryId = sampleId.value))
             Assert.Equal<StoredEntryVersion option>(None, context.tryLatestStored sampleId |> expectDatabaseOk))
+        |> expectDatabaseOk
+
+    [<Fact>]
+    let ``a pulled version's pulled-source row is stored beside its version row, and no other version has one`` () : unit =
+        use database = BuiltinCatalogue.freshLibraryDatabase ()
+        let pulledId = MaterialId (Guid.Parse "31801b06-444f-43c8-8440-000000000442")
+        let userId = MaterialId (Guid.Parse "31801b07-444f-43c8-8440-000000000442")
+        let licence = EntryLicence "CC-BY-4.0"
+        let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+        let pulled = BuiltinCatalogue.licensedMaterialContent pulledId (EntryName "Pulled glass") licence citation
+        let user = BuiltinCatalogue.userMaterialContent userId (EntryName "Lab glass")
+        let pulledVersion = pulled.``sealed`` |> expectDatabaseOk |> activeStoredVersion
+        let userVersion = user.``sealed`` |> expectDatabaseOk |> activeStoredVersion
+        database.run (fun context ->
+            Assert.Empty(context.PulledSources)
+            context.stageVersion pulledVersion |> expectDatabaseOk
+            context.stageVersion userVersion |> expectDatabaseOk
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        let assertPulledSourceRow (context : LibraryDbContext) : unit =
+            let row = Assert.Single<LibraryPulledSourceRow>(context.PulledSources)
+            match pulled.provenance with
+            | SourcePullProvenance info ->
+                Assert.Equal(pulled.id.value, row.EntryId)
+                Assert.Equal(pulled.version.value, row.Version)
+                Assert.Equal(info.source.value, row.Source)
+                Assert.Equal(info.record.value, row.RecordPath)
+                Assert.Equal(info.sourceVersion.value, row.SourceVersion)
+                Assert.Equal(info.licence.value, row.Licence)
+                Assert.Equal(info.citation.value, row.Citation)
+            | _ -> Assert.Fail("The licensed material must be pulled from its source.")
+
+        database.run (fun context ->
+            assertPulledSourceRow context
+            Assert.Equal<StoredEntryVersion>(pulledVersion, context.tryStoredVersion pulled.id pulled.version |> expectStoredVersion)
+            Assert.Equal<StoredEntryVersion>(userVersion, context.tryStoredVersion user.id user.version |> expectStoredVersion)
+            context.stagePin pulled.id pulled.version |> expectDatabaseOk |> ignore
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            assertPulledSourceRow context
+            context.stageRemoval pulled.id
+            context.SaveChanges() |> ignore)
+        |> expectDatabaseOk
+
+        database.run (fun context ->
+            Assert.Empty(context.PulledSources)
+            Assert.Equal<StoredEntryVersion option>(None, context.tryStoredVersion pulled.id pulled.version |> expectDatabaseOk)
+            Assert.Equal<StoredEntryVersion>(userVersion, context.tryStoredVersion user.id user.version |> expectStoredVersion))
         |> expectDatabaseOk

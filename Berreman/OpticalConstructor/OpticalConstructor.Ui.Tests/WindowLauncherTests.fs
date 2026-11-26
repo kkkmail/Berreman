@@ -133,7 +133,6 @@ module WindowLauncherTests =
             [
                 MaterialsWindowKey
                 LibraryWindowKey
-                SolverHandoffWindowKey
                 CategoryEditorKey
                 MaterialEditorKey (MaterialLibrary.newMaterialId ())
                 SampleEditorKey (Library.newSampleId ())

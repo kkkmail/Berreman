@@ -130,22 +130,34 @@ module LibraryBackupStore =
 
     type LibraryDatabase with
 
+        /// The full path of the library's file, read from the connection string alone; touches no file (spec 0050 S5.3).
+        /// None for an in-memory library (`:memory:` or `Mode=Memory`) or a connection string that names no file.
+        [<ElevationBoundary(nameof StorageBoundary, "spec 0050 S5.3: SqliteConnectionStringBuilder and Path.GetFullPath throw on malformed text; caught here")>]
+        static member tryFileOf (connectionString : ConnectionString) : FileName option =
+            try
+                let builder = SqliteConnectionStringBuilder(connectionString.value)
+                if builder.DataSource = ":memory:" || builder.Mode = SqliteOpenMode.Memory || String.IsNullOrEmpty builder.DataSource then None
+                else
+                    let file = FileName (Path.GetFullPath(builder.DataSource))
+                    Some file
+            with _ -> None
+
         /// Copies a closed library into Backups before replacing it with an empty stamped library (spec 0050 S2.4).
         /// In-memory and missing libraries are created without a backup; a failed copy leaves the old files intact.
         [<ElevationBoundary(nameof StorageBoundary, "spec 0050 S24-RECREATE: copy the closed SQLite file before deleting it and its sidecars; catch filesystem failures")>]
         static member recreate (connectionString : ConnectionString) (backups : FolderName) (now : unit -> LibraryBackupTime) : Result<LibraryDatabase, StorageError> =
             try
-                let builder = SqliteConnectionStringBuilder(connectionString.value)
-                if builder.DataSource <> ":memory:" && builder.Mode <> SqliteOpenMode.Memory then
-                    let file = FileName builder.DataSource
-                    if File.Exists(file.value) then
-                        Directory.CreateDirectory(backups.value) |> ignore
-                        let name = LibraryBackupFileInfo.nextName backups (now ())
-                        let backup = FileName (Path.Combine(backups.value, name.value))
-                        File.Copy(file.value, backup.value)
-                        File.Delete(file.value)
-                        for suffix in [ "-wal"; "-shm"; "-journal" ] do
-                            File.Delete($"{file.value}{suffix}")
+                match LibraryDatabase.tryFileOf connectionString with
+                | Some file when File.Exists(file.value) ->
+                    Directory.CreateDirectory(backups.value) |> ignore
+                    let name = LibraryBackupFileInfo.nextName backups (now ())
+                    let backup = FileName (Path.Combine(backups.value, name.value))
+                    File.Copy(file.value, backup.value)
+                    File.Delete(file.value)
+                    for suffix in [ "-wal"; "-shm"; "-journal" ] do
+                        File.Delete($"{file.value}{suffix}")
+                | Some _
+                | None -> ()
                 LibraryDatabase.openOrCreate connectionString
                 |> Result.mapError (function
                     | LibraryDatabaseExn error when (error :? IOException) || (error :? UnauthorizedAccessException) -> FileIoExn error

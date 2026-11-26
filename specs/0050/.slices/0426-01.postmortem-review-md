@@ -1,0 +1,56 @@
+# Post-mortem review -- slice 0426, attempt 01
+
+Second review of `.slices/0426-01.postmortem-md` (agent-written, not the mechanical
+fallback), arc-watch event `5367a4d9b3154199ae60d9338bc44f50`, ESCALATE at
+2026-11-15T06:46:54Z, supervisor PID 63284. Recommendations only; implementation
+awaits the operator.
+
+## Verdict
+
+**Agree** with the original: owner the worker, one-line repair, high confidence.
+
+## Re-verified (current source and log, not the report's claims)
+
+- The gate's only finding is `ELEV001 StudyUnknownsView.fs:273:23 - ControlCaption
+  SessionName.value at a call site` (log 40534-40568; 13 of 13 projects, ELEV004
+  excluded, 0 known findings). The flagged expression is exactly
+  `ControlCaption $"{session.name.value}"` in the session table's rows.
+- `SessionName.caption` exists in HEAD (`ConstructorUiIdOfDomain.fs`, introduced by
+  `a59fdb0f`, step 0296) and is `ControlCaption this.value`: the identical caption
+  text, so the rendered `Session 1` cell and its assertions are unchanged.
+- The same file already reads captions through source-type members (`study.name.caption`,
+  `experiment.name.caption`, `parameter.name.caption`, `item.label.caption`), so the
+  repair matches local convention. The gate's `toControlCaption` advice would add a
+  second name for an existing conversion, which AGENTS.md's reuse rule forbids.
+
+## New facts beyond the original
+
+- Context: this arc run resumed at 0414 after two operator recoveries in this
+  session: the 0414 hit-testing repair (`.manual/028-step-0414-operator-reply.md`,
+  commits `c92d8b87`, `1c5dcd95`) and the boot inventory relocation (ASG `c12d0b82` moved
+  `.repository-inventory-json` into `.artifacts/`; the committed copy was placed there
+  byte-identically). 0414-0425 then committed green. Neither recovery bears on 0426.
+- Only elevation ran in the last cycle. Build passed, but constructor, smoke,
+  selected ui-tests, kit-acceptance and the 21 invariants are unmeasured for 0426;
+  a second defect may still surface there. The repair should be verified over the
+  whole roster before resume, as the original says.
+
+## Disagreement
+
+None on cause or remedy. One process note: operator replies are captured in
+`.manual/` with the next consecutive `NNN-` prefix (operator rule, 2026-11-14), so
+the resume reply belongs at `.manual/029-step-0426-operator-reply.md`, not under
+`.artifacts/`.
+
+## Proposed actions
+
+1. In `StudyUnknownsView.fs:273` replace `ControlCaption $"{session.name.value}"`
+   with `session.name.caption`. No other edit, alias, boundary mark or suppression.
+2. Verify the repaired tree: Release build with no owned warnings, arc-origin
+   elevation (0 findings), whole constructor-unit-tests and ui-smoke, ui-tests over
+   KitWindowTests/ScrollExtentTests/StudyViewTests, kit-acceptance over
+   KitAcceptanceTests, and the `invariant-s41-*` gates of `0426.gates`.
+3. The operator commits (git is forward-only); write the resume reply as
+   `.manual/029-step-0426-operator-reply.md`, the operator commits it, then resume
+   normally with that reply and `--executability-profile 1`. Do not use
+   `--accept-current-slice`: checkpoint 425 must be measured.

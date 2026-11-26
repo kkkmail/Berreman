@@ -121,6 +121,18 @@ module BeamLayoutTests =
         Assert.True(abs (insideDir outOfPlane).z > 1.0e-3, "the inside run leaves the table plane under R3")
 
     [<Fact>]
+    let ``the drawn incidence is the angle between an element's drawn face normal and its arriving beam`` () =
+        let incidenceIn (scene : LayoutElement list) (id : string) : float =
+            let element = scene |> List.find (fun e -> e.id = Library.ElementId id)
+            ((placedOf id (layout scene)).incidenceOn element.placement).angle.degrees
+        Assert.True(close (incidenceIn (sampleScene 30.0) "s") 30.0, "a sample at R2 30° meets its beam at 30°")
+        Assert.True(close (incidenceIn (sampleScene 0.0) "s") 0.0, "an untilted sample meets its beam at 0°")
+        Assert.True(close (incidenceIn (sampleScene 30.0) "src") 0.0, "the root has no arriving beam")
+        Assert.True(close (incidenceIn (sampleScene 89.5) "s") 89.0, "an incidence past 89° is capped at 89°")
+        Assert.Equal(Propagation.BranchTransmitted, BeamTree.TransmittedBeam.propagationBranch)
+        Assert.Equal(Propagation.BranchReflected, BeamTree.ReflectedBeam.propagationBranch)
+
+    [<Fact>]
     let ``the same law crosses every transmissive kind, and a detector at the end terminates the beam`` () =
         for kind in [ LinearPolarizer; CircularPolarizer; Lens; Sample ] do
             let scene = layout [ el "src" LightSource -1.0; transmitting (tilted 40.0 (el "x" kind 0.0)); el "det" Detector 1.0 ]
@@ -299,8 +311,8 @@ module BeamLayoutTests =
             Assert.True(s.finish.x <= -0.025 + tol && s.start.x <= -0.025 + tol, $"a ray reaches x = {max s.start.x s.finish.x}, behind the first detector")
         // Only the lit detector captures.
         let detectors = [ Library.ElementId "det2"; Library.ElementId "det" ]
-        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.TransmittedBeam ], detectedBranches scene detectors (Library.ElementId "s") (Library.ElementId "s"))
-        Assert.Empty(detectedBranches scene [ Library.ElementId "det" ] (Library.ElementId "s") (Library.ElementId "s"))
+        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.TransmittedBeam ], detectedBranches scene detectors (Library.ElementId "s") [ Library.ElementId "s" ])
+        Assert.Empty(detectedBranches scene [ Library.ElementId "det" ] (Library.ElementId "s") [ Library.ElementId "s" ])
 
     [<Fact>]
     let ``the lit rays are listed main beam first, and the first one no detector ends is the free ray`` () =
@@ -385,7 +397,7 @@ module BeamLayoutTests =
         let detectors (scene : LayoutElement list) : Library.ElementId list =
             scene |> List.filter (fun e -> e.placement.catalogueKind = Detector) |> List.map (fun e -> e.id)
         let capturesOf (scene : LayoutElement list) (varied : string) : Experiments.MeasurementMode list =
-            capturesFor (detectedBranches (layout scene) (detectors scene) (Library.ElementId varied) (Library.ElementId "s"))
+            capturesFor (detectedBranches (layout scene) (detectors scene) (Library.ElementId varied) [ Library.ElementId "s" ])
         // Only the transmitted detector ⇒ only T.
         Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], capturesOf (sampleScene 30.0) "s")
         // Only a reflected detector ⇒ only R.
@@ -402,6 +414,48 @@ module BeamLayoutTests =
         Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], capturesOf behind "pol")
         // No detector ⇒ nothing.
         Assert.Empty(capturesOf [ el "src" LightSource -1.0; el "s" Sample 0.0 ] "s")
+
+    // --- each detector's capture, decided per object (spec 0050 S8.1) ------------------------------
+
+    [<Fact>]
+    let ``each detector captures the branch its light leaves the last object by`` () =
+        let elements =
+            [ el "src" LightSource -1.0
+              tilted 30.0 (el "s1" Sample 0.0)
+              tilted 30.0 (el "s2" Sample 0.5)
+              el "dT" Detector 1.0
+              onReflectedOf "s2" (el "dR2" Detector 0.9)
+              onReflectedOf "s1" (el "dR1" Detector 0.4) ]
+        let scene = layout elements
+        let src = Library.ElementId "src"
+        let s1 = Library.ElementId "s1"
+        let s2 = Library.ElementId "s2"
+        let dT = Library.ElementId "dT"
+        let dR2 = Library.ElementId "dR2"
+        let dR1 = Library.ElementId "dR1"
+        Assert.Equal<DetectorCapture list>(
+            [ { detector = dT; branch = BeamTree.TransmittedBeam }
+              { detector = dR2; branch = BeamTree.ReflectedBeam }
+              { detector = dR1; branch = BeamTree.ReflectedBeam } ],
+            detectorCaptures scene [ dT; dR2; dR1 ] src [ s1; s2 ])
+        // With `s1` the only object, `dR2`'s light leaves it by T: `s2` is no object, so it decides nothing.
+        Assert.Equal<DetectorCapture list>(
+            [ { detector = dT; branch = BeamTree.TransmittedBeam }
+              { detector = dR2; branch = BeamTree.TransmittedBeam }
+              { detector = dR1; branch = BeamTree.ReflectedBeam } ],
+            detectorCaptures scene [ dT; dR2; dR1 ] src [ s1 ])
+
+    [<Fact>]
+    let ``a detector whose path holds no object captures only light the varied element transmits`` () =
+        let scene = layout [ el "src" LightSource -1.0; tilted 45.0 (el "m" FlatMirror 0.0); el "d" Detector 0.5; el "dUnlit" Detector 1.0 ]
+        let d = Library.ElementId "d"
+        let dUnlit = Library.ElementId "dUnlit"
+        Assert.Equal(Unlit, (placedOf "dUnlit" scene).light)
+        Assert.Equal<DetectorCapture list>(
+            [ { detector = d; branch = BeamTree.TransmittedBeam } ],
+            detectorCaptures scene [ d; dUnlit ] (Library.ElementId "src") [])
+        // The mirror leaves its light by its primary, reflected branch: with nothing to reflect, nothing is captured.
+        Assert.Empty(detectorCaptures scene [ d; dUnlit ] (Library.ElementId "m") [])
 
     [<Fact>]
     let ``the effective capture keeps an allowed request and otherwise takes the best the detectors allow`` () =

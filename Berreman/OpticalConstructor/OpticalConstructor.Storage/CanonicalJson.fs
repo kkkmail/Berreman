@@ -13,6 +13,11 @@ open Berreman.Dispersion
 open Softellect.Sys
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitHistory
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Storage.Errors
 
 /// The canonical JSON stack every JSON store of the app shares (spec 0050 001 §B, `.spec-md` §5).
@@ -177,8 +182,11 @@ module CanonicalJson =
     /// fieldless union cases (`UnitOfMeasure`, `BeamBranch`, the nullary `ConstructorElement` cases)
     /// serialize as plain strings. A `Complex` is `[re, im]` (`ComplexConverter`) and a real matrix its
     /// rows (`RealMatrixConverter`), as an entry file holds them (001 §B). The closed sets with an int tag
-    /// (`LibraryEntryKind`, `TabulatedInterpolation`, `PublishedIndexLaw`, `PublishedGyrationLaw`) are
-    /// that int (`ClosedSetTagConverter`, step 28).
+    /// (`LibraryEntryKind`, `TabulatedInterpolation`, `PublishedIndexLaw`, `PublishedGyrationLaw`, the kit
+    /// history's `KitStar`, step 166, a run's `ExperimentRole`, S9.1, a study's `ParameterScope` and `FitMode`, S11.1,
+    /// a fit run's `FitStage`, `CalibrationUse` and `StudyEngineKind`, S11.3, and an import profile's `DataDelimiter`,
+    /// `HeaderRowChoice`, `ByteOrderMark`, `ScanColumnUnit` and `ScanReading`, S9.2) are that int
+    /// (`ClosedSetTagConverter`, step 28).
     let options : JsonSerializerOptions =
         let o = JsonSerializerOptions(WriteIndented = true)
         o.Converters.Add(ComplexConverter())
@@ -192,6 +200,18 @@ module CanonicalJson =
         o.Converters.Add(ClosedSetTagConverter<TabulatedInterpolation>((fun interpolation -> interpolation.value), TabulatedInterpolation.tryOfWire))
         o.Converters.Add(ClosedSetTagConverter<PublishedIndexLaw>((fun law -> law.value), PublishedIndexLaw.tryOfWire))
         o.Converters.Add(ClosedSetTagConverter<PublishedGyrationLaw>((fun law -> law.value), PublishedGyrationLaw.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<KitStar>((fun star -> star.value), KitStar.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ExperimentRole>((fun role -> role.value), ExperimentRole.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ParameterScope>((fun scope -> scope.value), ParameterScope.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<FitMode>((fun mode -> mode.value), FitMode.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<FitStage>((fun stage -> stage.value), FitStage.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<CalibrationUse>((fun calibrationUse -> calibrationUse.value), CalibrationUse.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<StudyEngineKind>((fun engine -> engine.value), StudyEngineKind.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<DataDelimiter>((fun delimiter -> delimiter.value), DataDelimiter.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<HeaderRowChoice>((fun header -> header.value), HeaderRowChoice.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ByteOrderMark>((fun mark -> mark.value), ByteOrderMark.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ScanColumnUnit>((fun columnUnit -> columnUnit.value), ScanColumnUnit.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ScanReading>((fun reading -> reading.value), ScanReading.tryOfWire))
         let fsharpOptions =
             JsonFSharpOptions
                 .Default()

@@ -1,0 +1,60 @@
+# Post-mortem review -- slice 0428, attempt 01
+
+Second review of `.slices/0428-01.postmortem-md` (agent-written), arc-watch event
+`832b0b3f52664ce4870302276d598baa`, ESCALATE for 0428 (index 427), supervisor PID
+216816; the code judge escalated on cycle 2 and resolver `0428-resolver-01.md`
+confirmed. 0427 was accepted normally as `4e173263`. Recommendations only;
+implementation awaits the operator.
+
+## Verdict
+
+**Agree** on cause, owner (the product) and the need for an operator scope grant.
+Two refinements to the repair's shape, and one to its verification, below.
+
+## Re-verified against current source
+
+- `TableAndElementRotationView.fs:813` `freshId` calls `Guid.NewGuid` directly;
+  `addElement` (`:1722`) gives every added slot a `freshId ()`, and both
+  `AddElement` and `AddElementBoundTo` (`:3094-3098`) reach it. Nothing injects it.
+- `KitAcceptanceTests.fs:387-391` adds exactly three slots that way (LP, sample, LP),
+  matching the three identity pairs (42, 42, 95 occurrences) in the byte diagnosis.
+  The fixture already injects the item ids (`ItemIdProvider`, `:694-706`), the kit
+  id and the clock; slot ids are the one ambient identity left.
+- The precedent shape exists: `Kit.fs:783` `ItemIdProvider` (a record of one mint
+  function), its `system` member in `KitOpening.fs:39`, the model field `itemIds`
+  (`:753`) defaulted in `initWith` (`:933`) and read at `:3142`.
+- No conforming fix fits 0428's effects: normalizing ids in the comparison weakens
+  `S121-COMMITTED-KIT`; rewriting slots after `AddElement` bypasses 001 §Q's
+  semantic-message construction; committing one random build leaves the next build
+  different. The worker and resolver were right to stop.
+
+## Refinements
+
+1. **One mint site, not two.** `freshId` is also used by `mkElement` (`:815`, the
+   static test scene at `:956-958`). The provider's `system` member must become the
+   only `Guid.NewGuid` for element ids and `freshId` be deleted (reuse, never copy);
+   `addElement` reads `model.elementIds`, `mkElement` uses `ElementIdProvider.system`.
+2. **Keep it in the one authorized file.** Declare `ElementIdProvider` (record with
+   `mintElementId : unit -> Library.ElementId`, `[<ReferenceEquality>]`, `system`
+   member) in `TableAndElementRotationView.fs` rather than splitting it into Domain
+   as `ItemIdProvider` is; it is the table's concern and the ruling stays one file
+   wide. Name check: `ElementIdProvider`, `elementIds` and `mintElementId` must be
+   free under ELEV014-016 (the elevation gate proves it).
+3. **Verification.** The fixture must fail on exhaustion and assert full
+   consumption (three ids), like its item ids. The reference kit must be regenerated
+   from a build with the fix (the 116 untracked files now in `data/optics-mueller/`
+   come from a random build and are stale in exactly the three ids), then the fact
+   re-run on a second, independent build. Only the 26 gates of `.slices/0428.gates`
+   as declared; I do not recommend the post-mortem's supplemental
+   TableAndElementRotationTests/ElementMenuTests runs, which are outside the roster
+   (the ui-smoke gate already exercises the default add path).
+
+## Recommendation
+
+Proposed solution 1 with the refinements above, under ruling R0003 in
+`.manual/033-step-0428-element-identity-recovery.md` (section "Binding ruling",
+registered with `rulings_cli append ... --steps 428-494`), authorizing
+`TableAndElementRotationView.fs` at 0428 and carrying the 0432 note (AT-2's added
+reflected detector takes the same provider). Preserve the worker's AGENTS.md and
+fixture work. Resume with `.manual/034-step-0428-operator-reply.md`, profile 1, no
+`--accept-current-slice`, so normal review publishes checkpoint 427.

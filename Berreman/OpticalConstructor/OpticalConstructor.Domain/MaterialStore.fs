@@ -28,9 +28,9 @@ module MaterialStore =
     type MaterialEntry with
 
         /// Comparable physics and display metadata for the shared versioning rule (spec 0050 S2.2).
-        member this.versionPayload : VersionPayload<MaterialComplexity, MaterialMetadata> =
+        member this.versionPayload : VersionPayload<MaterialPhysics, MaterialMetadata> =
             {
-                physics = this.complexity
+                physics = this.physics
                 metadata =
                     {
                         name = this.name

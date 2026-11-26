@@ -17,17 +17,21 @@ open Xunit
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.ExperimentExport
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Storage.KitHistoryStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
@@ -237,12 +241,29 @@ module AppContextTests =
         Assert.Equal(WorkbenchSettings.defaults, context.settings)
 
     [<Fact>]
+    let ``the app scope carries the locations it was composed over`` () : unit =
+        let context = TestAppScope.freshAppContext owner
+        Assert.Equal(TestAppScope.testLocations owner, context.locations)
+
+    [<Fact>]
     let ``the app's import context suggests the configured catalogues folder for exports`` () : unit =
         let locations = TestAppScope.testLocations owner
         let context = TestAppScope.freshAppContext owner
         let standalone = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
         Assert.Equal<FolderName option>(Some locations.cataloguesFolder, context.catalogueImports.exportFolderOpt)
         Assert.Equal<FolderName option>(None, standalone.exportFolderOpt)
+
+    // Spec 0050 S13.1, S13.2: composing the sources touches nothing; no fact runs an update, so none reaches the network.
+    [<Fact>]
+    let ``the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot`` () : unit =
+        let sources = (TestAppScope.testLocations owner).materialSourcesFolder
+        let context = TestAppScope.freshAppContext owner
+        let offered = context.catalogueImports.materialSources
+        let expectedNames = [ MaterialSourceName "refractiveindex.info"; MaterialSourceName "PTB OCDB"; MaterialSourceName "CXRO Henke" ]
+        Assert.Equal<MaterialSourceName list>(expectedNames, offered |> List.map (fun source -> source.sourceName))
+        for source in offered do
+            Assert.Equal<Result<MaterialSourceVersion option, MaterialSourceError>>(Ok None, source.snapshotVersion ())
+        Assert.False(Directory.Exists sources.value, $"composing the app scope must create nothing under '{sources.value}'")
 
     [<Fact>]
     let ``the library folder picker resolves its start folder and delivers only the first selected folder on the UI thread`` () : unit =
@@ -654,6 +675,32 @@ module AppContextTests =
         Assert.Single(Directory.GetFiles(locations.exportsFolder.value, "experiment-*.csv")) |> ignore
 
     [<Fact>]
+    let ``create composes the kit history over the configured preferences folder`` () : unit =
+        let locations = TestAppScope.fileLocations owner
+        let context =
+            AppContext.create locations WorkbenchSettings.defaults
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal<KitHistory>(KitHistory.empty, context.kitHistory.readHistory ())
+        Assert.False(Directory.Exists locations.preferencesFolder.value, "composing and reading the kit history must create nothing")
+
+        let opened : KitHistoryEntry =
+            {
+                folder = TestAppScope.freshKitFolder owner
+                kitId = KitId (System.Guid.Parse "6e1f4b92-3a7c-4d58-b0e9-c25d8a17f463")
+                name = KitName "App scope kit"
+                lastOpened = ClockTime (System.DateTime(2026, 11, 8, 12, 0, 0, System.DateTimeKind.Utc))
+                star = StarredKit
+            }
+        let history : KitHistory = { KitHistory.empty with entries = [ opened ] }
+        Assert.Equal<Result<unit, KitHistoryError>>(Ok (), context.kitHistory.writeHistory history)
+        Assert.Equal<string list>(
+            [ "kit-history.json" ],
+            Directory.GetFileSystemEntries locations.preferencesFolder.value
+            |> Array.map (fun (path : string) -> Path.GetFileName path)
+            |> Array.toList)
+        Assert.Equal<KitHistory>(history, (KitHistoryProxy.create locations.preferencesFolder).readHistory ())
+
+    [<Fact>]
     let ``create imports the Built-in catalogue into empty stores`` () : unit =
         let context =
             AppContext.create (TestAppScope.testLocations owner) WorkbenchSettings.defaults
@@ -673,6 +720,16 @@ module AppContextTests =
         for preset in BuiltinCatalogue.presets () do
             Assert.Equal<Result<LibraryEntry option, LibraryError>>(
                 Ok (Some preset), context.library.tryGetEntry preset.entryId)
+
+    [<Fact>]
+    let ``the app scope serves the Built-in item models from its library database`` () : unit =
+        let context = TestAppScope.freshAppContext owner
+        let builtIns = BuiltinCatalogue.itemModels () |> List.sortBy (fun (held : ItemModelVersion) -> held.entry.name)
+        Assert.Contains(BuiltinCatalogue.itemModel ItemModelIds.emptySlotModelId, builtIns)
+        Assert.Equal<Result<ItemModelVersion list, ItemModelError>>(Ok builtIns, context.itemModels.listItemModels ())
+        for itemModel in builtIns do
+            Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(
+                Ok (Some itemModel), context.itemModels.resolveItemModelVersion itemModel.versionId)
 
     [<Fact>]
     let ``create couples the materials store to the LIVE samples store: a referenced material is not removable`` () =

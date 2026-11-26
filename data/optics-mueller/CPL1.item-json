@@ -1,0 +1,123 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [
+      {
+        "parameters": [
+          {
+            "name": "c1.extinctionRatio",
+            "state": {
+              "Case": "KnownParameter",
+              "Fields": [
+                0
+              ]
+            }
+          },
+          {
+            "name": "c1.axisOffset",
+            "state": {
+              "Case": "KnownParameter",
+              "Fields": [
+                0
+              ]
+            }
+          },
+          {
+            "name": "c2.retardance",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": 0,
+                    "upper": 3.141592653589793
+                  },
+                  "priorOpt": null,
+                  "start": 1.5707963267948966
+                }
+              ]
+            }
+          },
+          {
+            "name": "c2.fastAxisOffset",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": -0.7853981633974483,
+                    "upper": 0.7853981633974483
+                  },
+                  "priorOpt": null,
+                  "start": 0
+                }
+              ]
+            }
+          }
+        ],
+        "revision": 1
+      }
+    ],
+    "id": "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+    "label": "CPL1",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "33486eec-836a-4cbf-ac79-e3f14439ad4b",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "c1.extinctionRatio",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "c1.axisOffset",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "c2.retardance",
+        "state": {
+          "Case": "CalibratedParameter",
+          "Fields": [
+            {
+              "fitRun": "QZ-LR@20260531T120100Z",
+              "sigma": 0.014019802959251437,
+              "value": 1.440829364504494
+            }
+          ]
+        }
+      },
+      {
+        "name": "c2.fastAxisOffset",
+        "state": {
+          "Case": "CalibratedParameter",
+          "Fields": [
+            {
+              "fitRun": "QZ-LR@20260531T120100Z",
+              "sigma": 0.007828801798378275,
+              "value": -0.09929174198757551
+            }
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 2
+  },
+  "schemaVersion": 1
+}

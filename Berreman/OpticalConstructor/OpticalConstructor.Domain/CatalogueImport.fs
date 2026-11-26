@@ -7,9 +7,11 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.MaterialSources
 
 /// The library-import seam, in-memory stores and pure per-entry decision table (spec 0050 §3.4; S3.1, 001 §B).
 /// Identifies every row before confirmed choices write through the version seam.
@@ -287,6 +289,24 @@ module CatalogueImport =
                 | Ok (CatalogueAwaitsChoices pending) -> Some pending
                 | Ok (CatalogueUnchanged _ | CatalogueImported _) | Error _ -> None)
 
+    /// One held version and the source record it was pulled from (spec 0050 S13.1).
+    type PulledRecord =
+        {
+            version : LibraryVersionRef
+            pull : SourcePullInfo
+        }
+
+        /// Orders records ordinally by record text, then entry GUID text, then ascending version (spec 0050 S13.1).
+        static member inRecordOrder (records : PulledRecord list) : PulledRecord list =
+            records
+            |> List.sortWith (fun first second ->
+                match String.CompareOrdinal(first.pull.record.value, second.pull.record.value) with
+                | 0 ->
+                    match String.CompareOrdinal(first.version.entryId.value.ToString(), second.version.entryId.value.ToString()) with
+                    | 0 -> compare first.version.version second.version.version
+                    | order -> order
+                | order -> order)
+
     /// Reads held/user entries, pins versions and puts active, unpinned envelopes (spec 0050 S3.1; S3.3).
     /// A first put or MoveLatestVersion sets latest; duplicate versions and kind conflicts are refused.
     /// Retires held entries and maintains the catalogue import log; equality is by reference.
@@ -300,6 +320,8 @@ module CatalogueImport =
             heldEntriesOf : CatalogueId -> Result<HeldEntry list, CatalogueImportError>
             /// Returns every entry whose latest provenance is user-managed, regardless of lifecycle (spec 0050 S3.3).
             heldUserEntries : unit -> Result<HeldEntry list, CatalogueImportError>
+            /// Every held version, any lifecycle, pulled from the source, in `PulledRecord.inRecordOrder` (spec 0050 S13.1).
+            pulledRecordsOf : MaterialSourceName -> Result<PulledRecord list, CatalogueImportError>
             /// Pins a held version permanently; accepts existing pins and rejects unheld versions (spec 0050 001 §C).
             pinEntryVersion : LibraryEntryId -> VersionNumber -> Result<unit, CatalogueImportError>
             putEntryVersion : EntryVersionPut -> Result<unit, CatalogueImportError>
@@ -415,6 +437,14 @@ module CatalogueImport =
             | ExportFolderHoldsCatalogueErr reason -> $"the export folder already holds a catalogue: {reason}"
             | EmptyLibraryExportErr reason -> $"there is nothing to export: {reason}"
 
+    /// One read glass catalogue: its leaf name, the SHA-256 of its bytes and its glasses in file order (spec 0050 S13.2).
+    type GlassCatalogueRead =
+        {
+            file : FileName
+            fileHash : ContentHash
+            glasses : MaterialEntry list
+        }
+
     [<ReferenceEquality>]
     type CatalogueImportContext =
         {
@@ -428,10 +458,14 @@ module CatalogueImport =
             openCatalogue : FolderName -> CatalogueProxy
             /// Reads one entry file, retaining its file name in a refusal (spec 0050 S3.2).
             readEntryFile : LibraryEntryKind -> FileName -> Result<LibraryEntryEnvelope, CatalogueImportError>
+            /// Reads one glass catalogue, retaining its file name in a refusal (spec 0050 S13.2).
+            readGlassCatalogue : FileName -> Result<GlassCatalogueRead, CatalogueImportError>
             /// Writes one entry file, retaining its file name in a refusal (spec 0050 S3.3).
             writeEntryFile : FileName -> LibraryEntryEnvelope -> Result<unit, LibraryExportError>
             /// The configured catalogue-export folder in which export dialogs open, if any (spec 0050 001 §G).
             exportFolderOpt : FolderName option
+            /// The online material sources the library pulls from, `[]` where none is composed (spec 0050 S13.1).
+            materialSources : MaterialSourceProxy list
         }
 
         /// Reads the latest envelope and pins its version before writing its entry file (spec 0050 001 §B, §C).
@@ -515,16 +549,45 @@ module CatalogueImport =
             |> Result.bind (fun entries -> this.exportEntries (entries |> List.map _.id) target)
 
         /// Validates the complete drop and returns decisions in file order without writing (spec 0050 001 §B, §H; S3.2).
+        /// A `.agf` glass catalogue drops one new user material per glass, in its file's order (spec 0050 S13.2).
         member this.decideDroppedFiles (files : FileName list) : Result<ImportDecision list, CatalogueImportError> =
-            let readFile (file : FileName) : Result<FileName * LibraryEntryEnvelope, CatalogueImportError> =
-                match LibraryEntryKind.tryOfFileName file with
-                | None -> Error (DroppedFileRefusedErr $"{file.value}: not a library entry file")
-                | Some kind ->
+            let glassCatalogueExtension = FileExtension ".agf"
+
+            let refusedAs (file : FileName) (error : CatalogueImportError) : CatalogueImportError =
+                match error with
+                | DroppedFileRefusedErr _ -> error
+                | _ -> DroppedFileRefusedErr $"{file.value}: {error.describe}"
+
+            // Each glass takes a minted id, as a pull does, so a second drop collides by name, never by id (spec 0050 S13.2).
+            let readGlasses (file : FileName) : Result<(FileName * LibraryEntryEnvelope) list, CatalogueImportError> =
+                this.readGlassCatalogue file
+                |> Result.bind (fun read ->
+                    let provenance : EntryFileImportInfo =
+                        {
+                            file = read.file
+                            fileHash = read.fileHash
+                        }
+                    read.glasses
+                    |> List.fold (fun result glass ->
+                        result |> Result.bind (fun envelopes ->
+                            let content =
+                                {
+                                    LibraryEntryContent.ofMaterialEntry VersionNumber.first (FileImportProvenance provenance) glass with
+                                        id = this.newEntryId ()
+                                }
+                            this.sealEntry content |> Result.map (fun envelope -> (file, envelope) :: envelopes))) (Ok [])
+                    |> Result.map List.rev)
+                |> Result.mapError (refusedAs file)
+
+            let readFile (file : FileName) : Result<(FileName * LibraryEntryEnvelope) list, CatalogueImportError> =
+                match file.tryGetExtension (), LibraryEntryKind.tryOfFileName file with
+                | Some extension, _ when String.Equals(extension.value, glassCatalogueExtension.value, StringComparison.OrdinalIgnoreCase) ->
+                    readGlasses file
+                | _, None -> Error (DroppedFileRefusedErr $"{file.value}: not a library entry file")
+                | _, Some kind ->
                     this.readEntryFile kind file
-                    |> Result.map (fun envelope -> file, envelope)
-                    |> Result.mapError (function
-                        | DroppedFileRefusedErr _ as error -> error
-                        | error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+                    |> Result.map (fun envelope -> [ file, envelope ])
+                    |> Result.mapError (refusedAs file)
 
             let readResults = files |> List.map readFile
             let refusals =
@@ -536,7 +599,7 @@ module CatalogueImport =
             match refusals with
             | _ :: _ -> Error (DroppedFileRefusedErr (String.concat "\n" refusals))
             | [] ->
-                let entries = readResults |> List.choose (function Ok entry -> Some entry | Error _ -> None)
+                let entries = readResults |> List.collect (function Ok read -> read | Error _ -> [])
                 entries
                 |> List.fold (fun result (file, envelope) ->
                     result |> Result.bind (fun ((seen : Map<LibraryEntryId * VersionNumber, FileName * LibraryEntryEnvelope>), unique) ->
@@ -654,7 +717,7 @@ module CatalogueImport =
             |> Result.bind (fun () -> choices |> List.fold (fun result choice -> result |> Result.bind (fun () -> validateReferences choice)) (Ok ()))
             |> Result.bind (fun () ->
                 let ordered =
-                    [ CategoryEntryKind; MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind ]
+                    [ CategoryEntryKind; MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; ItemModelEntryKind ]
                     |> List.collect (fun kind -> choices |> List.filter (fun choice -> choice.decision.kind = kind && choice.action <> RetireHeldEntry))
                 let retired = choices |> List.filter (fun choice -> choice.action = RetireHeldEntry)
                 let initial =
@@ -769,7 +832,7 @@ module CatalogueImport =
                 })
 
     /// Empty stores bundled with the CatalogueImportProxy that fills them (spec 0050 §3.4).
-    /// Read the imported catalogue through the four store proxies; equality is by reference.
+    /// Read the imported catalogue through the five store proxies; equality is by reference.
     [<ReferenceEquality>]
     type InMemoryCatalogueStores =
         {
@@ -778,6 +841,8 @@ module CatalogueImport =
             materials : MaterialProxy
             samples : SampleProxy
             libraryEntries : LibraryProxy
+            /// The item models the import pushed through `saveItemModel` (spec 0050 S7.1).
+            itemModels : ItemModelProxy
         }
 
     type private ImportEntryState =
@@ -811,6 +876,7 @@ module CatalogueImport =
             let materials = MaterialProxy.createInMemory (samplesReferencing samples)
             let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
             let presets = Library.createInMemory ()
+            let itemModels = ItemModelProxy.createInMemory ()
 
             let categoryReason (e : CategoryError) : string =
                 match e with
@@ -842,6 +908,14 @@ module CatalogueImport =
                 | SourceEntryKind -> content.toSourcePreset |> Result.map SourceItem |> pushDecoded savePreset
                 | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map PolarizerItem |> pushDecoded savePreset
                 | DetectorEntryKind -> content.toDetectorPreset |> Result.map DetectorItem |> pushDecoded savePreset
+                | ItemModelEntryKind ->
+                    content.toItemModel |> pushDecoded (fun entry ->
+                        let itemModel : ItemModelVersion =
+                            {
+                                version = content.version
+                                entry = entry
+                            }
+                        itemModels.saveItemModel itemModel |> Result.mapError (fun error -> ImportRejectedErr error.describe))
 
             let proxy : CatalogueImportProxy =
                 {
@@ -859,6 +933,20 @@ module CatalogueImport =
                     heldUserEntries = fun () ->
                         entries.Value |> Map.toList |> List.map (fun (_, state) -> state.heldEntry)
                         |> List.filter (fun held -> held.provenance.protection = UserManaged) |> Ok
+                    pulledRecordsOf = fun source ->
+                        entries.Value |> Map.toList |> List.collect (fun (_, state) -> state.envelopes)
+                        |> List.choose (fun envelope ->
+                            match envelope.content.provenance with
+                            | SourcePullProvenance pull when pull.source = source ->
+                                let record : PulledRecord =
+                                    {
+                                        version = envelope.libraryVersionRef
+                                        pull = pull
+                                    }
+                                Some record
+                            | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | SourcePullProvenance _
+                            | ForkProvenance _ | FitProvenance _ | FileImportProvenance _ -> None)
+                        |> PulledRecord.inRecordOrder |> Ok
                     pinEntryVersion = fun id version ->
                         let envelopeOpt =
                             entries.Value |> Map.tryFind id
@@ -883,7 +971,7 @@ module CatalogueImport =
                                             version = version
                                         }
                                     samples.pinSampleVersion sampleVersion |> Result.mapError (sampleReason >> ImportRejectedErr))
-                            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind -> Ok ()
+                            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind | ItemModelEntryKind -> Ok ()
                     putEntryVersion = fun put ->
                         let envelope = put.envelope
                         let content = envelope.content
@@ -941,4 +1029,5 @@ module CatalogueImport =
                 materials = materials
                 samples = samples
                 libraryEntries = presets.proxy
+                itemModels = itemModels
             }

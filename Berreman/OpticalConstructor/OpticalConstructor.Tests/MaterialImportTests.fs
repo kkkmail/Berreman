@@ -2,6 +2,9 @@ namespace OpticalConstructor.Tests
 
 open System.IO
 open System.Numerics
+open System.Text
+open System.Globalization
+open Softellect.Sys.Primitives
 open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Fields
@@ -11,6 +14,8 @@ open Analytics.Variables
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Storage.MaterialImport
 open Xunit
 
@@ -109,12 +114,15 @@ module MaterialImportTests =
 
     /// A tabulated import is axis data (spec 0050 step 1, 001 §B): one isotropic dispersive
     /// segment over the sample range, view-only (a table is not editable term data), and
-    /// `properties` IS `complexity.toProperties` (the seed invariant).
+    /// `properties` IS its physics' `complexity.toProperties` (the seed invariant).
     let private assertViewOnlyTabulatedSegment (fixture : TabulatedFixture) (imported : Result<MaterialEntry, ImportError>) =
         match imported with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
-            let c = entry.complexity
+            let c =
+                match entry.physics with
+                | ComplexityPhysics complexity -> complexity
+                | CrystalParameterPhysics crystal -> failwith $"expected a complexity physics, got %A{crystal}"
             match c.eps with
             | EpsWithDispValue (IsotropicDispersive [ segment ]) ->
                 let lower = segment.wavelengthInterval.lower.value
@@ -165,8 +173,8 @@ module MaterialImportTests =
         match imported with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
-            match entry.complexity with
-            | { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } ->
+            match entry.physics with
+            | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } ->
                 Assert.Equal<TabulatedInterpolation>(LinearInWaveLengthClamped, table.interpolation)
                 Assert.Equal(List.length fixture.samples, table.wavelengths.Length)
                 Assert.Equal(List.length fixture.samples, table.n.Length)
@@ -189,9 +197,10 @@ module MaterialImportTests =
     /// The imported entry MUST be editable (spec 0033 step 025): a complexity whose
     /// eps is the dispersive segment tree (`EpsWithDispValue`).
     let private assertEditableDispersive (entry : MaterialEntry) =
-        match entry.complexity.eps with
-        | EpsWithDispValue _ -> ()
-        | EpsWithoutDispValue _ -> Assert.Fail "expected a dispersive EpsWithDispValue-backed complexity"
+        match entry.physics with
+        | ComplexityPhysics { eps = EpsWithDispValue _ } -> ()
+        | ComplexityPhysics { eps = EpsWithoutDispValue _ }
+        | CrystalParameterPhysics _ -> Assert.Fail "expected a dispersive EpsWithDispValue-backed complexity"
 
     /// Import a formula fixture and pin the evaluated index (via the entry's
     /// engine `getEps` path) against the published-formula reference `expectedN`
@@ -228,8 +237,8 @@ module MaterialImportTests =
         match (readYaml "formula2.yml").importMaterial with
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
-            match entry.complexity with
-            | { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } ->
+            match entry.physics with
+            | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } ->
                 Assert.Equal(toWaveLength Micrometer (UnitMagnitude 0.3), segment.wavelengthInterval.lower)
                 Assert.Equal(toWaveLength Micrometer (UnitMagnitude 2.5), segment.wavelengthInterval.upper)
             | other -> Assert.Fail($"expected a single isotropic dispersive segment, got {other}")
@@ -299,3 +308,389 @@ module MaterialImportTests =
             let w = toWaveLength Nanometer (UnitMagnitude 500.0) // a shared sample of both tables
             Assert.True(closeC 1e-6 (epsAt entry w) (epsAt back w), "round-trip n,k at 500 nm")
         | Error e -> Assert.Fail($"{e}")
+
+    [<Fact>]
+    let ``the refractiveindex.info catalog lists each page as a hit named by its book and page`` () =
+        let fixtureHits : MaterialSourceHit list =
+            [
+                { record = MaterialSourceRecordId "main/Si/nk/Test.yml"; name = EntryName "Si (Silicon), Test 2026: n,k 0.25–0.70 µm" }
+                { record = MaterialSourceRecordId "glass/test/BK7/nk/Test.yml"; name = EntryName "BK7 (test), Test 2026: n 0.3–2.5 µm" }
+            ]
+        match (RefractiveIndexInfoCatalogText (readFixture "catalog-nk.yml")).hits with
+        | Ok hits -> Assert.Equal<MaterialSourceHit list>(fixtureHits, hits)
+        | Error e -> Assert.Fail(e.describe)
+
+        let unnamedPage =
+            RefractiveIndexInfoCatalogText
+                "- SHELF: main\n  name: \"MAIN\"\n  content:\n    - BOOK: Ge\n      name: \"Ge (Germanium)\"\n      content:\n        - PAGE: Bare\n          data: \"main/Ge/nk/Bare.yml\"\n"
+        let unnamedHits : MaterialSourceHit list =
+            [ { record = MaterialSourceRecordId "main/Ge/nk/Bare.yml"; name = EntryName "Ge (Germanium), Bare" } ]
+        match unnamedPage.hits with
+        | Ok hits -> Assert.Equal<MaterialSourceHit list>(unnamedHits, hits)
+        | Error e -> Assert.Fail(e.describe)
+
+        let headerOnly =
+            RefractiveIndexInfoCatalogText
+                "# this file is part of refractiveindex.info database\n# refractiveindex.info database is in the public domain\n# copyright and related rights waived via CC0 1.0\n"
+        match headerOnly.hits with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a catalog of header comments alone: expected NoDataErr, got {e.describe}")
+        | Ok hits -> Assert.Fail($"a catalog of header comments alone: expected NoDataErr, got {List.length hits} hit(s)")
+
+    [<Fact>]
+    let ``a page's references are its citation, a block's lines joined`` () =
+        Assert.Equal<EntryCitation option>(
+            Some (EntryCitation "Test fixture — minimal refractiveindex.info-style tabulated page (NOT real Si data)."),
+            (readYaml "Si.yml").referencesOpt)
+
+        let blockPage =
+            RefractiveIndexInfoText
+                "REFERENCES: |\n    A. Author and B. Author,\n    Test optical constants,\n    J. Test 1, 1 (2026)\nCOMMENTS: \"block test\"\nDATA:\n  - type: tabulated n\n    data: |\n      0.5 1.5\n"
+        Assert.Equal<EntryCitation option>(
+            Some (EntryCitation "A. Author and B. Author, Test optical constants, J. Test 1, 1 (2026)"),
+            blockPage.referencesOpt)
+
+        let unreferencedPage =
+            RefractiveIndexInfoText "COMMENTS: \"no references\"\nDATA:\n  - type: tabulated n\n    data: |\n      0.5 1.5\n"
+        Assert.Equal<EntryCitation option>(None, unreferencedPage.referencesOpt)
+
+    [<Fact>]
+    let ``every import error renders its condition and its payload`` () =
+        let errors : (ImportError * string) list =
+            [
+                MalformedYamlErr "a tab before the DATA key", "the page is malformed: a tab before the DATA key"
+                MalformedCsvErr "row 3 has one column", "the CSV is malformed: row 3 has one column"
+                NoDataErr "no tabulated rows found", "the file holds no data: no tabulated rows found"
+                UnsupportedFormulaErr (RiiFormulaNumber 8, "a rational transform"), "formula 8 is not supported: a rational transform"
+                MalformedSourceFileErr "line 9 holds 6 values where the header names 7 columns",
+                "the source file is malformed: line 9 holds 6 values where the header names 7 columns"
+            ]
+        for error, rendered in errors do
+            Assert.Equal(rendered, error.describe)
+        let texts = errors |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal(List.length texts, List.length (List.distinct texts))
+
+    /// One row of `fixtures/ptb-Co.txt` written out by hand: its sample (λ in nm, 1 − δ, β) and its 3-sigma bounds
+    /// (spec 0050 S13.2).
+    type private PtbBoundedSample =
+        {
+            sample : TabulatedSample
+            nLow : float
+            nHigh : float
+            kLow : float
+            kHigh : float
+        }
+
+    let private ptbCoRows : PtbBoundedSample list =
+        [
+            { sample = { magnitude = UnitMagnitude 8.0; n = 0.96788; k = 0.02267 }; nLow = 0.96772; nHigh = 0.96804; kLow = 0.02253; kHigh = 0.0228 }
+            { sample = { magnitude = UnitMagnitude 11.2; n = 0.95225; k = 0.05349 }; nLow = 0.95194; nHigh = 0.95256; kLow = 0.05327; kHigh = 0.05371 }
+            { sample = { magnitude = UnitMagnitude 25.0; n = 0.92771; k = 0.10418 }; nLow = 0.92583; nHigh = 0.92962; kLow = 0.10319; kHigh = 0.10517 }
+        ]
+
+    let private ptbCoTable : TabulatedFixture = { waveLengthUnit = Nanometer; samples = ptbCoRows |> List.map _.sample }
+
+    /// The table of an imported entry's one isotropic segment, with no magnetic or active part.
+    let private importedTable (imported : Result<MaterialEntry, ImportError>) : TabulatedNkTable =
+        match imported with
+        | Ok { physics = ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]); magnetic = None; active = None } } -> table
+        | Ok entry -> failwith $"expected one isotropic segment carrying a TabulatedNK table, got %A{entry.physics}"
+        | Error e -> failwith e.describe
+
+    [<Fact>]
+    let ``a PTB OCDB record reads n as 1 - delta and k as beta, its 3-sigma bounds as one-sigma uncertainties`` () =
+        let record = PtbOcdbText (readFixture "ptb-Co.txt")
+        let imported = record.importMaterial
+        assertViewOnlyTabulatedSegment ptbCoTable imported
+        assertTableColumns ptbCoTable imported
+        match (importedTable imported).uncertaintyOpt with
+        | Some uncertainty ->
+            Assert.Equal(List.length ptbCoRows, uncertainty.sigmaN.Length)
+            Assert.Equal(List.length ptbCoRows, uncertainty.sigmaK.Length)
+            ptbCoRows
+            |> List.iteri (fun i row ->
+                let sigmaN = (row.nHigh - row.nLow) / 6.0
+                let sigmaK = (row.kHigh - row.kLow) / 6.0
+                Assert.True(abs (uncertainty.sigmaN.[i] - sigmaN) <= 1e-15, $"sigma n {i}: {uncertainty.sigmaN.[i]}, want {sigmaN}")
+                Assert.True(abs (uncertainty.sigmaK.[i] - sigmaK) <= 1e-15, $"sigma k {i}: {uncertainty.sigmaK.[i]}, want {sigmaK}"))
+        | None -> Assert.Fail "expected the record's 3-sigma bounds as one-sigma uncertainties"
+        match imported with
+        | Ok entry ->
+            Assert.Equal<EntryName>(EntryName "Imported (PTB OCDB)", entry.name)
+            Assert.Equal<CategoryId>(CategoryIds.semiconductor, entry.category)
+            Assert.Equal<EntryDescription option>(Some (EntryDescription "Imported tabulated n,k (PTB OCDB)."), entry.description)
+        | Error e -> Assert.Fail(e.describe)
+        Assert.Equal<EntryCitation option>(Some (EntryCitation "Optical constants for Co created by PTB"), record.headlineOpt)
+
+        // The same rows reversed under CRLF line endings: sorted by λ, each uncertainty with its sample.
+        let reversed =
+            PtbOcdbText (
+                "# Optical constants for Co created by PTB\r\n"
+                + "# The values are provided with their 3-sigma uncertainty bounds. HB: Higher Bound. LB: Lower Bound.\r\n"
+                + "#lambda/nm\t1-delta\tbeta\t1-delta_LB\t1-delta_HB\tbeta_LB\tbeta_HB\r\n"
+                + "25.0\t0.92771\t0.10418\t0.92583\t0.92962\t0.10319\t0.10517\r\n"
+                + "11.2\t0.95225\t0.05349\t0.95194\t0.95256\t0.05327\t0.05371\r\n"
+                + "8.0\t0.96788\t0.02267\t0.96772\t0.96804\t0.02253\t0.0228\r\n")
+        Assert.True((importedTable reversed.importMaterial = importedTable imported), "the reversed rows read into the fixture's table")
+
+    /// A malformed PTB OCDB text and the word its refusal names (spec 0050 S13.2).
+    type private RefusedPtbText =
+        {
+            label : string
+            text : PtbOcdbText
+            named : string
+        }
+
+    [<Fact>]
+    let ``a PTB OCDB record without bounds has no uncertainty, and a malformed record is refused`` () =
+        let headline = "# Optical constants for Ru created by PTB\n# n = (1-delta) - (i*beta)\n"
+        let sigmaLine = "# The values are provided with their 3-sigma uncertainty bounds. HB: Higher Bound. LB: Lower Bound.\n"
+        let boundedHeader = "#lambda/nm\t1-delta\tbeta\t1-delta_LB\t1-delta_HB\tbeta_LB\tbeta_HB\n# ------------------------\n"
+        let boundedRow = "13.5\t0.88\t0.017\t0.87\t0.89\t0.016\t0.018\n"
+
+        let withoutBounds = PtbOcdbText (headline + "#lambda/nm\t1-delta\tbeta\n# ------------------------\n13.5\t0.88\t0.017\n12.5\t0.91\t0.015\n")
+        let unbounded : TabulatedFixture =
+            {
+                waveLengthUnit = Nanometer
+                samples = [ { magnitude = UnitMagnitude 12.5; n = 0.91; k = 0.015 }; { magnitude = UnitMagnitude 13.5; n = 0.88; k = 0.017 } ]
+            }
+        assertViewOnlyTabulatedSegment unbounded withoutBounds.importMaterial
+        assertTableColumns unbounded withoutBounds.importMaterial
+        Assert.Equal<TabulatedNkUncertainty option>(None, (importedTable withoutBounds.importMaterial).uncertaintyOpt)
+
+        let refused : RefusedPtbText list =
+            [
+                { label = "a header without beta"; text = PtbOcdbText (headline + "#lambda/nm\t1-delta\n13.5\t0.88\n"); named = "beta" }
+                { label = "beta_LB alone"; text = PtbOcdbText (headline + sigmaLine + "#lambda/nm\t1-delta\tbeta\tbeta_LB\n13.5\t0.88\t0.017\t0.016\n"); named = "beta_HB" }
+                { label = "bounds without a sigma line"; text = PtbOcdbText (headline + boundedHeader + boundedRow); named = "sigma level" }
+                { label = "a row of six values"; text = PtbOcdbText (headline + sigmaLine + boundedHeader + boundedRow + "14.5\t0.85\t0.019\t0.84\t0.86\t0.018\n"); named = "line 7" }
+            ]
+        for case in refused do
+            match case.text.importMaterial with
+            | Error (MalformedSourceFileErr reason) -> Assert.True(reason.Contains(case.named), $"{case.label}: '{reason}' does not name {case.named}")
+            | Error e -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got {e.describe}")
+            | Ok _ -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got an entry")
+
+        match (PtbOcdbText (headline + sigmaLine + boundedHeader)).importMaterial with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a header without a row: expected NoDataErr, got {e.describe}")
+        | Ok _ -> Assert.Fail "a header without a row: expected NoDataErr, got an entry"
+
+    /// A malformed CXRO scattering-factor text and the line its refusal names (spec 0050 S13.2).
+    type private RefusedHenkeText =
+        {
+            label : string
+            text : HenkeScatteringText
+            named : string
+        }
+
+    [<Fact>]
+    let ``a CXRO scattering-factor file reads its energies and factors, leaving out the rows without f1`` () =
+        match (HenkeScatteringText (readFixture "si.nff")).factors with
+        | Ok factors ->
+            Assert.Equal<float list>([ 100.0; 200.0; 300.0 ], List.ofArray factors.energies)
+            Assert.Equal<float list>([ 10.0; 12.0; 13.0 ], List.ofArray factors.f1)
+            Assert.Equal<float list>([ 2.0; 1.0; 0.5 ], List.ofArray factors.f2)
+        | Error e -> Assert.Fail($"si.nff: {e.describe}")
+
+        let header = "E(eV)\tf1\tf2\n"
+        let refused : RefusedHenkeText list =
+            [
+                { label = "a header that is not CXRO's"; text = HenkeScatteringText "Energy\tf1\tf2\n100\t10\t2\n"; named = "line 1" }
+                { label = "a row that does not read"; text = HenkeScatteringText (header + "100\t10\t2\n200 x 1\n"); named = "line 3" }
+            ]
+        for case in refused do
+            match case.text.factors with
+            | Error (MalformedSourceFileErr reason) -> Assert.True(reason.Contains(case.named), $"{case.label}: '{reason}' does not name {case.named}")
+            | Error e -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got {e.describe}")
+            | Ok _ -> Assert.Fail($"{case.label}: expected MalformedSourceFileErr, got factors")
+
+        match (HenkeScatteringText header).factors with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a header alone: expected NoDataErr, got {e.describe}")
+        | Ok _ -> Assert.Fail "a header alone: expected NoDataErr, got factors"
+
+    /// An AGF equation the fact evaluates itself from C1 … Cn at λ in µm: n² or n (spec 0050 S13.2).
+    type private AgfEquation =
+        | SquaredIndexEquation of (float[] -> float -> float)
+        | PlainIndexEquation of (float[] -> float -> float)
+
+    /// One glass written out by hand: its name, its `NM` formula number, its `CD` coefficients and its AGF equation
+    /// (spec 0050 S13.2).
+    type private AgfGlassSample =
+        {
+            glassName : string
+            formulaNumber : int
+            coefficients : float[]
+            equation : AgfEquation
+        }
+
+        /// The glass as catalogue lines, each coefficient written so it reads back exactly.
+        member this.agfLines : string =
+            let values = this.coefficients |> Array.map (fun c -> c.ToString("R", CultureInfo.InvariantCulture)) |> String.concat " "
+            $"NM {this.glassName} {this.formulaNumber} 0 1.5 60.0 0 1\nCD {values}\n"
+
+    /// The AGF equations as OpticSim.jl evaluates them (`src/GlassCat/utilities.jl`), C1 the array's first entry.
+    let private schottSquared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 + c.[2] / l2 + c.[3] / pown l2 2 + c.[4] / pown l2 3 + c.[5] / pown l2 4
+
+    let private sellmeierSquared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        1.0 + (c |> Array.chunkBySize 2 |> Array.sumBy (fun term -> term.[0] * l2 / (l2 - term.[1])))
+
+    let private herzbergerIndex (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        let l = 1.0 / (l2 - 0.028)
+        c.[0] + c.[1] * l + c.[2] * l * l + c.[3] * l2 + c.[4] * pown l2 2 + c.[5] * pown l2 3
+
+    let private sellmeier2Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        1.0 + c.[0] + c.[1] * l2 / (l2 - c.[2] * c.[2]) + c.[3] * l2 / (l2 - c.[4] * c.[4])
+
+    let private handbook1Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] / (l2 - c.[2]) - c.[3] * l2
+
+    let private handbook2Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 / (l2 - c.[2]) - c.[3] * l2
+
+    let private sellmeier4Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 / (l2 - c.[2]) + c.[3] * l2 / (l2 - c.[4])
+
+    let private extendedSquared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        schottSquared c lam + c.[6] / pown l2 5 + c.[7] / pown l2 6
+
+    let private extended2Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        schottSquared c lam + c.[6] * pown l2 2 + c.[7] * pown l2 3
+
+    let private extended3Squared (c : float[]) (lam : float) : float =
+        let l2 = lam * lam
+        c.[0] + c.[1] * l2 + c.[2] * pown l2 2 + c.[3] / l2 + c.[4] / pown l2 2 + c.[5] / pown l2 3 + c.[6] / pown l2 4
+        + c.[7] / pown l2 5 + c.[8] / pown l2 6
+
+    /// `fixtures/test-glasses.agf`'s three glasses, in file order.
+    let private fixtureGlasses : AgfGlassSample list =
+        [
+            { glassName = "TEST-S1"; formulaNumber = 2; coefficients = [| 1.04; 0.006; 0.23; 0.02; 1.01; 103.6; 0.0; 0.0; 0.0; 0.0 |]; equation = SquaredIndexEquation (fun c lam -> sellmeierSquared c.[0..5] lam) }
+            { glassName = "TEST-SCHOTT"; formulaNumber = 1; coefficients = [| 2.56; -0.0106; 0.0283; 0.0011; -4.5e-5; 4.0e-6 |]; equation = SquaredIndexEquation schottSquared }
+            { glassName = "TEST-HERZ"; formulaNumber = 3; coefficients = [| 1.68; 0.0105; 0.0003; -0.0035; 1.0e-5; -2.0e-7 |]; equation = PlainIndexEquation herzbergerIndex }
+        ]
+
+    /// Test-local glasses of the formulas the fixture leaves out, Conrady aside (its λ^3.5 is refused).
+    let private formulaGlasses : AgfGlassSample list =
+        [
+            { glassName = "TEST-F4"; formulaNumber = 4; coefficients = [| 0.1; 1.2; 0.09; 0.5; 9.0 |]; equation = SquaredIndexEquation sellmeier2Squared }
+            { glassName = "TEST-F6"; formulaNumber = 6; coefficients = [| 0.7; 0.005; 0.4; 0.015; 0.2; 0.03; 0.8; 100.0 |]; equation = SquaredIndexEquation sellmeierSquared }
+            { glassName = "TEST-F7"; formulaNumber = 7; coefficients = [| 2.3; 0.012; 0.025; 0.011 |]; equation = SquaredIndexEquation handbook1Squared }
+            { glassName = "TEST-F8"; formulaNumber = 8; coefficients = [| 1.4; 0.95; 0.012; 0.009 |]; equation = SquaredIndexEquation handbook2Squared }
+            { glassName = "TEST-F9"; formulaNumber = 9; coefficients = [| 1.3; 1.0; 0.01; 0.8; 100.0 |]; equation = SquaredIndexEquation sellmeier4Squared }
+            { glassName = "TEST-F10"; formulaNumber = 10; coefficients = [| 2.27; -0.0101; 0.0109; 0.000176; -9.7e-6; 5.8e-7; 1.0e-8; -2.0e-10 |]; equation = SquaredIndexEquation extendedSquared }
+            { glassName = "TEST-F11"; formulaNumber = 11; coefficients = [| 0.6; 0.005; 0.4; 0.015; 0.3; 0.03; 0.2; 50.0; 0.1; 120.0 |]; equation = SquaredIndexEquation sellmeierSquared }
+            { glassName = "TEST-F12"; formulaNumber = 12; coefficients = [| 2.27; -0.0101; 0.0109; 0.000176; -9.7e-6; 5.8e-7; -0.0002; 0.00001 |]; equation = SquaredIndexEquation extended2Squared }
+            { glassName = "TEST-F13"; formulaNumber = 13; coefficients = [| 2.25; -0.009; -0.0001; 0.011; 0.0002; -8.0e-6; 6.0e-7; 1.0e-8; -2.0e-10 |]; equation = SquaredIndexEquation extended3Squared }
+        ]
+
+    /// The imported glasses match their samples in order: name, glass category, editable term data, and n² (or n) of
+    /// the AGF equation within 1e-12 at every λ in µm.
+    let private assertGlassesMatch (samples : AgfGlassSample list) (samplesMkm : float list) (imported : Result<MaterialEntry list, ImportError>) =
+        match imported with
+        | Error e -> Assert.Fail(e.describe)
+        | Ok glasses ->
+            Assert.Equal<EntryName list>(samples |> List.map (fun sample -> EntryName sample.glassName), glasses |> List.map _.name)
+            for sample, glass in List.zip samples glasses do
+                Assert.Equal<CategoryId>(CategoryIds.glass, glass.category)
+                assertEditableDispersive glass
+                for lam in samplesMkm do
+                    let eps = epsAt glass (toWaveLength Micrometer (UnitMagnitude lam))
+                    match sample.equation with
+                    | SquaredIndexEquation equation ->
+                        let want = Complex.create (equation sample.coefficients lam) 0.0
+                        Assert.True(closeC 1e-12 eps want, $"{sample.glassName} at {lam} µm: n² {eps}, want {want}")
+                    | PlainIndexEquation equation ->
+                        let n = Complex.Sqrt eps
+                        let want = Complex.create (equation sample.coefficients lam) 0.0
+                        Assert.True(closeC 1e-12 n want, $"{sample.glassName} at {lam} µm: n {n}, want {want}")
+
+    [<Fact>]
+    let ``a glass catalogue's glasses lower through MaterialImport's formulas to the AGF equations`` () =
+        let catalogue = GlassCatalogueText (readFixture "test-glasses.agf")
+        assertGlassesMatch fixtureGlasses [ 0.4; 0.5876; 1.0 ] catalogue.importGlasses
+        let descriptions : EntryDescription option list =
+            [
+                Some (EntryDescription "Imported Sellmeier 1 glass (AGF formula 2).")
+                Some (EntryDescription "Imported Schott glass (AGF formula 1).")
+                Some (EntryDescription "Imported Herzberger glass (AGF formula 3).")
+            ]
+        match catalogue.importGlasses with
+        | Ok glasses -> Assert.Equal<EntryDescription option list>(descriptions, glasses |> List.map _.description)
+        | Error e -> Assert.Fail(e.describe)
+
+        let formulas = GlassCatalogueText ("CC test-local glasses\n" + (formulaGlasses |> List.map _.agfLines |> String.concat ""))
+        assertGlassesMatch formulaGlasses [ 0.5876 ] formulas.importGlasses
+
+    [<Fact>]
+    let ``a glass catalogue reads in UTF-8 or UTF-16 and takes each glass's wavelength range`` () =
+        let text = readFixture "test-glasses.agf"
+        let intervalOf (glass : MaterialEntry) : WaveLengthInterval =
+            match glass.physics with
+            | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } -> segment.wavelengthInterval
+            | other -> failwith $"{glass.name.value}: expected a single isotropic dispersive segment, got %A{other}"
+        let micrometers (lower : float) (upper : float) : WaveLengthInterval =
+            { lower = toWaveLength Micrometer (UnitMagnitude lower); upper = toWaveLength Micrometer (UnitMagnitude upper) }
+        let content (imported : Result<MaterialEntry list, ImportError>) =
+            match imported with
+            | Ok glasses -> glasses |> List.map (fun glass -> (glass.name, glass.description, glass.physics))
+            | Error e -> failwith e.describe
+
+        match (GlassCatalogueText text).importGlasses with
+        | Ok [ s1; schott; herz ] ->
+            Assert.Equal(micrometers 0.3 2.5, intervalOf s1)
+            Assert.Equal(micrometers 0.36 1.5, intervalOf schott)
+            Assert.Equal(micrometers 0.0 0.0, intervalOf herz)
+        | Ok glasses -> Assert.Fail($"expected three glasses, got {List.length glasses}")
+        | Error e -> Assert.Fail(e.describe)
+
+        let fileBytes = File.ReadAllBytes(Path.Combine(fixtures, "test-glasses.agf"))
+        let encodings : (string * byte[]) list =
+            [
+                "UTF-8 without a mark", fileBytes
+                "UTF-8 with its mark", Array.append (Encoding.UTF8.GetPreamble()) fileBytes
+                "UTF-16 little-endian with its mark", Array.append (Encoding.Unicode.GetPreamble()) (Encoding.Unicode.GetBytes text)
+                "UTF-16 little-endian without a mark", Encoding.Unicode.GetBytes text
+                "UTF-16 big-endian with its mark", Array.append (Encoding.BigEndianUnicode.GetPreamble()) (Encoding.BigEndianUnicode.GetBytes text)
+            ]
+        let expected = content (GlassCatalogueText text).importGlasses
+        for label, bytes in encodings do
+            let decoded = GlassCatalogueText.ofBytes (FileByteContent bytes)
+            Assert.True((decoded.value = text), $"{label}: the decoded text differs from the fixture's")
+            Assert.True((content decoded.importGlasses = expected), $"{label}: the glasses differ from the fixture's")
+
+    [<Fact>]
+    let ``a glass catalogue with a glass no formula lowers, or with no glass, is refused`` () =
+        let refusedText =
+            GlassCatalogueText (
+                "CC test-local glasses, two refused\n"
+                + "NM TEST-S1 2 516640 1.516 64.0 0 1\nCD 1.04 0.006 0.23 0.02 1.01 103.6 0 0 0 0\nLD 0.3 2.5\n"
+                + "NM TEST-CONRADY 5 520600 1.52 60.0 0 1\nCD 1.5 0.01 0.0002\nLD 0.4 1.0\n"
+                + "NM TEST-F14 14 530600 1.53 60.0 0 1\nCD 1.5 0.01 0.0002\n")
+        match refusedText.importGlasses with
+        | Error (MalformedSourceFileErr reason) ->
+            let lines = reason.Split('\n')
+            Assert.Equal(2, lines.Length)
+            Assert.Contains("TEST-CONRADY", lines.[0])
+            Assert.Contains("3.5", lines.[0])
+            Assert.Contains("TEST-F14", lines.[1])
+            Assert.Contains("formula 14", lines.[1])
+            Assert.DoesNotContain("TEST-S1", reason)
+        | Error e -> Assert.Fail($"expected MalformedSourceFileErr naming both glasses, got {e.describe}")
+        | Ok glasses -> Assert.Fail($"expected MalformedSourceFileErr naming both glasses, got {List.length glasses} glass(es)")
+
+        match (GlassCatalogueText "CC a test catalogue without a glass\n").importGlasses with
+        | Error (NoDataErr _) -> ()
+        | Error e -> Assert.Fail($"a CC line alone: expected NoDataErr, got {e.describe}")
+        | Ok glasses -> Assert.Fail($"a CC line alone: expected NoDataErr, got {List.length glasses} glass(es)")

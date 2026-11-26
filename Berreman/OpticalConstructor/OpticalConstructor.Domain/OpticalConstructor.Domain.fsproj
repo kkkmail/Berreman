@@ -43,18 +43,21 @@
         <Compile Include="Groups.fs" />
         <Compile Include="CurvedElements.fs" />
         <Compile Include="DispersionModels.fs" />
+        <Compile Include="CrystalPhysics.fs" />
         <Compile Include="MaterialLibrary.fs" />
         <!-- Spec 0027 (024): elevated ElementId + the Library (Sample/Source/Detector/Polarizer
              presets), the grouping-tree representations, and the mock LibraryProxy (functional-proxy
              seam). Depends on MaterialLibrary, Placement.CatalogueKind, and the engine
              WaveLength/Thickness. -->
         <Compile Include="ElementId.fs" />
+        <Compile Include="ItemModels.fs" />
         <Compile Include="LibraryEntryFiles.fs" />
         <Compile Include="CatalogueFiles.fs" />
         <Compile Include="EntryTextDiff.fs" />
         <Compile Include="Kit.fs" />
         <Compile Include="KitFolders.fs" />
         <Compile Include="KitHistory.fs" />
+        <Compile Include="KitArchive.fs" />
         <!-- Spec 0027 (024) Phase 3/4: the pure MM/SV propagation pipeline — ideal-polarizer Mueller
              matrices (constants), the sample's Mueller matrix from the EXISTING engine, SV propagation,
              the rotating-analyzer intensity curve (the Malus proof), and the ellipsometer Ψ/Δ readout.
@@ -109,25 +112,22 @@
              Facets/FacetBuckets, MaterialLibrary, ElementId (Library), DispersionModels
              and MaterialComplexityEditor above. -->
         <Compile Include="LibraryFacets.fs" />
-        <!-- Spec 0038 Part H (step 020): the entry-lifecycle foundation — VersionNumber,
-             the Material/Sample version ids, EntryLifecycle, the cross-store VersionRef,
-             and the ONE pure version-creation decision rule
-             (decideVersioning) the material/sample stores (steps 21/22) share. Pure and
-             Avalonia-free; depends only on MaterialLibrary (MaterialId) and ElementId's
-             Library (SampleId) above. -->
+        <!-- Spec 0038 Part H (step 020): the entry-lifecycle foundation — EntryLifecycle, PinState
+             and the ONE pure version-creation decision rule (decideVersioning) the stores and the
+             setups share. Pure and Avalonia-free. -->
         <Compile Include="Lifecycle.fs" />
-        <!-- Spec 0038 Part I (step 025): the Experiments domain — grown so an `Experiment` carries an
-             ordered `ElementDescriptor` setup (kind + placement/orientation summary + versioned
-             `VersionRef` binding, sample/source optional, detector included), an optional
-             per-experiment `DataAttachment`. Moved out of `ElementId.fs` to here because the
-             descriptor binding reuses the step-020 `VersionRef` (`Lifecycle.fs`, above); nothing between
-             `ElementId.fs` and here references `Experiments`, so the module name is unchanged. -->
+        <!-- Spec 0038 Part I (step 025); spec 0050 S8.2: the Experiments domain — an `Experiment`
+             references the kit setup revision it was recorded over, with an optional per-experiment
+             `DataAttachment`. -->
         <Compile Include="Experiments.fs" />
         <!-- Spec 0046: the Main-scene BEAM TREE — which beam each element sits on (main / the reflected
              ray of a partially-reflecting element), the layout walk over RayModel.crossElement, the
              drawn ray segments, the light paths, and what the detectors let an experiment capture.
-             After Experiments.fs (MeasurementMode) and before Scene.fs (which persists BeamHost). -->
+             After Experiments.fs (MeasurementMode). -->
         <Compile Include="BeamLayout.fs" />
+        <Compile Include="Setups.fs" />
+        <Compile Include="NamingTemplates.fs" />
+        <Compile Include="SetupGrids.fs" />
         <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
              registered MaterialProxy write-seam (STORE_XDUO_0001). The MaterialProxy record
              stays re-typed in place in MaterialLibrary.fs; its createInMemory augmentation
@@ -140,14 +140,13 @@
              decideVersioning rule from Lifecycle.fs above. Mirrors
              MaterialStore.fs. -->
         <Compile Include="SampleStore.fs" />
+        <Compile Include="MaterialSources.fs" />
+        <Compile Include="HenkeCompounds.fs" />
         <Compile Include="CatalogueImport.fs" />
+        <Compile Include="MaterialSourcePulls.fs" />
         <Compile Include="KitLibrary.fs" />
-        <!-- Spec 0038: SceneName / SceneSnapshot (elements + table view state + snap mode, all pure data) /
-             SceneStoreError. Depends on Library (ElementId), Placement
-             (ElementPlacement / CatalogueKind) and Table (TableViewState) above. -->
+        <!-- Spec 0038: snap mode, pure data. -->
         <Compile Include="Scene.fs" />
-        <!-- The named experiment snapshot shown by the solver hand-off (spec 0050 S4.3). -->
-        <Compile Include="ExperimentCollectionStore.fs" />
         <!-- Spec 0038 Part I (step 031): the pure OUT-OF-BAND dispersion diagnostic — given the
              materials reachable through an element's binding and the wavelengths an experiment
              requests (a fixed λ, or a wavelength sweep's full range), flag every reachable material
@@ -167,20 +166,6 @@
              and Experiments/Library (VariableParameter/VariableRange/DetectorKind). Nothing else in the
              Domain depends on it, so it compiles last. -->
         <Compile Include="MeasuredData.fs" />
-        <!-- Spec 0038 Part I (035, ADD_CONTRACT STORE_XDUO_0006): the measured-data LOAD seam —
-             the DECLARED [<ReferenceEquality>] ExperimentDataProxy (tryLoadIntensity /
-             tryLoadEllipsometric : DataAttachment -> Result<series, ExperimentDataError>), the IO
-             boundary the pure step-34 MeasuredData parsers sit behind. Declared only (no disk read);
-             the real file-backed create lands in a later IMPLEMENT_CONTRACT in OpticalConstructor.Storage.
-             Names Kit (DataAttachment, step 132) and MeasuredData (series + error types, step 034),
-             so it compiles after MeasuredData.fs; nothing in the Domain depends on it. -->
-        <Compile Include="ExperimentDataProxy.fs" />
-        <!-- Spec 0038 Part L (037): the pure orchestration that loads + validates an experiment's
-             attached data file through the ExperimentDataProxy (in the shape its detector kind fixes)
-             and MeasuredData.validateAgainstExperiment. Reused by the inverse bay's per-experiment
-             attach status and the future SolverHandoffWindow. Names Library / Experiments / MeasuredData
-             / ExperimentData, so it compiles LAST; nothing in the Domain depends on it. -->
-        <Compile Include="ExperimentDataLoad.fs" />
         <!-- Spec 0042 (001): the pure Mueller-reconstruction primitives — the elevated `Retardance`
              phase-delay DU and `retarderMueller` (an ideal wave-plate's Mueller matrix, built ONLY from
              the existing `Propagation.muellerOfRows` + `rotateMueller` seams above). Compiled LAST so it
@@ -194,6 +179,19 @@
              material-agnostic: it names no crystal class and no named material, so the Domain still needs
              no reference to the OpticalProperties project. -->
         <Compile Include="MuellerInverse.fs" />
+        <Compile Include="ItemEvaluation.fs" />
+        <Compile Include="ImportProfiles.fs" />
+        <Compile Include="Studies.fs" />
+        <Compile Include="ExperimentDataProxy.fs" />
+        <Compile Include="ExperimentDataLoad.fs" />
+        <Compile Include="DataSplits.fs" />
+        <Compile Include="ExperimentMatrices.fs" />
+        <Compile Include="PrefitChecks.fs" />
+        <Compile Include="StudyForward.fs" />
+        <Compile Include="FitRuns.fs" />
+        <Compile Include="StudyPublishing.fs" />
+        <Compile Include="PlannerSymmetry.fs" />
+        <Compile Include="MeasurementPlanner.fs" />
     </ItemGroup>
 
     <ItemGroup>

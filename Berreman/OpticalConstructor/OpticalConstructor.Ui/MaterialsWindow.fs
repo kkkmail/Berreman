@@ -13,9 +13,9 @@ open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui.ImportDialogView
 
-/// Browses or selects live materials, launches editors, and previews dropped entry files for import.
-/// Retarget replaces the Select session; closing cancels a pending session exactly once.
-/// Spec 0038 steps 013/016 (UICOMP_XDUO_0009); spec 0050 S3.2.
+/// Browses or selects live materials, launches editors and Online sources, and previews dropped entry files or an
+/// imported glass catalogue for import. Retarget replaces the Select session; closing cancels a pending session exactly once.
+/// Spec 0038 steps 013/016 (UICOMP_XDUO_0009); spec 0050 S3.2, S13.1, S13.2.
 type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, catalogueImports : CatalogueImportContext, ?mode : LibraryWindowMode<MaterialEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold) as this =
     inherit HostWindow()
 
@@ -66,6 +66,11 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, cata
                 openCategoryEditor =
                     fun () ->
                         openBrowse WindowLauncher.CategoryEditorKey (fun () -> CategoryEditorWindow(categories) :> Window)
+                // A pull's or an update's caption becomes this window's import status (spec 0050 S13.1).
+                openOnlineSources =
+                    fun () ->
+                        openBrowse WindowLauncher.MaterialSourcesWindowKey (fun () ->
+                            MaterialSourcesWindow(catalogueImports, fun summary -> dispatch (MaterialsWindowView.MaterialsImportApplied summary)) :> Window)
                 requestClose = this.Close
             }
         Program.mkProgram
@@ -90,3 +95,7 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, cata
     /// Decide dropped entry files and open their import choices without applying them.
     member _.DropEntryFiles (files : FileName list) : unit =
         dispatch (MaterialsWindowView.DropMaterialEntryFiles files)
+
+    /// Decide a glass catalogue and open its import choices, the message the verb sends (spec 0050 S13.2).
+    member _.ImportGlassCatalogue (file : FileName) : unit =
+        dispatch (MaterialsWindowView.ImportGlassCatalogue file)

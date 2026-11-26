@@ -86,6 +86,7 @@ module SchemaValidation =
                 | PolarizerEntryKind -> "library-polarizer.schema.json"
                 | DetectorEntryKind -> "library-detector.schema.json"
                 | CategoryEntryKind -> "library-category.schema.json"
+                | ItemModelEntryKind -> "library-item-model.schema.json"
             FileName (Path.Combine("schema", kindFile))
 
     let private materialEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (MaterialEntryKind.schemaFile.tryLoadLibrarySchema ())
@@ -94,6 +95,7 @@ module SchemaValidation =
     let private polarizerEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (PolarizerEntryKind.schemaFile.tryLoadLibrarySchema ())
     let private detectorEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (DetectorEntryKind.schemaFile.tryLoadLibrarySchema ())
     let private categoryEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (CategoryEntryKind.schemaFile.tryLoadLibrarySchema ())
+    let private itemModelEntrySchema : Result<JsonSchema, StorageError> Lazy = lazy (ItemModelEntryKind.schemaFile.tryLoadLibrarySchema ())
 
     /// Validate `element` against the entry schema of `kind` through `validateWith` (spec 0050 001 §B): a file
     /// of another kind fails here, and the caller MUST NOT bind an entry on `Error`.
@@ -106,6 +108,7 @@ module SchemaValidation =
             | PolarizerEntryKind -> polarizerEntrySchema
             | DetectorEntryKind -> detectorEntrySchema
             | CategoryEntryKind -> categoryEntrySchema
+            | ItemModelEntryKind -> itemModelEntrySchema
         validateWith schema element
 
     let private catalogueManifestSchemaFile : FileName = FileName (Path.Combine("schema", "library-catalogue.schema.json"))
@@ -131,9 +134,44 @@ module SchemaValidation =
     /// Validates an experiment file before its version is compared and its experiment binds (spec 0050 S4.3).
     let validateExperimentFile (element : JsonElement) : Result<unit, StorageError> = validateWith experimentFileSchema element
 
-    let private sceneFileSchemaFile : FileName = FileName (Path.Combine("schema", "setup.schema.json"))
+    let private setupFileSchemaFile : FileName = FileName (Path.Combine("schema", "setup.schema.json"))
 
-    let private sceneFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (sceneFileSchemaFile.tryLoadLibrarySchema ())
+    let private setupFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (setupFileSchemaFile.tryLoadLibrarySchema ())
 
-    /// Validates a setup file before its version is compared and its scene binds (spec 0050 S4.3).
-    let validateSceneFile (element : JsonElement) : Result<unit, StorageError> = validateWith sceneFileSchema element
+    /// Validates a setup file before its version is compared and its setup binds (spec 0050 S4.3, S8.2).
+    let validateSetupFile (element : JsonElement) : Result<unit, StorageError> = validateWith setupFileSchema element
+
+    let private itemFileSchemaFile : FileName = FileName (Path.Combine("schema", "item.schema.json"))
+
+    let private itemFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (itemFileSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates an item file before its version is compared and its item binds (spec 0050 S7.1).
+    let validateItemFile (element : JsonElement) : Result<unit, StorageError> = validateWith itemFileSchema element
+
+    let private studyFileSchemaFile : FileName = FileName (Path.Combine("schema", "study.schema.json"))
+
+    let private studyFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (studyFileSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates a study file before its version is compared and its study binds (spec 0050 S11.1).
+    let validateStudyFile (element : JsonElement) : Result<unit, StorageError> = validateWith studyFileSchema element
+
+    let private fitRunFileSchemaFile : FileName = FileName (Path.Combine("schema", "fitrun.schema.json"))
+
+    let private fitRunFileSchema : Result<JsonSchema, StorageError> Lazy = lazy (fitRunFileSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates a fit run file before its version is compared and its run binds (spec 0050 S11.3).
+    let validateFitRunFile (element : JsonElement) : Result<unit, StorageError> = validateWith fitRunFileSchema element
+
+    let private kitHistorySchemaFile : FileName = FileName (Path.Combine("schema", "kit-history.schema.json"))
+
+    let private kitHistorySchema : Result<JsonSchema, StorageError> Lazy = lazy (kitHistorySchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates the kit history file before its version is compared and its history binds (spec 0050 S5.1).
+    let validateKitHistory (element : JsonElement) : Result<unit, StorageError> = validateWith kitHistorySchema element
+
+    let private sourceSnapshotSchemaFile : FileName = FileName (Path.Combine("schema", "material-source-snapshot.schema.json"))
+
+    let private sourceSnapshotSchema : Result<JsonSchema, StorageError> Lazy = lazy (sourceSnapshotSchemaFile.tryLoadLibrarySchema ())
+
+    /// Validates a material source's snapshot stamp before its version is compared and its stamp binds (spec 0050 S13.1).
+    let validateSourceSnapshot (element : JsonElement) : Result<unit, StorageError> = validateWith sourceSnapshotSchema element

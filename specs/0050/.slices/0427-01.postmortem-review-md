@@ -1,0 +1,74 @@
+# Post-mortem review -- slice 0427, attempt 01
+
+Second review of `.slices/0427-01.postmortem-md` (agent-written), arc-watch event
+`01f4701a1de740ffad66c1131c1f7fef`, ESCALATE 2026-11-15T14:59:22Z, supervisor PID
+128572; the code judge escalated on cycle 2 and resolver `0427-resolver-01.md`
+confirmed. Recommendations only; implementation awaits the operator.
+
+## Verdict
+
+**Agree** on cause, owner (the product) and the need for an operator scope grant.
+Disagree on parts of the proposed verification and capture; see below.
+
+## Re-verified against current source
+
+- `StudyEngine.fs:337-356` `blackBoxShape` admits a fitted path only when it bears
+  at most one unknown matrix (`oneUnknownMatrix`). AT-1's QZ-then-LR runs bear two,
+  so `engineWith` returns `NonlinearStudyEngine`; `runFit` (`:1844-1848`) calls
+  `fitNonlinear`, whose `derivedGainOpt` (`:426-438`) refuses any anchored or
+  interpolated session gain. The measured error (log 40836) is exactly that refusal:
+  `'LP-LP' anchors its gain to LP-(AIR#0)-LP-2, LP-(AIR#0)-LP-2R`.
+- The linear engine already handles this shape: `objectSolvesWith` (`:1102-1157`)
+  fits each lone object from its own runs and `solveSeries` reconstructs a series'
+  combined matrix as a diagnostic, never as constituent coefficients. Selection is
+  stricter than the engine it routes to; that inconsistency is the defect.
+- The spec requires the fix, not a waiver: `.spec-md:373` chooses the engine by
+  whether the unknowns enter linearly, and 001 §L (line 435) lists the series
+  product check (M_comb against M_LR · M_QZ) as a check beside the constituent
+  fits. 0427's only authorized edit is `KitAcceptanceTests.fs`, so the worker
+  correctly stopped; no shortcut (fixed object, changed gains, dropped series runs,
+  bypassed dispatch) is acceptable.
+
+## Disagreements and additions
+
+1. **Repair criterion.** Stated precisely: a fitted path bearing two or more unknown
+   matrices is admitted to the linear engine only when every unknown-bearing item on
+   it is also fitted from lone runs in the same stage (structural coverage, as the
+   post-mortem says), so the path's rows feed only its series diagnostic. Without
+   that coverage, or with a repeated item (double pass) or a coupled/linked product,
+   it stays nonlinear; `StudyEngineTests.fs:765-794` must keep passing unchanged.
+2. **Supplemental verification is a new gate grant, not a check.** The post-mortem
+   adds whole `constructor-unit-tests` and `unit-tests` over
+   MuellerReconstructionTests/MuellerInverseTests, neither in `0427.gates`. Under the
+   operator's rules these run only if the operator names them. Recommended:
+   `constructor-unit-tests` through its own gate (it picks the whole suite,
+   `whole_suite: light`), because the repair edits `OpticalConstructor.Optimization`
+   and `OpticalConstructor.Tests`. Drop the BerremanTests selection: the repair does
+   not touch `MuellerReconstruction.fs` or `MuellerInverse.fs`.
+3. **Capture.** The resume reply must also be a committed `.manual/` file with the
+   next number, not only text in the ruling (operator rule, 2026-11-14): ruling
+   `030-step-0427-series-dispatch-recovery.md`, reply
+   `031-step-0427-operator-reply.md`.
+4. **First use of the rulings ledger.** `.rulings-jsonl` does not exist; no earlier
+   recovery used `rulings_cli`, all relied on `.manual/` files named in the operator
+   reply. Either route works; the ledger makes every role at the named steps read
+   the ruling automatically. The post-mortem's span `427-494` with the text
+   "additional repair authority is confined to 0427" is coherent: later steps read
+   it only as a preservation rule. The operator must run it outside any supervisor.
+
+## Proposed actions
+
+1. Operator decides whether to grant 0427 the repair scope:
+   `OpticalConstructor.Optimization/StudyEngine.fs` plus extensions of the three
+   existing `StudyEngineTests` facts the post-mortem names (no new identities).
+2. If granted: write `.manual/030` (ruling, `Binding ruling` section) and, if the
+   ledger route is chosen, register it with `rulings_cli append` as the post-mortem
+   gives.
+3. Implement the criterion in item 1 above in `engineWith`; extend the three
+   existing facts to cover automatic dispatch through `runFit` for ObjectStage and
+   JointStage with anchored and interpolated gains, and the retained refusals.
+4. Verify: the 26 gates of `0427.gates` as declared (ui-tests filtered to
+   StudyViewTests/DataStepTests, kit-acceptance to KitAcceptanceTests), plus
+   `constructor-unit-tests` if granted. Evidence under `.artifacts/0427-operator-repair/`.
+5. Operator commits; write `.manual/031-step-0427-operator-reply.md`; operator
+   commits it; resume normally with profile 1, without `--accept-current-slice`.

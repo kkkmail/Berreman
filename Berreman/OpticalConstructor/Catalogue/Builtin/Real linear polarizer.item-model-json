@@ -1,0 +1,34 @@
+{
+  "categoryOpt": null,
+  "contentHash": "01057efb7ad6736f4bb188ee29d181299d012e42d6cb2632dd130ef07311c57e",
+  "descriptionOpt": "A linear polarizer with an extinction ratio and an axis offset; at its defaults it is the ideal linear polarizer.",
+  "id": "940bda4e-db9c-4103-b59c-dab2f3ee5875",
+  "name": "Real linear polarizer",
+  "payload": {
+    "Case": "ItemModelPayload",
+    "Fields": [
+      {
+        "Case": "OpticalElementModel",
+        "Fields": [
+          {
+            "Case": "RealPolarizerModel",
+            "Fields": [
+              "ExtinctionRatioLeakage"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 7,
+    "version": 1
+  },
+  "version": 1
+}

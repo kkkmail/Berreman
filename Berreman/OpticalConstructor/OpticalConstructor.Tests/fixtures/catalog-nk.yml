@@ -1,0 +1,24 @@
+# this file is part of refractiveindex.info database
+# refractiveindex.info database is in the public domain
+# copyright and related rights waived via CC0 1.0
+
+- DIVIDER: "Test catalog"
+- SHELF: main
+  name: "MAIN - simple inorganic materials"
+  content:
+    - DIVIDER: "Si - Silicon"
+    - BOOK: Si
+      name: "Si (Silicon)"
+      content:
+        - PAGE: Test
+          name: "Test 2026: n,k 0.25–0.70 µm"
+          data: main/Si/nk/Test.yml
+- SHELF: glass
+  name: "GLASS - optical glass"
+  content:
+    - BOOK: BK7
+      name: "BK7 (test)"
+      content:
+        - PAGE: Test
+          name: "Test 2026: n 0.3–2.5 µm"
+          data: glass/test/BK7/nk/Test.yml

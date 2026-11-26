@@ -2,11 +2,13 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.Globalization
+open Microsoft.FSharp.Reflection
 open Xunit
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ExperimentDataLoad
 
 module KitTests =
 
@@ -67,6 +69,18 @@ module KitTests =
         Assert.Equal<ClockTime>(instant, kit.modified)
         Assert.Equal<KitNotes>(noNotes, kit.notes)
         Assert.Empty(kit.sendExclude)
+
+    [<Fact>]
+    let ``a kit's naming template keeps its text, and a new kit takes the standard one`` () : unit =
+        let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
+        let name = KitName "Optics: QZ/LR"
+        let author = KitAuthor "Test author"
+        let instant = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc))
+        let kit = KitFile.create id name author instant
+
+        Assert.Equal<string>("{obj1}", (NamingTemplate "{obj1}").value)
+        Assert.Equal<string>("{source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}", NamingTemplate.standard.value)
+        Assert.Equal<NamingTemplate>(NamingTemplate.standard, kit.namingTemplate)
 
     [<Fact>]
     let ``a new kit is named for its folder`` () : unit =
@@ -158,6 +172,23 @@ module KitTests =
             | Ok path -> Assert.Fail($"accepted an invalid kit path: '{path.value}'")
 
     [<Fact>]
+    let ``a kit path knows its folder, its leaf and whether it is the app's cache`` () : unit =
+        let run = KitRelativePath "data/raw/run 1.csv"
+        let raw = KitRelativePath "data/raw"
+        Assert.Equal<KitRelativePath option>(Some raw, run.parentOpt)
+        Assert.Equal<FileName>(FileName "run 1.csv", run.leafName)
+        Assert.Equal<KitPathRole>(KitContentPath, run.pathRole)
+
+        let kitJson = KitRelativePath ".kit-json"
+        Assert.Equal<KitRelativePath option>(None, kitJson.parentOpt)
+        Assert.Equal<FileName>(FileName ".kit-json", kitJson.leafName)
+
+        Assert.Equal<KitRelativePath>(KitRelativePath ".oc", KitRelativePath.appCacheFolder)
+        Assert.Equal<KitPathRole>(KitAppCachePath, KitRelativePath.appCacheFolder.pathRole)
+        Assert.Equal<KitPathRole>(KitAppCachePath, (KitRelativePath ".oc/lock").pathRole)
+        Assert.Equal<KitPathRole>(KitContentPath, (KitRelativePath ".ocx").pathRole)
+
+    [<Fact>]
     let ``every kit file kind renders its 001 extension and names its files`` () : unit =
         let kinds = [ ItemKitFile; SetupKitFile; ExperimentKitFile; StudyKitFile; FitRunKitFile ]
         let extensions =
@@ -203,13 +234,14 @@ module KitTests =
                 KitLockedErr exampleLockHolder, "the kit is open elsewhere: lab on BENCH-1 (process 4242) since 2026-11-03 12:00:00 UTC"
                 KitReadOnlyErr "writeKitFile", "the kit is open read-only: writeKitFile"
                 SnapshotExistsErr "library/entry@v1.material-json", "the kit already holds this library snapshot: library/entry@v1.material-json"
+                FitRunExistsErr "QZ-LR@20261101T120000Z.fitrun-json", "the kit already holds that fit run: QZ-LR@20261101T120000Z.fitrun-json"
             ]
 
         for error, expected in cases do
             Assert.Equal<string>(expected, error.describe)
 
         let descriptions = cases |> List.map (fun (error, _) -> error.describe)
-        Assert.Equal(10, descriptions |> List.distinct |> List.length)
+        Assert.Equal(11, descriptions |> List.distinct |> List.length)
 
     [<Fact>]
     let ``a data folder is the kit's data folder or a folder inside it`` () : unit =
@@ -314,6 +346,26 @@ module KitTests =
                 Assert.Equal<KitRelativePath option>(None, kitFolder.tryKitPathOf file)
 
     [<Fact>]
+    let ``two spellings of one kit folder share one canonical form`` () : unit =
+        let expected = KitFolder (FolderName "C:/KITS/OPTICS QZ")
+        let spellings =
+            [
+                KitFolder (FolderName @"C:\kits\Optics QZ\")
+                KitFolder (FolderName "C:/kits/Optics QZ")
+                KitFolder (FolderName "c:/KITS/optics qz/")
+            ]
+
+        for folder in spellings do
+            Assert.Equal<KitFolder>(expected, folder.canonical)
+
+        let canonicals = spellings |> List.map _.canonical |> List.distinct
+        Assert.Equal<KitFolder list>([ expected ], canonicals)
+
+        let other = KitFolder (FolderName "C:/kits/Optics QY")
+        Assert.NotEqual<KitFolder>(expected, other.canonical)
+        Assert.Equal<KitFolder>(KitFolder (FolderName "C:/KITS/OPTICS QY"), other.canonical)
+
+    [<Fact>]
     let ``an attachment records its data file's path and hash, and its status compares that hash with the file now`` () : unit =
         let path = KitRelativePath "data/a.csv"
         let sourceName = FileName "D:/lab/a.csv"
@@ -349,3 +401,329 @@ module KitTests =
         Assert.Equal<DataAttachmentStatus>(AttachedDataChanged changedHash, attachment.statusAgainst (Some changedFile))
         Assert.Equal<DataAttachmentStatus>(AttachedDataMissing, attachment.statusAgainst None)
         Assert.Equal<ContentHash>(originalHash, attachment.contentHash)
+
+    [<Fact>]
+    let ``an import profile name refuses a blank text, a row selection names every row or one key, and the two built-in names are the X,Y parsers'`` () : unit =
+        let intensity = ImportProfileName "Intensity series"
+        let ellipsometric = ImportProfileName "Ellipsometric series"
+
+        Assert.Equal<ImportProfileName option>(Some (ImportProfileName "Phone ROI CSV"), ImportProfileName.tryCreate "Phone ROI CSV")
+        for blank in [ ""; "  " ] do
+            Assert.Equal<ImportProfileName option>(None, ImportProfileName.tryCreate blank)
+        Assert.Equal<ImportProfileName>(intensity, ImportProfileName.intensitySeries)
+        Assert.Equal<ImportProfileName>(ellipsometric, ImportProfileName.ellipsometricSeries)
+
+        let keyed = KeyedDataRows (DataRowKey "CPL-(QZ#45)-CPL")
+        Assert.NotEqual<DataRowSelection>(AllDataRows, keyed)
+        match keyed with
+        | KeyedDataRows key -> Assert.Equal("CPL-(QZ#45)-CPL", key.value)
+        | AllDataRows -> Assert.Fail "a key selection must name its key"
+
+        Assert.Equal<ImportProfileName>(intensity, OpticalConstructor.Domain.Library.Intensity.builtInProfile)
+        Assert.Equal<ImportProfileName>(ellipsometric, OpticalConstructor.Domain.Library.Ellipsometer.builtInProfile)
+
+    [<Fact>]
+    let ``a point exclusion needs a point from 1 and a reason, and an attachment keeps one exclusion per point in point order`` () : unit =
+        let point1 = MappedPointNumber 1
+        let point2 = MappedPointNumber 2
+        let point3 = MappedPointNumber 3
+        let cosmicRay = ExclusionReason "cosmic ray"
+
+        Assert.Equal<MappedPointNumber option>(Some point1, MappedPointNumber.tryCreate 1)
+        Assert.Equal<MappedPointNumber option>(Some (MappedPointNumber 7), MappedPointNumber.tryCreate 7)
+        for below in [ 0; -1 ] do
+            Assert.Equal<MappedPointNumber option>(None, MappedPointNumber.tryCreate below)
+
+        Assert.Equal<ExclusionReason option>(Some cosmicRay, ExclusionReason.tryCreate "cosmic ray")
+        for blank in [ ""; "  " ] do
+            Assert.Equal<ExclusionReason option>(None, ExclusionReason.tryCreate blank)
+
+        // Spec 0050 S9.3: a test-local mapped attachment with no exclusion yet.
+        let unexcluded : MappedAttachment =
+            {
+                attachment =
+                    {
+                        path = KitRelativePath "data/run 1.csv"
+                        contentHash = ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    }
+                profile = ImportProfileName.intensitySeries
+                rows = AllDataRows
+                exclusions = []
+            }
+        let cosmicRayAt3 : PointExclusion = { point = point3; reason = cosmicRay }
+        let shutterAt1 : PointExclusion = { point = point1; reason = ExclusionReason "shutter" }
+        let strayLightAt3 : PointExclusion = { point = point3; reason = ExclusionReason "stray light" }
+
+        let excluded = (unexcluded.withExclusion cosmicRayAt3).withExclusion shutterAt1
+        Assert.Equal<PointExclusion list>([ shutterAt1; cosmicRayAt3 ], excluded.exclusions)
+
+        let replaced = excluded.withExclusion strayLightAt3
+        Assert.Equal<PointExclusion list>([ shutterAt1; strayLightAt3 ], replaced.exclusions)
+        Assert.Equal<MappedAttachment>(unexcluded, { replaced with exclusions = [] })
+
+        Assert.Equal<PointExclusion option>(Some strayLightAt3, replaced.tryFindExclusion point3)
+        Assert.Equal<PointExclusion option>(None, replaced.tryFindExclusion point2)
+
+        Assert.Equal<PointExclusion list>([ strayLightAt3 ], (replaced.withoutExclusion point1).exclusions)
+        Assert.Equal<MappedAttachment>(replaced, replaced.withoutExclusion point2)
+
+    /// A closed set's `all` is `cases` in order, every case of the union, tagged 1 to n and read back by `tryOfWire`,
+    /// with 0 and n + 1 refused, and each case renders its text (spec 0050 S9.2).
+    let private assertClosedSet<'Tag when 'Tag : equality>
+        (all : 'Tag list)
+        (tagOf : 'Tag -> int)
+        (tryOfWire : int -> 'Tag option)
+        (textOf : 'Tag -> string)
+        (cases : ('Tag * string) list)
+        : unit =
+        let count = List.length cases
+        Assert.Equal<'Tag list>(cases |> List.map fst, all)
+        Assert.Equal(count, FSharpType.GetUnionCases(typeof<'Tag>).Length)
+        Assert.Equal<int list>([ 1 .. count ], all |> List.map tagOf)
+
+        for case, text in cases do
+            Assert.Equal<'Tag option>(Some case, tryOfWire (tagOf case))
+            Assert.Equal<string>(text, textOf case)
+
+        for tag in [ 0; count + 1 ] do
+            Assert.Equal<'Tag option>(None, tryOfWire tag)
+
+    [<Fact>]
+    let ``the closed sets of an import profile round-trip their disk tags and render their texts`` () : unit =
+        [ CommaDelimiter, "comma"; SemicolonDelimiter, "semicolon"; TabDelimiter, "tab" ]
+        |> assertClosedSet DataDelimiter.all (fun delimiter -> delimiter.value) DataDelimiter.tryOfWire (fun delimiter -> delimiter.text)
+
+        [ HeaderOnFirstRow, "first row is a header"; NoHeaderRow, "no header row" ]
+        |> assertClosedSet HeaderRowChoice.all (fun header -> header.value) HeaderRowChoice.tryOfWire (fun header -> header.text)
+
+        [ ByteOrderMarkPresent, "byte-order mark"; ByteOrderMarkAbsent, "no byte-order mark" ]
+        |> assertClosedSet ByteOrderMark.all (fun mark -> mark.value) ByteOrderMark.tryOfWire (fun mark -> mark.text)
+
+        [
+            DegreeColumnUnit, "°"
+            RadianColumnUnit, "rad"
+            NanometerColumnUnit, "nm"
+            MicrometerColumnUnit, "µm"
+            ElectronVoltColumnUnit, "eV"
+            WavenumberColumnUnit, "cm⁻¹"
+        ]
+        |> assertClosedSet ScanColumnUnit.all (fun columnUnit -> columnUnit.value) ScanColumnUnit.tryOfWire (fun columnUnit -> columnUnit.text)
+
+        [ RawDialReading, "raw dial reading"; PhysicalScanValue, "physical value" ]
+        |> assertClosedSet ScanReading.all (fun reading -> reading.value) ScanReading.tryOfWire (fun reading -> reading.text)
+
+        Assert.Equal(',', CommaDelimiter.character)
+        Assert.Equal(';', SemicolonDelimiter.character)
+        Assert.Equal('\t', TabDelimiter.character)
+
+        let spectralUnits : (ScanColumnUnit * OpticalConstructor.Domain.Units.UnitOfMeasure option) list =
+            [
+                DegreeColumnUnit, None
+                RadianColumnUnit, None
+                NanometerColumnUnit, Some OpticalConstructor.Domain.Units.Nanometer
+                MicrometerColumnUnit, Some OpticalConstructor.Domain.Units.Micrometer
+                ElectronVoltColumnUnit, Some OpticalConstructor.Domain.Units.ElectronVolt
+                WavenumberColumnUnit, Some OpticalConstructor.Domain.Units.Wavenumber
+            ]
+
+        for columnUnit, expected in spectralUnits do
+            Assert.Equal<OpticalConstructor.Domain.Units.UnitOfMeasure option>(expected, columnUnit.spectralUnitOpt)
+
+        for below in [ 0; -1 ] do
+            Assert.Equal<DataColumnNumber option>(None, DataColumnNumber.tryCreate below)
+        Assert.Equal<DataColumnNumber option>(Some (DataColumnNumber 1), DataColumnNumber.tryCreate 1)
+        Assert.Equal(0, (DataColumnNumber 1).index)
+        Assert.Equal(2, (DataColumnNumber 3).index)
+
+        let builtInNames = [ "Intensity series"; "Ellipsometric series"; "Phone ROI CSV"; "Mueller-matrix observations" ]
+        Assert.Equal<ImportProfileName list>(builtInNames |> List.map ImportProfileName, ImportProfileName.builtIns)
+
+    /// A lab's signal profile: comma, a header row, no byte-order mark, scan column 1 in degrees as a physical value,
+    /// the signal in 2 with its σ in 3 and the experiment key in 4; `KitFileJsonTests` stores it too (spec 0050 S9.2).
+    let labScanProfile : ImportProfile =
+        {
+            name = ImportProfileName "Lab scan"
+            delimiter = CommaDelimiter
+            header = HeaderOnFirstRow
+            bom = ByteOrderMarkAbsent
+            roles =
+                {
+                    scan =
+                        [
+                            {
+                                column = DataColumnNumber 1
+                                valueUnit = DegreeColumnUnit
+                                reading = PhysicalScanValue
+                            }
+                        ]
+                    reading = SignalColumns (DataColumnNumber 2, Some (DataColumnNumber 3))
+                    timestampOpt = None
+                    captureIndexOpt = None
+                    observableOpt = None
+                    keyOpt = Some (DataColumnNumber 4)
+                }
+        }
+
+    [<Fact>]
+    let ``a profile name is refused when a built-in or a kit profile holds it, and a kit file appends a new profile`` () : unit =
+        let id = KitId (Guid.Parse "6f1c2a9e-3b7d-4e25-9a41-0c8d5e7f2b16")
+        let name = KitName "Optics: QZ/LR"
+        let author = KitAuthor "Test author"
+        let instant = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc))
+        let kit = KitFile.create id name author instant
+        let phoneRoiProfile = { labScanProfile with name = ImportProfileName "Phone ROI CSV" }
+        let secondProfile = { labScanProfile with name = ImportProfileName "Lab scan, second bench" }
+
+        Assert.Empty(kit.importProfiles)
+
+        match kit.withImportProfile labScanProfile with
+        | Error error -> Assert.Fail(error.describe)
+        | Ok withLabScan ->
+            Assert.Equal<ImportProfile list>([ labScanProfile ], withLabScan.importProfiles)
+            Assert.Equal<KitFile>({ kit with importProfiles = [ labScanProfile ] }, withLabScan)
+
+            match withLabScan.withImportProfile labScanProfile with
+            | Error (DuplicateProfileNameErr reason) -> Assert.Contains("Lab scan", reason)
+            | Error error -> Assert.Fail($"expected DuplicateProfileNameErr: {error.describe}")
+            | Ok _ -> Assert.Fail "a kit file replaced the profile it holds"
+
+            match withLabScan.withImportProfile phoneRoiProfile with
+            | Error (BuiltInProfileNameErr reason) -> Assert.Contains("Phone ROI CSV", reason)
+            | Error error -> Assert.Fail($"expected BuiltInProfileNameErr: {error.describe}")
+            | Ok _ -> Assert.Fail "a kit file took a built-in profile's name"
+
+            match withLabScan.withImportProfile secondProfile with
+            | Ok withBoth -> Assert.Equal<ImportProfile list>([ labScanProfile; secondProfile ], withBoth.importProfiles)
+            | Error error -> Assert.Fail(error.describe)
+
+        for builtIn in ImportProfileName.builtIns do
+            match builtIn.availableAmong [] with
+            | Error (BuiltInProfileNameErr reason) -> Assert.Contains(builtIn.value, reason)
+            | Error error -> Assert.Fail($"expected BuiltInProfileNameErr: {error.describe}")
+            | Ok _ -> Assert.Fail($"a new profile took the built-in name '{builtIn.value}'")
+
+        let lowerCase = ImportProfileName "lab scan"
+        Assert.Equal<Result<ImportProfileName, ImportProfileError>>(Ok lowerCase, lowerCase.availableAmong [ labScanProfile ])
+
+    [<Fact>]
+    let ``a profile name takes the first free suffix among the taken ones`` () : unit =
+        let labScan = ImportProfileName "Lab scan"
+        Assert.Equal<ImportProfileName>(labScan, labScan.nextFreeAmong [])
+        Assert.Equal<ImportProfileName>(ImportProfileName "Lab scan (2)", labScan.nextFreeAmong [ labScan ])
+        Assert.Equal<ImportProfileName>(ImportProfileName "Lab scan (3)", labScan.nextFreeAmong [ labScan; ImportProfileName "LAB SCAN (2)" ])
+
+    [<Fact>]
+    let ``every import profile error renders its condition and its payload`` () : unit =
+        let cases : (ImportProfileError * string) list =
+            [
+                BlankProfileNameErr "'   '", "the import profile name is blank: '   '"
+                BuiltInProfileNameErr "'Phone ROI CSV'", "the name belongs to a built-in import profile: 'Phone ROI CSV'"
+                DuplicateProfileNameErr "'Lab scan'", "the kit already holds an import profile of that name: 'Lab scan'"
+                SignalColumnCountErr "signal in columns 2 and 3", "a signal mapping needs exactly one signal column: signal in columns 2 and 3"
+                MixedReadingColumnsErr "signal in 2, m00 in 3", "a mapping reads a signal or Mueller elements, not both: signal in 2, m00 in 3"
+                RepeatedRoleErr "the key in 4 and 5", "a role is given to two columns: the key in 4 and 5"
+                MuellerElementCountErr "m33 has no column", "a Mueller mapping needs each of m00…m33 once: m33 has no column"
+            ]
+
+        Assert.Equal(FSharpType.GetUnionCases(typeof<ImportProfileError>).Length, cases.Length)
+
+        for error, expected in cases do
+            Assert.Equal<string>(expected, error.describe)
+
+        let reasons =
+            cases
+            |> List.map (fun (error, _) ->
+                match error with
+                | BlankProfileNameErr reason
+                | BuiltInProfileNameErr reason
+                | DuplicateProfileNameErr reason
+                | SignalColumnCountErr reason
+                | MixedReadingColumnsErr reason
+                | RepeatedRoleErr reason
+                | MuellerElementCountErr reason -> reason)
+
+        for (error, _), reason in List.zip cases reasons do
+            Assert.Contains(reason, error.describe)
+
+        Assert.Equal(cases.Length, reasons |> List.distinct |> List.length)
+        Assert.Equal(cases.Length, cases |> List.map (fun (error, _) -> error.describe) |> List.distinct |> List.length)
+
+    [<Fact>]
+    let ``a setup name keeps its text, refuses a blank one and takes its file stem from the shared name rule`` () : unit =
+        match SetupName.tryCreate "CPL-(QZ#45-LR#45)-CPL" with
+        | Ok name ->
+            Assert.Equal<SetupName>(SetupName "CPL-(QZ#45-LR#45)-CPL", name)
+            Assert.Equal<string>("CPL-(QZ#45-LR#45)-CPL", name.value)
+            Assert.Equal<FileStem>(FileStem "CPL-(QZ#45-LR#45)-CPL", name.fileStem)
+        | Error error -> Assert.Fail(error.describe)
+
+        match SetupName.tryCreate "a: b/c" with
+        | Ok name ->
+            Assert.Equal<string>("a: b/c", name.value)
+            Assert.Equal<FileStem>(FileStem "a_ b_c", name.fileStem)
+            Assert.Equal<FileStem>(FileStem.ofText "a: b/c", name.fileStem)
+        | Error error -> Assert.Fail(error.describe)
+
+        for text in [ ""; "   " ] do
+            match SetupName.tryCreate text with
+            | Error (InvalidSetupNameErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | Error error -> Assert.Fail($"expected an invalid setup name: {error.describe}")
+            | Ok name -> Assert.Fail($"accepted a blank setup name: '{name.value}'")
+
+    [<Fact>]
+    let ``a setup takes the next free suffix of its name, and a table that is no setup yet takes the first free Setup n`` () : unit =
+        let bench = SetupName "Bench"
+        Assert.Equal<SetupName>(SetupName "Bench (3)", bench.nextFreeAmong [ SetupName "bench"; SetupName "Bench (2)" ])
+        Assert.Equal<SetupName>(SetupName "Bench", bench.nextFreeAmong [])
+        Assert.Equal<SetupName>(SetupName "a:b (2)", (SetupName "a:b").nextFreeAmong [ SetupName "a_b" ])
+
+        Assert.Equal<SetupName>(SetupName "Setup 3", SetupName.firstFree [ SetupName "Setup 1"; SetupName "setup 2" ])
+        Assert.Equal<SetupName>(SetupName "Setup 1", SetupName.firstFree [])
+
+    [<Fact>]
+    let ``a setup revision starts at one and counts up, and a reference names its setup and revision`` () : unit =
+        Assert.Equal<SetupRevision>(SetupRevision 1, SetupRevision.first)
+        Assert.Equal<SetupRevision>(SetupRevision 3, SetupRevision.first.next.next)
+
+        let reference : SetupReference =
+            {
+                name = SetupName "Bench"
+                revision = SetupRevision.first.next
+            }
+
+        Assert.Equal<string>("'Bench' revision 2", reference.describe)
+
+    [<Fact>]
+    let ``every setup error renders its condition and its payload`` () : unit =
+        let cases : (SetupError * string) list =
+            [
+                InvalidSetupNameErr "'   ': blank", "the setup name is not valid: '   ': blank"
+                DuplicateSetupNameErr "'bench' beside 'Bench'", "the kit already has a setup of that name: 'bench' beside 'Bench'"
+                UnknownSetupErr "'Missing bench'", "the kit has no such setup: 'Missing bench'"
+                UnknownSetupRevisionErr "'Bench' revision 7", "the setup has no such revision: 'Bench' revision 7"
+                UnknownSetupSlotErr "element 12", "the table has no such slot: element 12"
+                UnknownSlotItemErr "item QZ9", "the item is not available: item QZ9"
+                IncompatibleSlotItemErr "LP1 in a sample slot", "the item does not fit the slot: LP1 in a sample slot"
+                SlotItemTwiceErr "'CPL1' in 'lpA' and 'lpB'", "the item is in two slots: 'CPL1' in 'lpA' and 'lpB'"
+            ]
+
+        for error, expected in cases do
+            Assert.Equal<string>(expected, error.describe)
+
+        for error, _ in cases do
+            let reason =
+                match error with
+                | InvalidSetupNameErr reason
+                | DuplicateSetupNameErr reason
+                | UnknownSetupErr reason
+                | UnknownSetupRevisionErr reason
+                | UnknownSetupSlotErr reason
+                | UnknownSlotItemErr reason
+                | IncompatibleSlotItemErr reason
+                | SlotItemTwiceErr reason -> reason
+                | SetupItemReferenceErr error -> error.describe
+
+            Assert.Contains(reason, error.describe)
+
+        let descriptions = cases |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal(8, descriptions |> List.distinct |> List.length)

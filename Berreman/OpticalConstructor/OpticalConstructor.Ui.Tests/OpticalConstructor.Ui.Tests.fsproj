@@ -7,6 +7,7 @@
         <OutputType>Exe</OutputType>
         <IsTestProject>true</IsTestProject>
         <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+        <ServerGarbageCollection>true</ServerGarbageCollection>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -198,6 +199,7 @@
              changes nothing. -->
         <Compile Include="LibraryWindowTests.fs" />
         <Compile Include="ImportDialogTests.fs" />
+        <Compile Include="ImportWizardTests.fs" />
         <!-- Spec 0046: the Library's light-source editor, its Library verbs, and a source bound on the table. -->
         <Compile Include="LightSourceEditorTests.fs" />
         <!-- Spec 0046: the constructor's numbers against the Analytics example scripts (driven headless). -->
@@ -208,7 +210,7 @@
         <Compile Include="ScrollExtentTests.fs" />
         <!-- The inverse constructor keeps experiments and measured-data attachments in the kit (spec 0050 S4.3). -->
         <Compile Include="InverseConstructorTests.fs" />
-        <Compile Include="SceneSaveLoadTests.fs" />
+        <Compile Include="SetupSaveLoadTests.fs" />
         <!-- Spec 0038 Part L (step 038): the measured-data picker's persistent last-folder plumbing —
              pure tests over the re-typed EnvironmentSettings.lastFolders (Map keyed by picker purpose):
              the next open reads the persisted folder (lastFolder), a confirmed selection records it
@@ -216,16 +218,9 @@
              builds the base picker options (title / single-select / no start location) with no real
              picker raised (gate `ui-tests`). -->
         <Compile Include="DataFilePickerFolderTests.fs" />
-        <!-- Spec 0038 Part L (step 039, UICOMP_XDUO_0011): the SolverHandoffWindow component — the
-             inverse flow's terminal summary + basic-validation screen. Pure per-experiment validation
-             facts over mock proxies (every non-sample element specified; a data file attached; the
-             file reads schema-valid + range-consistent through the ExperimentDataProxy) plus headless
-             semantic-tree proofs driving the REAL window by its UiIds (green ready statuses; missing
-             file + range mismatch typed messages; no solver math), gate `ui-tests` + `ui-smoke`. -->
-        <Compile Include="SolverHandoffWindowTests.fs" />
-        <!-- Spec 0038 Part N (step 047, WIRE_UI / AC-W1); spec 0050 S4.3: composition acceptance
+        <!-- Spec 0038 Part N (step 047, WIRE_UI / AC-W1); spec 0050 S4.3, S11.5: composition acceptance
              over one app scope, with the remaining store assertions and headless rendering of the
-             launcher, Main + Inverse, Materials + Library Browse/Select, editors and SolverHandoff. -->
+             launcher, Main + Inverse, Materials + Library Browse/Select, editors and Data locations. -->
         <Compile Include="WireUiFinalCompositionTests.fs" />
         <!-- Spec 0040 Part E (step 013, WIRE_UI): the CLOSING composition acceptance for arc 0040 —
              the headless wiring assertion that drives the WHOLE changed surface over ONE app scope
@@ -237,6 +232,17 @@
              and a ThinFilm editor pins R on with no T control — all without throwing. Last in the
              list (it consumes the App composition root + every changed Ui window). -->
         <Compile Include="WireUi0040CompositionTests.fs" />
+        <Compile Include="KitStartWindowTests.fs" />
+        <Compile Include="KitWindowTests.fs" />
+        <Compile Include="DataLocationsWindowTests.fs" />
+        <Compile Include="ItemsPanelTests.fs" />
+        <Compile Include="SlotBarTests.fs" />
+        <Compile Include="SetupGridPanelTests.fs" />
+        <Compile Include="DataStepTests.fs" />
+        <Compile Include="StudyViewTests.fs" />
+        <Compile Include="KitAcceptanceTests.fs" />
+        <Compile Include="MaterialSourcesWindowTests.fs" />
+        <Compile Include="PlanViewTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -268,6 +274,7 @@
         <!-- Spec 0038 Part C (step 004): the standalone diagnostic-launcher
              executable under test (TestLauncherWindow + its App lifetime). -->
         <ProjectReference Include="..\OpticalConstructor.TestWindows.App\OpticalConstructor.TestWindows.App.fsproj" />
+        <ProjectReference Include="..\..\BerremanTestSupport\BerremanTestSupport.fsproj" />
     </ItemGroup>
 
 </Project>

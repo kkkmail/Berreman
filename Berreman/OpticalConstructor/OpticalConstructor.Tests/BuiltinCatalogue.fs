@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open System
+open System.Text
 open Berreman.Constants
 open Berreman.Media
 open Softellect.Sys.Primitives
@@ -10,6 +11,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStore
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
@@ -100,7 +102,24 @@ module BuiltinCatalogue =
             | SourceEntryKind -> content.toSourcePreset |> decode |> SourceItem |> Some
             | PolarizerEntryKind -> content.toPolarizerPreset |> decode |> PolarizerItem |> Some
             | DetectorEntryKind -> content.toDetectorPreset |> decode |> DetectorItem |> Some
-            | MaterialEntryKind | CategoryEntryKind | SampleEntryKind -> None)
+            | MaterialEntryKind | CategoryEntryKind | SampleEntryKind | ItemModelEntryKind -> None)
+
+    /// Returns the decoded item models at their versions in catalogue row order, failing with any decode error's description.
+    let itemModels () : ItemModelVersion list =
+        contentsOfKind ItemModelEntryKind
+        |> List.map (fun content ->
+            let itemModel : ItemModelVersion =
+                {
+                    version = content.version
+                    entry = content.toItemModel |> decode
+                }
+            itemModel)
+
+    /// Returns the item model with the given id, failing with that id when the catalogue holds none (spec 0050 S7.1).
+    let itemModel (id : ItemModelId) : ItemModelVersion =
+        match itemModels () |> List.tryFind (fun held -> held.entry.id = id) with
+        | Some held -> held
+        | None -> failwith $"The Built-in catalogue has no item model with id '{id.value}'."
 
     /// Returns a fresh material store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
     let materialStore (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =
@@ -207,11 +226,13 @@ module BuiltinCatalogue =
 
     /// Returns catalogue Silicon under the supplied identity and source licence (spec 0050 S3.3).
     let licensedMaterialContent (id : MaterialId) (name : EntryName) (licence : EntryLicence) (citation : EntryCitation) : LibraryEntryContent =
+        let record = MaterialSourceRecordId $"test/{name.value}"
         let provenance =
             SourcePullProvenance
                 {
                     source = MaterialSourceName "Test optical constants"
-                    record = MaterialSourceRecordId $"test/{name.value}"
+                    record = record
+                    recordHash = Encoding.UTF8.GetBytes record.value |> FileByteContent |> ContentHash.ofBytes
                     sourceVersion = MaterialSourceVersion "2026-11-01"
                     licence = licence
                     citation = citation

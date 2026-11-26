@@ -1,0 +1,50 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "f7e47d80-d265-481e-b351-6e6bf48785ee",
+    "label": "Polarimeter T",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "7e74324f-ded2-4607-b9d8-a40d477ac437",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "rotationUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.003490658503988659
+          ]
+        }
+      },
+      {
+        "name": "elementUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.005
+          ]
+        }
+      },
+      {
+        "name": "throughputUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.01
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

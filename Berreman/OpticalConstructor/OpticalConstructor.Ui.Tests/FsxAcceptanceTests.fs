@@ -85,7 +85,7 @@ module FsxAcceptanceTests =
     /// keeps its own properties, so a match proves the data states the script's physics (spec 0050 step 11).
     let private material (b : Bench) (name : string) (complexity : MaterialComplexity) : MaterialId =
         let id = newMaterialId ()
-        ok (b.materials.saveMaterial { id = id; name = EntryName name; category = CategoryIds.glass; description = None; complexity = complexity })
+        ok (b.materials.saveMaterial { id = id; name = EntryName name; category = CategoryIds.glass; description = None; physics = ComplexityPhysics complexity })
         id
 
     /// A constant material with no magnetic or active aspect.
@@ -196,7 +196,7 @@ module FsxAcceptanceTests =
         let varied =
             match run.variable with
             | ExperimentControls.VaryWaveLength -> ElementId "src"
-            | ExperimentControls.VaryR1 | ExperimentControls.VaryR2 -> idAt 3 table
+            | ExperimentControls.VaryR1 | ExperimentControls.VaryR2 | ExperimentControls.VaryDialReading -> idAt 3 table
         let experiment =
             table
             |> apply

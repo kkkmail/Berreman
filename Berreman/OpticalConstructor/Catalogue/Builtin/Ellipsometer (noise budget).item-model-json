@@ -1,0 +1,45 @@
+{
+  "categoryOpt": null,
+  "contentHash": "bd364b5b37f3094663669ef79ef76dc2c0ab7d915cb04a11516460a582719d1c",
+  "descriptionOpt": "Records Psi and Delta, with the decent-lab noise budget.",
+  "id": "608caa06-1b53-464e-962f-073730270af6",
+  "name": "Ellipsometer (noise budget)",
+  "payload": {
+    "Case": "ItemModelPayload",
+    "Fields": [
+      {
+        "Case": "EllipsometerModel",
+        "Fields": [
+          [
+            {
+              "defaultValue": 0.003490658503988659,
+              "kind": 1,
+              "name": "rotationUncertainty"
+            },
+            {
+              "defaultValue": 0.005,
+              "kind": 3,
+              "name": "elementUncertainty"
+            },
+            {
+              "defaultValue": 0.01,
+              "kind": 3,
+              "name": "throughputUncertainty"
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 7,
+    "version": 1
+  },
+  "version": 1
+}

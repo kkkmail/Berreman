@@ -346,8 +346,8 @@ module Library =
             offset : Angle
         }
 
-    /// A polarizer's physics as DATA (spec 0038 Part F): `ComputedIdeal` synthesizes through the
-    /// EXISTING `Propagation.inputStokes` / `analyzerMueller` exactly as today; `ConstantMueller`
+    /// A polarizer's physics as DATA (spec 0038 Part F): `ComputedIdeal` evaluates through
+    /// `Propagation.analyzerMueller` (spec 0050 S8.1); `ConstantMueller`
     /// is an ORDERED component list (light-traversal order — the first component is the first
     /// surface light hits) whose compound matrix the Stokes/Mueller pipeline evaluates on demand
     /// (`Propagation.compoundMueller`). ConstantMueller entries live ONLY in the Stokes/Mueller

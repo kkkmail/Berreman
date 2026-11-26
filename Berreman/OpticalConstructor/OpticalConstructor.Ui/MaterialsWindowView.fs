@@ -172,6 +172,8 @@ type MaterialsWindowContext =
         openMaterialEditor : MaterialEditorView.MaterialEditorIntent -> unit
         /// Open the single-instance Category editor.
         openCategoryEditor : unit -> unit
+        /// Open the single-instance Online sources window over `catalogueImports`; the host bakes it, tests record (spec 0050 S13.1).
+        openOnlineSources : unit -> unit
         /// Close THIS window (the host passes `this.Close`; tests substitute a recording stub —
         /// the `SampleEditorContext` precedent). The Select-state verbs reach it: 'Select'
         /// closes after `onSelected`, 'Close' after `onCancelled` (spec 0038 step 016).
@@ -275,14 +277,17 @@ type MaterialsWindowModel =
             | Error _ -> None
         | Select _, _ | Browse, None -> None
 
-    /// The selected entry when its complexity is LOSSLESSLY EDITABLE — the Edit verb's target. A
+    /// The selected entry when its physics is LOSSLESSLY EDITABLE — the Edit verb's target. A
     /// view-only entry offers NO Edit affordance (removed, not greyed). The gate is
-    /// `MaterialComplexity.isEditable` (MaterialComplexityEditor): a complexity that is not editable
-    /// term data (Silicon / Langasite carry published laws) stays view-only.
+    /// `MaterialPhysics.editableComplexityOpt` (MaterialComplexityEditor, spec 0050 S11.1): a physics
+    /// that is not editable term data (Silicon / Langasite carry published laws) stays view-only.
     member this.editableSelection : MaterialEntry option =
         match this.selectedEntry with
-        | Some entry when entry.complexity.isEditable -> Some entry
-        | Some _ | None -> None
+        | Some entry ->
+            match entry.physics.editableComplexityOpt with
+            | Some _ -> Some entry
+            | None -> None
+        | None -> None
 
     /// The ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass). A
     /// material present in `IncludeInactive` but NOT here has a retired latest version; that is how the
@@ -365,6 +370,8 @@ let initMaterialsWindow (context : MaterialsWindowContext) (mode : LibraryWindow
 type MaterialsWindowMsg =
     /// Decide dropped entry files and open their pending import choices.
     | DropMaterialEntryFiles of FileName list
+    /// Decide a picked glass catalogue and open its import choices, as a drop of the file does (spec 0050 S13.2).
+    | ImportGlassCatalogue of FileName
     /// Publish the import dialog's completion summary and refresh live projections.
     | MaterialsImportApplied of summary : ControlCaption
     /// Export the selected material's latest version to the file chosen in the save dialog.
@@ -400,6 +407,8 @@ type MaterialsWindowMsg =
     | ConfirmRemove
     | CancelRemove
     | OpenCategories
+    /// Open the Online sources window, whose pulls come back as `MaterialsImportApplied` (spec 0050 S13.1).
+    | OpenOnlineSources
     /// The show-inactive/superseded toggle (spec 0038 step 023): flip the corpus scope between
     /// `ActiveOnly` and `IncludeInactive`.
     | ToggleShowInactive
@@ -508,6 +517,24 @@ let private requestLifecycle (action : LifecycleAction) (m : MaterialsWindowMode
     | Some id -> { m with lifecycleGate = PendingLifecycle (id, action); removeGate = NoPendingRemove; lastError = None }
     | None -> m
 
+/// Dropped files and a picked glass catalogue decide alike: their rows open the import dialog, a refusal shows (spec 0050 S3.2, S13.2).
+let private openImportChoices (files : FileName list) (m : MaterialsWindowModel) : MaterialsWindowModel =
+    match m.context.catalogueImports.decideDroppedFiles files with
+    | Ok [] -> m
+    | Ok decisions ->
+        m.context.openImportDialog decisions
+        {
+            m with
+                importStatus = None
+                importError = None
+        }
+    | Error error ->
+        {
+            m with
+                importStatus = None
+                importError = Some error
+        }
+
 let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) : MaterialsWindowModel =
     match msg with
     | ExportSelectedMaterial file ->
@@ -542,22 +569,8 @@ let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) 
                     entryExportStatus = None
                     entryExportError = Some error
             }
-    | DropMaterialEntryFiles files ->
-        match m.context.catalogueImports.decideDroppedFiles files with
-        | Ok [] -> m
-        | Ok decisions ->
-            m.context.openImportDialog decisions
-            {
-                m with
-                    importStatus = None
-                    importError = None
-            }
-        | Error error ->
-            {
-                m with
-                    importStatus = None
-                    importError = Some error
-            }
+    | DropMaterialEntryFiles files -> openImportChoices files m
+    | ImportGlassCatalogue file -> openImportChoices [ file ] m
     | MaterialsImportApplied summary ->
         {
             m with
@@ -634,6 +647,9 @@ let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) 
         // re-queries `listCategories` on its next render, so a rename there re-labels the
         // category facet in the same render pass.
         m.context.openCategoryEditor ()
+        m
+    | OpenOnlineSources ->
+        m.context.openOnlineSources ()
         m
     | ToggleShowInactive ->
         let flipped =
@@ -1034,6 +1050,37 @@ let pickEntryExportFile (owner : Window) (startOpt : FolderName option) (envelop
         }
     Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
 
+/// Opens one Zemax `.agf` glass catalogue, posting a confirmed pick on the UI thread (spec 0050 S13.2).
+/// Cancellation or an unavailable storage provider leaves the caller unchanged.
+let pickGlassCatalogueFile (owner : Window) (onPicked : FileName -> unit) : unit =
+    let pick =
+        async {
+            try
+                let fileType = Avalonia.Platform.Storage.FilePickerFileType("Zemax glass catalogue", Patterns = [ "*.agf" ])
+                let options =
+                    Avalonia.Platform.Storage.FilePickerOpenOptions(
+                        Title = "Import glass catalogue",
+                        AllowMultiple = false,
+                        FileTypeFilter = [ fileType ])
+                let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
+                match List.ofSeq files with
+                | file :: _ ->
+                    let picked = FileName file.Path.LocalPath
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
+                | [] -> ()
+            with _ -> ()
+        }
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
+
+/// Hands a verb press's window to `onOwner`; a press outside a window does nothing (spec 0050 S3.3, S13.2).
+let private onOwnerWindow (onOwner : Window -> unit) (e : PointerPressedEventArgs) : unit =
+    match e.Source with
+    | :? Visual as source ->
+        match TopLevel.GetTopLevel source with
+        | :? Window as owner -> onOwner owner
+        | _ -> ()
+    | _ -> ()
+
 /// Shows each entry's attribution as wrapping text, omitting the panel when there is none (spec 0050 S3.3).
 let attributionPanel (id : ConstructorUiId) (lines : EntryAttributionLine list) : IView list =
     match lines with
@@ -1114,7 +1161,9 @@ let private lifecycleButton (dispatch : MaterialsWindowMsg -> unit) (action : Li
 /// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
 /// entry loses the verb — removed, not greyed); Remove only while an entry is selected; the
 /// lifecycle verbs from `offeredLifecycleActions` (Mark inactive + Supersede… for an active
-/// selection, Mark active for a retired one — spec 0038 step 023).
+/// selection, Mark active for a retired one — spec 0038 step 023). Online sources… is Browse-only, offered while the
+/// import seam carries a source: a pick session imports nothing (spec 0050 S13.1). Import glass catalogue… is
+/// Browse-only for the same reason (S13.2).
 let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
@@ -1134,27 +1183,22 @@ let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -
                    (match m.exportableSelection with
                     | None -> []
                     | Some envelope ->
-                        [ verbButtonOn ConstructorUiId.materialsExportButton (ControlCaption "Export…") (fun e ->
-                              match e.Source with
-                              | :? Visual as source ->
-                                  match TopLevel.GetTopLevel source with
-                                  | :? Window as owner ->
-                                      pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
-                                          (fun file -> dispatch (ExportSelectedMaterial file))
-                                  | _ -> ()
-                              | _ -> ()) ])
+                        [ verbButtonOn ConstructorUiId.materialsExportButton (ControlCaption "Export…") (onOwnerWindow (fun owner ->
+                              pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
+                                  (fun file -> dispatch (ExportSelectedMaterial file)))) ])
                    @ (match m.filteredEntries with
                       | [] -> []
                       | _ ->
-                          [ verbButtonOn ConstructorUiId.materialsExportShownButton (ControlCaption "Export shown to catalogue…") (fun e ->
-                                match e.Source with
-                                | :? Visual as source ->
-                                    match TopLevel.GetTopLevel source with
-                                    | :? Window as owner ->
-                                        pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
-                                            (fun folder -> dispatch (ExportShownMaterials (CatalogueExportTarget.ofFolder folder)))
-                                    | _ -> ()
-                                | _ -> ()) ])))
+                          [ verbButtonOn ConstructorUiId.materialsExportShownButton (ControlCaption "Export shown to catalogue…") (onOwnerWindow (fun owner ->
+                                pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
+                                    (fun folder -> dispatch (ExportShownMaterials (CatalogueExportTarget.ofFolder folder))))) ])
+                   @ (match m.context.catalogueImports.materialSources with
+                      | [] -> []
+                      | _ ->
+                          [ verbButton ConstructorUiId.materialsOnlineSourcesButton (ControlCaption "Online sources…") (fun () ->
+                                dispatch OpenOnlineSources) ])
+                   @ [ verbButtonOn ConstructorUiId.materialsImportGlassCatalogueButton (ControlCaption "Import glass catalogue…") (onOwnerWindow (fun owner ->
+                           pickGlassCatalogueFile owner (fun file -> dispatch (ImportGlassCatalogue file)))) ]))
     ] :> IView
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
@@ -1323,12 +1367,14 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             |> List.tryPick (fun (vn, e) -> if vn = shownVersion then Some e else None)
             |> Option.defaultValue latestEntry
         let viewingOlder = shownVersion <> latestVersion
-        let anisotropy = shownEntry.complexity.anisotropy
+        let anisotropy = shownEntry.physics.anisotropy
         let chart = NkDispersionChart.nkDispersionChart anisotropy shownEntry.properties Nanometer MaterialEditorView.previewRange
         let editability =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
-            elif shownEntry.complexity.isEditable then ""
-            else " (view-only)"
+            else
+                match shownEntry.physics.editableComplexityOpt with
+                | Some _ -> ""
+                | None -> " (view-only)"
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [

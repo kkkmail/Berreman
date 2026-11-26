@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "setup": {
+    "history": [],
+    "name": "OpticAxisCut",
+    "revision": 1,
+    "slots": [
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "9f304813-02a2-4624-b7e3-eea3e75193e7",
+            "PlacementTurn"
+          ]
+        },
+        "id": "src",
+        "placement": {
+          "box": {
+            "a1": 0.025,
+            "a2": 0.025,
+            "b": 0.08,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "LightSource",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveLocked",
+            "yLock": "MoveLocked",
+            "zLock": "MoveLocked"
+          },
+          "placementPoint": {
+            "x": -1,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": true,
+          "r2": 0,
+          "r2Locked": true,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": "a77786fe-f38e-4af3-8cfc-bd94be27567e"
+        },
+        "zoom": 5
+      },
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "f61f5339-1db2-4c6c-a453-a9a9f0c11594",
+            "PlacementTurn"
+          ]
+        },
+        "id": "sample",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "Sample",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": 0,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": "af711361-2854-4b61-ade4-bdb47a184d9f"
+        },
+        "zoom": 5
+      },
+      {
+        "beam": "OnMainBeam",
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "f7e47d80-d265-481e-b351-6e6bf48785ee",
+            "PlacementTurn"
+          ]
+        },
+        "id": "det",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "Detector",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": 1,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": null
+        },
+        "zoom": 5
+      },
+      {
+        "beam": {
+          "Case": "OnReflectedBeamOf",
+          "Fields": [
+            "sample"
+          ]
+        },
+        "content": {
+          "Case": "ItemInSlot",
+          "Fields": [
+            "938e1eb1-4b3d-43ea-b4a0-12c1dc5c4191",
+            "PlacementTurn"
+          ]
+        },
+        "id": "45dba7c2-156b-4d31-895a-1179ff672cfc",
+        "placement": {
+          "box": {
+            "a1": 0.05,
+            "a2": 0.05,
+            "b": 0.01,
+            "n1": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            },
+            "n2": {
+              "x": 0,
+              "y": 0,
+              "z": 1
+            }
+          },
+          "catalogueKind": "Detector",
+          "displayUnit": "Millimeter",
+          "emission": "EmitBoth",
+          "height": 0,
+          "moveLocks": {
+            "xLock": "MoveFree",
+            "yLock": "MoveFree",
+            "zLock": "MoveFree"
+          },
+          "placementPoint": {
+            "x": 1,
+            "y": 0
+          },
+          "r1": 0,
+          "r1Locked": false,
+          "r2": 0,
+          "r2Locked": false,
+          "r3": 0,
+          "r3Locked": true,
+          "valueId": "ffa07a4d-1fd4-4e71-83e9-d15f5dfa25b6"
+        },
+        "zoom": 5
+      }
+    ]
+  }
+}

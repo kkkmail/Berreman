@@ -13,12 +13,17 @@ open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Dispersion
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitHistory
+open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.Errors
@@ -69,7 +74,10 @@ module CanonicalJsonTests =
 
     [<Fact>]
     let ``an absorbing built-in material survives the shared options`` () =
-        let complexity = (BuiltinCatalogue.material MaterialIds.euvMolybdenum).complexity
+        let complexity =
+            match (BuiltinCatalogue.material MaterialIds.euvMolybdenum).physics with
+            | ComplexityPhysics complexity -> complexity
+            | CrystalParameterPhysics crystal -> failwith $"expected a complexity physics, got %A{crystal}"
         Assert.Equal<MaterialComplexity>(complexity, toJson complexity |> ofJson<MaterialComplexity>)
 
     let private okOf (result : Result<'Value, StorageError>) : 'Value =
@@ -222,6 +230,48 @@ module CanonicalJsonTests =
         assertWrittenAsTag<TabulatedInterpolation> (fun interpolation -> interpolation.value)
         assertWrittenAsTag<PublishedIndexLaw> (fun law -> law.value)
         assertWrittenAsTag<PublishedGyrationLaw> (fun law -> law.value)
+        assertWrittenAsTag<KitStar> (fun star -> star.value)
+        assertWrittenAsTag<ExperimentRole> (fun role -> role.value)
+        assertWrittenAsTag<DataDelimiter> (fun delimiter -> delimiter.value)
+        assertWrittenAsTag<HeaderRowChoice> (fun header -> header.value)
+        assertWrittenAsTag<ByteOrderMark> (fun mark -> mark.value)
+        assertWrittenAsTag<ScanColumnUnit> (fun columnUnit -> columnUnit.value)
+        assertWrittenAsTag<ScanReading> (fun reading -> reading.value)
+        assertWrittenAsTag<ParameterScope> (fun scope -> scope.value)
+        assertWrittenAsTag<FitMode> (fun mode -> mode.value)
+        assertWrittenAsTag<FitRuns.FitStage> (fun stage -> stage.value)
+        assertWrittenAsTag<FitRuns.CalibrationUse> (fun calibrationUse -> calibrationUse.value)
+        assertWrittenAsTag<FitRuns.StudyEngineKind> (fun engine -> engine.value)
+
+        for star, tag in [ StarredKit, 1; UnstarredKit, 2 ] do
+            let json = toJson star
+            use doc = JsonDocument.Parse json
+            Assert.Equal(tag, doc.RootElement.GetInt32())
+            Assert.Equal<KitStar>(star, ofJson<KitStar> json)
+
+        Assert.Equal<string>("3", toJson DarkRun)
+        Assert.Equal<ExperimentRole>(DarkRun, ofJson<ExperimentRole> "3")
+
+        Assert.Equal<string>("2", toJson SemicolonDelimiter)
+        Assert.Equal<DataDelimiter>(SemicolonDelimiter, ofJson<DataDelimiter> "2")
+        Assert.Equal<string>("2", toJson NoHeaderRow)
+        Assert.Equal<HeaderRowChoice>(NoHeaderRow, ofJson<HeaderRowChoice> "2")
+        Assert.Equal<string>("1", toJson ByteOrderMarkPresent)
+        Assert.Equal<ByteOrderMark>(ByteOrderMarkPresent, ofJson<ByteOrderMark> "1")
+        Assert.Equal<string>("6", toJson WavenumberColumnUnit)
+        Assert.Equal<ScanColumnUnit>(WavenumberColumnUnit, ofJson<ScanColumnUnit> "6")
+        Assert.Equal<string>("1", toJson RawDialReading)
+        Assert.Equal<ScanReading>(RawDialReading, ofJson<ScanReading> "1")
+        Assert.Equal<string>("3", toJson SessionBlockScope)
+        Assert.Equal<ParameterScope>(SessionBlockScope, ofJson<ParameterScope> "3")
+        Assert.Equal<string>("2", toJson StagedFit)
+        Assert.Equal<FitMode>(StagedFit, ofJson<FitMode> "2")
+        Assert.Equal<string>("3", toJson FitRuns.ObjectStage)
+        Assert.Equal<FitRuns.FitStage>(FitRuns.ObjectStage, ofJson<FitRuns.FitStage> "3")
+        Assert.Equal<string>("2", toJson FitRuns.CalibrationAsPrior)
+        Assert.Equal<FitRuns.CalibrationUse>(FitRuns.CalibrationAsPrior, ofJson<FitRuns.CalibrationUse> "2")
+        Assert.Equal<string>("2", toJson FitRuns.NonlinearStudyEngine)
+        Assert.Equal<FitRuns.StudyEngineKind>(FitRuns.NonlinearStudyEngine, ofJson<FitRuns.StudyEngineKind> "2")
 
         let schema : EntrySchema = { kind = SourceEntryKind; version = FileSchemaVersion 1 }
         let json = toJson schema
@@ -235,3 +285,44 @@ module CanonicalJsonTests =
         Assert.Throws<JsonException>(fun () -> ofJson<PublishedIndexLaw> "4" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "0" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<LibraryEntryKind> "\"MaterialEntryKind\"" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<KitStar> "3" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<ExperimentRole> "8" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<DataDelimiter> "4" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<ScanColumnUnit> "7" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<ParameterScope> "5" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitMode> "3" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.FitStage> "4" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.CalibrationUse> "3" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.StudyEngineKind> "3" |> ignore) |> ignore
+
+        // No file holds a role before step 288, so the role rides an anonymous record through the readers' seam.
+        let roleText = JsonText "{ \"schemaVersion\": 1, \"role\": 8 }"
+        match parseVersionedText<{| schemaVersion : FileSchemaVersion; role : ExperimentRole |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) roleText with
+        | Error (MalformedJsonErr reason) -> Assert.Contains(nameof ExperimentRole, reason)
+        | other -> Assert.Fail($"the role tag 8: expected MalformedJsonErr, got %A{other}")
+
+        // The study schema refuses mode 3 before binding, so the converters' own refusals ride the seam unvalidated
+        // (spec 0050 S11.1).
+        let studyTagsText = JsonText "{ \"schemaVersion\": 1, \"scope\": 5, \"mode\": 1 }"
+        match parseVersionedText<{| schemaVersion : FileSchemaVersion; scope : ParameterScope; mode : FitMode |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) studyTagsText with
+        | Error (MalformedJsonErr reason) -> Assert.Contains(nameof ParameterScope, reason)
+        | other -> Assert.Fail($"the scope tag 5: expected MalformedJsonErr, got %A{other}")
+
+        let modeText = JsonText "{ \"schemaVersion\": 1, \"scope\": 3, \"mode\": 3 }"
+        match parseVersionedText<{| schemaVersion : FileSchemaVersion; scope : ParameterScope; mode : FitMode |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) modeText with
+        | Error (MalformedJsonErr reason) -> Assert.Contains(nameof FitMode, reason)
+        | other -> Assert.Fail($"the mode tag 3: expected MalformedJsonErr, got %A{other}")
+
+        // The fit run schema refuses these tags before binding too, so the converters' refusals ride the seam
+        // unvalidated (spec 0050 S11.3).
+        let fitRunTagTexts : (JsonText * string) list =
+            [
+                JsonText "{ \"schemaVersion\": 1, \"stage\": 4, \"calibrationUse\": 1, \"engine\": 1 }", nameof FitRuns.FitStage
+                JsonText "{ \"schemaVersion\": 1, \"stage\": 1, \"calibrationUse\": 3, \"engine\": 1 }", nameof FitRuns.CalibrationUse
+                JsonText "{ \"schemaVersion\": 1, \"stage\": 1, \"calibrationUse\": 1, \"engine\": 3 }", nameof FitRuns.StudyEngineKind
+            ]
+
+        for text, refusedType in fitRunTagTexts do
+            match parseVersionedText<{| schemaVersion : FileSchemaVersion; stage : FitRuns.FitStage; calibrationUse : FitRuns.CalibrationUse; engine : FitRuns.StudyEngineKind |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) text with
+            | Error (MalformedJsonErr reason) -> Assert.Contains(refusedType, reason)
+            | other -> Assert.Fail($"{text.value}: expected MalformedJsonErr, got %A{other}")

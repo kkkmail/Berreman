@@ -4,6 +4,7 @@ open System
 open System.IO
 open Softellect.Sys.Primitives
 open Xunit
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
@@ -15,6 +16,7 @@ open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Storage.ItemModelDatabaseStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
 open OpticalConstructor.Storage.PresetDatabaseStore
@@ -29,6 +31,7 @@ type ImportStoreSet =
         materials : MaterialProxy
         samples : SampleProxy
         presets : LibraryProxy
+        itemModels : ItemModelProxy
     }
 
 module private CatalogueImportContractData =
@@ -166,6 +169,29 @@ module private CatalogueImportContractData =
         let text = envelope.fileText |> expectImportDatabaseOk
         text.writeAtomically file |> expectImportDatabaseOk
         file
+
+    let glassCatalogueName = FileName "test-glasses.agf"
+    let glassNames = [ EntryName "TEST-S1"; EntryName "TEST-SCHOTT"; EntryName "TEST-HERZ" ]
+
+    let glassEntryIds : LibraryEntryId list =
+        [ 1 .. 6 ] |> List.map (fun n -> LibraryEntryId (Guid.Parse $"31801b0{n}-444f-43c8-8440-000000000463"))
+
+    let mintingInOrder (ids : LibraryEntryId list) : unit -> LibraryEntryId =
+        let remaining = ref ids
+        fun () ->
+            match remaining.Value with
+            | id :: rest ->
+                remaining.Value <- rest
+                id
+            | [] -> failwith "The fact minted more entry ids than its fixed sequence holds."
+
+    /// The step-462 fixture copied into a fresh import folder, with the bytes it holds (spec 0050 S13.2).
+    let copiedGlassCatalogue () : FileName * FileByteContent =
+        let folder = freshImportFolder ()
+        Directory.CreateDirectory folder.value |> ignore
+        let file = glassCatalogueName.combine folder
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "fixtures", glassCatalogueName.value), file.value)
+        file, FileByteContent (File.ReadAllBytes file.value)
 
     let writeImportFolder (folder : FolderName) (catalogue : CatalogueData) : unit =
         (CatalogueProxy.create folder).writeCatalogue catalogue
@@ -422,7 +448,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let first = MaterialVersionId.firstOf material.id
@@ -475,7 +501,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let firstVersion = MaterialVersionId.firstOf firstId
@@ -612,7 +638,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let first = MaterialVersionId.firstOf labId
@@ -749,6 +775,85 @@ type CatalogueImportContract () =
         Assert.Equal(InactiveEntry, (held |> List.find (fun entry -> entry.id = lab.id)).lifecycle)
 
     [<Fact>]
+    member this.``the pulled records of a source are its held pulled versions, by record, entry and version`` () : unit =
+        let context = (this.freshImport ()).context
+        context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let silicon = BuiltinCatalogue.material MaterialIds.silicon
+        let testSource = MaterialSourceName "Test source"
+        let otherSource = MaterialSourceName "Other source"
+        let unknownSource = MaterialSourceName "Unknown source"
+        let licence = EntryLicence "CC-BY-4.0"
+        let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+        let pullOf (source : MaterialSourceName) (record : MaterialSourceRecordId) (sourceVersion : MaterialSourceVersion) : SourcePullInfo =
+            {
+                source = source
+                record = record
+                recordHash = Text.Encoding.UTF8.GetBytes $"{record.value} at {sourceVersion.value}" |> FileByteContent |> ContentHash.ofBytes
+                sourceVersion = sourceVersion
+                licence = licence
+                citation = citation
+            }
+        let materialContent (id : MaterialId) (name : EntryName) (version : VersionNumber) (provenance : EntryProvenance) : LibraryEntryContent =
+            let entry =
+                {
+                    silicon with
+                        id = id
+                        name = name
+                }
+            LibraryEntryContent.ofMaterialEntry version provenance entry
+        let pulledRecord (content : LibraryEntryContent) (pull : SourcePullInfo) : PulledRecord =
+            {
+                version =
+                    {
+                        entryId = content.id
+                        version = content.version
+                    }
+                pull = pull
+            }
+        // A's GUID text sorts before B's, so only the record's text puts B first.
+        let aId = MaterialId (Guid.Parse "31801b01-444f-43c8-8440-000000000442")
+        let bId = MaterialId (Guid.Parse "31801b02-444f-43c8-8440-000000000442")
+        let cId = MaterialId (Guid.Parse "31801b03-444f-43c8-8440-000000000442")
+        let forkId = LibraryEntryId (Guid.Parse "31801b04-444f-43c8-8440-000000000442")
+        let userId = MaterialId (Guid.Parse "31801b05-444f-43c8-8440-000000000442")
+        let aName = EntryName "Pulled glass A"
+        let aPullFirst = pullOf testSource (MaterialSourceRecordId "b/x.yml") (MaterialSourceVersion "2026-11-01")
+        let aPullSecond = pullOf testSource (MaterialSourceRecordId "b/x.yml") (MaterialSourceVersion "2026-11-16")
+        let bPull = pullOf testSource (MaterialSourceRecordId "a/y.yml") (MaterialSourceVersion "2026-11-01")
+        let cPull = pullOf otherSource (MaterialSourceRecordId "a/y.yml") (MaterialSourceVersion "2026-11-01")
+        let aFirst = materialContent aId aName VersionNumber.first (SourcePullProvenance aPullFirst)
+        let aSecond = materialContent aId aName VersionNumber.first.next (SourcePullProvenance aPullSecond)
+        let b = materialContent bId (EntryName "Pulled glass B") VersionNumber.first (SourcePullProvenance bPull)
+        let c = materialContent cId (EntryName "Pulled glass C") VersionNumber.first (SourcePullProvenance cPull)
+        let fork =
+            {
+                aFirst with
+                    id = forkId
+                    name = EntryName "Pulled glass A (fork)"
+                    provenance =
+                        ForkProvenance
+                            {
+                                originalId = aFirst.id
+                                originalVersion = aFirst.version
+                                originalProvenance = aFirst.provenance
+                            }
+            }
+        let user = BuiltinCatalogue.userMaterialContent userId (EntryName "Lab glass")
+        Assert.Empty(context.proxy.pulledRecordsOf testSource |> expectImportOk)
+        BuiltinCatalogue.putSealedEntries context [ aFirst; c; fork; aSecond; user; b ]
+        Assert.NotEqual<ContentHash>(aPullFirst.recordHash, aPullSecond.recordHash)
+        let assertPulledRecords () : unit =
+            Assert.Equal<PulledRecord list>(
+                [ pulledRecord b bPull; pulledRecord aFirst aPullFirst; pulledRecord aSecond aPullSecond ],
+                context.proxy.pulledRecordsOf testSource |> expectImportOk)
+            Assert.Equal<PulledRecord list>([ pulledRecord c cPull ], context.proxy.pulledRecordsOf otherSource |> expectImportOk)
+            Assert.Empty(context.proxy.pulledRecordsOf unknownSource |> expectImportOk)
+        assertPulledRecords ()
+        context.proxy.retireEntry c.id |> expectImportOk
+        assertPulledRecords ()
+
+    [<Fact>]
     member this.``pinEntryVersion pins a held version so that its next physics edit mints a version, and refuses a version not held`` () : unit =
         let stores = this.freshImport ()
         let context = stores.context
@@ -768,7 +873,7 @@ type CatalogueImportContract () =
         let edited =
             {
                 material with
-                    complexity = langasite.complexity
+                    physics = langasite.physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
         let first = MaterialVersionId.firstOf labId
@@ -778,10 +883,10 @@ type CatalogueImportContract () =
                     version = first.version.next
             }
         match stores.materials.resolveVersion first with
-        | Ok (Some original) -> Assert.Equal((BuiltinCatalogue.material MaterialIds.silicon).complexity, original.complexity)
+        | Ok (Some original) -> Assert.Equal((BuiltinCatalogue.material MaterialIds.silicon).physics, original.physics)
         | _ -> Assert.Fail("Pinned version 1 must remain resolvable with Silicon's physics.")
         match stores.materials.resolveVersion second with
-        | Ok (Some minted) -> Assert.Equal(langasite.complexity, minted.complexity)
+        | Ok (Some minted) -> Assert.Equal(langasite.physics, minted.physics)
         | _ -> Assert.Fail("Editing the pinned material must mint version 2 with Langasite's physics.")
 
         let sample = BuiltinCatalogue.sampleContentOver sampleId labId sampleName
@@ -1122,6 +1227,120 @@ type CatalogueImportContract () =
         Assert.Equal<Result<ImportDecision list, CatalogueImportError>>(Error failure, failingContext.decideDroppedFiles [ sampleFile ])
         Assert.Equal(material.content.id, Assert.Single lookups)
         assertNoStartupWrites observed
+
+    [<Fact>]
+    member this.``a dropped glass catalogue is decided as one new user material per glass, writing nothing`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let file, bytes = copiedGlassCatalogue ()
+        let observed = observeStartupImport stores.context
+        let context =
+            {
+                observed.context with
+                    newEntryId = mintingInOrder glassEntryIds
+            }
+        let rows = context.decideDroppedFiles [ file ] |> expectImportOk
+        let ids = glassEntryIds |> List.take 3
+        Assert.Equal<LibraryEntryId list>(ids, rows |> List.map _.entryId)
+        Assert.Equal<ImportOrigin list>(List.replicate 3 (DroppedFileOrigin glassCatalogueName), rows |> List.map _.origin)
+        Assert.Equal<EntryName list>(glassNames, rows |> List.map _.rowName)
+        let importedFrom : EntryFileImportInfo =
+            {
+                file = glassCatalogueName
+                fileHash = ContentHash.ofBytes bytes
+            }
+        for row in rows do
+            match row.status with
+            | EntryIdNotHeld incoming ->
+                Assert.Equal(MaterialEntryKind, incoming.content.schema.kind)
+                Assert.Equal(VersionNumber.first, incoming.content.version)
+                Assert.Equal<CategoryId option>(Some CategoryIds.glass, incoming.content.categoryOpt)
+                Assert.Equal<EntryProvenance>(FileImportProvenance importedFrom, incoming.content.provenance)
+            | _ -> Assert.Fail($"The glass '{row.rowName.value}' must be decided as an id the library does not hold.")
+            Assert.Equal(AddIncomingEntry, row.defaultAction)
+        assertNoStartupWrites observed
+        for id in ids do
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry id)
+
+    [<Fact>]
+    member this.``an applied glass catalogue adds its glasses, and dropping it again collides by name`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let file, _ = copiedGlassCatalogue ()
+        let context =
+            {
+                stores.context with
+                    newEntryId = mintingInOrder glassEntryIds
+            }
+        context.decideDroppedFiles [ file ] |> expectImportOk
+        |> List.map _.byDefault |> context.apply |> expectImportOk |> ignore
+        let added = glassEntryIds |> List.take 3 |> List.map (heldImportRow context)
+        Assert.Equal<EntryName list>(glassNames, added |> List.map _.name)
+        for held in added do
+            Assert.Equal(MaterialEntryKind, held.kind)
+            Assert.Equal(VersionNumber.first, held.latest)
+            Assert.Equal(ActiveEntry, held.lifecycle)
+            Assert.Equal(UserManaged, held.provenance.protection)
+        match stores.materials.listMaterials IncludeInactive with
+        | Ok materials ->
+            Assert.Equal<EntryName list>(
+                List.sort glassNames, materials |> List.map _.name |> List.filter (fun name -> List.contains name glassNames) |> List.sort)
+        | Error _ -> Assert.Fail("The material store must list the applied glasses.")
+
+        let again = context.decideDroppedFiles [ file ] |> expectImportOk
+        let minted = glassEntryIds |> List.skip 3
+        Assert.Equal<LibraryEntryId list>(minted, again |> List.map _.entryId)
+        Assert.Equal<EntryName list>(
+            glassNames |> List.map (fun name -> EntryName $"{name.value} — from {glassCatalogueName.value}"), again |> List.map _.rowName)
+        for row, held in List.zip again added do
+            match row.status with
+            | NameCollision (_, sameName) -> Assert.Equal<HeldEntry list>([ held ], sameName)
+            | _ -> Assert.Fail($"The glass '{held.name.value}' dropped again must collide with the one held by name.")
+            Assert.Equal(AddIncomingEntry, row.defaultAction)
+            Assert.Equal<ImportAction list>([ RebindToHeldEntry held.id; SkipIncomingEntry ], row.alternatives)
+        for id in minted do
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry id)
+
+    [<Fact>]
+    member this.``a glass catalogue that does not read is refused, naming the file and its reason`` () : unit =
+        let stores = this.freshImport ()
+        stores.context.importFrom (CatalogueProxy.createBuiltIn ()) |> expectImportOk
+        |> List.map _.byDefault |> stores.context.apply |> expectImportOk |> ignore
+        let incoming = userImportMaterial (readImportRowEntries ()).silicon
+        let folder = freshImportFolder ()
+        let materialFile = writeDroppedEntry folder incoming
+        let conrady = (FileName "conrady-glasses.agf").combine folder
+        File.WriteAllText(
+            conrady.value,
+            "CC test-local glasses, one Conrady\nNM TEST-CONRADY 5 520600 1.52 60.0 0 1\nCD 1.5 0.01 0.0002\nLD 0.4 1.0\n")
+        let missing = (FileName "missing-glasses.AGF").combine folder
+        let observed = observeStartupImport stores.context
+        let context =
+            {
+                observed.context with
+                    newEntryId = mintingInOrder glassEntryIds
+            }
+        let refusedReason (files : FileName list) : string =
+            match context.decideDroppedFiles files with
+            | Error (DroppedFileRefusedErr reason) -> reason
+            | Error error -> failwith $"A glass catalogue that does not read must be DroppedFileRefusedErr, not {error.describe}"
+            | Ok rows -> failwith $"A glass catalogue that does not read must be refused, not decided as {rows.Length} row(s)."
+
+        let conradyReason = refusedReason [ conrady ]
+        Assert.Contains(conrady.value, conradyReason)
+        Assert.Contains("TEST-CONRADY", conradyReason)
+        let missingReason = refusedReason [ missing ]
+        Assert.Contains(missing.value, missingReason)
+        Assert.DoesNotContain("not a library entry file", missingReason)
+
+        let beside = refusedReason [ materialFile; conrady ]
+        Assert.Equal(conradyReason, beside)
+        Assert.DoesNotContain(materialFile.leafName.value, beside)
+        Assert.Equal($"{missingReason}\n{conradyReason}", refusedReason [ missing; materialFile; conrady ])
+        assertNoStartupWrites observed
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.proxy.tryHeldEntry incoming.content.id)
 
     [<Fact>]
     member this.``the start-up import logs the shipped catalogue and skips it, reading no entry file, while its manifest hash is unchanged`` () : unit =
@@ -1616,6 +1835,17 @@ type CatalogueImportContract () =
         Assert.Equal<Result<int, SampleError>>(Ok (countOf SampleEntryKind), stores.samples.listSamples IncludeInactive |> Result.map List.length)
         Assert.Equal(countOf SourceEntryKind + countOf PolarizerEntryKind + countOf DetectorEntryKind, (presetEntries stores).Length)
 
+        let itemModelRows : ItemModelVersionId list =
+            catalogue.envelopes
+            |> List.filter (fun envelope -> envelope.content.schema.kind = ItemModelEntryKind)
+            |> List.map (fun envelope ->
+                let row : ItemModelVersion = { version = envelope.content.version; entry = envelope.content.toItemModel |> decodeImportEntry }
+                row.versionId)
+        let listed = stores.itemModels.listItemModels () |> Result.map (List.map _.versionId)
+        Assert.NotEmpty itemModelRows
+        Assert.Equal<Result<int, ItemModelError>>(Ok (countOf ItemModelEntryKind), listed |> Result.map List.length)
+        Assert.Equal<Result<Set<ItemModelVersionId>, ItemModelError>>(Ok (Set.ofList itemModelRows), listed |> Result.map Set.ofList)
+
     [<Fact>]
     member this.``every imported entry resolves by its id to its decoded value`` () : unit =
         let catalogue = readImportCatalogue ()
@@ -1645,6 +1875,16 @@ type CatalogueImportContract () =
             | SourceEntryKind -> content.toSourcePreset |> decodeImportEntry |> SourceItem |> assertPreset
             | PolarizerEntryKind -> content.toPolarizerPreset |> decodeImportEntry |> PolarizerItem |> assertPreset
             | DetectorEntryKind -> content.toDetectorPreset |> decodeImportEntry |> DetectorItem |> assertPreset
+            | ItemModelEntryKind ->
+                let expected = content.toItemModel |> decodeImportEntry
+                let actual =
+                    context.proxy.tryHeldEnvelope content.id content.version
+                    |> expectImportOk
+                    |> Option.map (fun held -> held.content.toItemModel |> decodeImportEntry)
+                Assert.True((Some expected = actual), "An item-model id must resolve to its decoded value.")
+                let expectedVersion : ItemModelVersion = { version = content.version; entry = expected }
+                Assert.Equal<Result<ItemModelVersion option, ItemModelError>>(
+                    Ok (Some expectedVersion), stores.itemModels.resolveItemModelVersion expectedVersion.versionId)
 
     [<Fact>]
     member this.``importing a catalogue the stores already hold reuses every entry and writes nothing`` () : unit =
@@ -2091,6 +2331,7 @@ type CatalogueImportInMemoryTests () =
             materials = stores.materials
             samples = stores.samples
             presets = stores.libraryEntries
+            itemModels = stores.itemModels
         }
 
     [<Fact>]
@@ -2148,6 +2389,7 @@ type CatalogueImportSqliteTests () =
             materials = MaterialProxy.createInDatabase database
             samples = SampleProxy.createInDatabase database
             presets = LibraryProxy.createInDatabase database
+            itemModels = ItemModelProxy.createInDatabase database
         }
 
     [<Fact>]

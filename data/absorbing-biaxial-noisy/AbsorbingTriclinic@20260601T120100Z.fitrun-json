@@ -1,0 +1,3371 @@
+{
+  "calibrationUse": 1,
+  "dataRead": [
+    {
+      "contentHash": "59d22014520d2089d5ce6b9bc80c26d071203264190d67d01dcb8be579c42674",
+      "path": "data/noisy-observations-seed-1.csv"
+    },
+    {
+      "contentHash": "59d22014520d2089d5ce6b9bc80c26d071203264190d67d01dcb8be579c42674",
+      "path": "data/noisy-observations-seed-1.csv"
+    },
+    {
+      "contentHash": "59d22014520d2089d5ce6b9bc80c26d071203264190d67d01dcb8be579c42674",
+      "path": "data/noisy-observations-seed-1.csv"
+    },
+    {
+      "contentHash": "59d22014520d2089d5ce6b9bc80c26d071203264190d67d01dcb8be579c42674",
+      "path": "data/noisy-observations-seed-1.csv"
+    },
+    {
+      "contentHash": "59d22014520d2089d5ce6b9bc80c26d071203264190d67d01dcb8be579c42674",
+      "path": "data/noisy-observations-seed-1.csv"
+    }
+  ],
+  "engine": 2,
+  "entries": [
+    {
+      "fitted": 1.5739281926472544,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "n1"
+        ]
+      },
+      "start": 1.577212965672
+    },
+    {
+      "fitted": 1.6012763251191164,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "n2"
+        ]
+      },
+      "start": 1.6030183299129999
+    },
+    {
+      "fitted": 1.6162776224190558,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "n3"
+        ]
+      },
+      "start": 1.618838637024
+    },
+    {
+      "fitted": 0.001200869670260151,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e11"
+        ]
+      },
+      "start": 0.0014999999999999998
+    },
+    {
+      "fitted": 0.0018020784073824628,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e22"
+        ]
+      },
+      "start": 0.00144
+    },
+    {
+      "fitted": 0.0008998904439191547,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e33"
+        ]
+      },
+      "start": 0.00108
+    },
+    {
+      "fitted": 0.00034924507358900466,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e23"
+        ]
+      },
+      "start": 0.0002625
+    },
+    {
+      "fitted": -0.0002485656170781367,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e13"
+        ]
+      },
+      "start": -0.00032500000000000004
+    },
+    {
+      "fitted": 0.00045089718014693883,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e12"
+        ]
+      },
+      "start": 0.000351
+    },
+    {
+      "fitted": 4.855736487872667E-05,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g11"
+        ]
+      },
+      "start": 5.603E-05
+    },
+    {
+      "fitted": 4.878522615291358E-05,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g22"
+        ]
+      },
+      "start": 4.8299999999999995E-05
+    },
+    {
+      "fitted": 4.0556706703115647E-08,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g33"
+        ]
+      },
+      "start": -3.5625E-05
+    },
+    {
+      "fitted": 4.447777736191306E-05,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g23"
+        ]
+      },
+      "start": 1.2900000000000002E-05
+    },
+    {
+      "fitted": -3.5548560449917804E-05,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g13"
+        ]
+      },
+      "start": -4.914E-05
+    },
+    {
+      "fitted": 5.964256956528594E-06,
+      "owner": {
+        "Case": "MaterialOwner",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          }
+        ]
+      },
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g12"
+        ]
+      },
+      "start": 1.599E-05
+    }
+  ],
+  "members": [
+    {
+      "outcome": {
+        "Case": "MemberConverged",
+        "Fields": [
+          [
+            1.5739281926472544,
+            1.6012763251191164,
+            1.6162776224190558,
+            0.001200869670260151,
+            0.0018020784073824628,
+            0.0008998904439191547,
+            0.00034924507358900466,
+            -0.0002485656170781367,
+            0.00045089718014693883,
+            4.855736487872667E-05,
+            4.878522615291358E-05,
+            4.0556706703115647E-08,
+            4.447777736191306E-05,
+            -3.5548560449917804E-05,
+            5.964256956528594E-06
+          ],
+          0.06524129092477635
+        ]
+      },
+      "start": [
+        1.577212965672,
+        1.6030183299129999,
+        1.618838637024,
+        0.0014999999999999998,
+        0.00144,
+        0.00108,
+        0.0002625,
+        -0.00032500000000000004,
+        0.000351,
+        5.603E-05,
+        4.8299999999999995E-05,
+        -3.5625E-05,
+        1.2900000000000002E-05,
+        -4.914E-05,
+        1.599E-05
+      ]
+    }
+  ],
+  "mode": 1,
+  "name": "AbsorbingTriclinic@20260601T120100Z",
+  "notes": "",
+  "objectMatrices": [],
+  "parameters": [
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "9f304813-02a2-4624-b7e3-eea3e75193e7",
+          "azimuth"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "9f304813-02a2-4624-b7e3-eea3e75193e7",
+          "ellipticity"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "9f304813-02a2-4624-b7e3-eea3e75193e7",
+          "degreeOfPolarization"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "9f304813-02a2-4624-b7e3-eea3e75193e7",
+          "intensityScale"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          1
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "f61f5339-1db2-4c6c-a453-a9a9f0c11594",
+          "substrate.thickness"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          9.999999999999999E-05
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "10409181-5b7a-47b6-82df-525608098a65",
+          "substrate.thickness"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          9.999999999999999E-05
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "938e1eb1-4b3d-43ea-b4a0-12c1dc5c4191",
+          "rotationUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.003490658503988659
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "938e1eb1-4b3d-43ea-b4a0-12c1dc5c4191",
+          "elementUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.005
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "938e1eb1-4b3d-43ea-b4a0-12c1dc5c4191",
+          "throughputUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.01
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "f7e47d80-d265-481e-b351-6e6bf48785ee",
+          "rotationUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.003490658503988659
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "f7e47d80-d265-481e-b351-6e6bf48785ee",
+          "elementUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.005
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "f7e47d80-d265-481e-b351-6e6bf48785ee",
+          "throughputUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.01
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "d64587f5-a4dd-4d6e-b85d-c6fecdc24f9b",
+          "substrate.thickness"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          9.999999999999999E-05
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "5b34e704-1b59-4aa7-9904-f5ccbbb3ef71",
+          "substrate.thickness"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          9.999999999999999E-05
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "1a62e3fd-a168-4c03-a653-1ed3ae71789b",
+          "substrate.thickness"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          9.999999999999999E-05
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "n1"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": 1.527212965672,
+              "upper": 1.627212965672
+            },
+            "priorOpt": null,
+            "start": 1.577212965672
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "n2"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": 1.5530183299129998,
+              "upper": 1.653018329913
+            },
+            "priorOpt": null,
+            "start": 1.6030183299129999
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "n3"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": 1.568838637024,
+              "upper": 1.668838637024
+            },
+            "priorOpt": null,
+            "start": 1.618838637024
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e11"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.0035000000000000005,
+              "upper": 0.0065
+            },
+            "priorOpt": null,
+            "start": 0.0014999999999999998
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e22"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.00356,
+              "upper": 0.00644
+            },
+            "priorOpt": null,
+            "start": 0.00144
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e33"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.00392,
+              "upper": 0.00608
+            },
+            "priorOpt": null,
+            "start": 0.00108
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e23"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.0047375,
+              "upper": 0.0052625
+            },
+            "priorOpt": null,
+            "start": 0.0002625
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e13"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.005325,
+              "upper": 0.004675
+            },
+            "priorOpt": null,
+            "start": -0.00032500000000000004
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "e12"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.004649,
+              "upper": 0.005351
+            },
+            "priorOpt": null,
+            "start": 0.000351
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g11"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.00044397,
+              "upper": 0.00055603
+            },
+            "priorOpt": null,
+            "start": 5.603E-05
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g22"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.00045170000000000003,
+              "upper": 0.0005483
+            },
+            "priorOpt": null,
+            "start": 4.8299999999999995E-05
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g33"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.000535625,
+              "upper": 0.000464375
+            },
+            "priorOpt": null,
+            "start": -3.5625E-05
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g23"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.0004871,
+              "upper": 0.0005129
+            },
+            "priorOpt": null,
+            "start": 1.2900000000000002E-05
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g13"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.00054914,
+              "upper": 0.00045086000000000003
+            },
+            "priorOpt": null,
+            "start": -4.914E-05
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "MaterialParameterRef",
+        "Fields": [
+          {
+            "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+            "version": 1
+          },
+          "g12"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.00048401,
+              "upper": 0.00051599
+            },
+            "priorOpt": null,
+            "start": 1.599E-05
+          }
+        ]
+      }
+    }
+  ],
+  "results": {
+    "problems": [
+      {
+        "chiSquared": 0.06524129092477635,
+        "columnNorms": [
+          4.447973278482437,
+          6.045764109686724,
+          5.382534011127197,
+          0.1856468211650125,
+          0.22304352035560765,
+          0.24085929148914026,
+          0.23876170259193905,
+          0.18870894252524514,
+          0.19123526863971646,
+          0.01409014743611398,
+          0.039217055995968135,
+          0.025415652971893223,
+          0.0011675328510471503,
+          0.03738069853053548,
+          0.0018149172118623808
+        ],
+        "conditionOpt": 9635.200242923493,
+        "coordinates": [
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "n1"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "n2"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "n3"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "e11"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "e22"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "e33"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "e23"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "e13"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "e12"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "g11"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "g22"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "g33"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "g23"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "g13"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "MaterialOwner",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      }
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "MaterialParameterRef",
+                    "Fields": [
+                      {
+                        "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                        "version": 1
+                      },
+                      "g12"
+                    ]
+                  }
+                }
+              ]
+            ]
+          }
+        ],
+        "correlationOpt": [
+          [
+            1,
+            0.9999393246299394,
+            0.9999239210259776,
+            0.04413884488880416,
+            0.05267964012779987,
+            0.036070669147704224,
+            0.014789820310723414,
+            -0.010835936495870533,
+            0.019107627170480677,
+            -0.007672775889288569,
+            0.00047996115637586126,
+            0.0031630384170861317,
+            0.034704430930938945,
+            0.0007032111063127371,
+            0.009231182020040661
+          ],
+          [
+            0.9999393246299393,
+            1,
+            0.9999590142958737,
+            0.044037858310066166,
+            0.05264967235973786,
+            0.03622666460968695,
+            0.014742586674364077,
+            -0.010857571789879243,
+            0.019196026512776403,
+            -0.008018353976696516,
+            0.0006151596979992647,
+            0.0031620907298921465,
+            0.034574352407003434,
+            0.0007015937654685431,
+            0.00924434097563134
+          ],
+          [
+            0.9999239210259777,
+            0.999959014295874,
+            1,
+            0.044103891442084826,
+            0.05264487949629054,
+            0.036208335678832825,
+            0.014855918599843265,
+            -0.010833102733555805,
+            0.019200317482322905,
+            -0.007993089533632885,
+            0.0007547061101217446,
+            0.0029640848032828366,
+            0.03453637452519198,
+            0.0007035199430285845,
+            0.00921947790572055
+          ],
+          [
+            0.04413884488880413,
+            0.04403785831006615,
+            0.044103891442084826,
+            1,
+            0.08971182258594733,
+            -0.11295887611974949,
+            0.04205664367151391,
+            0.09632117770236821,
+            -0.15591471879189173,
+            -0.0012582663521925686,
+            0.0012710445073265504,
+            -0.001095004144475245,
+            -0.0005641801398143649,
+            -0.00018082947870019382,
+            0.0041949651000711945
+          ],
+          [
+            0.05267964012779987,
+            0.05264967235973785,
+            0.052644879496290556,
+            0.0897118225859473,
+            1,
+            0.1220067004968242,
+            -0.012945041400541268,
+            0.029442462192647244,
+            -0.06541169466482918,
+            -0.0013146039932229704,
+            0.001322417031197906,
+            -0.0009910280969029617,
+            0.0018878893605519874,
+            -0.0005198932378705266,
+            0.00257041615861364
+          ],
+          [
+            0.03607066914770434,
+            0.03622666460968707,
+            0.03620833567883295,
+            -0.11295887611974949,
+            0.1220067004968242,
+            1,
+            -0.005881126793972056,
+            0.09289111723893359,
+            0.12397616090476718,
+            -0.00025395211158251764,
+            -0.0011258833480730505,
+            0.0015630520647069693,
+            0.00347844691650259,
+            9.559301203963557E-05,
+            -0.0017242591837216621
+          ],
+          [
+            0.01478982031072357,
+            0.014742586674364235,
+            0.014855918599843424,
+            0.042056643671513926,
+            -0.012945041400541259,
+            -0.005881126793972034,
+            1,
+            0.08307924271215364,
+            0.25416460096414073,
+            -0.0006524509944643289,
+            0.0012636951377144065,
+            -0.001246309244968367,
+            0.00048206483677648267,
+            0.0012320171702024344,
+            0.00033888348370097977
+          ],
+          [
+            -0.010835936495870495,
+            -0.010857571789879207,
+            -0.01083310273355576,
+            0.09632117770236817,
+            0.02944246219264723,
+            0.09289111723893358,
+            0.08307924271215364,
+            1,
+            0.1038659993461069,
+            -0.00042863503432301515,
+            0.000713110041656917,
+            -0.000682676583019538,
+            -0.0004725854080029873,
+            -0.002047234300349771,
+            0.00048302157168457423
+          ],
+          [
+            0.01910762717048073,
+            0.019196026512776448,
+            0.019200317482322957,
+            -0.15591471879189173,
+            -0.06541169466482917,
+            0.12397616090476717,
+            0.25416460096414073,
+            0.10386599934610687,
+            1,
+            0.00047984021425184417,
+            -0.00045502389846822466,
+            0.0004415678937472879,
+            0.0007321385204143271,
+            0.0011283416164666474,
+            -0.0007431683275738758
+          ],
+          [
+            -0.007672775889288715,
+            -0.008018353976696653,
+            -0.007993089533633023,
+            -0.0012582663521925651,
+            -0.0013146039932229662,
+            -0.0002539521115825313,
+            -0.0006524509944643152,
+            -0.0004286350343230092,
+            0.0004798402142518484,
+            1,
+            -0.7363310671699429,
+            0.4574412147556184,
+            -0.10205743095627774,
+            -0.011167937221320014,
+            -0.22161784359284076
+          ],
+          [
+            0.0004799611563761437,
+            0.0006151596979995251,
+            0.0007547061101220197,
+            0.0012710445073265565,
+            0.0013224170311979208,
+            -0.0011258833480730385,
+            0.0012636951377144067,
+            0.0007131100416569134,
+            -0.0004550238984682256,
+            -0.7363310671699479,
+            1,
+            -0.9369043448684932,
+            -0.10221251416133414,
+            0.012235960140260564,
+            0.4523016272633439
+          ],
+          [
+            0.0031630384170858493,
+            0.0031620907298918876,
+            0.0029640848032825603,
+            -0.0010950041444752533,
+            -0.0009910280969029756,
+            0.0015630520647069602,
+            -0.0012463092449683751,
+            -0.0006826765830195365,
+            0.000441567893747288,
+            0.4574412147556254,
+            -0.9369043448684962,
+            1,
+            0.18502009797163763,
+            -0.007662559581916273,
+            -0.48437132634867397
+          ],
+          [
+            0.03470443093093865,
+            0.03457435240700318,
+            0.034536374525191704,
+            -0.0005641801398143767,
+            0.001887889360551972,
+            0.0034784469165025774,
+            0.0004820648367764697,
+            -0.0004725854080029825,
+            0.0007321385204143207,
+            -0.10205743095627602,
+            -0.10221251416133566,
+            0.1850200979716388,
+            1,
+            0.032876377545407266,
+            -0.5912698584051179
+          ],
+          [
+            0.0007032111063128715,
+            0.0007015937654686765,
+            0.0007035199430287187,
+            -0.00018082947870019176,
+            -0.0005198932378705184,
+            9.559301203964531E-05,
+            0.0012320171702024359,
+            -0.0020472343003497726,
+            0.0011283416164666496,
+            -0.011167937221320354,
+            0.012235960140260354,
+            -0.007662559581915825,
+            0.032876377545409584,
+            1,
+            0.0215767664736064
+          ],
+          [
+            0.009231182020041166,
+            0.009244340975631801,
+            0.009219477905721038,
+            0.004194965100071213,
+            0.002570416158613663,
+            -0.0017242591837216467,
+            0.0003388834837009879,
+            0.00048302157168456577,
+            -0.0007431683275738722,
+            -0.22161784359284414,
+            0.4523016272633451,
+            -0.48437132634867375,
+            -0.5912698584051174,
+            0.021576766473607536,
+            1
+          ]
+        ],
+        "rank": 15,
+        "rmse": 0.009626644703395932,
+        "subject": "StudyEntriesProblem"
+      }
+    ],
+    "productChecks": [],
+    "profiles": [
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "n1"
+            ]
+          }
+        },
+        "points": [
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.0660929045000143
+              ]
+            },
+            "value": 1.5733111194214016
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06561960853219989
+              ]
+            },
+            "value": 1.5735168104966857
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.0653358198136089
+              ]
+            },
+            "value": 1.57372250157197
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06524129092477635
+              ]
+            },
+            "value": 1.5739281926472544
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06533576486695344
+              ]
+            },
+            "value": 1.5741338837225387
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.065618976747604
+              ]
+            },
+            "value": 1.574339574797823
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06609066900919341
+              ]
+            },
+            "value": 1.5745452658731072
+          }
+        ],
+        "reasons": [
+          {
+            "Case": "CorrelatedEntryReason",
+            "Fields": [
+              {
+                "owner": {
+                  "Case": "MaterialOwner",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    }
+                  ]
+                },
+                "parameter": {
+                  "Case": "MaterialParameterRef",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    },
+                    "n2"
+                  ]
+                }
+              },
+              0.9999393246299394
+            ]
+          },
+          {
+            "Case": "CorrelatedEntryReason",
+            "Fields": [
+              {
+                "owner": {
+                  "Case": "MaterialOwner",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    }
+                  ]
+                },
+                "parameter": {
+                  "Case": "MaterialParameterRef",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    },
+                    "n3"
+                  ]
+                }
+              },
+              0.9999239210259776
+            ]
+          }
+        ]
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "n2"
+            ]
+          }
+        },
+        "points": [
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06609290895550045
+              ]
+            },
+            "value": 1.6006579667634588
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06561961018578204
+              ]
+            },
+            "value": 1.6008640862153447
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.0653358238048278
+              ]
+            },
+            "value": 1.6010702056672306
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06524129092477635
+              ]
+            },
+            "value": 1.6012763251191164
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.0653357646053347
+              ]
+            },
+            "value": 1.6014824445710023
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06561898851420962
+              ]
+            },
+            "value": 1.6016885640228882
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06609069009397764
+              ]
+            },
+            "value": 1.601894683474774
+          }
+        ],
+        "reasons": [
+          {
+            "Case": "CorrelatedEntryReason",
+            "Fields": [
+              {
+                "owner": {
+                  "Case": "MaterialOwner",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    }
+                  ]
+                },
+                "parameter": {
+                  "Case": "MaterialParameterRef",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    },
+                    "n1"
+                  ]
+                }
+              },
+              0.9999393246299393
+            ]
+          },
+          {
+            "Case": "CorrelatedEntryReason",
+            "Fields": [
+              {
+                "owner": {
+                  "Case": "MaterialOwner",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    }
+                  ]
+                },
+                "parameter": {
+                  "Case": "MaterialParameterRef",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    },
+                    "n3"
+                  ]
+                }
+              },
+              0.9999590142958737
+            ]
+          }
+        ]
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "n3"
+            ]
+          }
+        },
+        "points": [
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06609290693179472
+              ]
+            },
+            "value": 1.615657484335392
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06561961283300473
+              ]
+            },
+            "value": 1.6158641970299465
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.0653358223052764
+              ]
+            },
+            "value": 1.6160709097245012
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06524129092477635
+              ]
+            },
+            "value": 1.6162776224190558
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06533576494060676
+              ]
+            },
+            "value": 1.6164843351136104
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06561898864822165
+              ]
+            },
+            "value": 1.616691047808165
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06609069722475218
+              ]
+            },
+            "value": 1.6168977605027197
+          }
+        ],
+        "reasons": [
+          {
+            "Case": "CorrelatedEntryReason",
+            "Fields": [
+              {
+                "owner": {
+                  "Case": "MaterialOwner",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    }
+                  ]
+                },
+                "parameter": {
+                  "Case": "MaterialParameterRef",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    },
+                    "n1"
+                  ]
+                }
+              },
+              0.9999239210259777
+            ]
+          },
+          {
+            "Case": "CorrelatedEntryReason",
+            "Fields": [
+              {
+                "owner": {
+                  "Case": "MaterialOwner",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    }
+                  ]
+                },
+                "parameter": {
+                  "Case": "MaterialParameterRef",
+                  "Fields": [
+                    {
+                      "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                      "version": 1
+                    },
+                    "n2"
+                  ]
+                }
+              },
+              0.999959014295874
+            ]
+          }
+        ]
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "g23"
+            ]
+          }
+        },
+        "points": [
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06598512588928825
+              ]
+            },
+            "value": -0.0002821147393990721
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.0655716757412734
+              ]
+            },
+            "value": -0.0001732505671454104
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06532387748339367
+              ]
+            },
+            "value": -6.438639489174866E-05
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06524129092477635
+              ]
+            },
+            "value": 4.447777736191306E-05
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06532412801319751
+              ]
+            },
+            "value": 0.0001533419496155748
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.0655732821381174
+              ]
+            },
+            "value": 0.0002622061218692365
+          },
+          {
+            "outcome": {
+              "Case": "ProfileConverged",
+              "Fields": [
+                0.06599031472155409
+              ]
+            },
+            "value": 0.0003710702941228983
+          }
+        ],
+        "reasons": [
+          {
+            "Case": "WideSigmaReason",
+            "Fields": [
+              0.10886417225366173
+            ]
+          }
+        ]
+      }
+    ],
+    "realizability": [],
+    "runResiduals": [
+      {
+        "residuals": [
+          -0.0016092567684760917,
+          -0.000989757006644833,
+          0.000849429286183576,
+          0.0026241317830695,
+          -0.004357933936562808,
+          0.003245023125287169,
+          0.0010923315186653392,
+          0.005323667284965709,
+          0.003372434862317364,
+          0.002649620350522852,
+          0.04270395103880997,
+          -0.0017344609401540904,
+          0.0007242449459930407,
+          -0.04544095624094388,
+          -0.00038546357926116936,
+          0.005659419566153498,
+          0.0029717527442426617,
+          -0.00010912231113334958,
+          -0.0015136734220368708,
+          0.0035186156314397365,
+          -0.003746683947258578,
+          0.011171673706703517,
+          -0.00372469407218394,
+          -0.003366457151453464,
+          -0.0001394869660722442,
+          -0.03266360961043428,
+          -0.0008725972048059757,
+          -0.0073887690952025055,
+          0.024489796188529117,
+          -0.0025593667414495203,
+          -0.00037070962846049577,
+          0.0027469441401368477,
+          -0.008861292024105545,
+          -0.002098479815021483,
+          0.0020955153520587633,
+          -0.0009624946136782414,
+          0.03591433617605719,
+          -0.001290918894468085,
+          -9.740323222660885E-05,
+          0.0036128875829759544,
+          -0.044860627704380616,
+          0.003429191148642809,
+          -0.038798462944470445,
+          0.043844895717853875,
+          -3.164491397023017E-05,
+          0.0032628289935559274,
+          -0.003995984458847079,
+          0.0015892048022586032,
+          -0.002288200034647442,
+          0.004655818739500939,
+          0.002912084764671863,
+          -0.016607388178813784,
+          0.004880542419481562,
+          0.002436301260627924,
+          -0.0005030304099836735,
+          0.007171501042538657,
+          -0.006394525548353565,
+          0.016125460712909,
+          -0.0062277263441826,
+          0.0027631334952796793,
+          0.004253704056338903,
+          0.004218574642940987,
+          -7.639890374207259E-05,
+          0.004230682076746123,
+          0.0027672406972519825,
+          -0.002536425043515457,
+          0.0013856598009209502,
+          0.0026527814038820336,
+          -0.0026465567238206436,
+          -0.06347268146521867,
+          -0.008989403107638738,
+          0.001088418790198378,
+          -0.0006384337341525208,
+          0.014074213867818597,
+          -0.0665683168512233,
+          -0.0006398514624840479,
+          -0.0019399033338426469,
+          0.0019215012952076115,
+          -0.0009225071747762659,
+          -0.0037419822142558123,
+          0.0007119675100575476,
+          0.0025094913261496394,
+          -0.0024088137241664157,
+          -0.003235105817910074,
+          -0.0017531292286040445,
+          -0.0033968502232058356,
+          -0.0029613523796520264,
+          0.0005470975081417555,
+          0.005218354891045121,
+          -0.0013293326602981104,
+          -0.001947324944455188,
+          -0.0030136637346918557,
+          -0.0030632219751601034,
+          0.0022692142429161753,
+          -0.014829413545502268,
+          0.0014569470156011871,
+          0.01759696777646158,
+          0.0022379455441258467,
+          0.0028900145476641603,
+          0.00200202844087094,
+          0.003874194536143103,
+          -0.004297927179608967,
+          -0.014894225033262987,
+          -0.0002581005906953024,
+          -0.012492441714723745,
+          0.002562071603710317,
+          0.0012004877457268016,
+          0.004220465096717866,
+          0.004846791262658176,
+          -0.0044960728038114794,
+          -0.00027634537718449273,
+          -0.003606446479871973,
+          0.002576910889570548,
+          0.0001302753879747036,
+          -0.0032902403217195397,
+          0.0039911332320160114,
+          0.001816328801001927,
+          0.004732606952395516,
+          0.0026921444411005697,
+          0.0018100303383342675,
+          -0.00026875178751090134,
+          0.0006096681049715755,
+          -0.003708024690749684,
+          -0.001990496368235506,
+          0.000560001191780346,
+          0.003914779297751765,
+          -0.00702975479317875,
+          -0.0036632989160804846,
+          0.003688172499734456,
+          0.030269476993013356,
+          0.0009555500644176096,
+          0.0015841370488997447,
+          0.007135072094604438,
+          0.0016511233604202813,
+          0.03128346062697272,
+          -0.00559672234997155,
+          -0.0013486492983481452,
+          0.005098538317387354,
+          -0.0004970131361479169,
+          0.0001734696666164659,
+          -0.0011662745953611268,
+          0.002649555242265663,
+          -0.0012981116044577523,
+          0.0018833291899433414,
+          0.002823533195766559,
+          0.0019127227611951125,
+          0.0027530391772212066,
+          -0.0012555600199277228,
+          0.0009961414483743436,
+          0.004009504760693727,
+          0.0029642488454808824,
+          -0.0010709643956304526,
+          -0.00401212808622374,
+          -0.002726383808780458,
+          -0.0050474242694903415,
+          0.0030433290207490873,
+          0.009688230521307295,
+          -0.003480116675356623,
+          0.0020992047057260058,
+          0.00446169446774225,
+          0.00017254711013993396,
+          -0.00017804297501863853,
+          -0.005100585719460482,
+          -0.0030672442897635432,
+          -0.004587939784874484,
+          0.009505971169265104,
+          0.004190660912764169,
+          0.003248042817780218,
+          0.00941469343671486,
+          -0.0006609161988011536,
+          -0.001874040088479613,
+          0.0015766020205707932,
+          -0.001229475539971575,
+          -0.00015361803569201478,
+          0.0014537285673171807,
+          0.0007997977701369938,
+          0.00011258599574000966,
+          0.0017971513035380075,
+          0.0008100217108563297,
+          -0.001820000782283504,
+          0.0018664530661697265,
+          0.004482300466727526,
+          0.0004771097890706594,
+          0.007578509608570538,
+          0.0024283440988138727,
+          0.001171286334739635,
+          0.0030375574266398213,
+          0.004531567275737182,
+          -0.001578965154842104,
+          0.017814776621341316,
+          0.0015187345117617657,
+          -0.0016117568065029649,
+          0.0013531651899000353,
+          -0.008605180694565617,
+          0.022444295792321878,
+          -0.002315602693102825,
+          -0.00469521712511329,
+          0.0030392108836015453,
+          0.0034867740865490715,
+          -0.00046792233854897614,
+          -0.00015483346857048325,
+          0.001105664735819327,
+          -0.0049130794283901375,
+          -0.0007531366236275058,
+          -0.002581978481586797,
+          -0.0029094999842094542,
+          0.003412455190294728,
+          0.0037446647986837424,
+          0.0016754816501774721,
+          -0.0021838951928451755,
+          0.0054058851497387345,
+          0.004499447629615294,
+          -0.0026980394633056293,
+          0.001331431596167068,
+          0.013329533833971396,
+          0.0037811202513988867,
+          0.0005922107160140078,
+          0.0013059123878162576,
+          -0.0017649233818011617,
+          -0.004354452418032562,
+          -0.005564010101708955,
+          -0.0007115555605952811,
+          -0.0031661637984484736,
+          0.0003852911901935374,
+          0.019891171852305517,
+          0.009358669684028098,
+          0.0014540920874315522,
+          0.0005918856143823925,
+          0.0016404701243245556,
+          -0.005028391084906714,
+          0.0032238593020233776,
+          0.009552395455928817,
+          0.005904629837347748,
+          0.0020086875388467436,
+          0.005122530134698058,
+          -0.0005139592123865541,
+          -0.0021727050815914806,
+          -0.0023415723436784573,
+          -0.00067715382993715,
+          0.002746176078472215,
+          0.000690229633318884,
+          -0.009166870690187956,
+          -0.00032074745956678363,
+          -0.009217791283399057,
+          -0.0026579047468038297,
+          0.0024519078110398773,
+          0.008723982028878474,
+          -0.010093741188720529,
+          0.007740982751793579,
+          -0.00012861272164821358,
+          -0.00494425429100831,
+          -0.0019183605689714334,
+          1.4693751315908443E-05,
+          0.002523825303062832,
+          -0.00718357192941399,
+          0.012694616535802172
+        ],
+        "rmse": 0.010660930986890244,
+        "run": "OpticAxisCut"
+      },
+      {
+        "residuals": [
+          -0.002961252250142654,
+          0.002087310950431187,
+          0.0075654744944349175,
+          -0.0031503015892282438,
+          0.004126809613230198,
+          0.0009286722036132289,
+          0.0018147791327448193,
+          0.0051488563268428655,
+          -0.0007010631441669579,
+          0.003144285713955086,
+          -0.05961625084638441,
+          -0.009215947691703235,
+          0.0030281932060932924,
+          0.0595686839737329,
+          -0.0012111416937742314,
+          0.004863795678856475,
+          -0.005172003039214326,
+          -0.003335494555887255,
+          -0.003657469781962741,
+          0.0004556281518869332,
+          0.0018316053339847496,
+          -0.020616819277951264,
+          0.0020605702393865846,
+          -0.00046567818345137624,
+          0.0017069558811648733,
+          0.056478597580787264,
+          0.005758594153658247,
+          0.028062566040264823,
+          -0.05008038955389801,
+          0.00504791578086583,
+          0.0028713052164143216,
+          0.004066032142133635,
+          -0.003925496382255503,
+          -0.005054967530100873,
+          0.002082251573170213,
+          -0.004362542764400859,
+          0.020979435423856534,
+          -0.003386284464523992,
+          -0.003227588021003456,
+          -0.0039727410744000435,
+          -0.027404647592672485,
+          -0.0016457459895775303,
+          -0.019945131095842353,
+          0.031078405029047552,
+          0.005536057356348434,
+          8.507310346591093E-05,
+          0.004233464500162709,
+          -0.009879202640105852,
+          -0.0022335117926420185,
+          -0.0016980924756625493,
+          -0.005394704036838907,
+          0.0546850176208608,
+          -0.003330502058740581,
+          -0.004076795685817647,
+          -0.003820683178617945,
+          -0.02226265128282664,
+          0.007171329372798919,
+          -0.04871548560346472,
+          0.022653058764061686,
+          0.005113771000229139,
+          0.00022186405631730022,
+          0.007166806389736324,
+          -0.00618359688807113,
+          0.0030655761485317568
+        ],
+        "rmse": 0.01930439503888974,
+        "run": "OtherOpticAxisCut"
+      },
+      {
+        "residuals": [
+          0.0017597228594939673,
+          0.0023235710332672813,
+          0.0022332369327453545,
+          -0.003685587340884644,
+          0.002681491260256963,
+          0.0009100325573853266,
+          -0.0030386180198481924,
+          5.186086467992568E-05,
+          -0.006624361935614358,
+          0.007688831864646473,
+          0.0022058324523039907,
+          0.0029248084239442435,
+          0.005805871763690915,
+          -0.0032044309747013555,
+          -0.0008108193922928275,
+          0.0023312607837023096,
+          0.004091364169483383,
+          0.00026482517927777166,
+          -0.0008552454517124445,
+          0.0004681856862792655,
+          -0.001898738341276408,
+          -0.004067857597216098,
+          0.004105058439371087,
+          -0.002451157454460034,
+          0.0033333075567733017,
+          -0.0011108922917646286,
+          -0.0002676901252015747,
+          -0.0035348724976427227,
+          -0.005241575546905505,
+          -0.004302079686507976,
+          -0.004733004502704752,
+          0.002649518091538893,
+          0.002820110207973516,
+          3.60846890789801E-05,
+          0.002927974250683363,
+          -0.0027038269589379055,
+          0.00506459038924049,
+          -0.003425853884844265,
+          -0.00924758394365575,
+          0.0069222644318101545,
+          3.020017653476703E-05,
+          -0.001484267880271931,
+          -0.0055425172735388654,
+          0.0029719261289284926,
+          -0.0013954130944516807,
+          -0.004349291980584559,
+          -0.002680679178124407,
+          -0.0027940376816544465,
+          -0.0010276753346248613,
+          -0.004867390559674334,
+          0.004403262556770807,
+          0.0013610958036104394,
+          -0.00039460198478928144,
+          -0.003560592322890213,
+          0.0007827801586145489,
+          0.001955344835603501,
+          0.0033384955640168128,
+          0.0028878144554059645,
+          0.0006946225312153415,
+          0.0034830522105959716,
+          8.045814432489085E-05,
+          -0.0018518604067562418,
+          -0.003304308333894144,
+          0.0018539009729259814,
+          0.0019068564227071594,
+          0.0064891313591741075,
+          0.0009455353639356481,
+          -0.0013618889637258885,
+          0.008470559645897921,
+          -0.008997283810003198,
+          0.012469904224646111,
+          -0.001800083725136896,
+          -0.002488926784159913,
+          -0.01810630737383634,
+          -0.015948199910929217,
+          0.0007256650217348781,
+          0.0019123912858970255,
+          0.001874525446033435,
+          0.0035903293564989447,
+          0.004267904649138288,
+          -0.0020606033918691654,
+          0.0016035440687129695,
+          -0.0034885418876493663,
+          -0.0015599016449291071,
+          -0.0004602157031656784,
+          -0.003984574926192426,
+          0.0036165764165762915,
+          0.0006597709134891819,
+          -0.0035777337421324107,
+          -0.0010259144471539416,
+          -0.002402944329017803,
+          -0.0010372466231207047,
+          0.00019170929272108866,
+          0.0014896301457155148,
+          -0.00311138246491538,
+          0.005202948446151902,
+          -0.002497185954540136,
+          0.0019047691998829055,
+          -0.0030712248373274157,
+          0.03503410638860205,
+          0.014673415334903073,
+          0.0025164412118904213,
+          0.0030291464669702983,
+          -0.021844551893790642,
+          0.027906236924623018,
+          -0.006945419298811983,
+          0.0005952542745971423,
+          -0.002251272225507734,
+          -0.0007837762425880745,
+          -0.004645975841788608,
+          8.908589737689327E-05,
+          -0.0032821900238088043,
+          0.0043711053570842555,
+          -0.0035727033872500853,
+          0.0023297249554934396,
+          0.00019846093593266917,
+          -0.0022268466722165504,
+          -0.004008106681035497,
+          -0.0035155221023790706,
+          -0.0006665574244211214,
+          0.0008137696957308815,
+          -0.005298489587289623,
+          0.006082765177702676,
+          -0.0009270862957930781,
+          0.0069354912718435635,
+          0.009378670475010509,
+          0.003236626294088607,
+          -0.006283885040084591
+        ],
+        "rmse": 0.00624939922406283,
+        "run": "ZCut"
+      },
+      {
+        "residuals": [
+          1.7930944121447023E-05,
+          0.0025132120947326045,
+          -0.00023832627628738584,
+          0.0047972020117984515,
+          0.0012823700028592455,
+          -0.00966705134114083,
+          0.0018434178797684907,
+          0.001200097922920652,
+          -0.011498670963378633,
+          -0.0022273128072748394,
+          -0.0013619018854699183,
+          0.003907514927236868,
+          -0.00041046570207801925,
+          0.004995146226091762,
+          -0.002188504124259305,
+          -0.0011776454463950647,
+          0.0014490852354644252,
+          -0.0013316427967399631,
+          -0.004321492289240753,
+          0.0008645762814732949,
+          -0.001035661064753461,
+          0.002273948553329779,
+          -7.303683471981829E-05,
+          -0.0030678488688563885,
+          0.0016532099272490441,
+          0.002582530425531443,
+          0.002759603040865014,
+          -0.000600906110880857,
+          -0.004372237904999937,
+          -0.006016572480608828,
+          0.0009324273564912944,
+          -0.0018878057725328756,
+          0.004664482473816716,
+          -0.004893259407678374,
+          5.205086286030891E-05,
+          -0.004095643942952891,
+          -0.003119288524161056,
+          0.0014654958268531214,
+          -0.0049783773011098376,
+          -0.005005137910820134,
+          -0.0017779462831408743,
+          0.0016970468064444223,
+          0.002015477199030535,
+          0.0020737786841837913,
+          -0.004691266674685446,
+          0.00044799559204830586,
+          -0.0008379494524911248,
+          -0.002061469151247346,
+          -0.00310250103522601,
+          -0.0020279358754784482,
+          -0.004976122332395474,
+          0.004331487815922907,
+          -0.000492566970718678,
+          0.005404795900743818,
+          -0.0027528008586878983,
+          -0.0025489010107446752,
+          0.001041085654076013,
+          0.0038512224465280004,
+          -0.0007061778575148947,
+          -0.0031365086161914135,
+          -0.0030587373089903114,
+          -0.002515195167278439,
+          -0.005344591015642223,
+          -0.0031208883847410607,
+          0.001807229340573424,
+          0.005249471871683699,
+          0.005092591792627346,
+          -0.0025116965726864476,
+          -0.00020663295685739694,
+          0.029165417432036878,
+          -0.023545758949540363,
+          0.004208130872914186,
+          -0.00027865454764565943,
+          0.02391460456356176,
+          0.031068114368273447,
+          0.0004409065060092532,
+          -0.0006130712852298109,
+          0.00508347149700765,
+          0.005084411346868767,
+          -0.003488475536345903,
+          -0.004300700678360947,
+          -0.0024546012250519517,
+          -0.0047966301142219215,
+          -0.0019630077007078486,
+          0.002585603791468327,
+          -2.8874560932506954E-05,
+          0.0014224251008126518,
+          -0.001967987865624422,
+          0.0028914914402872888,
+          0.0007012505863445151,
+          -0.0005828752684236549,
+          0.0004395436520246393,
+          0.0019573108531045734,
+          -0.002995074608261372,
+          -0.002835145251481541,
+          0.0015158815871491196,
+          0.001551915031752696,
+          -0.0021590250924045516,
+          -0.004379020911787734,
+          0.007271432564290081,
+          0.01676910115486019,
+          -0.0019093612715069819,
+          0.0015675507142442532,
+          -0.013471324111837824,
+          0.012615645974940137,
+          0.004365992888772263,
+          -0.0028880159043541704,
+          -0.0034288168574674385,
+          -0.0025630674408950727,
+          0.002725845274403338,
+          0.0011707769931490108,
+          0.0011157147258052543,
+          -0.002168684566194839,
+          0.004170727289769636,
+          -0.0011051411689665391,
+          -0.0021684248912825083,
+          -0.0021364286907496572,
+          -0.0025865977442563206,
+          0.004060759329893068,
+          -0.003952611262973416,
+          0.008059409195554479,
+          -0.009679814211757343,
+          0.004186811516205591,
+          0.0017737499938879076,
+          0.002791289918321893,
+          -0.010505927069039522,
+          0.00692846879653608,
+          -0.010221732743771916
+        ],
+        "rmse": 0.00640188467052708,
+        "run": "XCut"
+      },
+      {
+        "residuals": [
+          -0.0026810757396473622,
+          -0.004178124357157574,
+          -0.002770503796933299,
+          0.004127803055712642,
+          -0.0013366005674890769,
+          0.010555908495068666,
+          -0.004624010117652002,
+          -0.004527482020531709,
+          0.0040990821347165664,
+          -0.004216520599721385,
+          0.0043659906771696955,
+          -0.004963040875851606,
+          0.007411830635803471,
+          -0.004496549178851783,
+          -0.0002938046109195458,
+          0.0020349290846605333,
+          -0.0005109142395850324,
+          0.002147598652162217,
+          -0.004589303797375502,
+          0.001747222456347175,
+          0.005318903797671133,
+          -0.0037154812092482087,
+          0.0015607309384260003,
+          0.002634538587352186,
+          -0.0037060719284863763,
+          0.00402934725161172,
+          -0.004594170255952994,
+          0.002203938909700556,
+          0.002775483149262875,
+          0.0005635837953057443,
+          0.003989635003938313,
+          0.0030791323281841297,
+          0.003376070602741591,
+          -0.0022953765709160107,
+          -0.0007032000368162317,
+          0.009941022173230523,
+          0.0073268189826005735,
+          0.0013809011280785008,
+          0.008433905925283071,
+          0.004101561060869452,
+          -0.004568129691089995,
+          -0.0021999111808755642,
+          -0.0018959836908205713,
+          0.003922377628531426,
+          -0.004638670352203,
+          0.00011284857479275379,
+          -0.00268285149594512,
+          -0.00038232064896484585,
+          -0.0017876973859109468,
+          0.004165089931602695,
+          0.0009518307948142836,
+          -0.0040602512518804704,
+          0.00027900189352703456,
+          -0.0016999424456009596,
+          -0.004066652674069249,
+          -0.0011046875517436439,
+          -0.0032424381153402363,
+          -2.0593984436446597E-05,
+          -0.0018292784506182824,
+          -0.004215751094743703,
+          -0.003142812813429624,
+          -0.00033308887542037296,
+          -0.004249551476087649,
+          -0.005711974925518115,
+          0.00038548620103129316,
+          -0.0028671849768693142,
+          -0.0006051001319884886,
+          -0.0031554287970179794,
+          0.0018783015787234487,
+          0.0018930762144548918,
+          0.0036649720182450884,
+          -0.004605799341154875,
+          -0.005433081126543485,
+          -0.00890745592885013,
+          0.000723744531505921,
+          0.0061542510441007225,
+          0.0027682219345489378,
+          0.0033357053801505027,
+          -0.001335518276285863,
+          -0.002936477368260526,
+          0.003037072802003973,
+          -0.0003879540254906112,
+          -0.0031728365072043125,
+          -0.0015112690609039598,
+          -0.007041290183086191,
+          0.0005573426668426321,
+          0.002523300908238257,
+          -0.0036905351874666785,
+          0.0004947166207329157,
+          -0.005774018579604356,
+          -0.0008065123685800091,
+          -0.0008712214089660901,
+          0.002253602402192342,
+          -0.0003455821386391389,
+          0.00289439913387024,
+          0.0019885358440417163,
+          -0.004159862541900446,
+          -0.0014347333327855525,
+          -0.003483111483909343,
+          -0.0005007454636104525,
+          0.0067829569167305315,
+          -0.0027542475978872905,
+          0.0027104064969377785,
+          -0.013484297061165551,
+          0.0010376671407736904,
+          -0.0008111005704638519,
+          -0.0030661186525462233,
+          -0.002200966507105061,
+          -0.0021786841398528933,
+          0.0002406319449853589,
+          -0.0036924151440748004,
+          0.0037987080006304927,
+          -0.0018242724581321655,
+          0.002466424134095609,
+          0.002208086130753739,
+          4.938135609870026E-05,
+          0.0016925792275676648,
+          0.0018318880475162915,
+          -0.004564679966542896,
+          0.0029951468369462386,
+          -0.006580937512168927,
+          -0.0081594825237703,
+          -0.004555050014233619,
+          -0.0028194245616353086,
+          -0.007019813840710043,
+          0.0013976249404903385,
+          0.004064707102064191,
+          0.008558295004273742
+        ],
+        "rmse": 0.004002216189830295,
+        "run": "YCut"
+      }
+    ],
+    "sigmas": [
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "n1"
+            ]
+          }
+        },
+        "sigmaOpt": 0.00020569107528428765
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "n2"
+            ]
+          }
+        },
+        "sigmaOpt": 0.000206119451885854
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "n3"
+            ]
+          }
+        },
+        "sigmaOpt": 0.00020671269455459814
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "e11"
+            ]
+          }
+        },
+        "sigmaOpt": 5.4164216630025435E-06
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "e22"
+            ]
+          }
+        },
+        "sigmaOpt": 4.435375045831741E-06
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "e33"
+            ]
+          }
+        },
+        "sigmaOpt": 4.153315582910462E-06
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "e23"
+            ]
+          }
+        },
+        "sigmaOpt": 4.237861227989796E-06
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "e13"
+            ]
+          }
+        },
+        "sigmaOpt": 5.25102176450197E-06
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "e12"
+            ]
+          }
+        },
+        "sigmaOpt": 5.412693057603897E-06
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "g11"
+            ]
+          }
+        },
+        "sigmaOpt": 5.5411838096010054E-05
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "g22"
+            ]
+          }
+        },
+        "sigmaOpt": 5.047702494184094E-05
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "g33"
+            ]
+          }
+        },
+        "sigmaOpt": 5.9386756814421784E-05
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "g23"
+            ]
+          }
+        },
+        "sigmaOpt": 0.00010886417225366173
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "g13"
+            ]
+          }
+        },
+        "sigmaOpt": 2.611081550674397E-06
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "MaterialOwner",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              }
+            ]
+          },
+          "parameter": {
+            "Case": "MaterialParameterRef",
+            "Fields": [
+              {
+                "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+                "version": 1
+              },
+              "g12"
+            ]
+          }
+        },
+        "sigmaOpt": 7.678760221368469E-05
+      }
+    ]
+  },
+  "runs": [
+    "OpticAxisCut",
+    "OtherOpticAxisCut",
+    "ZCut",
+    "XCut",
+    "YCut"
+  ],
+  "schemaVersion": 1,
+  "stage": 1,
+  "stamp": "2026-06-01T12:01:00Z",
+  "study": "AbsorbingTriclinic"
+}

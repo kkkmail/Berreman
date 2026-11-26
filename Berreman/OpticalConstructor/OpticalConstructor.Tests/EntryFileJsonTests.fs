@@ -2,25 +2,30 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.Numerics
+open System.Text
 open System.Text.Json.Nodes
+open Microsoft.FSharp.Reflection
 open Xunit
 open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Dispersion
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.EntryTextDiff
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.CanonicalJson
 open OpticalConstructor.Storage.EntryFileJson
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 
 /// One library entry per file: every kind is written, read back through its schema, version and hash checks
 /// and decoded to the value it was built from; each failure is its typed error (spec 0050 001 §B). The catalogue
@@ -55,14 +60,17 @@ module EntryFileJsonTests =
         Assert.Equal<MaterialEntry>(entry, readBack.content.toMaterialEntry |> decodedOf)
         Assert.Equal<EntryProvenance>(provenance, readBack.content.provenance)
 
-    let private materialWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+    let private physicsMaterialWith (idText : string) (name : string) (physics : MaterialPhysics) : MaterialEntry =
         {
             id = Guid.Parse idText |> MaterialId
             name = EntryName name
             category = CategoryIds.crystal
             description = Some (EntryDescription $"{name}, a test material")
-            complexity = complexity
+            physics = physics
         }
+
+    let private materialWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+        physicsMaterialWith idText name (ComplexityPhysics complexity)
 
     let private epsOnly (eps : EpsWithDispValue) : MaterialComplexity = { eps = eps; magnetic = None; active = None }
 
@@ -174,6 +182,48 @@ module EntryFileJsonTests =
             materialWith $"5b8d2e4f-7a1c-4e93-b6d0-{i + 1:D12}" $"Complexity shape {i + 1}" complexity
             |> assertMaterialRoundTrips builtInCatalogue)
 
+    /// The hand-written table of the tabulated facts (spec 0050 step 2): 400, 500 and 700 nm.
+    let private stepTwoTable : TabulatedNkTable =
+        match TabulatedNkTable.tryCreate [| 400e-9<meter>; 500e-9<meter>; 700e-9<meter> |] [| 1.50; 1.60; 1.90 |] [| 0.00; 0.10; 0.30 |] with
+        | Ok table -> table
+        | Error error -> failwith $"the fixture's table is refused: %A{error}"
+
+    let private tabulatedTableOf (entry : MaterialEntry) : TabulatedNkTable =
+        match entry.physics with
+        | ComplexityPhysics { eps = EpsWithDispValue (IsotropicDispersive [ { dispersion = TabulatedNK table } ]) } -> table
+        | other -> failwith $"expected one isotropic tabulated segment, got %A{other}"
+
+    [<Fact>]
+    let ``a tabulated material keeps its per-sample uncertainties through an entry file`` () =
+        // Spec 0050 S13.2: the source's sigma-n / sigma-k arrays are serialised with the table.
+        let sigmaN = [| 0.01; 0.02; 0.03 |]
+        let sigmaK = [| 0.0; 0.001; 0.002 |]
+
+        let expectedUncertainty : TabulatedNkUncertainty = { sigmaN = sigmaN; sigmaK = sigmaK }
+
+        let withSigma =
+            match stepTwoTable.withUncertainty expectedUncertainty with
+            | Ok table -> table
+            | Error error -> failwith $"the uncertainties are refused: %A{error}"
+
+        for idText, table, uncertaintyOpt in
+            [
+                "6c4a1f8e-2d7b-4e39-a5c0-000000000001", withSigma, Some expectedUncertainty
+                "6c4a1f8e-2d7b-4e39-a5c0-000000000002", stepTwoTable, None
+            ] do
+            let entry =
+                epsOnly (EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ]))
+                |> materialWith idText "User tabulated material"
+
+            let readBack = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance entry |> roundTrip
+            let decoded = readBack.content.toMaterialEntry |> decodedOf
+            Assert.Equal<MaterialEntry>(entry, decoded)
+            Assert.Equal<EntryProvenance>(UserProvenance, readBack.content.provenance)
+
+            let decodedTable = tabulatedTableOf decoded
+            Assert.Equal<TabulatedNkTable>(table, decodedTable)
+            Assert.Equal<TabulatedNkUncertainty option>(uncertaintyOpt, decodedTable.uncertaintyOpt)
+
     [<Fact>]
     let ``a multilayer sample entry file round-trips`` () =
         for sample in [ BuiltinCatalogue.sample SampleIds.multilayerQwId; BuiltinCatalogue.sample SampleIds.langasiteSiliconId ] do
@@ -241,6 +291,7 @@ module EntryFileJsonTests =
         {
             source = MaterialSourceName "refractiveindex.info"
             record = MaterialSourceRecordId "main/SiO2/Malitson"
+            recordHash = Encoding.UTF8.GetBytes "shelf: main\nbook: SiO2\npage: Malitson\n" |> FileByteContent |> ContentHash.ofBytes
             sourceVersion = MaterialSourceVersion "2024-08-14"
             licence = EntryLicence "CC-BY-4.0"
             citation = EntryCitation "I. H. Malitson, J. Opt. Soc. Am. 55, 1205–1208 (1965)"
@@ -293,6 +344,35 @@ module EntryFileJsonTests =
             }
 
         assertMaterialRoundTrips nestedForkProvenance nestedForkedSilica
+
+        let fitProvenance =
+            FitProvenance
+                {
+                    kit = KitId (Guid.Parse "2a7d5c9e-6f14-4b83-b0e2-9c3f1a5d7e68")
+                    studyStem = FileStem "QZ-LR"
+                    fitRunStem = FileStem "QZ-LR@20261101T120000Z"
+                }
+        let fittedSilica : MaterialEntry =
+            {
+                silica with
+                    id = MaterialId (Guid.Parse "5e9b3d7a-1c48-4f26-8d0a-6b2e4f8c1a39")
+            }
+
+        assertMaterialRoundTrips fitProvenance fittedSilica
+
+        let fileImportProvenance =
+            FileImportProvenance
+                {
+                    file = FileName "test-glasses.agf"
+                    fileHash = Encoding.UTF8.GetBytes "abc" |> FileByteContent |> ContentHash.ofBytes
+                }
+        let importedSilica : MaterialEntry =
+            {
+                silica with
+                    id = MaterialId (Guid.Parse "b4c8e2f6-0a3d-4e71-9c5b-7d1f3a6e8b20")
+            }
+
+        assertMaterialRoundTrips fileImportProvenance importedSilica
 
     /// A constant material with one distinctive number, the one a tampering test changes.
     let private tamperable : MaterialEntry =
@@ -392,6 +472,24 @@ module EntryFileJsonTests =
         editedText (fileOf content) edit
 
     [<Fact>]
+    let ``a crystal-parameter material entry file round-trips each crystal record`` () =
+        // Spec 0050 S11.1: the file names the crystal payload's case; the schema leaves the record to the serializer.
+        crystals
+        |> List.iteri (fun i crystal ->
+            let entry = physicsMaterialWith $"3e7a1c5b-9d2f-4a6e-b8c0-{i + 1:D12}" $"Crystal {i + 1}" (CrystalParameterPhysics crystal)
+            let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue entry
+            let envelope = content.``sealed`` |> okOf
+            let text = envelope.fileText |> okOf
+            Assert.Contains(nameof CrystalMaterialPayload, text.value)
+            let readBack = text.parseEntry MaterialEntryKind |> okOf
+            Assert.Equal<LibraryEntryEnvelope>(envelope, readBack)
+            Assert.Equal<MaterialEntry>(entry, readBack.content.toMaterialEntry |> decodedOf)
+            let malformed = editedText text (fun root -> root.["payload"].["Fields"].[0].["Case"] <- JsonValue.Create "NoSuchCrystal")
+            match malformed.parseEntry MaterialEntryKind with
+            | Error (MalformedJsonErr _) -> ()
+            | other -> Assert.Fail($"crystal {i + 1}: a malformed crystal record: expected MalformedJsonErr, got %A{other}"))
+
+    [<Fact>]
     let ``an entry file of another schema version is UnsupportedSchemaVersionErr`` () =
         let atVersion2 (entry : JsonObject) : unit = entry["schema"]["version"] <- JsonValue.Create 2
         let expected = UnsupportedSchemaVersionErr { fileExtension = MaterialEntryKind.extension; found = FileSchemaVersion 2; expected = FileSchemaVersion 1 }
@@ -430,6 +528,151 @@ module EntryFileJsonTests =
         match (LibraryFileText "{ this is not JSON").parseEntry MaterialEntryKind with
         | Error (MalformedJsonErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason, "the error carries the parser's message")
         | other -> Assert.Fail($"a text that is not JSON: expected MalformedJsonErr, got %A{other}")
+
+    [<Fact>]
+    let ``a pulled provenance keeps its record's hash through an entry file, and a file without it is refused`` () =
+        // Spec 0050 S13.1: the pulled provenance carries its record's hash, and the schema requires it.
+        let abcHash = ContentHash "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        let pulled : SourcePullInfo =
+            {
+                pulledFromSource with
+                    recordHash = Encoding.UTF8.GetBytes "abc" |> FileByteContent |> ContentHash.ofBytes
+            }
+        Assert.Equal<ContentHash>(abcHash, pulled.recordHash)
+
+        let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first (SourcePullProvenance pulled) silica
+        let envelope = content.``sealed`` |> okOf
+        let text = envelope.fileText |> okOf
+        let readBack = text.parseEntry MaterialEntryKind |> okOf
+        Assert.Equal<LibraryEntryEnvelope>(envelope, readBack)
+
+        match readBack.content.provenance with
+        | SourcePullProvenance info -> Assert.Equal<ContentHash>(abcHash, info.recordHash)
+        | other -> Assert.Fail($"expected SourcePullProvenance, got %A{other}")
+
+        let withoutRecordHash =
+            editedText text (fun entry ->
+                let pulledFields = entry.["provenance"].["Fields"].[0].AsObject()
+                Assert.Equal<string>(abcHash.value, pulledFields.["recordHash"].GetValue<string>())
+                Assert.True(pulledFields.Remove "recordHash", "the file holds the record's hash"))
+        assertSchemaInvalid "a pulled provenance without its record hash" (withoutRecordHash.parseEntry MaterialEntryKind)
+
+    let private unionCaseNames<'Union> (values : 'Union list) : Set<string> =
+        values |> List.map (fun value -> (fst (FSharpValue.GetUnionFields(box value, typeof<'Union>))).Name) |> Set.ofList
+
+    let private everyUnionCaseName<'Union> () : Set<string> =
+        FSharpType.GetUnionCases typeof<'Union> |> Array.map _.Name |> Set.ofArray
+
+    let private noiseAxesOf (form : ItemModelForm) : ItemParameterAxis list option =
+        match form with
+        | IntensityDetectorModel noise
+        | MuellerPolarimeterModel noise
+        | EllipsometerModel noise -> Some noise
+        | SourcePresetItemModel
+        | IdealPolarizerItemModel
+        | StackSampleItemModel
+        | OpticalElementModel _
+        | EmptySlotModel -> None
+
+    /// The noise axes the file holds: the payload's form, whose only field is the axis list (spec 0050 S7.1).
+    let private noiseAxisNodes (entry : JsonObject) : JsonObject list =
+        entry.["payload"].["Fields"].[0].["Fields"].[0].AsArray() |> Seq.map (fun axis -> axis.AsObject()) |> List.ofSeq
+
+    let private intTagOf (node : JsonNode) : int option =
+        match node with
+        | :? JsonValue as value ->
+            match value.TryGetValue<int>() with
+            | true, tag -> Some tag
+            | false, _ -> None
+        | _ -> None
+
+    /// On disk each noise axis's kind is its int tag, never its case name; a tag of 0, one past the last, or the case
+    /// name is `MalformedJsonErr` at the file seam (spec 0050 S7.1; AGENTS.md ELEV017).
+    let private assertDetectorFile (content : LibraryEntryContent) (noise : ItemParameterAxis list) : unit =
+        let file = fileOf content
+        let onDisk = noiseAxisNodes ((JsonNode.Parse file.value).AsObject())
+        Assert.Equal<int option list>(noise |> List.map (fun axis -> Some axis.kind.value), onDisk |> List.map (fun axis -> intTagOf axis["kind"]))
+
+        let firstKindTo (tag : JsonNode) (entry : JsonObject) : unit = (List.head (noiseAxisNodes entry))["kind"] <- tag
+
+        let refused : (string * (JsonObject -> unit)) list =
+            [
+                "a kind tag of 0", firstKindTo (JsonValue.Create 0)
+                "an unrecognised kind tag, one past the last", firstKindTo (JsonValue.Create 8)
+                "a kind written as its case name", firstKindTo (JsonValue.Create (nameof AngleParameter))
+            ]
+
+        for place, edit in refused do
+            match (editedText file edit).parseEntry ItemModelEntryKind with
+            | Error (MalformedJsonErr reason) -> Assert.Contains(nameof ParameterKind, reason)
+            | other -> Assert.Fail($"{place}: expected MalformedJsonErr, got %A{other}")
+
+    [<Fact>]
+    let ``an item-model entry file round-trips every model form`` () =
+        let detectorNoiseAxes : ItemParameterAxis list =
+            match (BuiltinCatalogue.itemModel ItemModelIds.muellerPolarimeterModelId).entry.model with
+            | MuellerPolarimeterModel noise -> noise
+            | other -> failwith $"the shipped Mueller polarimeter holds %A{other}"
+
+        let zeroNoiseAxes : ItemParameterAxis list = detectorNoiseAxes |> List.map (fun axis -> { axis with defaultValue = ParameterValue 0.0 })
+        Assert.Equal(3, detectorNoiseAxes.Length)
+        Assert.NotEqual<ItemParameterAxis list>(detectorNoiseAxes, zeroNoiseAxes)
+
+        let part (form : OpticalForm) (offset : Angle) : CompoundComponent = { form = form; offset = offset }
+
+        let opticalForms : OpticalForm list =
+            [
+                RealPolarizerModel ExtinctionRatioLeakage
+                RealPolarizerModel DiattenuationLeakage
+                RetarderPlateModel ConstantRetardance
+                RetarderPlateModel (InverseWaveLengthRetardance (WaveLength.nm 632.8<nm>))
+                BlackBoxMuellerModel SixteenElementMueller
+                BlackBoxMuellerModel FifteenElementsAndScale
+                CompoundModel
+                    [
+                        part (RealPolarizerModel DiattenuationLeakage) Angle.zero
+                        part (CompoundModel [ part (RetarderPlateModel ConstantRetardance) (atDegrees 45.0); part (BlackBoxMuellerModel FifteenElementsAndScale) (atDegrees (-15.0)) ]) (atDegrees 30.0)
+                    ]
+            ]
+
+        let forms : ItemModelForm list =
+            (opticalForms |> List.map OpticalElementModel)
+            @ [ EmptySlotModel ]
+            @ ([ detectorNoiseAxes; zeroNoiseAxes ] |> List.collect (fun noise -> [ IntensityDetectorModel noise; MuellerPolarimeterModel noise; EllipsometerModel noise ]))
+            @ [ SourcePresetItemModel; IdealPolarizerItemModel; StackSampleItemModel ]
+
+        Assert.Equal<Set<string>>(everyUnionCaseName<ItemModelForm> (), unionCaseNames forms)
+        Assert.Equal<Set<string>>(everyUnionCaseName<OpticalForm> (), unionCaseNames opticalForms)
+
+        let entryOf (index : int) (provenance : EntryProvenance) (form : ItemModelForm) : ItemModelEntry =
+            {
+                id = ItemModelId (Guid.Parse $"3e7a9c51-6d2b-4f84-b1e0-{index + 1:D12}")
+                name = EntryName $"Item model form {index + 1}"
+                description = EntryDescription $"Item model form {index + 1}, a test item model"
+                model = form
+                protection = provenance.protection
+            }
+
+        for provenance in [ builtInCatalogue; UserProvenance ] do
+            forms
+            |> List.iteri (fun i form ->
+                let entry = entryOf i provenance form
+                let content = LibraryEntryContent.ofItemModel VersionNumber.first provenance entry |> decodedOf
+                Assert.Equal<LibraryEntryKind>(ItemModelEntryKind, content.schema.kind)
+                let readBack = roundTrip content
+                let decoded = readBack.content.toItemModel |> decodedOf
+                Assert.Equal<ItemModelEntry>(entry, decoded)
+                Assert.Equal<EntryProvenance>(provenance, readBack.content.provenance)
+
+                match noiseAxesOf form, noiseAxesOf decoded.model with
+                | Some noise, Some decodedNoise ->
+                    Assert.Equal<ParameterValue list>(noise |> List.map _.defaultValue, decodedNoise |> List.map _.defaultValue)
+                    assertDetectorFile content noise
+                | None, None -> ()
+                | _ -> Assert.Fail($"item model form {i + 1} changed between a detector and another form on its round trip"))
+
+        let realLinearPolarizer = LibraryEntryContent.ofItemModel VersionNumber.first UserProvenance (entryOf 0 UserProvenance (List.head forms)) |> decodedOf
+        assertSchemaInvalid "a real linear polarizer's file read as a polarizer" ((fileOf realLinearPolarizer).parseEntry PolarizerEntryKind)
 
     /// A catalogue holding a material, a sample and a source.
     let private threeKindManifest : CatalogueManifest =
@@ -495,7 +738,7 @@ module EntryFileJsonTests =
             [
                 "a row without its contentHash", (fun manifest -> (firstRow manifest).Remove "contentHash" |> ignore)
                 "a row of kind 0", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 0)
-                "a row of kind 7", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 7)
+                "a row of kind 8", (fun manifest -> (firstRow manifest)["kind"] <- JsonValue.Create 8)
                 "a row with an empty fileName", (fun manifest -> (firstRow manifest)["fileName"] <- JsonValue.Create "")
                 "a row with another key", (fun manifest -> (firstRow manifest)["extra"] <- JsonValue.Create 1)
                 "an id that is not a GUID", (fun manifest -> manifest["id"] <- JsonValue.Create "not a GUID")
@@ -558,15 +801,17 @@ module EntryFileJsonTests =
         let materials = BuiltinCatalogue.materials ()
         let categories = BuiltinCatalogue.categories ()
         let entries = (BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()
+        let itemModels = BuiltinCatalogue.itemModels ()
         let contents =
             (materials |> List.map (LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue))
             @ (categories |> List.map categoryContent)
             @ (entries |> List.map entryContent)
+            @ (itemModels |> List.map (fun held -> LibraryEntryContent.ofItemModel held.version builtInCatalogue held.entry |> decodedOf))
 
         let envelopes = contents |> List.map (fun content -> content.``sealed`` |> okOf)
         let manifest = CatalogueManifest.tryCreate testCatalogueId (CatalogueName "Built-in") VersionNumber.first envelopes |> decodedOf
 
-        Assert.Equal(List.length materials + List.length categories + List.length entries, List.length manifest.entries)
+        Assert.Equal(List.length materials + List.length categories + List.length entries + List.length itemModels, List.length manifest.entries)
 
         let kinds = manifest.entries |> List.map (fun row -> row.kind) |> List.distinct
         Assert.Equal<LibraryEntryKind list>(LibraryEntryKind.all, kinds)

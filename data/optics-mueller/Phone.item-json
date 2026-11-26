@@ -1,0 +1,68 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "93fae6cc-d838-45b7-b5f0-949f7a759e91",
+    "label": "Phone",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "01cfdc64-d07e-4e2b-963e-ea3caa8428e6",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "gain",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            1
+          ]
+        }
+      },
+      {
+        "name": "darkOffset",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "rotationUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.003490658503988659
+          ]
+        }
+      },
+      {
+        "name": "elementUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.005
+          ]
+        }
+      },
+      {
+        "name": "throughputUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.01
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

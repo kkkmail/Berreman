@@ -15,6 +15,7 @@ open Analytics.Variables
 open Analytics.AnalysisFunctions
 open Analytics.FieldProfile
 open Analytics.Colorimetry
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface

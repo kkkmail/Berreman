@@ -93,6 +93,12 @@ dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
 
 - No test, fixture or kit lives under Documents; test kits and
   databases go under the test run's output directory.
+- When a development run exceeds its effective gate deadline, report the gate,
+  measured duration and deadline in the state-of-the-world's Tests section.
+  The supervisor enforces `attempt_timeout_seconds`, else
+  `runtime_estimate_seconds`, from the step's `.gates` snapshot. For spec 0050
+  from step 0210, read `specs/0050/.manual/015-ui-smoke-deadline.md` for the
+  approved deadline increase and normal profile-1 recovery.
 
 ---
 
@@ -193,6 +199,12 @@ entry's `id` is reserved.
 
 ## Standing operator rulings (every spec)
 
+At spec 0050 steps 0252, 0254, 0259, 0260 and 0261, every role also reads
+`specs/0050/.manual/016-step-0252-recommit-fixture.md`. Preserve the copied-item
+fixture's three stored items through later slot changes and reuse the shared
+ordered Result collector. The 0252 recovery resumes normally with profile 1,
+without `--accept-current-slice`, to record measured checkpoint 251.
+
 These bind every role on every step of every spec, a post-mortem's
 proposals included. A project prompt states its own rulings because
 ASG cannot; these are the ones STL's prompt carries (ASG spec 0090
@@ -258,6 +270,15 @@ For spec 0050 from step 0160 onward, also read
 committed and uncommitted arc changes from the immutable `.arc-base-json`
 origin supplied by ASG. Operator commits never narrow that scope. Preserve the
 0160 normal-resume exception and its measured checkpoint requirement.
+
+At steps 0185, 0187, 0188 and 0260, every role also reads
+`specs/0050/.manual/014-step-0185-read-only-scene-fixture.md`. It authorizes the
+scene-save fixture repair and the launcher acceptance test's disabled-Save
+expectations, preserving separate UI, model-guard and storage-refusal coverage.
+Its 0185 recovery exception
+requires normal resume with `--executability-profile 1` after the operator's
+commit, without `--accept-current-slice`, to record measured checkpoint 184
+before 0186. Preserve the repaired fixture through the later setup-test rename.
 
 The repository's own walls, from AGENTS.md:
 

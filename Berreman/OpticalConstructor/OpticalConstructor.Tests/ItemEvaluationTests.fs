@@ -1,0 +1,1032 @@
+namespace OpticalConstructor.Tests
+
+open System
+open Xunit
+open Berreman.Constants
+open Berreman.Fields
+open Berreman.Geometry
+open Berreman.Media
+open Berreman.MaterialProperties
+open Berreman.Solvers
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ExperimentRun
+open OpticalConstructor.Domain.CrystalPhysics
+open OpticalConstructor.Domain.MuellerInverse
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.ItemEvaluation
+
+/// The numbers the item-model evaluator reads, in `ItemEvaluation` (spec 0050 S8.1; 001 §I, §N).
+module ItemEvaluationTests =
+
+    let private assertValue (expected : ParameterValue) (values : ParameterValues) (name : ParameterName) : unit =
+        Assert.Equal<Result<ParameterValue, ItemEvaluationError>>(Ok expected, values.valueOf name)
+
+    let private assertChecked (expected : Result<ParameterValues, ItemEvaluationError>) (actual : Result<ParameterValues, ItemEvaluationError>) : unit =
+        Assert.Equal<Result<ParameterValues, ItemEvaluationError>>(expected, actual)
+
+    let private outOfRange (reason : string) : Result<ParameterValues, ItemEvaluationError> = Error (ParameterOutOfRangeErr reason)
+
+    let private assertEmission (expected : Result<SourceEmission, ItemEvaluationError>) (actual : Result<SourceEmission, ItemEvaluationError>) : unit =
+        Assert.Equal<Result<SourceEmission, ItemEvaluationError>>(expected, actual)
+
+    let private sourceDefaults : ParameterValues = ParameterValues.defaultsOf SourcePreset.lightSourceAxes
+
+    /// Unpolarized light at unit scale, what the light-source axes' defaults describe (spec 0050 S8.1).
+    let private defaultEmission : SourceEmission =
+        {
+            azimuth = Angle.zero
+            ellipticity = Angle.zero
+            degreeOfPolarization = ParameterValue 0.0
+            intensityScale = ParameterValue 1.0
+        }
+
+    let private stokesComponents (stokes : StokesVector) : float list = [ stokes.s0; stokes.s1; stokes.s2; stokes.s3 ]
+
+    /// Each Stokes component within 1e-15 of the expected one (spec 0050 S8.1).
+    let private assertStokesWithin (expected : StokesVector) (actual : StokesVector) : unit =
+        List.zip (stokesComponents expected) (stokesComponents actual)
+        |> List.iteri (fun i (e, a) -> Assert.True(abs (e - a) <= 1.0e-15, $"S{i}: expected {e:R}, got {a:R}"))
+
+    let private emittedStokes (values : ParameterValues) : StokesVector =
+        match SourceEmission.ofValues values with
+        | Ok emission -> emission.stokes
+        | Error error -> failwith error.describe
+
+    /// The evaluation is a matrix equal to the expected one element by element, exactly (spec 0050 S8.1).
+    let private assertMuellerExact (expected : MuellerMatrix) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        match actual with
+        | Ok matrix ->
+            for i in 0 .. 3 do
+                for j in 0 .. 3 do
+                    let e = expected.element i j
+                    let a = matrix.element i j
+                    Assert.True((e = a), $"element ({i},{j}): expected {e:R}, got {a:R}")
+        | Error error -> Assert.Fail error.describe
+
+    let private assertUnmodelledBranch (reason : string) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        match actual with
+        | Error error -> Assert.Equal<ItemEvaluationError>(UnmodelledBranchErr reason, error)
+        | Ok _ -> Assert.Fail $"expected UnmodelledBranchErr '{reason}', got a Mueller matrix"
+
+    /// The evaluation is a matrix within 1e-12 of the expected elements, element by element (spec 0050 S8.1).
+    let private assertElementsWithin (expectedAt : int -> int -> float) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        match actual with
+        | Ok matrix ->
+            for i in 0 .. 3 do
+                for j in 0 .. 3 do
+                    let e = expectedAt i j
+                    let a = matrix.element i j
+                    Assert.True(abs (e - a) <= 1.0e-12, $"element ({i},{j}): expected {e:R}, got {a:R}")
+        | Error error -> Assert.Fail error.describe
+
+    let private assertMuellerWithin (expected : MuellerMatrix) (actual : Result<MuellerMatrix, ItemEvaluationError>) : unit =
+        assertElementsWithin expected.element actual
+
+    let private assertWithin (expected : float) (actual : float) (what : string) : unit =
+        Assert.True(abs (expected - actual) <= 1.0e-12, $"{what}: expected {expected:R}, got {actual:R}")
+
+    let private matrixOf (actual : Result<MuellerMatrix, ItemEvaluationError>) : MuellerMatrix =
+        match actual with
+        | Ok matrix -> matrix
+        | Error error -> failwith error.describe
+
+    /// The form bound to the values and evaluated on its transmitted branch at the rotation (spec 0050 S8.1).
+    let private formMuellerAt (form : OpticalForm) (values : ParameterValues) (rotation : Angle) (w : WaveLength) : Result<MuellerMatrix, ItemEvaluationError> =
+        BoundOpticalElement.ofOpticalForm values form
+        |> Result.bind (fun bound -> bound.muellerAt (ElementOrientation.transmittingAt rotation) w)
+
+    let private formDefaults (form : OpticalForm) : ParameterValues = ParameterValues.defaultsOf form.parameterAxes
+
+    let private assertBound (expected : Result<BoundOpticalElement, ItemEvaluationError>) (actual : Result<BoundOpticalElement, ItemEvaluationError>) : unit =
+        Assert.Equal<Result<BoundOpticalElement, ItemEvaluationError>>(expected, actual)
+
+    let private at600 : WaveLength = WaveLength.nm 600.0<nm>
+
+    /// The sample bound at the values over the store, evaluated at the orientation and λ (spec 0050 S8.1).
+    let private stackSampleMuellerAt
+        (materials : MaterialProxy)
+        (values : ParameterValues)
+        (sample : Sample)
+        (orientation : ElementOrientation)
+        (w : WaveLength)
+        : Result<MuellerMatrix, ItemEvaluationError> =
+        BoundOpticalElement.ofStackSample materials values sample
+        |> Result.bind (fun bound -> bound.muellerAt orientation w)
+
+    /// The sample's materials resolved as the table's run resolves them (spec 0050 S8.1; 001 §N).
+    let private resolvedAsTheTable (materials : MaterialProxy) (sample : Sample) : Propagation.ResolvedSample =
+        match Propagation.resolveSampleMaterials materials sample with
+        | Ok resolved -> resolved
+        | Error error -> failwith (SampleMaterialErr error).describe
+
+    let private assertSample (expected : Result<Sample, ItemEvaluationError>) (actual : Result<Sample, ItemEvaluationError>) : unit =
+        Assert.Equal<Result<Sample, ItemEvaluationError>>(expected, actual)
+
+    /// A uniaxial crystal without gyration, n_o 1.544 and n_e 1.553 (spec 0050 S8.1).
+    let private uniaxialCrystal : UniaxialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.544
+            extraordinaryIndex = RefractionIndex 1.553
+            g11 = RhoValue 0.0
+            g33 = RhoValue 0.0
+        }
+
+    /// The spec 0044 Berreman forward over a test-local builder: the crystal's principal indices (n_o, n_o, n_e) in its
+    /// own frame (spec 0050 S8.1; 001 §N).
+    let private uniaxialForward : ForwardModelProxy<UniaxialParameters> =
+        let principalIndices (crystal : UniaxialParameters) : OpticalProperties =
+            OpticalProperties.fromRefractionIndex (crystal.ordinaryIndex, crystal.ordinaryIndex, crystal.extraordinaryIndex)
+
+        createBerremanForward principalIndices SolverParameters.defaultValue
+
+    let private sampledRotations : Angle list = [ 0.0<deg>; 30.0<deg>; 135.0<deg> ] |> List.map Angle.degree
+
+    let private lpByExtinction : OpticalForm = RealPolarizerModel ExtinctionRatioLeakage
+
+    /// A real LP by extinction ratio at offset 0°, then a constant retarder at offset 45°: at its defaults, an ideal LP
+    /// and a quarter wave (spec 0050 S8.1).
+    let private quarterWaveAfterLp : OpticalForm =
+        let lp : CompoundComponent = { form = lpByExtinction; offset = Angle.zero }
+        let retarder : CompoundComponent = { form = RetarderPlateModel ConstantRetardance; offset = Angle.degree 45.0<deg> }
+        CompoundModel [ lp; retarder ]
+
+    [<Fact>]
+    let ``parameter values are read from an item's parameter states`` () : unit =
+        let parameters : Parameter list =
+            [
+                { name = ParameterName "a"; state = KnownParameter (ParameterValue 0.1) }
+                {
+                    name = ParameterName "b"
+                    state =
+                        UnknownParameter
+                            {
+                                start = ParameterValue 0.5
+                                bounds = { lower = ParameterValue 0.0; upper = ParameterValue 1.0 }
+                                priorOpt = None
+                            }
+                }
+                {
+                    name = ParameterName "c"
+                    state =
+                        CalibratedParameter
+                            {
+                                value = ParameterValue 0.25
+                                sigma = ParameterSigma 0.01
+                                fitRun = FitRunName "S@20261101T120000Z"
+                            }
+                }
+            ]
+
+        let values = ParameterValues.ofParameters parameters
+
+        assertValue (ParameterValue 0.1) values (ParameterName "a")
+        assertValue (ParameterValue 0.5) values (ParameterName "b")
+        assertValue (ParameterValue 0.25) values (ParameterName "c")
+        Assert.Equal<Result<ParameterValue, ItemEvaluationError>>(Error (MissingParameterValueErr "d"), values.valueOf (ParameterName "d"))
+
+    [<Fact>]
+    let ``defaults come from a model's axes and one value can be replaced`` () : unit =
+        let axes = (OpticalElementModel (RetarderPlateModel ConstantRetardance)).parameterAxes
+        let defaults = ParameterValues.defaultsOf axes
+
+        assertValue (ParameterValue (Math.PI / 2.0)) defaults ParameterName.retardance
+        assertValue (ParameterValue 0.0) defaults ParameterName.fastAxisOffset
+
+        let quarter = ParameterValue (Math.PI / 4.0)
+        let replaced = defaults.withValue ParameterName.retardance quarter
+
+        assertValue quarter replaced ParameterName.retardance
+        assertValue (ParameterValue 0.0) replaced ParameterName.fastAxisOffset
+        assertValue (ParameterValue (Math.PI / 2.0)) defaults ParameterName.retardance
+
+        // A name the values do not hold is added beside the others.
+        let added = replaced.withValue ParameterName.dialZero (ParameterValue 0.3)
+        assertValue (ParameterValue 0.3) added ParameterName.dialZero
+        assertValue quarter added ParameterName.retardance
+
+    [<Fact>]
+    let ``values are checked against a model's axes and their kinds' ranges`` () : unit =
+        let axes = SourcePreset.lightSourceAxes
+        let defaults = ParameterValues.defaultsOf axes
+        let checkedWith (name : ParameterName) (value : ParameterValue) : Result<ParameterValues, ItemEvaluationError> =
+            (defaults.withValue name value).checkedFor axes
+
+        assertChecked (Ok defaults) (defaults.checkedFor axes)
+
+        assertChecked
+            (outOfRange "degreeOfPolarization = 1.5 lies outside [0, 1]")
+            (checkedWith ParameterName.degreeOfPolarization (ParameterValue 1.5))
+        assertChecked
+            (outOfRange "degreeOfPolarization = -0.1 lies outside [0, 1]")
+            (checkedWith ParameterName.degreeOfPolarization (ParameterValue -0.1))
+        assertChecked
+            (outOfRange "intensityScale = -1 lies outside [0, ∞)")
+            (checkedWith ParameterName.intensityScale (ParameterValue -1.0))
+        assertChecked
+            (outOfRange "intensityScale = Infinity lies outside [0, ∞)")
+            (checkedWith ParameterName.intensityScale (ParameterValue Double.PositiveInfinity))
+        assertChecked (outOfRange "azimuth = NaN lies outside (-∞, ∞)") (checkedWith ParameterName.azimuth (ParameterValue Double.NaN))
+
+        // An angle takes any finite number: 7 rad is kept as given, not wrapped.
+        let turned = defaults.withValue ParameterName.azimuth (ParameterValue 7.0)
+        assertChecked (Ok turned) (turned.checkedFor axes)
+
+        // The first failure in axis order is the one answered: azimuth leads intensityScale.
+        let twice =
+            (defaults.withValue ParameterName.intensityScale (ParameterValue -1.0)).withValue ParameterName.azimuth (ParameterValue Double.NaN)
+        assertChecked (outOfRange "azimuth = NaN lies outside (-∞, ∞)") (twice.checkedFor axes)
+
+        let withoutEllipticity = ParameterValues.defaultsOf (axes |> List.filter (fun axis -> axis.name <> ParameterName.ellipticity))
+        assertChecked (Error (MissingParameterValueErr "ellipticity")) (withoutEllipticity.checkedFor axes)
+
+        // A value the axes do not name is kept and ignored, though it lies outside a fraction's range.
+        let extra = defaults.withValue ParameterName.extinctionRatio (ParameterValue 2.0)
+        assertChecked (Ok extra) (extra.checkedFor axes)
+
+        let plateAxes = (BuiltinCatalogue.sample SampleIds.glassPlate1mmId).parameterAxes
+        let plate = ParameterValues.defaultsOf plateAxes
+        assertChecked (Ok plate) (plate.checkedFor plateAxes)
+        assertChecked
+            (outOfRange "substrate.thickness = -0.001 lies outside [0, ∞)")
+            ((plate.withValue ParameterName.substrateThickness (ParameterValue -1e-3)).checkedFor plateAxes)
+
+    [<Fact>]
+    let ``every evaluation error renders its condition and its payload`` () : unit =
+        let polarizerReason = "'Ideal polarizer (preset binding)' (d47e5ce3-3e74-5058-848e-3aa54930e377) is an ideal polarizer"
+        let detectorReason =
+            "'Intensity detector (gain, dark offset and noise)' (01cfdc64-d07e-4e2b-963e-ea3caa8428e6) is an intensity detector, which reads"
+        let unknownGlass = MaterialError.unknownMaterialVersion (MaterialVersionId.firstOf MaterialIds.glass152)
+        let cases : (ItemEvaluationError * string) list =
+            [
+                MissingParameterValueErr "ellipticity", "the values hold no number for the parameter: ellipticity"
+                ParameterOutOfRangeErr "degreeOfPolarization = 1.5 lies outside [0, 1]",
+                "the parameter value is outside its range: degreeOfPolarization = 1.5 lies outside [0, 1]"
+                NotALightSourceErr polarizerReason, $"the model is not a light source: {polarizerReason}"
+                NotAnOpticalElementErr detectorReason, $"the model is not an optical element: {detectorReason}"
+                UnmodelledBranchErr "the reflected branch of a polarizer preset, which only transmits",
+                "the element has no such branch: the reflected branch of a polarizer preset, which only transmits"
+                SampleMaterialErr unknownGlass,
+                "the sample's materials do not resolve: unknown material version '55750ee2-358c-40d4-ab6c-06fc144adbf8' v1"
+                // Any material error's reason is the payload, not only an unknown version's.
+                SampleMaterialErr (MaterialStoreUnavailableErr "the material store is closed"),
+                "the sample's materials do not resolve: the material store is closed"
+                CutPlateSolveErr "degenerate", "the cut plate's Berreman solve failed: degenerate"
+            ]
+
+        for error, expected in cases do
+            Assert.Equal<string>(expected, error.describe)
+
+        let descriptions = cases |> List.map (fun (error, _) -> error.describe)
+        Assert.Equal(8, descriptions |> List.distinct |> List.length)
+
+    [<Fact>]
+    let ``the default source is unpolarized light at unit scale`` () : unit =
+        assertEmission (Ok defaultEmission) (SourceEmission.ofValues sourceDefaults)
+
+        // Exactly, not within a tolerance: p = 0 zeroes every polarized component.
+        Assert.Equal<float list>([ 1.0; 0.0; 0.0; 0.0 ], stokesComponents defaultEmission.stokes)
+        Assert.Equal<float list>(stokesComponents Propagation.unpolarizedStokes, stokesComponents (emittedStokes sourceDefaults))
+
+    [<Fact>]
+    let ``a source emits its polarization state times its intensity scale`` () : unit =
+        let fullyPolarized = sourceDefaults.withValue ParameterName.degreeOfPolarization (ParameterValue 1.0)
+
+        // Degree of polarization 1 at azimuth 30° and scale 2: twice an ideal linear polarizer's state at 30°.
+        let linear30 = Propagation.inputStokes IdealLinear (Angle.degree 30.0<deg>)
+        let scaledAt30 =
+            (fullyPolarized.withValue ParameterName.azimuth (ParameterValue (Math.PI / 6.0))).withValue
+                ParameterName.intensityScale
+                (ParameterValue 2.0)
+        assertStokesWithin (linear30 + linear30) (emittedStokes scaledAt30)
+
+        // A positive ellipticity angle is +S₃, the handedness `inputStokes` calls left.
+        assertStokesWithin
+            (Propagation.inputStokes IdealCircularLeft (Angle.degree 0.0<deg>))
+            (emittedStokes (fullyPolarized.withValue ParameterName.ellipticity (ParameterValue (Math.PI / 4.0))))
+        assertStokesWithin
+            (Propagation.inputStokes IdealCircularRight (Angle.degree 0.0<deg>))
+            (emittedStokes (fullyPolarized.withValue ParameterName.ellipticity (ParameterValue (-Math.PI / 4.0))))
+
+        // Half polarized at azimuth 0: the unpolarized half adds to S₀ only.
+        assertStokesWithin
+            (StokesVector.create [ 1.0; 0.5; 0.0; 0.0 ])
+            (emittedStokes (sourceDefaults.withValue ParameterName.degreeOfPolarization (ParameterValue 0.5)))
+
+    [<Fact>]
+    let ``only a light-source model emits, and its values must be in range`` () : unit =
+        // Every model is a shipped entry of step 210; every binding is a Built-in preset or sample.
+        let sourceModel = BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId
+        let polarizerModel = BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId
+        let sampleModel = BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId
+        let detectorModel = BuiltinCatalogue.itemModel ItemModelIds.intensityDetectorModelId
+        let linearPolarizer =
+            BuiltinCatalogue.presets ()
+            |> List.pick (fun entry ->
+                match entry with
+                | PolarizerItem polarizer when polarizer.id = PresetIds.polarizerLp -> Some polarizer
+                | PolarizerItem _ | SampleItem _ | SourceItem _ | DetectorItem _ -> None)
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+
+        let notALightSource (model : ItemModelVersion) (kind : string) : Result<SourceEmission, ItemEvaluationError> =
+            Error (NotALightSourceErr $"'{model.entry.name.value}' ({model.entry.id.value}) is {kind}")
+
+        // Whatever the values, a polarizer emits nothing: the refusal is the model's, not its numbers'.
+        let polarizer = PolarizerPresetChoice (polarizerModel, linearPolarizer)
+        assertEmission (notALightSource polarizerModel "an ideal polarizer") (polarizer.emissionWith sourceDefaults)
+        assertEmission (notALightSource polarizerModel "an ideal polarizer") (polarizer.emissionWith (ParameterValues Map.empty))
+        assertEmission
+            (notALightSource sampleModel "a stack sample")
+            ((StackSampleChoice (sampleModel, SampleVersionId.firstOf plate.id, plate)).emissionWith sourceDefaults)
+        assertEmission (notALightSource detectorModel "an intensity detector") ((LibraryModelChoice detectorModel).emissionWith sourceDefaults)
+
+        let heNe = SourcePresetChoice (sourceModel, BuiltinCatalogue.source PresetIds.heNe633)
+        assertEmission (Ok defaultEmission) (heNe.emissionWith sourceDefaults)
+        assertEmission
+            (Error (ParameterOutOfRangeErr "degreeOfPolarization = 2 lies outside [0, 1]"))
+            (heNe.emissionWith (sourceDefaults.withValue ParameterName.degreeOfPolarization (ParameterValue 2.0)))
+
+        let withoutEllipticity =
+            ParameterValues.defaultsOf (SourcePreset.lightSourceAxes |> List.filter (fun axis -> axis.name <> ParameterName.ellipticity))
+        assertEmission (Error (MissingParameterValueErr "ellipticity")) (heNe.emissionWith withoutEllipticity)
+
+    [<Fact>]
+    let ``a polarizer preset is its behaviour's Mueller matrix at the element's rotation`` () : unit =
+        // Two reference ideal LPs at offsets 20° and 65°, the compound `PolarizerBehaviorTests` builds.
+        let referenceLp = Propagation.analyzerMueller IdealLinear Angle.zero
+        let first : MuellerComponent = { matrix = referenceLp; offset = Angle.degree 20.0<deg> }
+        let second : MuellerComponent = { matrix = referenceLp; offset = Angle.degree 65.0<deg> }
+        let behaviors : PolarizerBehavior list =
+            [
+                ComputedIdeal IdealLinear
+                ComputedIdeal IdealCircularLeft
+                ComputedIdeal IdealCircularRight
+                ConstantMueller [ first; second ]
+            ]
+        let rotations : Angle list = [ 0.0<deg>; 30.0<deg>; 45.0<deg>; 90.0<deg>; 135.0<deg>; 330.0<deg> ] |> List.map Angle.degree
+        let at600 = WaveLength.nm 600.0<nm>
+
+        for behavior in behaviors do
+            let preset = BoundPolarizerPreset behavior
+
+            for rotation in rotations do
+                let transmitting = ElementOrientation.transmittingAt rotation
+                assertMuellerExact (Propagation.behaviorMueller behavior rotation) (preset.muellerAt transmitting at600)
+
+                // The incidence plays no part: the preset met obliquely is the same matrix.
+                let oblique = { transmitting with incidence = IncidenceAngle.create (Angle.degree 40.0<deg>) }
+                assertMuellerExact (Propagation.behaviorMueller behavior rotation) (preset.muellerAt oblique at600)
+
+    [<Fact>]
+    let ``an empty slot is the identity, and an element that only transmits has no reflected branch`` () : unit =
+        let thirty = Angle.degree 30.0<deg>
+        let at30 = ElementOrientation.transmittingAt thirty
+        let at400 = WaveLength.nm 400.0<nm>
+        let emptySlot : BoundOpticalElement = BoundEmptySlot
+        let linearPolarizer : BoundOpticalElement = BoundPolarizerPreset (ComputedIdeal IdealLinear)
+
+        Assert.Equal<ElementOrientation>(
+            { rotation = thirty; incidence = IncidenceAngle.normal; branch = Propagation.BranchTransmitted },
+            at30
+        )
+
+        assertMuellerExact Propagation.identityMueller (emptySlot.muellerAt at30 at400)
+
+        let reflected = { at30 with branch = Propagation.BranchReflected }
+        assertUnmodelledBranch "the reflected branch of an empty slot, which only transmits" (emptySlot.muellerAt reflected at400)
+        assertUnmodelledBranch "the reflected branch of a polarizer preset, which only transmits" (linearPolarizer.muellerAt reflected at400)
+
+    [<Fact>]
+    let ``a real linear polarizer at its defaults is the ideal one, and its leakage passes crossed light`` () : unit =
+        let byExtinction = formDefaults lpByExtinction
+        let lpByDiattenuation = RealPolarizerModel DiattenuationLeakage
+        let byDiattenuation = formDefaults lpByDiattenuation
+
+        // Extinction ratio 0 and diattenuation 1 are both the ideal LP.
+        for rotation in sampledRotations do
+            let ideal = Propagation.analyzerMueller IdealLinear rotation
+            assertMuellerWithin ideal (formMuellerAt lpByExtinction byExtinction rotation at600)
+            assertMuellerWithin ideal (formMuellerAt lpByDiattenuation byDiattenuation rotation at600)
+
+        // The axis offset (10°) adds to the element's rotation (30°).
+        let offsetBy10 = byExtinction.withValue ParameterName.axisOffset (ParameterValue (Math.PI / 18.0))
+        assertMuellerWithin
+            (Propagation.analyzerMueller IdealLinear (Angle.degree 40.0<deg>))
+            (formMuellerAt lpByExtinction offsetBy10 (Angle.degree 30.0<deg>) at600)
+
+        // Crossed with an ideal LP at 90°, unpolarized light leaks half the extinction ratio.
+        let leakyValues = byExtinction.withValue ParameterName.extinctionRatio (ParameterValue 0.01)
+        let leaky = matrixOf (formMuellerAt lpByExtinction leakyValues Angle.zero at600)
+        let crossed = Propagation.analyzerMueller IdealLinear (Angle.degree 90.0<deg>) * (leaky * Propagation.unpolarizedStokes)
+        assertWithin 0.005 crossed.s0 "S0 through the leaky LP and a crossed ideal LP"
+
+        // A diattenuation D is the extinction ratio (1 − D) / (1 + D).
+        let diattenuated = byDiattenuation.withValue ParameterName.diattenuation (ParameterValue 0.98)
+        let equivalent = byExtinction.withValue ParameterName.extinctionRatio (ParameterValue (0.02 / 1.98))
+
+        for rotation in sampledRotations do
+            assertMuellerWithin
+                (matrixOf (formMuellerAt lpByExtinction equivalent rotation at600))
+                (formMuellerAt lpByDiattenuation diattenuated rotation at600)
+
+    [<Fact>]
+    let ``a retarder plate is the retarder matrix at its fast axis, its retardance dispersed as its model says`` () : unit =
+        let constant = RetarderPlateModel ConstantRetardance
+        let sixtyDegrees =
+            ((formDefaults constant).withValue ParameterName.retardance (ParameterValue (Math.PI / 3.0))).withValue
+                ParameterName.fastAxisOffset
+                (ParameterValue (Math.PI / 36.0))
+        let at45 = MuellerReconstruction.retarderMueller (Angle.degree 45.0<deg>) (MuellerReconstruction.Retardance (Math.PI / 3.0))
+        let at316 = WaveLength.nm 316.4<nm>
+        let at633 = WaveLength.nm 632.8<nm>
+
+        // A constant retardance is the same at every λ; the fast-axis offset (5°) adds to the rotation (40°).
+        for w in [ at316; at600; WaveLength.nm 1550.0<nm> ] do
+            assertMuellerWithin at45 (formMuellerAt constant sixtyDegrees (Angle.degree 40.0<deg>) w)
+
+        // A quarter wave at 632.8 nm, dispersed as λ_ref / λ, is a half wave at 316.4 nm.
+        let dispersion = InverseWaveLengthRetardance at633
+        let zeroOrder = RetarderPlateModel dispersion
+        let quarter = ParameterValue (Math.PI / 2.0)
+
+        assertWithin Math.PI (quarter.retardanceAt dispersion at316).value "the dispersed retardance at 316.4 nm"
+        assertWithin (Math.PI / 2.0) (quarter.retardanceAt dispersion at633).value "the dispersed retardance at 632.8 nm"
+        assertWithin (Math.PI / 2.0) (quarter.retardanceAt ConstantRetardance at316).value "the constant retardance at 316.4 nm"
+
+        for rotation in sampledRotations do
+            assertMuellerWithin
+                (MuellerReconstruction.retarderMueller rotation (MuellerReconstruction.Retardance Math.PI))
+                (formMuellerAt zeroOrder (formDefaults zeroOrder) rotation at316)
+
+    [<Fact>]
+    let ``a black-box Mueller matrix is held at reference orientation and turned by the element's rotation`` () : unit =
+        let sixteen = BlackBoxMuellerModel SixteenElementMueller
+        let fifteen = BlackBoxMuellerModel FifteenElementsAndScale
+        let referenceLp = Propagation.analyzerMueller IdealLinear Angle.zero
+        let indices : int list = [ 0 .. 3 ]
+        let elementName (i : int) (j : int) : ParameterName = ParameterName.muellerElement (ParameterNameIndex i) (ParameterNameIndex j)
+        let holding (keep : int -> int -> bool) (valueAt : int -> int -> float) (start : ParameterValues) : ParameterValues =
+            indices
+            |> List.fold
+                (fun (rows : ParameterValues) i ->
+                    indices
+                    |> List.filter (keep i)
+                    |> List.fold (fun (held : ParameterValues) j -> held.withValue (elementName i j) (ParameterValue (valueAt i j))) rows)
+                start
+
+        // At its defaults the box is the identity, at any rotation.
+        assertMuellerWithin Propagation.identityMueller (formMuellerAt sixteen (formDefaults sixteen) (Angle.degree 30.0<deg>) at600)
+
+        // Holding the reference LP's sixteen elements, the box is the ideal LP at the element's rotation.
+        let lpBox = holding (fun _ _ -> true) referenceLp.element (formDefaults sixteen)
+
+        for rotation in sampledRotations do
+            assertMuellerWithin (Propagation.analyzerMueller IdealLinear rotation) (formMuellerAt sixteen lpBox rotation at600)
+
+        // A scale of 0.8 over the fifteen elements normalised by m00 (½) is 0.8 · 2 · the LP.
+        let m00 = referenceLp.element 0 0
+        let scaledBox =
+            holding
+                (fun i j -> i <> 0 || j <> 0)
+                (fun i j -> referenceLp.element i j / m00)
+                ((formDefaults fifteen).withValue ParameterName.blackBoxScale (ParameterValue 0.8))
+
+        for rotation in sampledRotations do
+            let lp = Propagation.analyzerMueller IdealLinear rotation
+            assertElementsWithin (fun i j -> 0.8 * 2.0 * lp.element i j) (formMuellerAt fifteen scaledBox rotation at600)
+
+    [<Fact>]
+    let ``a compound applies its components in light order, each under its own prefixed parameters`` () : unit =
+        let defaults = formDefaults quarterWaveAfterLp
+
+        // The LP first, then the quarter wave at 45° to it: R(θ + 45°, π / 2) · LP(θ).
+        for rotation in [ 0.0<deg>; 30.0<deg> ] |> List.map Angle.degree do
+            let expected =
+                MuellerReconstruction.retarderMueller (rotation + Angle.degree 45.0<deg>) (MuellerReconstruction.Retardance (Math.PI / 2.0))
+                * Propagation.analyzerMueller IdealLinear rotation
+            let compound = formMuellerAt quarterWaveAfterLp defaults rotation at600
+            assertMuellerWithin expected compound
+
+            // Unpolarized light leaves circular: |S₃| / S₀ = 1.
+            let circular = matrixOf compound * Propagation.unpolarizedStokes
+            assertWithin 1.0 (abs circular.s3 / circular.s0) "|S3| / S0 of unpolarized light through the compound"
+
+        // As the second component after an identity black box, the inner LP's extinction ratio is c2.c1.extinctionRatio.
+        let box : CompoundComponent = { form = BlackBoxMuellerModel SixteenElementMueller; offset = Angle.zero }
+        let inner : CompoundComponent = { form = quarterWaveAfterLp; offset = Angle.zero }
+        let nested = CompoundModel [ box; inner ]
+        let nestedValues = (formDefaults nested).withValue (ParameterName "c2.c1.extinctionRatio") (ParameterValue 0.01)
+        let innerValues = defaults.withValue (ParameterName "c1.extinctionRatio") (ParameterValue 0.01)
+        let second = ParameterNameIndex 2
+
+        Assert.Equal<Result<ParameterValues, ItemEvaluationError>>(
+            Ok innerValues,
+            nestedValues.forComponent second quarterWaveAfterLp.parameterAxes
+        )
+
+        let innerAlone = matrixOf (formMuellerAt quarterWaveAfterLp innerValues Angle.zero at600)
+        assertMuellerWithin innerAlone (formMuellerAt nested nestedValues Angle.zero at600)
+
+        // The leakage reached the inner LP: its m00 is ½ (1 + 0.01), the quarter wave keeping S₀.
+        assertWithin 0.505 (innerAlone.element 0 0) "m00 of the leaky inner compound"
+
+    [<Fact>]
+    let ``a form is bound only with a value for each of its parameters, in range`` () : unit =
+        let defaults = formDefaults lpByExtinction
+
+        assertBound (Ok (BoundOpticalForm (lpByExtinction, defaults))) (BoundOpticalElement.ofOpticalForm defaults lpByExtinction)
+
+        let withoutOffset =
+            ParameterValues.defaultsOf (lpByExtinction.parameterAxes |> List.filter (fun axis -> axis.name <> ParameterName.axisOffset))
+        assertBound (Error (MissingParameterValueErr "axisOffset")) (BoundOpticalElement.ofOpticalForm withoutOffset lpByExtinction)
+        assertBound
+            (Error (ParameterOutOfRangeErr "extinctionRatio = 1.2 lies outside [0, 1]"))
+            (BoundOpticalElement.ofOpticalForm (defaults.withValue ParameterName.extinctionRatio (ParameterValue 1.2)) lpByExtinction)
+
+        // A compound's values are checked under each component's prefixed names.
+        let withoutRetardance =
+            ParameterValues.defaultsOf (quarterWaveAfterLp.parameterAxes |> List.filter (fun axis -> axis.name <> ParameterName "c2.retardance"))
+        let leakingTooMuch = (formDefaults quarterWaveAfterLp).withValue (ParameterName "c1.extinctionRatio") (ParameterValue 1.2)
+        assertBound (Error (MissingParameterValueErr "c2.retardance")) (BoundOpticalElement.ofOpticalForm withoutRetardance quarterWaveAfterLp)
+        assertBound
+            (Error (ParameterOutOfRangeErr "c1.extinctionRatio = 1.2 lies outside [0, 1]"))
+            (BoundOpticalElement.ofOpticalForm leakingTooMuch quarterWaveAfterLp)
+
+        // A form passes the light it transmits: its reflected branch is unmodelled.
+        let retarder = RetarderPlateModel ConstantRetardance
+
+        match BoundOpticalElement.ofOpticalForm (formDefaults retarder) retarder with
+        | Ok bound ->
+            let at30 = ElementOrientation.transmittingAt (Angle.degree 30.0<deg>)
+            let reflected : ElementOrientation = { at30 with branch = Propagation.BranchReflected }
+            assertUnmodelledBranch "the reflected branch of an optical form, which only transmits" (bound.muellerAt reflected at600)
+        | Error error -> Assert.Fail error.describe
+
+        // A form built unchecked still answers the missing number, not a matrix.
+        let unchecked : BoundOpticalElement = BoundOpticalForm (retarder, ParameterValues Map.empty)
+        Assert.Equal<Result<MuellerMatrix, ItemEvaluationError>>(
+            Error (MissingParameterValueErr "retardance"),
+            unchecked.muellerAt (ElementOrientation.transmittingAt Angle.zero) at600
+        )
+
+    [<Fact>]
+    let ``a stack sample at its own thicknesses is solved as the table solves it`` () : unit =
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let spin = Angle.degree 20.0<deg>
+        let incidence = IncidenceAngle.create (Angle.degree 30.0<deg>)
+
+        for id in [ SampleIds.glassPlate1mmId; SampleIds.glassFilm200Id ] do
+            let sample = BuiltinCatalogue.sample id
+            let defaults = ParameterValues.defaultsOf sample.parameterAxes
+            let resolved = resolvedAsTheTable materials sample
+
+            // At its own thicknesses the sample is unchanged.
+            assertSample (Ok sample) (sample.withThicknessValues defaults)
+
+            for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+                let orientation : ElementOrientation = { rotation = spin; incidence = incidence; branch = branch }
+                assertMuellerExact
+                    (Propagation.sampleMuellerSpun branch resolved at600 incidence spin)
+                    (stackSampleMuellerAt materials defaults sample orientation at600)
+
+    [<Fact>]
+    let ``a stack sample's thickness parameters change the layers they name`` () : unit =
+        let layerOf (material : MaterialId) (thickness : Thickness) : SampleLayer =
+            { materialId = MaterialVersionId.firstOf material; thickness = thickness; orientation = PrimaryAxes }
+        let film = layerOf MaterialIds.glass175 (Thickness.nm 5.0<nm>)
+        let cellFirst = layerOf MaterialIds.glass152 (Thickness.nm 10.0<nm>)
+        let cellSecond = layerOf MaterialIds.glass200 (Thickness.nm 20.0<nm>)
+        let plate = layerOf MaterialIds.glass150 (Thickness.mm 1.0<mm>)
+
+        // A 5 nm film, a 10 nm / 20 nm cell over three periods and a 1 mm plate, each layer of its own material.
+        let structureOf (single : SampleLayer) (secondInCell : SampleLayer) (substrate : SampleLayer) : SampleStructure =
+            {
+                films = [ SingleLayer single; Repeated { cell = [ cellFirst; secondInCell ]; count = PeriodCount 3 } ]
+                substrate = Some substrate
+                lower = None
+            }
+
+        let stacked = { BuiltinCatalogue.sample SampleIds.glassFilm600Id with structure = structureOf film cellSecond plate }
+        let defaults = ParameterValues.defaultsOf stacked.parameterAxes
+        let film1 = ParameterName "film1.thickness"
+        let changed =
+            ((defaults.withValue film1 (ParameterValue 6.0e-9)).withValue (ParameterName "film2.layer2.thickness") (ParameterValue 2.5e-8)).withValue
+                (ParameterName "substrate.thickness")
+                (ParameterValue 2.0e-3)
+        let sixNm = Thickness 6.0e-9<meter>
+        let twentyFiveNm = Thickness 2.5e-8<meter>
+        let twoMm = Thickness 2.0e-3<meter>
+        let expected =
+            { stacked with
+                structure = structureOf { film with thickness = sixNm } { cellSecond with thickness = twentyFiveNm } { plate with thickness = twoMm } }
+
+        let actual = stacked.withThicknessValues changed
+        assertSample (Ok expected) actual
+
+        // The cell is stored once, so its second layer is 25 nm in every period.
+        match actual with
+        | Ok held ->
+            let ten = cellFirst.thickness
+            Assert.Equal<Thickness list>(
+                [ sixNm; ten; twentyFiveNm; ten; twentyFiveNm; ten; twentyFiveNm ],
+                held.structure.expandedFilms |> List.map _.thickness
+            )
+        | Error error -> Assert.Fail error.describe
+
+        assertSample
+            (Error (ParameterOutOfRangeErr "film1.thickness = -1E-09 lies outside [0, ∞)"))
+            (stacked.withThicknessValues (defaults.withValue film1 (ParameterValue -1.0e-9)))
+
+        // A bound thickness reaches the solve: the 200 nm film at 300 nm is solved as a 300 nm film.
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let glassFilm200 = BuiltinCatalogue.sample SampleIds.glassFilm200Id
+        let glassDefaults = ParameterValues.defaultsOf glassFilm200.parameterAxes
+        let normal = ElementOrientation.transmittingAt Angle.zero
+        let film300 =
+            match glassFilm200.structure.films with
+            | [ SingleLayer layer ] ->
+                { glassFilm200 with
+                    structure = { glassFilm200.structure with films = [ SingleLayer { layer with thickness = Thickness.nm 300.0<nm> } ] } }
+            | _ -> failwith "the Built-in 200 nm glass film is one single film"
+        let at300 = stackSampleMuellerAt materials (glassDefaults.withValue film1 (ParameterValue 3.0e-7)) glassFilm200 normal at600
+
+        assertMuellerWithin
+            (Propagation.sampleMuellerSpun Propagation.BranchTransmitted (resolvedAsTheTable materials film300) at600 IncidenceAngle.normal Angle.zero)
+            at300
+
+        let at200 = matrixOf (stackSampleMuellerAt materials glassDefaults glassFilm200 normal at600)
+        let m00At300 = (matrixOf at300).element 0 0
+        Assert.True(abs (m00At300 - at200.element 0 0) > 1.0e-6, $"m00 at 300 nm ({m00At300:R}) equals m00 at 200 nm")
+
+    [<Fact>]
+    let ``a sample whose material does not resolve answers SampleMaterialErr`` () : unit =
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+        let emptyStore = MaterialProxy.createInMemory (fun _ -> [])
+
+        // The plate has no film, so its substrate plate is the first layer the store is asked for.
+        match plate.structure.substrate with
+        | Some substrate ->
+            assertBound
+                (Error (SampleMaterialErr (MaterialError.unknownMaterialVersion substrate.materialId)))
+                (BoundOpticalElement.ofStackSample emptyStore (ParameterValues.defaultsOf plate.parameterAxes) plate)
+        | None -> Assert.Fail "the Built-in 1 mm glass plate carries a substrate plate"
+
+    [<Fact>]
+    let ``a cut plate is predicted through the Berreman forward at the element's spin, incidence, branch and wavelength`` () : unit =
+        let thickness = Thickness.mm 1.0<mm>
+        let incidence = IncidenceAngle.create (Angle.degree 20.0<deg>)
+        let plate : BoundOpticalElement = BoundCutPlate (CutPlate.ofForward uniaxialForward uniaxialCrystal XCut thickness)
+        let transmitting : ElementOrientation =
+            { rotation = Angle.degree 30.0<deg>; incidence = incidence; branch = Propagation.BranchTransmitted }
+        let reflecting : ElementOrientation = { transmitting with branch = Propagation.BranchReflected }
+        let configuration : MeasurementConfiguration =
+            {
+                cut = XCut
+                thickness = thickness
+                incidenceAngle = incidence
+                azimuth = SampleAzimuth.degree 30.0<deg>
+                observable = TransmittedMueller
+                waveLength = at600
+            }
+        let forwardAt (measured : MeasurementConfiguration) : MuellerMatrix =
+            match uniaxialForward.muellerOf measured uniaxialCrystal with
+            | Ok matrix -> matrix
+            | Error (ForwardSolveFailedErr (_, reason)) -> failwith reason
+
+        Assert.Equal<SampleAzimuth>(configuration.azimuth, transmitting.sampleAzimuth)
+        Assert.Equal<Observable>(TransmittedMueller, transmitting.observable)
+        Assert.Equal<Observable>(ReflectedMueller, reflecting.observable)
+
+        assertMuellerExact (forwardAt configuration) (plate.muellerAt transmitting at600)
+        assertMuellerExact (forwardAt { configuration with observable = ReflectedMueller }) (plate.muellerAt reflecting at600)
+
+        // The wavelength is the evaluation's: at 632.8 nm the plate is the forward's at 632.8 nm.
+        let at633 = WaveLength.nm 632.8<nm>
+        assertMuellerExact (forwardAt { configuration with waveLength = at633 }) (plate.muellerAt transmitting at633)
+
+        // The rotation is the azimuth of the in-plane optic axis: turned to 60°, the plate passes other light.
+        let at30 = matrixOf (plate.muellerAt transmitting at600)
+        let at60 = matrixOf (plate.muellerAt { transmitting with rotation = Angle.degree 60.0<deg> } at600)
+        let largestChange =
+            [ for i in 0 .. 3 do
+                  for j in 0 .. 3 do
+                      abs (at60.element i j - at30.element i j) ]
+            |> List.max
+        Assert.True(largestChange > 1.0e-3, $"the transmitted matrix at 60° differs from 30° by at most {largestChange:R}")
+
+    [<Fact>]
+    let ``a cut plate whose forward fails answers CutPlateSolveErr`` () : unit =
+        let failing : ForwardModelProxy<UniaxialParameters> =
+            { muellerOf = fun configuration _ -> Error (ForwardSolveFailedErr (configuration, "degenerate")) }
+        let plate : BoundOpticalElement = BoundCutPlate (CutPlate.ofForward failing uniaxialCrystal ZCut (Thickness.mm 1.0<mm>))
+
+        for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+            let orientation : ElementOrientation = { ElementOrientation.transmittingAt Angle.zero with branch = branch }
+            Assert.Equal<Result<MuellerMatrix, ItemEvaluationError>>(Error (CutPlateSolveErr "degenerate"), plate.muellerAt orientation at600)
+
+    [<Fact>]
+    let ``every item model binds as its kind, and a source or a detector is no optical element`` () : unit =
+        // Every model is a shipped entry of step 210; every binding is a Built-in preset or sample.
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let defaultsOf (choice : ItemModelChoice) : ParameterValues = ParameterValues.defaultsOf choice.parameterAxes
+        let boundAtDefaults (choice : ItemModelChoice) : Result<BoundOpticalElement, ItemEvaluationError> =
+            choice.boundWith materials (defaultsOf choice)
+        let notAnOpticalElement (model : ItemModelVersion) (kind : string) : Result<BoundOpticalElement, ItemEvaluationError> =
+            Error (NotAnOpticalElementErr $"'{model.entry.name.value}' ({model.entry.id.value}) is {kind}")
+
+        let polarizerModel = BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId
+        let linearPolarizer =
+            match BuiltinCatalogue.preset PresetIds.polarizerLp with
+            | PolarizerItem polarizer -> polarizer
+            | SampleItem _ | SourceItem _ | DetectorItem _ -> failwith "the Built-in linear polarizer preset is a polarizer"
+        assertBound (Ok (BoundPolarizerPreset linearPolarizer.behavior)) (boundAtDefaults (PolarizerPresetChoice (polarizerModel, linearPolarizer)))
+
+        // A bound sample holds its resolved materials by reference, so it is compared by what it evaluates to.
+        let sampleModel = BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+        let plateChoice = StackSampleChoice (sampleModel, SampleVersionId.firstOf plate.id, plate)
+        let plateValues = defaultsOf plateChoice
+        let incidence = IncidenceAngle.create (Angle.degree 30.0<deg>)
+
+        for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+            let orientation : ElementOrientation = { rotation = Angle.degree 20.0<deg>; incidence = incidence; branch = branch }
+            assertMuellerExact
+                (matrixOf (stackSampleMuellerAt materials plateValues plate orientation at600))
+                (plateChoice.boundWith materials plateValues |> Result.bind (fun bound -> bound.muellerAt orientation at600))
+
+        // The item's values reach the sample: a negative plate thickness is refused as `ofStackSample` refuses it.
+        let negativePlate = plateValues.withValue ParameterName.substrateThickness (ParameterValue -1e-3)
+        assertBound (Error (ParameterOutOfRangeErr "substrate.thickness = -0.001 lies outside [0, ∞)")) (plateChoice.boundWith materials negativePlate)
+        assertBound (BoundOpticalElement.ofStackSample materials negativePlate plate) (plateChoice.boundWith materials negativePlate)
+
+        let circularModel = BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId
+        let circularPolarizer = LibraryModelChoice circularModel
+
+        match circularModel.entry.model with
+        | OpticalElementModel form ->
+            let defaults = defaultsOf circularPolarizer
+            assertBound (BoundOpticalElement.ofOpticalForm defaults form) (boundAtDefaults circularPolarizer)
+            assertBound (Ok (BoundOpticalForm (form, defaults))) (boundAtDefaults circularPolarizer)
+        | _ -> Assert.Fail "the shipped circular polarizer is an optical-element model"
+
+        let emptySlot = boundAtDefaults (LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.emptySlotModelId))
+        assertBound (Ok BoundEmptySlot) emptySlot
+        assertMuellerExact
+            Propagation.identityMueller
+            (emptySlot |> Result.bind (fun bound -> bound.muellerAt (ElementOrientation.transmittingAt (Angle.degree 30.0<deg>)) at600))
+
+        // A detector reads: its gain, dark offset and noise are the forward model's, not a Mueller matrix's.
+        let detectors : (ItemModelId * string) list =
+            [
+                ItemModelIds.intensityDetectorModelId, "an intensity detector, which reads"
+                ItemModelIds.muellerPolarimeterModelId, "a Mueller polarimeter, which reads"
+                ItemModelIds.ellipsometerModelId, "an ellipsometer, which reads"
+            ]
+
+        for id, kind in detectors do
+            let detector = BuiltinCatalogue.itemModel id
+            assertBound (notAnOpticalElement detector kind) (boundAtDefaults (LibraryModelChoice detector))
+
+        // A source emits, through `emissionWith`.
+        let sourceModel = BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId
+        let heNe = SourcePresetChoice (sourceModel, BuiltinCatalogue.source PresetIds.heNe633)
+        assertBound (notAnOpticalElement sourceModel "a light source, which emits") (boundAtDefaults heNe)
+
+        // A binding model chosen without its binding has no physics to bind.
+        let unbound : (ItemModelVersion * string) list =
+            [
+                sourceModel, "a light-source model bound to no source preset"
+                polarizerModel, "an ideal-polarizer model bound to no polarizer preset"
+                sampleModel, "a stack-sample model bound to no sample"
+            ]
+
+        for model, kind in unbound do
+            assertBound (notAnOpticalElement model kind) ((LibraryModelChoice model).boundWith materials (ParameterValues Map.empty))
+
+    [<Fact>]
+    let ``an item's own parameter values reach its Mueller matrix`` () : unit =
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        let circularPolarizer = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.circularPolarizerModelId)
+        let draft : ItemDraft =
+            {
+                id = ItemId (Guid.Parse "e5a17c3b-2f84-4d96-b0c7-8d3e1f9a6b52")
+                label = ItemLabel "CPL1"
+                model = circularPolarizer
+                dial = FixedMounting
+            }
+        let muellerAtZero (item : Item) : Result<MuellerMatrix, ItemEvaluationError> =
+            circularPolarizer.boundWith materials (ParameterValues.ofParameters item.parameters)
+            |> Result.bind (fun bound -> bound.muellerAt (ElementOrientation.transmittingAt Angle.zero) at600)
+        let afterLp (retardance : float) : MuellerMatrix =
+            MuellerReconstruction.retarderMueller (Angle.degree 45.0<deg>) (MuellerReconstruction.Retardance retardance)
+            * Propagation.analyzerMueller IdealLinear Angle.zero
+
+        match draft.addTo [] with
+        | Ok cpl1 ->
+            // At its defaults, a quarter wave after the LP.
+            assertMuellerWithin (afterLp (Math.PI / 2.0)) (muellerAtZero cpl1)
+
+            match cpl1.withParameterState (ParameterName "c2.retardance") (KnownParameter (ParameterValue (Math.PI / 4.0))) with
+            | Ok eighthWave -> assertMuellerWithin (afterLp (Math.PI / 4.0)) (muellerAtZero eighthWave)
+            | Error error -> Assert.Fail error.describe
+        | Error error -> Assert.Fail error.describe
+
+    // ============================== spec 0050 S11.2: how a slot binds for a run ==============================
+
+    /// A slot as `SetupTests` builds one: the kind's placement at the point, on the main beam, holding nothing.
+    let private emptySlot (id : ElementId) (kind : CatalogueKind) (point : TablePoint) : SetupSlot =
+        {
+            id = id
+            placement = ElementPlacement.create kind point
+            zoom = BeamLayout.ElementZoom 5.0
+            beam = BeamLayout.OnMainBeam
+            content = EmptySlotContent
+        }
+
+    let private boundTo (entry : ElementValueId) (slot : SetupSlot) : SetupSlot =
+        { slot with placement = { slot.placement with valueId = Some entry } }
+
+    let private holding (item : Item) (slot : SetupSlot) : SetupSlot = { slot with content = ItemInSlot (item.id, PlacementTurn) }
+
+    let private sourceSlot : SetupSlot = emptySlot (ElementId "src") LightSource RayModel.defaultSourcePoint
+    let private lpSlot : SetupSlot = emptySlot (ElementId "lp") LinearPolarizer { x = -0.3<meter>; y = 0.0<meter> }
+    let private sampleSlot : SetupSlot = emptySlot (ElementId "sample") CatalogueKind.Sample { x = 0.0<meter>; y = 0.0<meter> }
+    let private detectorSlot : SetupSlot = emptySlot (ElementId "det") Detector RayModel.defaultDetectorPoint
+
+    /// The draft's item at its defaults, failing with the refusal's text when `addTo` refuses it (step 216).
+    let private itemOf (id : ItemId) (label : ItemLabel) (model : ItemModelChoice) : Item =
+        let draft : ItemDraft =
+            {
+                id = id
+                label = label
+                model = model
+                dial = FixedMounting
+            }
+
+        match draft.addTo [] with
+        | Ok item -> item
+        | Error error -> failwith $"'{label.value}' was refused: {error.describe}"
+
+    // Every model is a shipped entry of step 210; every binding is a Built-in preset or sample.
+    let private realLpChoice : ItemModelChoice = LibraryModelChoice (BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId)
+
+    let private heNeChoice : ItemModelChoice =
+        SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source PresetIds.heNe633)
+
+    let private realLp : Item = itemOf (ItemId (Guid.Parse "5a6b7c8d-9eaf-4b01-92c3-4e5f6a7b8c96")) (ItemLabel "LP3") realLpChoice
+    let private laser : Item = itemOf (ItemId (Guid.Parse "6b7c8d9e-af01-4c12-a3d4-5f6a7b8c9da7")) (ItemLabel "Laser") heNeChoice
+
+    /// The run over the Built-in library and materials, the kit holding `items`, each resolved as `choices` says and
+    /// evaluated with `values`.
+    let private runParamOver (items : Item list) (choices : (ItemId * ItemModelChoice) list) (values : ParameterValues) : SlotRunParam =
+        {
+            library = BuiltinCatalogue.library ()
+            materials = BuiltinCatalogue.materialStore (fun _ -> [])
+            items = items
+            choiceOf = fun item -> choices |> List.tryFind (fun (id, _) -> id = item.id) |> Option.map snd
+            valuesOf = fun _ -> values
+        }
+
+    let private assertRunElement (expected : Result<BoundOpticalElement option, SlotRunError>) (actual : Result<BoundOpticalElement option, SlotRunError>) : unit =
+        Assert.Equal<Result<BoundOpticalElement option, SlotRunError>>(expected, actual)
+
+    /// The slot's run element evaluated at the orientation and λ, failing when the slot binds none.
+    let private runMuellerAt
+        (orientation : ElementOrientation)
+        (w : WaveLength)
+        (bound : Result<BoundOpticalElement option, SlotRunError>)
+        : Result<MuellerMatrix, ItemEvaluationError> =
+        match bound with
+        | Ok (Some element) -> element.muellerAt orientation w
+        | Ok None -> failwith "the slot bound no run element"
+        | Error error -> failwith error.describe
+
+    [<Fact>]
+    let ``a slot runs as its item through the given values, else as its library binding, and a source, detector, mirror or lens slot is no run element`` () : unit =
+        let realLpValues = (ParameterValues.ofParameters realLp.parameters).withValue ParameterName.extinctionRatio (ParameterValue 0.01)
+        let param = runParamOver [ realLp; laser ] [ realLp.id, realLpChoice; laser.id, heNeChoice ] realLpValues
+        let linearPolarizer =
+            match BuiltinCatalogue.preset PresetIds.polarizerLp with
+            | PolarizerItem polarizer -> polarizer
+            | SampleItem _ | SourceItem _ | DetectorItem _ -> failwith "the Built-in linear polarizer preset is a polarizer"
+
+        // With no item, the slot is the preset it is bound to, and nothing when it is bound to none.
+        let boundLp = boundTo PresetIds.polarizerLp lpSlot
+        assertRunElement (Ok (Some (BoundPolarizerPreset linearPolarizer.behavior))) (boundLp.runElementWith param)
+        assertRunElement (Ok None) (lpSlot.runElementWith param)
+
+        // Holding the real LP, the slot is that item's model over the given values, whatever it is bound to.
+        let heldLp =
+            match boundLp.withItem realLp realLpChoice with
+            | Ok held -> held
+            | Error error -> failwith error.describe
+
+        let realLpModel = BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId
+
+        match realLpModel.entry.model with
+        | OpticalElementModel form ->
+            assertRunElement
+                (BoundOpticalElement.ofOpticalForm realLpValues form |> Result.map Some |> Result.mapError SlotEvaluationErr)
+                (heldLp.runElementWith param)
+
+            let expected = matrixOf (formMuellerAt form realLpValues Angle.zero at600)
+            assertMuellerWithin expected (runMuellerAt (ElementOrientation.transmittingAt Angle.zero) at600 (heldLp.runElementWith param))
+            // r = 0.01 leaks √r into the S₂ and S₃ rows, which the item's own default r = 0 would zero.
+            assertWithin 0.1 (expected.element 2 2) "m22"
+        | _ -> Assert.Fail "the shipped real linear polarizer is an optical-element model"
+
+        // With no item, a sample slot is its bound sample at its defaults.
+        let plate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
+        let boundSample = boundTo SampleIds.glassPlate1mmId.toElementValueId sampleSlot
+        let plateDefaults = ParameterValues.defaultsOf plate.parameterAxes
+
+        for branch in [ Propagation.BranchTransmitted; Propagation.BranchReflected ] do
+            let orientation : ElementOrientation =
+                { rotation = Angle.degree 20.0<deg>; incidence = IncidenceAngle.create (Angle.degree 30.0<deg>); branch = branch }
+            assertMuellerExact
+                (matrixOf (stackSampleMuellerAt param.materials plateDefaults plate orientation at600))
+                (runMuellerAt orientation at600 (boundSample.runElementWith param))
+
+        // A source emits, a detector reads and a mirror or a lens steers, whatever they hold or are bound to.
+        let steering : SetupSlot list =
+            [
+                holding laser (boundTo PresetIds.heNe633 sourceSlot)
+                detectorSlot
+                emptySlot (ElementId "mirror") FlatMirror { x = 0.2<meter>; y = 0.0<meter> }
+                emptySlot (ElementId "curved") CurvedMirror { x = 0.3<meter>; y = 0.0<meter> }
+                emptySlot (ElementId "lens") Lens { x = 0.4<meter>; y = 0.0<meter> }
+            ]
+
+        for slot in steering do
+            assertRunElement (Ok None) (slot.runElementWith param)
+
+        // A sample slot holds an object; every other slot an element.
+        let m = Propagation.identityMueller
+        Assert.Equal<RunStep>(ObjectStep m, boundSample.runStepOf m)
+        Assert.Equal<RunStep>(ElementStep m, heldLp.runStepOf m)
+        Assert.Equal<RunStep>(ElementStep m, detectorSlot.runStepOf m)
+
+    [<Fact>]
+    let ``a slot whose item the kit lacks or whose model does not resolve answers SlotItemErr`` () : unit =
+        let values = ParameterValues.ofParameters realLp.parameters
+
+        // The kit holds no LP3.
+        let lacking = runParamOver [ laser ] [ realLp.id, realLpChoice; laser.id, heNeChoice ] values
+        assertRunElement
+            (Error (SlotItemErr (UnknownSlotItemErr $"the kit holds no item {realLp.id.value}")))
+            ((holding realLp lpSlot).runElementWith lacking)
+
+        // The kit holds LP3, but its model is in no library.
+        let unresolved = runParamOver [ realLp; laser ] [ laser.id, heNeChoice ] values
+        assertRunElement
+            (Error (SlotItemErr (UnknownSlotItemErr "'LP3': its model is not in the library")))
+            ((holding realLp lpSlot).runElementWith unresolved)
+
+        // The source's item resolves by the same rule.
+        Assert.Equal<Result<SourceEmission, SlotRunError>>(
+            Error (SlotItemErr (UnknownSlotItemErr $"the kit holds no item {laser.id.value}")),
+            SetupSlot.runEmissionOf [ holding laser sourceSlot; lpSlot; detectorSlot ] (runParamOver [ realLp ] [] values)
+        )
+
+        // Each error reads as its inner error.
+        let missing = UnknownSlotItemErr "item QZ9"
+        Assert.Equal(missing.describe, (SlotItemErr missing).describe)
+        let outOfRange = ParameterOutOfRangeErr "extinctionRatio = 2 lies outside [0, 1]"
+        Assert.Equal(outOfRange.describe, (SlotEvaluationErr outOfRange).describe)
+
+    [<Fact>]
+    let ``the run's source emits its item's state through the given values, and the default set without a source item`` () : unit =
+        let azimuth30 = ParameterValue (Math.PI / 6.0)
+        let polarized =
+            (sourceDefaults.withValue ParameterName.degreeOfPolarization (ParameterValue 1.0)).withValue ParameterName.azimuth azimuth30
+        let emitted (values : ParameterValues) (slots : SetupSlot list) : Result<SourceEmission, SlotRunError> =
+            SetupSlot.runEmissionOf slots (runParamOver [ laser ] [ laser.id, heNeChoice ] values)
+        let assertEmitted (expected : Result<SourceEmission, SlotRunError>) (actual : Result<SourceEmission, SlotRunError>) : unit =
+            Assert.Equal<Result<SourceEmission, SlotRunError>>(expected, actual)
+
+        let fullyPolarized : SourceEmission =
+            {
+                azimuth = azimuth30.angle
+                ellipticity = Angle.zero
+                degreeOfPolarization = ParameterValue 1.0
+                intensityScale = ParameterValue 1.0
+            }
+
+        // The first light-source slot holding an item emits; an empty one before it does not.
+        let lit = holding laser sourceSlot
+        let dark = boundTo PresetIds.heNe633 (emptySlot (ElementId "dark") LightSource RayModel.defaultSourcePoint)
+        assertEmitted (Ok fullyPolarized) (emitted polarized [ lit; lpSlot; detectorSlot ])
+        assertEmitted (Ok fullyPolarized) (emitted polarized [ dark; lit; detectorSlot ])
+
+        // Without a source item the light is the axes' defaults, unpolarized at unit scale, a bound preset's included.
+        assertEmitted (Ok defaultEmission) (emitted polarized [ sourceSlot; lpSlot; detectorSlot ])
+        assertEmitted (Ok defaultEmission) (emitted polarized [ dark; holding laser lpSlot; detectorSlot ])
+
+        assertEmitted
+            (Error (SlotEvaluationErr (ParameterOutOfRangeErr "degreeOfPolarization = 1.5 lies outside [0, 1]")))
+            (emitted (polarized.withValue ParameterName.degreeOfPolarization (ParameterValue 1.5)) [ lit; lpSlot; detectorSlot ])

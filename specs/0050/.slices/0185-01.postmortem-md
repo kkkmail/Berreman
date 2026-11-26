@@ -1,0 +1,93 @@
+# Post-mortem -- slice 0185, attempt 01
+
+## Summary
+
+Step 0185 (read-only kit refuses its four write messages and withholds their controls) is implemented correctly inside its effects, but one accepted fact in its own ui-tests selection, SceneSaveLoadTests "a saved scene is a setup file in the kit and loads back onto the table", pairs ReadOnlyKitAccess with SceneSave and pins the old "Not saved to the kit — " status.
+The one-line repair (SceneSaveLoadTests.fs:126) is in a file outside the step's effects, so the judge escalated on cycle 1, the resolver confirmed, and only an operator ruling can supply the authority.
+
+## Root cause
+
+**Owner: the product.** The tests as they stood before the slice hold an assertion that the ledger never asked for. Step 0153's how-to (`.spec-jsonl` step 153) defines `a saved scene is a setup file in the kit and loads back onto the table` as save → setup file and snapshot → remove → load → reopen. It prescribes no read-only refusal. The 0153 worker (gpt-6-astra) added one anyway: "blank/missing/read-only refusals" (`.slices/0153-impl-log.md:60`). The 0153 judge counted it as coverage (`.artifacts/code_judge/0153-01-code-judge.md:19`). The operator's recovery commits `d461ad3`/`5f5ff65` (0050-0153-manual) committed it, and it was accepted by override (`COMMIT-OVERRIDE idx=152 sha=4c4dcf2…`, 2026-11-08T12:31Z). The block sits at `SceneSaveLoadTests.fs:119-138`:
+
+- `protectedModel` sets `proxy = readOnlyView` **and** `access = ReadOnlyKitAccess` (:126);
+- it sends `SceneSave`;
+- it asserts `StartsWith("Not saved to the kit — ")` (:135) and `Contains("read-only")`.
+
+Step 0185 deliberately changes that behaviour. Under `ReadOnlyKitAccess`, `SceneSave` must answer exactly `The kit is open read-only: nothing is saved.` and call no proxy (How-to (1), pinned by the new `KitWindowModelTests` fact). The worker implemented this as `guardKitWrite` (`TableAndElementRotationView.fs:1652-1663`, wrapping lines 1823/1855/1880/1913).
+
+The spec-writer foresaw this conflict for the one fixture of that shape the ledger itself prescribed, step 152's `{ proxy = readOnlyView; access = ReadOnlyKitAccess }` in InverseConstructorTests. It declared a `change_expectation` for that fact. It could not see a fixture that exists only in the code, because the step-compiler compiles from the ledger. So the step as written is consistent with the ledger. The worker, judge and resolver each diagnosed the conflict correctly and stayed in scope. This is not a tool defect: the judge's escalate-on-missing-authority is the same rule that fired correctly at 0150 and 0160, and nothing else in the cycle went wrong.
+
+**Repeat.** The broad class has escalated before: an inherited file outside the step's effects but inside its gate roster contradicts the step's obligation, and the authority to touch it is missing. Earlier cases: 0056 (manual 005), 0132 (manual 009), 0150 (manual 011) and 0160-01 (manual 012). Each ruling was scoped to its own step and its own file, so none could cover 0185. The narrow sub-class is new in this arc: a worker's unprescribed assertion in an accepted fact pins behaviour a later step's how-to changes. A standing rule would close it (attached below; the operator decides).
+
+## Evidence
+
+- Trigger (run log, 2026-11-09T01:10:25Z): `ESCALATION-RECORDED` idx=184, "code-judge escalated on cycle 1: Step 0185 is implemented correctly within its authorized effects … (resolver consulted: …0185-resolver-01.md)", conversation_seq 1. No `ESCALATE` line yet, which is expected.
+- Judge (`0185-01-code-judge.md`): "No single status can satisfy both facts. `SceneSaveLoadTests.fs` is in neither `effects.edits` nor `effects.tests`, and no `.manual/` ruling authorizes editing it." Verdict `escalate-to-human`.
+- Resolver (`0185-resolver-01.md`): `confirm-escalation`, confidence high: "this is missing authority, not something a hint can fix."
+- Worker (impl-log, "Blocking conflict and missing authority"; SoW "Deferred"): `commit_ready: false`. It proposes the same one-line deletion and correctly left `SceneSaveLoadTests.fs` untouched.
+- Code, read today:
+  - `SceneSaveLoadTests.fs:126` is `access = ReadOnlyKitAccess`, and `:135` is `Assert.StartsWith("Not saved to the kit — ", status.value)`.
+  - The file's only history is `d461ad3` and `5f5ff65` (0050-0153-manual), and `d461ad3` introduced the block.
+- Ledger:
+  - Step 153's how-to text for the fact has no read-only clause.
+  - Step 185 declares `change_expectation` only for `InverseConstructorTests.a kit write that fails keeps the experiment and shows why`.
+  - Step 152 prescribes that fixture, `{ m.kit with proxy = m.kit.proxy.readOnlyView; access = ReadOnlyKitAccess }`.
+- Other read-only pairings: a grep of `ReadOnlyKitAccess` under `Berreman/OpticalConstructor` finds no other test that pairs it with `ExpCommit`/`ExpRemove`/`AttachDataFileTo`/`SceneSave`. ImportDialogTests.fs:213 sends none of the four, and the rest are domain-level opens.
+- Arc history (run log):
+  - 15 `ESCALATION-RECORDED`: 0013, 0035, 0052, 0056, 0059, 0069, 0118, 0132, 0145, 0150, 0153, 0160×3 and 0185.
+  - 12 `ESCALATE`. 0035 and 0069 have none, and 0185's is pending.
+  - 1 `INTERRUPTED` (2026-11-06T01:34Z, `ValueError('cycle 4 out of range [1, 3]')`).
+  - 5 `COMMIT-OVERRIDE`: 0035, 0052, 0056, 0118 and 0153.
+  - 9 `OPERATOR-REPLY-CONSUMED`, 9 `RESOLVER_RESULT`, 1 `RESOLVER-SKIP` and 14 `REVIEW-ROUTE-BACK`.
+- Post-mortems in `.slices/`: 0013-01, 0046-mechanical, 0052-01, 0056-01, 0059-01, 0069-01, 0118-01, 0132-01, 0145-01, 0150-01, 0153-01, 0160-01, 0160-02 and 0160-03.
+- `.manual/`: 001–003 (Nov 3–5), 004–007 (Nov 6), 008–010 (Nov 7) and 011–013 (Nov 8), plus README. I read 009, 011, 012 and 013 (same missing-authority class, and the normal-resume exception shape). None names step 0185 or SceneSaveLoadTests.
+- Tree:
+  - HEAD is `7a0da2f` (Step 0184). `completed_slices` has 184 entries, the last being index 183/0184. `current_slice` is index 184 (0185), status `escalated`, so 0185 is first pending.
+  - Dirty: the five authorized product/test files (numstat equals `--ignore-cr-at-eol`, so there is no CRLF churn), plus the supervisor's `.manifest.state.json`.
+  - Untracked: the 0185 impl-log, impl-plan and SoW. Nothing of the slice is committed.
+- Spawns: all four 0185 roles (implement_worker, code_judge, resolver, postmortem) ran as anthropic `claude-opus-5-5[1m]`, subscription, cli, `specrc_tool_agents`.
+  - They last differed at 0160: implement_worker gpt-6-astra at 2026-11-08T17:02Z, code_judge 15:11Z, resolver 14:07Z, postmortem 15:16Z.
+  - Slices 0160–0184 went green on the current model, so a model change is not a suspect for this slice. The 0153 fact was authored under gpt-6-astra.
+- Counters (log): this slice had 1 worker attempt, 1 judge cycle, 0 route-backs (no `REVIEW-ROUTE-BACK idx=184`) and 1 resolver run (run=1, 01:09:29–01:10:25Z). These agree with the scalars (0, 1, 1).
+- Gates: the task's gate block lists every gate `pending`. The log records `GATE_RESULT build passed` (71.3 s, 01:05:18Z) on this tree before review; the verify gates never ran. This is a minor task-file inaccuracy and not causal.
+- Repair verified by trace (not run): with the access left read-write, the save fails at the proxy and every assertion still holds.
+  1. `kitWrites` is `ControlOffered`, so the step-153 body runs (`TableAndElementRotationView.fs:1912-1937`).
+  2. `recordScene` (`KitContentFiles.fs:129`) calls `snapshotReferences`, whose read-write branch reads `listSnapshots` through the view (`KitLibrary.fs:117-119`).
+  3. `writeScene` (`KitContentFiles.fs:80-91`) reaches `readOnlyView.writeKindFile` (`KitFolders.fs:376`), which answers `KitReadOnlyErr "writeKindFile"`.
+  4. The status is `Not saved to the kit — the kit refused the library snapshot: the kit is open read-only: writeKindFile` (`KitLibrary.fs:23`, `Kit.fs:79`). Had a snapshot been missing, `writeSnapshot` (`KitFolders.fs:382`) gives the same prefix and the same `read-only`.
+  5. The Error branch changes only `kitStatus`, so `savedScenes`, `captureScene`, `sceneName` and the kit's scene names hold.
+- Census: no `.operator-test-effects-jsonl` row is needed. The identity is unchanged, and that file takes only create/rename/retire (`executability/temporal.py:89-120`).
+- Mechanics:
+  - Receipt: a project-prompt edit with the arc stopped is safe. The receipt hashes the project prompt (`executability/receipt.py:64-67`), and the boot pre-emit re-runs `compile_spec` (`_common/runtime/main.py:380-415`), which re-writes the profile-1 receipt (`step_compiler/compile.py:1514-1515`). Editing it during a run caused 0160-03.
+  - Review diff: the review diff is taken against the last completed commit, manual commits included (`run_arc_runner.py:4519-4528`), and nothing in the runner resets a dirty tree.
+- Forward:
+  - Steps 0187 and 0188 select SceneSaveLoadTests and say its facts "keep their assertions". After the fix they need nothing more.
+  - Step 0260 renames this fact, and its `writeSetup` through `readOnlyView` still yields `Not saved to the kit — …`, consistent with the fixed fixture.
+  - Steps 0225 and 0239 add new messages to the 0185 guard with new facts prescribed in the guard's own text. No existing fact pins them.
+- Spot-check of the worker's InverseConstructorTests expectation (`snapshotReferences` → `writeKindFile`): the inverse scene's elements are unbound (`Placement.fs:378` `valueId = None`), so `Experiment.libraryReferences` (`Experiments.fs:268`) is empty. The judge accepted it, and the resumed ui-tests gate measures it.
+
+## Proposed solutions
+
+Decision: owner the product; recommend 1; confidence high; operator decides whether the authority covers step 0185 alone or also becomes the standing class rule attached below.
+
+1. **Rule, then resume 0185 normally.** With the arc stopped:
+   - Write `specs/0050/.manual/014-step-0185-read-only-scene-fixture.md`. It extends step 0185's authority to `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/SceneSaveLoadTests.fs` under S53-READ-ONLY, for one edit: delete `access = ReadOnlyKitAccess` from `protectedModel` in `a saved scene is a setup file in the kit and loads back onto the table` (line 126). Every assertion, identity and count is kept. No census row is needed.
+   - In the same ruling, bind later edits (0187, 0188, 0260) to keep that fixture read-write over `readOnlyView`. Make it an explicit normal-resume exception like 011/012: no `--accept-current-slice`, and the supervisor publishes checkpoint 184 from the measured run.
+   - Add its pointer to `.user-md/Berreman/arc-runner.user-md`, beside the other per-step pointers. Commit those two files on their own. Leave the worker's five files, its three reports and the supervisor's files as they are.
+   - Relaunch with `--operator-reply <note below> --executability-profile 1`. Do not edit `.specrc`, the prompts or the ledger while the arc runs.
+   - The resumed worker applies the one line and refreshes its reports. The judge reviews against `7a0da2f`.
+   - The supervisor runs the roster:
+     - build and elevation (from arc origin `f395597c…`);
+     - constructor-unit-tests and ui-smoke, all discovered (floors 1,195 and 227; 1,197 expected);
+     - ui-tests over ExperimentControlsTests, InverseConstructorTests, KitWindowTests and SceneSaveLoadTests (+1);
+     - the fourteen invariants: invariant-s21-elev-list-empty, -no-vstest, -no-kit-kit-json, -no-eps-axis-evaluated, -complexity-mandatory, -no-seeded-string-preset-ids, -no-seeding-seam, -t1-no-code-seeds, -no-seed-modules, -no-test-db, -no-versions-in-use, -no-scene-collection-seams, -t4-no-ocproj and -no-recent-json.
+   - No gate needs running before the relaunch. Confirm "step-compiler check + emit OK" at boot, then checkpoint 184 before 0186 starts. This covers 0185 only. Pending steps 0186–0494 need no ledger edit, per the forward check in Evidence.
+2. OR: make the one-line edit yourself, run those 19 gates locally, commit, and accept with `--accept-current-slice` (standing ruling 3 for committed green work). It comes second because the supervisor then publishes no measured checkpoint 184: 0186 would inherit the 1,195 floor, not 1,197. Manuals 006 and 009–012 chose a normal resume for exactly that reason.
+
+Operator note for the resumed slice:
+
+> Read `.manual/014`. The 0185 implementation in the working tree was reviewed as correct: preserve it unchanged. Apply only the ruling's edit: in `SceneSaveLoadTests.fs`, delete `access = ReadOnlyKitAccess` (line 126) from the `protectedModel` of `a saved scene is a setup file in the kit and loads back onto the table`, so the save fails at the `readOnlyView` proxy. Keep every assertion, identity and count. Record the edit under the ruling in the impl-log's Decisions, set `commit_ready: true`, and refresh the state of the world. Change no ledger, census, baseline, gate, oracle or supervisor file. Return for normal review and all 19 gates; checkpoint 184 is published from that measured run (constructor-unit-tests expected 1,197).
+
+Standing rule for the project prompt, if the operator makes this a class rule:
+
+> When a step's how-to explicitly changes behaviour that an already-accepted fact in that step's own gate selection pins through a fixture line, the worker may change only that fixture line outside `effects.edits`, keeping every assertion line, identity and count, and must cite the obligation in the impl-log's Decisions; the judge reviews it as in scope.

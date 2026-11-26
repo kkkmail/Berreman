@@ -1,0 +1,145 @@
+# Post-mortem -- slice 0494, attempt 01
+
+## Summary
+
+Step 0494 was review-green and passed every one of its 29 gates, but the supervisor stopped it at the final receipt check, before the commit: "executability receipt is stale: semantic source, prompt or validator changed".
+At 19:25:56Z, during the verify phase, the operator fast-forwarded the ASG checkout the arc imports from 01d6d545 to 87a55635. That changed 18 validator files the receipt binds. Nothing in Berreman changed.
+
+## Root cause
+
+Owner: **an operator action**. The receipt binds ASG's own validator `.py` files (`executability/receipt.py:input_fingerprint`, lines 44-73). It reads them live from disk: `C:/Python314` imports ASG through an editable install (`__editable__.ai_strategy_generator-1.8.88.2.pth` → `C:\GitHub\AI-Strategy-Generator\src`).
+
+- The boot of 2026-11-16 15:14:09Z published the receipt under ASG HEAD 01d6d545. ASG had been on that commit since 2026-11-14 22:36Z.
+- The post-worker check (`run_arc_runner.py:4484-4489`) passed at 18:40:54Z.
+- At 19:25:56Z, ASG's reflog records `merge @{u}: Fast-forward` from 01d6d545 to 87a55635. The pull brought commits 23df3a03, 8c763c4d, ad6889e3, a4d8c787 and 87a55635, ASG 0090's C1 census work. All 18 changed files carry that exact mtime. This was about 85 s into the unit-tests gate.
+- After verify went green at 19:59:34Z, the final check (`run_arc_runner.py:4803-4807`) found the validator fingerprint changed and escalated.
+
+I recomputed the fingerprint read-only with ASG's own functions. The sources (11), prompts (27), bundle and all 988 compiled hashes are identical. Only `validator` differs: 15 changed files and 3 new ones (`census.py`, `census_update.py`, `test_census.py`). ASG's own log says this outcome is intended: "every profile-1 receipt written under the previous ASG is stale by design and is re-stamped by its next `check` or handoff" (ASG `specs/0090/.manual/054…impl-log.md:399-400`).
+
+The stop was correct. From 19:25:56Z the runner held the old modules in memory while new code sat on disk. The 21 invariant gates ran as fresh `python -m …section_invariants` subprocesses under the new code. That mixed-code state is the hazard ASG's `ui/code_stamp.py` guards against for its web app (0090 `.manual/004` §9). The nearest green case under the same rule is 0493: it was finalized at 18:15Z, with ASG untouched since its boot. No backend changed: every spawn since step 0431 is anthropic `claude-opus-5-5[1m]`. The product, the slice, the worker and the judge are not causes.
+
+**This is a repeat that was never diagnosed.**
+
+- **0319 had the same cause.** Its stop is at log 27540. ASG was pulled from 62d994c5 to 03a76a7e at 2026-11-12 03:52:51Z, inside 0319's worker window (03:50:44-04:10:15Z), changing 9 bound files (three prompts among them). Its post-mortem crashed (log 27542, `POSTMORTEM-EXCEPTION … Missing template variables: rulings_section`), so no record exists. The operator relaunched without a reply, and the slice finished through a pipeline resume.
+- **0160-03 is the same class:** the operator changed a bound input mid-run, there `.specrc`. Its fix (ASG 0090 `.manual/033`, `ASG-ERRORS.md:65`) un-bound operator configuration. ASG's code stays bound on purpose (052, 054), so that fix could not cover a pull.
+- **0069 is unrelated:** it was a registry tool defect.
+
+Three tool weaknesses contributed, though none caused the stop:
+
+- Mid-run drift is checked only after the worker and after the full verify, so this change surfaced 34 minutes late, behind the slowest gates.
+- The message names no input (already noted in `0160-03.postmortem-md`).
+- The escalation resets pipeline state (`runtime/escalate.py:127` → `pipeline_fields_at`), so the measured evidence survives only in the log.
+
+## Evidence
+
+- Trigger: `.manifest-arc-runner.log:49047`, ESCALATION-RECORDED, slice_index 493, the reason quoted above, conversation_seq 1, resolver_invocations 0. ESCALATE follows this report.
+- Timeline (log 48930-49053):
+  - 18:15:28Z: wire_ui_worker spawned; it exits 0 at 18:40:54Z (1,526 s).
+  - 18:41:01Z: build green.
+  - 18:43:22Z: JUDGE_VERDICT review-green, cycle 1.
+  - 18:43:29Z: verify starts, 28 gates. All pass: elevation 244 s, elevation-full 234 s, constructor-unit-tests 138 s, ui-smoke 239 s, ui-tests 178 s, kit-acceptance 1,414 s (ended 19:24:28Z), unit-tests 2,074 s (ended 19:59:05Z), then the 21 `invariant-s47-*`.
+  - 19:59:34Z: PHASE-RESULT verify green, then FINALIZE-CHECK green with errors [], on fingerprint d81faf5ce7c5.
+  - 19:59:42Z: the stop.
+- ASG change:
+  - Reflog (`AI-Strategy-Generator/.git/logs/HEAD`, last row): `01d6d545… 87a55635… 1795029956 -0500 merge @{u}: Fast-forward`, which is 2026-11-18T19:25:56Z.
+  - The previous row is 8e9e7dcd→01d6d545 at 2026-11-14T22:36:10Z.
+  - All 18 differing files have mtime 2026-11-18 14:25:56 -0500.
+- Receipt: `.executability-json` mtime 2026-11-16 10:14:09 -0500, which is the boot's "step-compiler check + emit OK" (log 42260). It is unchanged against HEAD.
+- Fingerprint diff (read-only `python -B`, ASG `input_fingerprint` / `compiled_fingerprint`):
+  - Changed: `__main__`, `checker`, `contracts`, `dotnet_capture`, `dotnet_inventory`, `inventory`, `preview`, `producers`, `profile`, `receipt`, `runtime_tests`, `temporal`, `trx_inventory`, `spec_writer/gates/descriptor.py`, `step_compiler/section_invariants.py`.
+  - Added: `census.py`, `census_update.py`, `test_census.py`.
+  - Equal: bundle; compiled 988/988; prompts. `git diff --stat 01d6d545 87a55635` over `multistep/*.system-md` and `schemas` is empty.
+- Code paths read:
+  - `receipt.py:19-151`.
+  - `run_arc_runner.py`: 4062, 4064-4079, 4123-4167, 4484-4489, 4536-4560, 4803-4807, 1490-1580, 3205-3240, 3284-3360, 3440-3475, 3773-3787.
+  - `pipeline/state.py`: 30-65, 106-150, 233-258.
+  - `escalate.py:94-131`.
+  - `compile.py:1508-1515`.
+  - `_common/runtime/main.py:338-420`.
+  - `census.py:1172-1183`.
+  - `ui/code_stamp.py`.
+  - `accept_current_slice.py:1-50`.
+- The 0319 precedent:
+  - Log 27540 (04:10:17Z Nov 12) is the same message, right after its worker exited.
+  - Pull 62d994c5→03a76a7e at 1794455571, which is 03:52:51Z. `git diff --stat` shows 9 bound files, including `arc-runner.system-md`, `code-judge.system-md`, `postmortem.system-md` and `executability/seam_plan.py`.
+  - Log 27542 is the POSTMORTEM-EXCEPTION.
+  - Recovery: relaunch at 12:03Z with no reply. "step-compiler refreshed 176…", "state-file worktree fingerprint drift…", then log 27571 `PIPELINE-RESUME idx=318 persisted_phase=review implementation_spawn=skipped`, log 27651 CHECKPOINT idx=318, log 27657 COMMIT_OK.
+- Slice artefacts:
+  - `code_judge/0494-01-code-judge.md`: review-green. It finds only the four authorized files changed, with docs-only product edits, the three exact `ui-smoke` identities, and the recorded silicon-after-import deviation judged conformant.
+  - `0494-state-of-the-world.md` and `0494-impl-log.md`: local ui-smoke 274/274 (271 + 3), elevation OK, both removal greps empty. The supervisor's own runs confirm all of it.
+- Tree:
+  - HEAD 3fec7086 (Step 0493).
+  - Dirty: `AGENTS.md`, `Program.fs`, `AppContext.fs`, `WireUiFinalCompositionTests.fs`, `.manifest.state.json`. Untracked: the 0494 impl-log, impl-plan and SoW.
+  - `completed_slices` holds 493 entries; the last is index 492, 3fec7086, at 18:15:28Z. 0494 is the first pending step and the last step of the ledger.
+  - `current_slice`: index 493, escalated, phase `implement`, `review_attestation` null, `verification_evidence` [].
+- Spawns:
+  - For 0494, wire_ui_worker, code_judge and postmortem were all anthropic / `claude-opus-5-5[1m]`, subscription CLI.
+  - The last different backend was implement_worker openai / gpt-6-astra at index 430 (step 0431), log 41554, 2026-11-15T22:28Z.
+  - Totals for the arc: 751 Opus spawns and 439 gpt-6-astra spawns.
+- Counters, from the log:
+  - For 0494: 0 RESOLVER-SPAWN and 0 REVIEW-ROUTE-BACK. These match the scalars.
+  - Arc-wide: 14 RESOLVER-SPAWN and 20 REVIEW-ROUTE-BACK.
+- Arc history (whole log scanned by event type, 49,053 lines):
+  - ESCALATION-RECORDED at 737 (0013), 2039 (0035), 3227 (0052), 3453 (0056), 3669 (0059), 4288 (0069), 7602 (0118), 8942 (0132), 10141 (0145), 10719 (0150), 11209 (0153), 11726/11781/11826 (0160), 14369 (0185), 16829 (0210), 20790/20911 (0252), 27540 (0319), 32230 (0363), 38418 (0414), 40570 (0426), 40883 (0427), 41134 (0428), 42238 (0436) and 49047 (0494).
+  - Boot-health ESCALATE at 38428. That came after the 2026-11-14 pull: `EVIDENCE_INVALID … .repository-inventory-json`.
+  - INTERRUPTED at 2761.
+  - `--accept-current-slice` overrides at 0035, 0052, 0056, 0118 and 0153 (`.manifest.overrides.jsonl`).
+- Post-mortems on file: 24 in `.slices/`, from `0013-01` to `0436-01`. None exists for 0319. I read `0069-01` and `0160-03` in full.
+- `.manual/`:
+  - Dates: 001-002 (Nov 3), 003 (Nov 5), 004-007 (Nov 6), 008-010 (Nov 7), 011-014 (Nov 8), 015 (Nov 9), 016 (Nov 10), 017-028 (Nov 14, operator replies), 029-034 (Nov 15), 035-037 (Nov 16).
+  - Read: 019 and 025 (the earlier stale-receipt replies), and the binding sections of 030, 031, 033, 035 and 036 (R0001-R0005). Those bind product behaviour at 0427-0436, which a docs-and-test step preserves. None addresses ASG updates.
+
+## Proposed solutions
+
+Decision: owner an operator action; recommend 1; confidence high; operator decides none.
+
+1. **Keep ASG at 87a55635 and relaunch with no note, so the supervisor re-measures the unchanged tree.**
+   - **Commit nothing first.** The Berreman tree is the reviewed tree (fingerprint d81faf5c…), and ASG 87a55635 is already committed.
+   - **Leave ASG alone during the run.** Do not pull, check out or edit the ASG checkout until the arc logs COMPLETE. The standing practice for every arc: update ASG only between runs.
+   - **Relaunch with `--executability-profile 1`**, without `--operator-reply` and without `--accept-current-slice`.
+   - **Why the worker is skipped (traced, not run):**
+     - The boot pre-emit (`main.py:_pre_emit_missing_step_slices` → `compile_spec` → `write_receipt`) re-emits 0494's descriptor and gates and re-stamps the receipt under 87a55635.
+     - The rewritten `.executability-json` is tracked and not excluded from `tree_fingerprint`, so `invalidate_stale_attestations` sets the phase to review.
+     - With no pending note, `resume_pipeline_only` skips the worker.
+   - **What the run then does:**
+     - The judge reviews, and the build gate runs.
+     - The 28 verify gates of `.slices/0494.gates` run whole: elevation, elevation-full, constructor-unit-tests, ui-smoke (floor 271, expect 274), ui-tests, kit-acceptance, unit-tests and the 21 `invariant-s47-*` gates.
+     - Then checkpoint 493, the commit, and the last-slice COMPLETE.
+     - It takes about 80 minutes; verify alone measured 4,566 s. This is exactly how 0319 recovered.
+   - **The legacy inventory migrates on first read:** `.artifacts/.repository-inventory-json` becomes `census-view.sqlite` (`census.py:1172-1183`; traced, not run).
+   - **No gate needs running before the relaunch.** In the boot log, confirm:
+     - "health-check passed";
+     - "step-compiler check + emit OK";
+     - "state-file worktree fingerprint drift";
+     - `PIPELINE-RESUME idx=493 persisted_phase=review implementation_spawn=skipped`.
+   - **If something else happens:**
+     - If a wire_ui_worker spawns instead, let it finish: that is a normal resume over intact work.
+     - If the boot fails under 87a55635, that is a new ASG defect to fix in ASG before relaunching.
+   - **Scope:** this covers only step 0494; nothing else is pending. No ruling, ledger edit or `.rulings-jsonl` row is needed.
+
+2. **OR accept the measured-green tree.** Relaunch with `--accept-current-slice` and `--executability-profile 1`.
+   - **What the boot does:**
+     - It commits the dirty tree as `[0494-MANUAL] accept-current-slice override`.
+     - It carries expected-red 493 forward as index 492's `{}`, because no journal was written: the stop came before `_journal_measured_red`.
+     - It writes no checkpoint 493.
+     - It completes the arc through the last-slice path (`run_arc_runner.py:3440-3475`).
+   - **Why it comes second:**
+     - The evidence lives only in the log (48951-49045).
+     - Part of that evidence was produced after 19:25:56Z, by mixed ASG code.
+     - Standing ruling 3 covers committed green work, and this work is uncommitted.
+   - **What it saves:** about 80 minutes.
+
+3. **asg-error (hardening for the repeated class; not needed for recovery; unverified).**
+   - **File and function:** `multistep/_arc_runner/runtime/run_arc_runner.py`, at its two `validate_receipt` call sites (4484-4489 and 4803-4807), and `executability/receipt.py:validate_receipt`.
+   - **Wrong behaviour:**
+     - A change to ASG's code on disk in mid-run is found only after the whole verify phase.
+     - The message names no input.
+     - The escalation then wipes the review attestation and the verification evidence.
+   - **Fix:**
+     - Take `ui/code_stamp.source_stamp` at arc boot, and check `stale_reason` before each gate and phase transition, stopping at once with the old and new ASG HEAD.
+     - Have `validate_receipt` name each differing key (for example `validator: executability/census.py`).
+   - **Tests:**
+     - A receipt test that changes one bound validator hash and asserts the message names it.
+     - A runner test in which the source stamp changes between two verify gates and the runner stops before the second.
+
+No operator note is attached. Passing one would force a worker re-spawn, because `resume_pipeline_only` requires `not pending_operator_note` (`run_arc_runner.py:4123-4127`).

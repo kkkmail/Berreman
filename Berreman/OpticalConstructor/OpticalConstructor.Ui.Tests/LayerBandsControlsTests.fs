@@ -23,7 +23,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// bound entry → "what it is" title + collapsed "×N" bands), plus the seven-bay ribbon.
 module LayerBandsControlsTests =
 
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
 
     /// Select the element at index `i`, then bind it to a Library entry id (the immediate `BindValueId` path).
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =

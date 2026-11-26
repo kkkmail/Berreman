@@ -38,6 +38,8 @@ module ExperimentControls =
         | VaryWaveLength
         | VaryR1
         | VaryR2
+        /// A dial-mounted item's raw dial reading (spec 0050 S9.1).
+        | VaryDialReading
 
         /// The stable code (drives its automation id).
         member this.uiKey : ConstructorUiKey =
@@ -45,6 +47,7 @@ module ExperimentControls =
             | VaryWaveLength -> ConstructorUiKey "wavelength"
             | VaryR1 -> ConstructorUiKey "r1"
             | VaryR2 -> ConstructorUiKey "r2"
+            | VaryDialReading -> ConstructorUiKey "dial"
 
         /// A short label (the selector button text).
         member this.caption : ControlCaption =
@@ -52,6 +55,7 @@ module ExperimentControls =
             | VaryWaveLength -> ControlCaption "Wavelength"
             | VaryR1 -> ControlCaption "Rotation R1"
             | VaryR2 -> ControlCaption "Incidence R2"
+            | VaryDialReading -> ControlCaption "Dial reading"
 
     /// What the experiment captures — a domain-free mirror of the domain `MeasurementMode`.
     type MeasurementChoice =
@@ -146,7 +150,22 @@ module ExperimentControls =
             id : ConstructorUiKey
             /// A human-readable one-line description of the experiment.
             description : ControlCaption
+            /// The data badge's text, shown beside the description (spec 0050 S9.1).
+            badge : ControlCaption
             focus : ExperimentRowFocus
+        }
+
+    /// Whether a role box is the loaded experiment's role (spec 0050 S9.1).
+    type ExperimentRoleMark =
+        | RoleChosen
+        | RoleNotChosen
+
+    /// One role box of the loaded experiment's role row (spec 0050 S9.1).
+    type ExperimentRoleOption =
+        {
+            key : ConstructorUiKey
+            caption : ControlCaption
+            mark : ExperimentRoleMark
         }
 
     /// Whether Add appends a new experiment or updates the one being edited (the button reads "Update").
@@ -225,7 +244,20 @@ module ExperimentControls =
             rangeUnitLabel : ControlCaption
             /// Whether the draft can be committed (an element + a variable are chosen).
             addAvailability : ControlAvailability
+            /// The draft's closed blocks, then its current block's held axes, one line each (spec 0050 S9.1).
+            scanLines : ControlCaption list
+            /// Whether Add variable and Add block are offered (spec 0050 S9.1).
+            scanAvailability : ControlAvailability
+            /// Whether a collected experiment's Remove is offered (spec 0050 S5.3).
+            removalAvailability : ControlAvailability
             editorMode : ExperimentEditorMode
+            /// The loaded experiment's role boxes, in the roles' order (spec 0050 S9.1).
+            roleOptions : ExperimentRoleOption list
+            /// The loaded experiment's session and notes as their fields show them (spec 0050 S9.1).
+            sessionText : ControlCaption
+            notesText : ControlCaption
+            /// Offered while an experiment is loaded in a writable kit: its role, session and notes show (spec 0050 S9.1).
+            bookkeepingAvailability : ControlAvailability
             /// The added experiments (the persistent collection).
             collection : ExperimentRow list
             /// The built-experiment readout, once the draft is complete.
@@ -259,7 +291,14 @@ module ExperimentControls =
             rangePoints = ExperimentPointCount 73
             rangeUnitLabel = ControlCaption "°"
             addAvailability = ControlWithheld
+            scanLines = []
+            scanAvailability = ControlWithheld
+            removalAvailability = ControlOffered
             editorMode = EditorAddsNew
+            roleOptions = []
+            sessionText = ControlCaption ""
+            notesText = ControlCaption ""
+            bookkeepingAvailability = ControlWithheld
             collection = []
             readout = None
             availability = ControlWithheld
@@ -289,6 +328,14 @@ module ExperimentControls =
             addOrUpdate : unit -> unit
             /// Start a brand-new experiment (clears the editor).
             newExperiment : unit -> unit
+            /// Add variable: the edited axis joins the draft's current block (spec 0050 S9.1).
+            addScanAxis : unit -> unit
+            /// Add block: the draft's current block closes and a new one starts (spec 0050 S9.1).
+            addScanBlock : unit -> unit
+            /// The loaded experiment takes the role of that code, its session or its notes (spec 0050 S9.1).
+            setRole : ConstructorUiKey -> unit
+            setSession : ControlCaption -> unit
+            setNotes : ControlCaption -> unit
             /// Load an experiment (by id) into the editor for editing.
             editExperiment : ConstructorUiKey -> unit
             /// Remove an experiment (by id) from the collection.
@@ -496,6 +543,68 @@ module ExperimentControls =
             Canvas.children children
         ] :> IView
 
+    /// How a reviewed point is drawn: kept, or excluded and still shown, marked (spec 0050 S9.3; 001 §K).
+    type PointMark =
+        | KeptPointMark
+        | ExcludedPointMark
+
+    /// One reviewed point on the points chart: its position, where it plots and its mark (spec 0050 S9.3).
+    type PlottedPoint =
+        {
+            position : ConstructorUiPosition
+            point : ChartPoint
+            mark : PointMark
+        }
+
+    let private excludedRingColor : Color = Color.FromRgb(210uy, 30uy, 30uy)
+
+    /// The points chart, of the inline chart's size and drawn as it is, but each point unjoined: a kept one a dot in the
+    /// first series colour, an excluded one a red ring, so it stays visible (spec 0050 S9.3; 001 §K).
+    let pointsChartView (id : ConstructorUiId) (points : PlottedPoint list) (xLabel : ControlCaption) (yLabel : ControlCaption) : IView =
+        let window =
+            PlotWindow.over
+                [
+                    {
+                        name = yLabel
+                        points = points |> List.map (fun plotted -> plotted.point)
+                    }
+                ]
+        let marker (plotted : PlottedPoint) : IView =
+            let centre = window.toScreen plotted.point
+            match plotted.mark with
+            | KeptPointMark ->
+                let dotId = ConstructorUiId.dataPointDot plotted.position
+                Ellipse.create [
+                    dotId.automationAttribute<Ellipse> ()
+                    Ellipse.width 5.0
+                    Ellipse.height 5.0
+                    Ellipse.left (centre.X - 2.5)
+                    Ellipse.top (centre.Y - 2.5)
+                    Ellipse.fill (brush seriesColors.[0])
+                ]
+                |> Avalonia.FuncUI.DSL.View.withKey dotId.value
+                :> IView
+            | ExcludedPointMark ->
+                let ringId = ConstructorUiId.dataExcludedPointMark plotted.position
+                Ellipse.create [
+                    ringId.automationAttribute<Ellipse> ()
+                    Ellipse.width 9.0
+                    Ellipse.height 9.0
+                    Ellipse.left (centre.X - 4.5)
+                    Ellipse.top (centre.Y - 4.5)
+                    Ellipse.stroke (brush excludedRingColor)
+                    Ellipse.strokeThickness 1.5
+                ]
+                |> Avalonia.FuncUI.DSL.View.withKey ringId.value
+                :> IView
+        Canvas.create [
+            id.automationAttribute<Canvas> ()
+            Canvas.width chartFrame.Width
+            Canvas.height chartFrame.Height
+            Canvas.background (brush (Color.FromRgb(248uy, 248uy, 248uy)))
+            Canvas.children (gridLines () @ axisLines () @ (points |> List.map marker) @ axisLabels xLabel yLabel)
+        ] :> IView
+
     /// The result block under the editor: the ellipsometer single-point Ψ/Δ text when present, plus the
     /// inline chart (double-click opens the pop-out window) and the prose description.
     let private resultBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
@@ -559,8 +668,9 @@ module ExperimentControls =
                         (fun () -> handlers.chooseElement c.elementId)))
         ] :> IView
 
-    /// Every variable, in a fixed order (so the selector boxes keep stable names / positions).
-    let private allVariables : VariableChoice list = [ VaryWaveLength; VaryR1; VaryR2 ]
+    /// Every variable, in a fixed order (so the selector boxes keep stable names / positions); the dial reading is last
+    /// (spec 0050 S9.1).
+    let private allVariables : VariableChoice list = [ VaryWaveLength; VaryR1; VaryR2; VaryDialReading ]
 
     /// The variable-selection row (step 2). ALL variable boxes are always present (stable names) and only
     /// the ones the chosen element permits are shown — see `optionBoxV` for why the set is toggled by
@@ -628,16 +738,20 @@ module ExperimentControls =
             ]
         ] :> IView
 
-    /// A numeric text field; commits on Enter / blur.
-    let private numberField (id : ConstructorUiId) (text : ControlCaption) (availability : ControlAvailability) (commit : obj -> unit) : IView =
+    /// A text field of that width; commits on Enter / blur.
+    let private committingField (id : ConstructorUiId) (width : IAttr<TextBox>) (text : ControlCaption) (availability : ControlAvailability) (commit : obj -> unit) : IView =
         TextBox.create [
             TextBox.name id.value
-            TextBox.width 70.0
+            width
             TextBox.isEnabled availability.isEnabled
             TextBox.text text.value
             TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commit e.Source)
             TextBox.onLostFocus (fun e -> commit e.Source)
         ] :> IView
+
+    /// A numeric text field; commits on Enter / blur.
+    let private numberField (id : ConstructorUiId) (text : ControlCaption) (availability : ControlAvailability) (commit : obj -> unit) : IView =
+        committingField id (TextBox.width 70.0) text availability commit
 
     /// The range inputs (step 3b): min / max (in the variable's unit) and the point count. Always present
     /// (its visibility toggles with whether a variable is chosen) so the bay's child list length stays
@@ -709,7 +823,24 @@ module ExperimentControls =
             Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, availability)))
         ] :> IView
 
-    /// The Add / Update + New action row.
+    type ExperimentControlsState with
+
+        /// The draft's scan lines under the range: its closed blocks, then its current block's held axes (spec 0050 S9.1).
+        member internal this.scanSummaryPanel : IView =
+            StackPanel.create [
+                StackPanel.name ConstructorUiId.experimentScanSummary.value
+                StackPanel.orientation Orientation.Vertical
+                StackPanel.children (
+                    this.scanLines
+                    |> List.map (fun line ->
+                        TextBlock.create [
+                            TextBlock.text line.value
+                            TextBlock.textWrapping TextWrapping.Wrap
+                            TextBlock.maxWidth 420.0
+                        ] :> IView))
+            ] :> IView
+
+    /// The Add / Update + New action row, then Add variable and Add block (spec 0050 S9.1).
     let private actionRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let addCaption =
             match state.editorMode with
@@ -720,13 +851,76 @@ module ExperimentControls =
             StackPanel.children [
                 actionButton ConstructorUiId.experimentAddButton addCaption chosenBackground state.addAvailability handlers.addOrUpdate
                 actionButton ConstructorUiId.experimentNewButton (ControlCaption "New") idleBackground state.availability handlers.newExperiment
+                actionButton ConstructorUiId.experimentAddScanAxisButton (ControlCaption "Add variable") idleBackground state.scanAvailability handlers.addScanAxis
+                actionButton ConstructorUiId.experimentAddScanBlockButton (ControlCaption "Add block") idleBackground state.scanAvailability handlers.addScanBlock
             ]
         ] :> IView
 
+    /// The loaded experiment's role row and its Session and Notes fields, shown while `bookkeepingAvailability` is offered
+    /// (spec 0050 S9.1). Keyed by the loaded row: the fields' subscriptions never change, so a recreated block keeps a
+    /// field or a box from writing to the experiment loaded before.
+    let private bookkeepingBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
+        let loadedKey =
+            state.collection
+            |> List.tryPick (fun row ->
+                match row.focus with
+                | LoadedInEditor -> Some row.id.value
+                | NotLoadedInEditor -> None)
+            |> Option.defaultValue ""
+        let commitCaption (commit : ControlCaption -> unit) (src : obj) : unit =
+            match src with
+            | :? TextBox as tb when not (isNull tb.Text) -> commit (ControlCaption tb.Text)
+            | _ -> ()
+        let roleBox (option : ExperimentRoleOption) : IView =
+            optionBoxV
+                (ConstructorUiId.experimentRoleChoice option.key)
+                option.caption
+                (match option.mark with
+                 | RoleChosen -> chosenBackground
+                 | RoleNotChosen -> idleBackground)
+                state.bookkeepingAvailability
+                ShownInBay
+                (fun () -> handlers.setRole option.key)
+        let labelled (label : ControlCaption) (field : IView) : IView =
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 6.0
+                StackPanel.children [
+                    TextBlock.create [ TextBlock.text label.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                    field
+                ]
+            ] :> IView
+        let block =
+            StackPanel.create [
+                StackPanel.orientation Orientation.Vertical
+                StackPanel.spacing 4.0
+                StackPanel.isVisible (
+                    match state.bookkeepingAvailability with
+                    | ControlOffered -> true
+                    | ControlWithheld -> false)
+                StackPanel.children [
+                    heading (ControlCaption "Role:") ShownInBay
+                    WrapPanel.create [
+                        WrapPanel.orientation Orientation.Horizontal
+                        WrapPanel.children (state.roleOptions |> List.map roleBox)
+                    ]
+                    labelled
+                        (ControlCaption "Session:")
+                        (committingField ConstructorUiId.experimentSessionField (TextBox.width 200.0) state.sessionText state.bookkeepingAvailability (commitCaption handlers.setSession))
+                    labelled
+                        (ControlCaption "Notes:")
+                        (committingField ConstructorUiId.experimentNotesField (TextBox.width 320.0) state.notesText state.bookkeepingAvailability (commitCaption handlers.setNotes))
+                ]
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey $"ExperimentBookkeeping_{loadedKey}"
+        block :> IView
+
     // A small row action button (View / Remove), styled to stand out (accent) or plain.
-    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
+    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
         Border.create [
             id.automationAttribute<Border> ()
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
             Border.background (brush background)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -735,14 +929,15 @@ module ExperimentControls =
             Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label)))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, availability)))
         ] :> IView
 
     /// One collection row: the experiment description (single-click Edit, highlighted while editing;
-    /// double-click = View), then a "View" action (open the chart window for this experiment) and a Remove.
+    /// double-click = View), its data badge (spec 0050 S9.1), then a "View" action (open the chart window for this
+    /// experiment) and a Remove.
     /// The row is KEYED by its experiment id, so removing an item recreates the rows that shift slots
     /// instead of patching one row's controls into another's.
-    let private collectionRow (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
+    let private collectionRow (removal : ControlAvailability) (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -764,8 +959,16 @@ module ExperimentControls =
                         Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.focus)))
                         Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id.value))
                     ] :> IView
-                    rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") chosenBackground (fun () -> handlers.viewExperiment r.id)
-                    rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") idleBackground (fun () -> handlers.removeExperiment r.id)
+                    TextBlock.create [
+                        (ConstructorUiId.experimentRowBadge r.id).automationAttribute<TextBlock> ()
+                        TextBlock.text r.badge.value
+                        TextBlock.fontSize 11.0
+                        TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                        TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                    ] :> IView
+                    rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") chosenBackground ControlOffered (fun () -> handlers.viewExperiment r.id)
+                    rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") idleBackground removal (fun () -> handlers.removeExperiment r.id)
                 ]
             ]
             |> Avalonia.FuncUI.DSL.View.withKey r.id.value
@@ -781,7 +984,7 @@ module ExperimentControls =
                  StackPanel.create [
                      StackPanel.name ConstructorUiId.experimentCollection.value
                      StackPanel.orientation Orientation.Vertical
-                     StackPanel.children (rows |> List.map (collectionRow handlers))
+                     StackPanel.children (rows |> List.map (collectionRow state.removalAvailability handlers))
                  ] :> IView)
         ]
 
@@ -808,8 +1011,8 @@ module ExperimentControls =
                     measurementRow state handlers
                     heading (ControlCaption "4. Range:") laterSteps
                 ]
-                @ [ rangeRow state handlers; sourceWaveLengthRow state handlers ]
-                @ [ actionRow state handlers ]
+                @ [ rangeRow state handlers; sourceWaveLengthRow state handlers; state.scanSummaryPanel ]
+                @ [ actionRow state handlers; bookkeepingBlock state handlers ]
                 @ collectionBlock state handlers
                 @ resultBlock state handlers)
         ] :> IView

@@ -8,9 +8,15 @@ open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI
 open Xunit
+open Berreman.Constants
+open Berreman.Geometry
+open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -26,7 +32,7 @@ module ExperimentControlsTests =
     let private matchesId (id : string) (c : Control) : bool =
         c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
 
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
 
     /// Select the element at index `i`, then bind it to a Library entry id (the `BindValueId` MVU path).
     let private bind (i : int) (entryId : ElementValueId) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -293,6 +299,587 @@ module ExperimentControlsTests =
             |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
         Assert.Empty((m1.experimentResult).series)
+
+    [<Fact>]
+    let ``two bound samples in series are both solved on the detector's path`` () =
+        let m =
+            SceneTestFixture.mainScene ()
+            |> updateTableAndElementRotation (AddElement Sample) |> bind 2 glassPlate1mmId
+            |> updateTableAndElementRotation (AddElement Sample) |> bind 3 glassFilm200Id
+            |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 3 m))))
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+            |> updateTableAndElementRotation (ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 0.0))
+            |> updateTableAndElementRotation (ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd 60.0))
+            |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 7))
+        let plateId, filmId = (elem 2 m).id, (elem 3 m).id
+        // Both samples sit untilted on the main beam in front of the seeded intensity detector (index 1).
+        let samplesInLightOrder =
+            (List.item 1 m.sceneLayout.elements).path
+            |> List.map (fun step -> step.element)
+            |> List.filter (fun id -> id = plateId || id = filmId)
+        Assert.Equal(2, List.length samplesInLightOrder)
+        Assert.Contains(plateId, samplesInLightOrder)
+        Assert.Contains(filmId, samplesInLightOrder)
+        let resolved (id : Library.SampleId) : Propagation.ResolvedSample =
+            match Propagation.resolveSampleMaterials m.materials (BuiltinCatalogue.sample id) with
+            | Ok sample -> sample
+            | Error error -> failwith $"{id.value}: {(ItemEvaluation.SampleMaterialErr error).describe}"
+        let plate, film = resolved Library.SampleIds.glassPlate1mmId, resolved Library.SampleIds.glassFilm200Id
+        let at600 = WaveLength.nm 600.0<nm>
+        let chart = m.experimentResult
+        let points = (Assert.Single chart.series).points
+        Assert.Equal<float list>([ 0.0; 10.0; 20.0; 30.0; 40.0; 50.0; 60.0 ], points |> List.map (fun p -> p.x))
+        for p in points do
+            let transmitted (id : Library.ElementId) : MuellerMatrix =
+                if id = plateId then Propagation.sampleMuellerSpun Propagation.BranchTransmitted plate at600 IncidenceAngle.normal Angle.zero
+                else Propagation.sampleMuellerSpun Propagation.BranchTransmitted film at600 (IncidenceAngle.create (Angle.degree (p.x * 1.0<deg>))) Angle.zero
+            let expected = samplesInLightOrder |> List.fold (fun sv id -> transmitted id * sv) Propagation.unpolarizedStokes
+            Assert.True(abs (expected.s0 - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected.s0:R}, got {p.y:R}")
+
+    // ============ spec 0050 S8.2 — the run reads the slots: a slot's item through its own model ============
+
+    /// Runs over a fresh Main scene in its scratch kit (`initMain`), closing the kit at the end (spec 0050 .manual/010).
+    let private withMainScene (run : TableAndElementRotationModel -> unit) : unit =
+        let scene = initMain () |> SceneTestFixture.kitSuccess
+        try run scene
+        finally scene.kit.close () |> SceneTestFixture.kitSuccess
+
+    /// The model after the message, which must leave the kit status clear.
+    let private applied (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let next = model |> updateTableAndElementRotation msg
+        Assert.Equal<ControlCaption option>(None, next.kitStatus)
+        next
+
+    /// A known angle parameter of that many degrees, in radians, an angle parameter's unit (spec 0050 S8.1).
+    let private knownDegrees (degrees : float<deg>) : ParameterState =
+        KnownParameter (ParameterValue (Angle.degree degrees).value)
+
+    /// The draft varying the slot on `variable` over `lo` … `hi` in that many points, capturing the transmitted branch.
+    let private sweeping
+        (id : Library.ElementId)
+        (variable : ExperimentControls.VariableChoice)
+        (lo : ExperimentControls.ExperimentRangeEnd)
+        (hi : ExperimentControls.ExperimentRangeEnd)
+        (points : ExperimentControls.ExperimentPointCount)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        model
+        |> updateTableAndElementRotation (ExpChooseElement id)
+        |> updateTableAndElementRotation (ExpChooseVariable variable)
+        |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+        |> updateTableAndElementRotation (ExpSetRangeMin lo)
+        |> updateTableAndElementRotation (ExpSetRangeMax hi)
+        |> updateTableAndElementRotation (ExpSetRangePoints points)
+
+    /// The table with two linear polarizers added, each pre-bound to the linear preset, the second selected.
+    let private withTwoPolarizers (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        model
+        |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        |> updateTableAndElementRotation (AddElement LinearPolarizer)
+
+    /// The real linear polarizer on its shipped item model (step 210).
+    let private realPolarizerModel : ItemModelVersion = BuiltinCatalogue.itemModel ItemModelIds.realLinearPolarizerModelId
+
+    let private realPolarizerDraft : ItemDraft =
+        {
+            id = ItemId (System.Guid.Parse "26500000-0000-4000-8000-000000000001")
+            label = ItemLabel "RLP"
+            model = LibraryModelChoice realPolarizerModel
+            dial = FixedMounting
+        }
+
+    /// The 1 mm glass plate at its first version on the shipped stack-sample item model (step 210).
+    let private plateDraft : ItemDraft =
+        {
+            id = ItemId (System.Guid.Parse "26500000-0000-4000-8000-000000000002")
+            label = ItemLabel "QZ"
+            model =
+                StackSampleChoice (
+                    BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId,
+                    Library.SampleVersionId.firstOf Library.SampleIds.glassPlate1mmId,
+                    BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
+                )
+            dial = FixedMounting
+        }
+
+    [<Fact>]
+    let ``a slot's item is run through its own parameters: a real polarizer item's leakage passes crossed light`` () =
+        withMainScene (fun scene ->
+            let placed =
+                scene
+                |> applied (AddItem realPolarizerDraft)
+                |> applied (SetParameterState (realPolarizerDraft.id, ParameterName.extinctionRatio, KnownParameter (ParameterValue 0.01)))
+                |> withTwoPolarizers
+            let first, second = elem 2 placed, elem 3 placed
+            Assert.Equal<ElementValueId option list>(
+                [ Some Library.PresetIds.polarizerLp; Some Library.PresetIds.polarizerLp ],
+                [ first.placement.valueId; second.placement.valueId ])
+            Assert.Equal(0.0, first.placement.r1.value)
+            // The first polarizer stands in front of the second on the seeded detector's (index 1) path.
+            Assert.Equal<Library.ElementId list>(
+                [ first.id; second.id ],
+                (List.item 1 placed.sceneLayout.elements).path |> List.map (fun step -> step.element) |> List.filter (fun id -> id = first.id || id = second.id))
+            let held = placed |> applied (AssignSlot (second.id, Some realPolarizerDraft.id))
+            let chartOf (table : TableAndElementRotationModel) : ExperimentChart.ExperimentChart =
+                let swept =
+                    table
+                    |> sweeping second.id ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 180.0) (ExperimentControls.ExperimentPointCount 5)
+                swept.experimentResult
+            let sweptBy (table : TableAndElementRotationModel) : ExperimentControls.ChartPoint list = (Assert.Single (chartOf table).series).points
+            let points = sweptBy held
+            Assert.Equal<float list>([ 0.0; 45.0; 90.0; 135.0; 180.0 ], points |> List.map (fun p -> p.x))
+
+            // Each point is the item's own form at its values, turned to the point's rotation, after the first polarizer at 0°.
+            let item = held.kitItems |> List.find (fun kitItem -> kitItem.id = realPolarizerDraft.id)
+            let form =
+                match realPolarizerModel.entry.model with
+                | OpticalElementModel form -> form
+                | _ -> failwith "The real linear polarizer model must be an optical element."
+            let bound =
+                ItemEvaluation.BoundOpticalElement.ofOpticalForm (ParameterValues.ofParameters item.parameters) form
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let at600 = WaveLength.nm 600.0<nm>
+            for p in points do
+                let matrix =
+                    bound.muellerAt (ItemEvaluation.ElementOrientation.transmittingAt (Angle.degree (p.x * 1.0<deg>))) at600
+                    |> Result.defaultWith (fun error -> failwith error.describe)
+                let expected = (matrix * Propagation.inputStokes Library.IdealLinear Angle.zero).s0
+                Assert.True(abs (expected - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected:R}, got {p.y:R}")
+
+            // Crossed at 90°, the item's leakage passes light, where the preset in its place passes none.
+            let crossed = (List.item 2 points).y
+            Assert.True(crossed > 1.0e-4, $"the real polarizer item crossed must pass its leakage, read {crossed:R}")
+            let presetCrossed = (List.item 2 (sweptBy (held |> applied (AssignSlot (second.id, None))))).y
+            Assert.True(abs presetCrossed < 1.0e-12, $"the preset crossed must pass nothing, read {presetCrossed:R}")
+
+            // A slot's item the kit no longer holds is named on the failure chart, never run as the preset it sits on.
+            let lost = chartOf { held with kitItems = [] }
+            Assert.Empty(lost.series)
+            Assert.Equal("The run cannot be evaluated", lost.title.value)
+            Assert.Equal((UnknownSlotItemErr $"the kit holds no item {realPolarizerDraft.id.value}").describe, lost.description.value))
+
+    [<Fact>]
+    let ``a sample item is solved at its own thickness, as the item evaluator solves it`` () =
+        withMainScene (fun scene ->
+            let thickness = ParameterValue 2.0e-3
+            let placed =
+                scene
+                |> applied (AddItem plateDraft)
+                |> applied (SetParameterState (plateDraft.id, ParameterName.substrateThickness, KnownParameter thickness))
+                |> updateTableAndElementRotation (AddElement Sample)
+            let sample = elem 2 placed
+            Assert.Equal<ElementValueId option>(None, sample.placement.valueId)
+            let held = placed |> applied (AssignSlot (sample.id, Some plateDraft.id))
+            Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], availableCaptures held sample.id)
+            let swept =
+                held
+                |> sweeping sample.id ExperimentControls.VaryR2 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 60.0) (ExperimentControls.ExperimentPointCount 7)
+            let points = (Assert.Single swept.experimentResult.series).points
+            Assert.Equal<float list>([ 0.0; 10.0; 20.0; 30.0; 40.0; 50.0; 60.0 ], points |> List.map (fun p -> p.x))
+
+            // Each point is the item evaluator's solve of the plate at the item's values, at the point's incidence, spin 0.
+            let item = held.kitItems |> List.find (fun kitItem -> kitItem.id = plateDraft.id)
+            let values = ParameterValues.ofParameters item.parameters
+            Assert.Equal<ParameterValue>(thickness, values.valueOf ParameterName.substrateThickness |> Result.defaultWith (fun error -> failwith error.describe))
+            let plate = BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
+            let transmittedS0 (bound : ItemEvaluation.BoundOpticalElement) (incidenceDegrees : float) : float =
+                let orientation : ItemEvaluation.ElementOrientation =
+                    {
+                        ItemEvaluation.ElementOrientation.rotation = Angle.zero
+                        incidence = IncidenceAngle.create (Angle.degree (incidenceDegrees * 1.0<deg>))
+                        branch = Propagation.BranchTransmitted
+                    }
+                let matrix = bound.muellerAt orientation (WaveLength.nm 600.0<nm>) |> Result.defaultWith (fun error -> failwith error.describe)
+                (matrix * Propagation.unpolarizedStokes).s0
+            let boundAt (atValues : ItemEvaluation.ParameterValues) : ItemEvaluation.BoundOpticalElement =
+                ItemEvaluation.BoundOpticalElement.ofStackSample held.materials atValues plate
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let itemPlate = boundAt values
+            for p in points do
+                let expected = transmittedS0 itemPlate p.x
+                Assert.True(abs (expected - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected:R}, got {p.y:R}")
+
+            // The plate's own 1 mm reads otherwise: the run solved the item's thickness, not the sample's default.
+            let defaultPlate = boundAt (ParameterValues.defaultsOf plate.parameterAxes)
+            Assert.True(
+                points |> List.exists (fun p -> abs (transmittedS0 defaultPlate p.x - p.y) > 1.0e-12),
+                "the 2 mm item must read otherwise than the 1 mm sample at some incidence"))
+
+    [<Fact>]
+    let ``a dial-mounted item is run at the angle its reading draws`` () =
+        let polarizer =
+            match BuiltinCatalogue.preset Library.PresetIds.polarizerLp with
+            | Library.PolarizerItem value -> value
+            | Library.SampleItem _
+            | Library.SourceItem _
+            | Library.DetectorItem _ -> failwith "The linear polarizer preset must hold a polarizer."
+        let dialDraft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "26500000-0000-4000-8000-000000000003")
+                label = ItemLabel "LPd"
+                model = PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizer)
+                dial = DialMounted DialNegative
+            }
+        let chartSweepingFirst (table : TableAndElementRotationModel) : ExperimentChart.ExperimentChart =
+            let swept =
+                table
+                |> sweeping (elem 2 table).id ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 90.0) (ExperimentControls.ExperimentPointCount 4)
+            swept.experimentResult
+        withMainScene (fun scene ->
+            // The second polarizer, which the add selected, turned to R1 30° and given LPd, whose zero is 10°: the reading
+            // is 10° − 30° = −20°.
+            let placed =
+                scene
+                |> applied (AddItem dialDraft)
+                |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 10.0<deg>))
+                |> withTwoPolarizers
+                |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
+            let second = elem 3 placed
+            Assert.Equal((Angle.degree 30.0<deg>).value, second.placement.r1.value, 1e-12)
+            let recorded =
+                placed
+                |> applied (AssignSlot (second.id, Some dialDraft.id))
+                |> updateTableAndElementRotation (SetSetupName (ControlCaption "Dial"))
+                |> updateTableAndElementRotation CreateSetup
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Dial'."), recorded.kitStatus)
+            match (recorded.kitSetups |> List.find (fun setup -> setup.name = SetupName "Dial")).slots |> List.find (fun slot -> slot.id = second.id) with
+            | { Setups.SetupSlot.content = Setups.ItemInSlot (heldId, Setups.DialTurn reading) } ->
+                Assert.Equal<ItemId>(dialDraft.id, heldId)
+                Assert.Equal((Angle.degree (-20.0<deg>)).value, reading.value, 1e-12)
+            | other -> Assert.Fail $"the second polarizer must hold LPd on its dial, held %A{other.content}"
+
+            // Re-zeroed to 20°, the activated setup draws the reading −20° at −(−20° − 20°) = 40°.
+            let drawn =
+                recorded
+                |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 20.0<deg>))
+                |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Dial'."), drawn.kitStatus)
+            Assert.Equal((Angle.degree 40.0<deg>).value, (drawn.elements |> List.find (fun slot -> slot.id = second.id)).placement.r1.value, 1e-12)
+            let itemChart = chartSweepingFirst drawn
+
+            withMainScene (fun bare ->
+                let reference = bare |> withTwoPolarizers |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 40.0))
+                Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, (elem 3 reference).placement.valueId)
+                Assert.Equal<Setups.SlotContent>(Setups.EmptySlotContent, (elem 3 reference).content)
+                let referenceChart = chartSweepingFirst reference
+                Assert.Equal(referenceChart.title, itemChart.title)
+                let itemPoints = (Assert.Single itemChart.series).points
+                let referencePoints = (Assert.Single referenceChart.series).points
+                Assert.Equal<float list>([ 0.0; 30.0; 60.0; 90.0 ], itemPoints |> List.map (fun p -> p.x))
+                Assert.Equal<float list>(referencePoints |> List.map (fun p -> p.x), itemPoints |> List.map (fun p -> p.x))
+                for itemPoint, referencePoint in List.zip itemPoints referencePoints do
+                    Assert.True(
+                        abs (itemPoint.y - referencePoint.y) <= 1.0e-12,
+                        $"x = {itemPoint.x:R}: the dial item read {itemPoint.y:R}, the bare preset at 40° {referencePoint.y:R}")))
+
+    // ============ spec 0050 S9.1 — a dial-mounted item is scanned by its raw dial reading ============
+
+    [<Fact>]
+    let ``a dial scan draws the run at the physical angle of each reading`` () =
+        let polarizerChoice : ItemModelChoice =
+            match BuiltinCatalogue.preset Library.PresetIds.polarizerLp with
+            | Library.PolarizerItem polarizer -> PolarizerPresetChoice (BuiltinCatalogue.itemModel ItemModelIds.idealPolarizerItemModelId, polarizer)
+            | Library.SampleItem _
+            | Library.SourceItem _
+            | Library.DetectorItem _ -> failwith "The linear polarizer preset must hold a polarizer."
+        let dialDraft : ItemDraft =
+            {
+                id = ItemId (System.Guid.Parse "28900000-0000-4000-8000-000000000001")
+                label = ItemLabel "LPd"
+                model = polarizerChoice
+                dial = DialMounted DialNegative
+            }
+        let fixedDraft : ItemDraft = { dialDraft with id = ItemId (System.Guid.Parse "28900000-0000-4000-8000-000000000002"); label = ItemLabel "LPf"; dial = FixedMounting }
+        let zero = Angle.degree 10.0<deg>
+        let physicalOf (reading : float) : float = (DialNegative.physicalAngleOf zero (Angle.degree (reading * 1.0<deg>))).degrees
+        HeadlessSession.run (fun () ->
+            withMainScene (fun scene ->
+                // A first linear polarizer at R1 30°, so the reading's sign shows in the curve, then the analyzer holding LPd,
+                // its zero known at 10°.
+                let placed =
+                    scene
+                    |> applied (AddItem dialDraft)
+                    |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 10.0<deg>))
+                    |> applied (AddItem fixedDraft)
+                    |> updateTableAndElementRotation (AddElement LinearPolarizer)
+                    |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
+                    |> updateTableAndElementRotation (AddElement LinearPolarizer)
+                let first, analyzer = elem 2 placed, elem 3 placed
+                Assert.Equal<Library.ElementId list>(
+                    [ first.id; analyzer.id ],
+                    (List.item 1 placed.sceneLayout.elements).path |> List.map (fun step -> step.element) |> List.filter (fun id -> id = first.id || id = analyzer.id))
+                let onDial = placed |> applied (AssignSlot (analyzer.id, Some dialDraft.id))
+                let chosen =
+                    onDial
+                    |> updateTableAndElementRotation (ExpChooseElement analyzer.id)
+                    |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+
+                // Choosing it offers the dial reading in R1's place, over 0…360° in 19 points.
+                Assert.Equal<ExperimentControls.VariableChoice list>([ ExperimentControls.VaryDialReading ], chosen.experimentState.variableChoices)
+                Assert.Equal(Some Experiments.VaryDialReading, chosen.experimentCollection.draft.variable)
+                Assert.Equal(Experiments.VariableRange.forVariable Experiments.VaryDialReading, chosen.experimentCollection.draft.range)
+                let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
+                window.Content <- Component(fun _ -> mainView (chosen |> updateTableAndElementRotation (SelectBay BayNames.experiments)) ignore)
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                let shown (variable : ExperimentControls.VariableChoice) : bool =
+                    let name = (ConstructorUiId.experimentVariable variable.uiKey).value
+                    window.GetVisualDescendants() |> Seq.exists (function :? Border as b when matchesId name b && b.IsEffectivelyVisible -> true | _ -> false)
+                Assert.True(shown ExperimentControls.VaryDialReading, "the dial box was not offered")
+                Assert.False(shown ExperimentControls.VaryR1, "the R1 box was offered for a dial-mounted item")
+                window.Close()
+
+                let dialChart = chosen.experimentResult
+                Assert.Equal("Dial reading (°)", dialChart.xLabel.value)
+                Assert.Equal("Intensity vs dial reading", dialChart.title.value)
+                Assert.Equal(ExperimentChart.AngularXAxis, dialChart.xAxisKind)
+                let dialPoints = (Assert.Single dialChart.series).points
+                Assert.Equal<float list>([ for k in 0 .. 18 -> 20.0 * float k ], dialPoints |> List.map (fun p -> p.x))
+
+                // The same table with a fixed analyzer, varied in R1 over each reading's physical angle −(x − 10°).
+                let reference =
+                    onDial
+                    |> applied (AssignSlot (analyzer.id, Some fixedDraft.id))
+                    |> sweeping
+                        analyzer.id
+                        ExperimentControls.VaryR1
+                        (ExperimentControls.ExperimentRangeEnd (physicalOf 0.0))
+                        (ExperimentControls.ExperimentRangeEnd (physicalOf 360.0))
+                        (ExperimentControls.ExperimentPointCount 19)
+                Assert.Equal<ExperimentControls.VariableChoice list>([ ExperimentControls.VaryR1 ], reference.experimentState.variableChoices)
+                let referencePoints = (Assert.Single reference.experimentResult.series).points
+                Assert.Equal(List.length dialPoints, List.length referencePoints)
+                for dialPoint, referencePoint in List.zip dialPoints referencePoints do
+                    Assert.True(
+                        abs (physicalOf dialPoint.x - referencePoint.x) <= 1.0e-9,
+                        $"reading {dialPoint.x:R}: its physical angle is {physicalOf dialPoint.x:R}, the fixed analyzer turned to {referencePoint.x:R}")
+                    Assert.True(
+                        abs (dialPoint.y - referencePoint.y) <= 1.0e-12,
+                        $"reading {dialPoint.x:R}: the dial scan read {dialPoint.y:R}, the fixed analyzer at {referencePoint.x:R}° {referencePoint.y:R}")))
+
+    // ============ spec 0050 S9.1 — the chart draws the whole scan ============
+
+    /// The uniaxial film, its optic axis in its plane, so its spin R1 changes what it passes and reflects.
+    let private uniaxialFilmId : ElementValueId = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.uniaxialId)).entryId
+
+    /// The uniaxial film between a linear polarizer at R1 0° and two detectors: the seeded one on its transmitted beam and
+    /// one on its reflected ray.
+    let private polarizerFilmTable () : TableAndElementRotationModel =
+        SceneTestFixture.mainScene ()
+        |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        |> updateTableAndElementRotation (AddElement Sample)
+        |> bind 3 uniaxialFilmId
+        |> updateTableAndElementRotation (AddElement Detector)
+        |> (fun m -> m |> updateTableAndElementRotation (PlaceOnBeam ((elem 4 m).id, BeamLayout.OnReflectedBeamOf (elem 3 m).id)))
+
+    /// The draft varying the film on `variable` over `lo` … `hi` in that many points.
+    let private filmOver
+        (variable : ExperimentControls.VariableChoice)
+        (lo : ExperimentControls.ExperimentRangeEnd)
+        (hi : ExperimentControls.ExperimentRangeEnd)
+        (points : ExperimentControls.ExperimentPointCount)
+        (table : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        table
+        |> updateTableAndElementRotation (ExpChooseElement (elem 3 table).id)
+        |> updateTableAndElementRotation (ExpChooseVariable variable)
+        |> updateTableAndElementRotation (ExpSetRangeMin lo)
+        |> updateTableAndElementRotation (ExpSetRangeMax hi)
+        |> updateTableAndElementRotation (ExpSetRangePoints points)
+
+    /// The film's R2 over 20…60° in 3 points, Add variable, then its R1 over 0…90° in 2 points, capturing both branches.
+    let private twoVariableDraft (table : TableAndElementRotationModel) : TableAndElementRotationModel =
+        table
+        |> filmOver ExperimentControls.VaryR2 (ExperimentControls.ExperimentRangeEnd 20.0) (ExperimentControls.ExperimentRangeEnd 60.0) (ExperimentControls.ExperimentPointCount 3)
+        |> updateTableAndElementRotation ExpAddScanAxis
+        |> filmOver ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 90.0) (ExperimentControls.ExperimentPointCount 2)
+        |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
+
+    let private seriesNames (chart : ExperimentChart.ExperimentChart) : string list = chart.series |> List.map (fun s -> s.name.value)
+
+    [<Fact>]
+    let ``a two-variable scan draws one series per value of its outer variable, read on each captured branch`` () =
+        let table = polarizerFilmTable ()
+        let polarizer, film = (elem 2 table).id, (elem 3 table).id
+        // The reflected detector's light leaves the polarizer by T and the film by R; the seeded one's leaves both by T.
+        let objectsOn (detector : int) (model : TableAndElementRotationModel) : (Library.ElementId * BeamTree.BeamBranch) list =
+            (List.item detector model.sceneLayout.elements).path
+            |> List.filter (fun step -> step.element = polarizer || step.element = film)
+            |> List.map (fun step -> step.element, step.branch)
+        Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.TransmittedBeam ], objectsOn 1 table)
+        Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.ReflectedBeam ], objectsOn 4 table)
+        let drafted = twoVariableDraft table
+        let label = (List.head drafted.experimentCollection.draft.outerAxes).label.value
+        Assert.Equal("Sample #4", label)
+        let chart = drafted.experimentResult
+        let incidences = [ 20.0; 40.0; 60.0 ]
+        Assert.Equal<string list>(
+            [ for incidence in incidences do
+                  for branch in [ "T"; "R" ] -> $"Intensity ({branch}) — {label}: Incidence R2 %g{incidence}°" ],
+            seriesNames chart)
+        Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
+        Assert.Equal("Intensity (S₀)", chart.yLabel.value)
+        Assert.Equal(ExperimentChart.AngularXAxis, chart.xAxisKind)
+        for s in chart.series do
+            Assert.Equal<float list>([ 0.0; 90.0 ], s.points |> List.map (fun p -> p.x))
+        // The inner variable really varies the run: the film's in-plane optic axis turns with its spin.
+        Assert.True(
+            chart.series |> List.exists (fun s -> abs ((List.item 0 s.points).y - (List.item 1 s.points).y) > 1.0e-6),
+            "no series changes between R1 0° and 90°")
+
+        // Each group is the one-variable draft of R1 over 0…90° with the film turned to that incidence.
+        for incidence in incidences do
+            let turned =
+                { table with selection = ElementSelected (SceneElementIndex 3) }
+                |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees incidence))
+            Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.ReflectedBeam ], objectsOn 4 turned)
+            let reference =
+                turned
+                |> filmOver ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 90.0) (ExperimentControls.ExperimentPointCount 2)
+                |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
+            let referenceChart = reference.experimentResult
+            Assert.Equal<string list>([ "Intensity (T)"; "Intensity (R)" ], seriesNames referenceChart)
+            for referenceSeries in referenceChart.series do
+                let name = $"{referenceSeries.name.value} — {label}: Incidence R2 %g{incidence}°"
+                let drawn = chart.series |> List.find (fun s -> s.name.value = name)
+                Assert.Equal<float list>(referenceSeries.points |> List.map (fun p -> p.x), drawn.points |> List.map (fun p -> p.x))
+                for p, q in List.zip drawn.points referenceSeries.points do
+                    Assert.True(abs (p.y - q.y) <= 1.0e-12, $"{name} at R1 {p.x:R}: the scan read {p.y:R}, the turned film {q.y:R}")
+
+    [<Fact>]
+    let ``a collected multi-block experiment's chart holds every block's series`` () =
+        let table = polarizerFilmTable ()
+        let firstBlock =
+            table
+            |> filmOver ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 67.5) (ExperimentControls.ExperimentPointCount 4)
+            |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
+        let committed =
+            firstBlock
+            |> updateTableAndElementRotation ExpAddScanBlock
+            |> twoVariableDraft
+            |> updateTableAndElementRotation ExpCommit
+        let experiment = Assert.Single committed.experimentCollection.experiments
+        Assert.Equal<Experiments.MeasurementMode list>(
+            [ Experiments.CaptureTransmitted; Experiments.CaptureBoth ], experiment.scan.blocks |> List.map (fun block -> block.capture))
+        Assert.Equal<int list>([ 1; 2 ], experiment.scan.blocks |> List.map (fun block -> List.length block.axes))
+        let chart = chartForExperiment committed experiment
+        Assert.Equal(7, List.length chart.series)
+        let first = List.head chart.series
+        let others = List.tail chart.series
+
+        // The first block's one series is its one-variable chart's, tagged with its block.
+        let oneVariable = Assert.Single firstBlock.experimentResult.series
+        Assert.Equal($"{oneVariable.name.value} — block 1", first.name.value)
+        Assert.Equal<float list>([ 0.0; 22.5; 45.0; 67.5 ], first.points |> List.map (fun p -> p.x))
+        Assert.Equal<ExperimentControls.ChartPoint list>(oneVariable.points, first.points)
+
+        // The second block's six are the two-variable draft's, each name ending with its block.
+        let twoVariable = (twoVariableDraft table).experimentResult
+        Assert.Equal<string list>(seriesNames twoVariable |> List.map (fun name -> $"{name}, block 2"), others |> List.map (fun s -> s.name.value))
+        for drawn, draft in List.zip others twoVariable.series do
+            Assert.Equal<ExperimentControls.ChartPoint list>(draft.points, drawn.points)
+        Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
+        Assert.Equal(firstBlock.experimentResult.title, chart.title)
+        Assert.Contains(experiment.description, chart.description.value)
+
+    [<Fact>]
+    let ``the export of a two-variable draft carries every series of its chart`` () =
+        let store = ExperimentExport.createInMemoryExperimentExport ()
+        let drafted = { twoVariableDraft (polarizerFilmTable ()) with experimentExport = store.proxy }
+        let chart = drafted.experimentResult
+        Assert.Equal(6, List.length chart.series)
+        let exported = updateTableAndElementRotation ExportExperimentData drafted
+        Assert.Equal<ControlCaption option>(Some (ControlCaption $"Exported 6 series ({chart.title.value})."), exported.exportStatus)
+        match store.exported () with
+        | [ run ] ->
+            Assert.Equal(chart.title.value, run.title.value)
+            Assert.Equal(chart.xLabel.value, run.xLabel.value)
+            Assert.Equal(chart.description.value, run.description.value)
+            Assert.Equal<string list>(seriesNames chart, run.series |> List.map (fun s -> s.name.value))
+            Assert.Equal<(float * float) list list>(
+                chart.series |> List.map (fun s -> s.points |> List.map (fun p -> p.x, p.y)),
+                run.series |> List.map (fun s -> s.points |> List.map (fun p -> p.x, p.y)))
+        | other -> Assert.Fail($"expected one exported run, got %d{List.length other}")
+
+    // ============ spec 0050 S8.2 — the source slot's item is the run's source ============
+
+    /// The HeNe preset on the shipped source item model (step 210).
+    let private laserDraft : ItemDraft =
+        {
+            id = ItemId (System.Guid.Parse "26600000-0000-4000-8000-000000000001")
+            label = ItemLabel "Laser"
+            model = SourcePresetChoice (BuiltinCatalogue.itemModel ItemModelIds.sourcePresetItemModelId, BuiltinCatalogue.source Library.PresetIds.heNe633)
+            dial = FixedMounting
+        }
+
+    /// The source slot holding `Laser`, then one linear polarizer bound to its preset before the seeded intensity
+    /// detector, swept over R1 0 … 180° in 7 points.
+    let private laserThroughPolarizer (scene : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let source = elem 0 scene
+        Assert.Equal(LightSource, source.placement.catalogueKind)
+        let held =
+            scene
+            |> applied (AddItem laserDraft)
+            |> applied (AssignSlot (source.id, Some laserDraft.id))
+            |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let polarizer = elem 2 held
+        Assert.Equal<ElementValueId option>(Some Library.PresetIds.heNe633, (elem 0 held).placement.valueId)
+        Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, polarizer.placement.valueId)
+        Assert.Equal<Library.ElementId list>(
+            [ source.id; polarizer.id ],
+            (List.item 1 held.sceneLayout.elements).path |> List.map (fun step -> step.element) |> List.filter (fun id -> id = source.id || id = polarizer.id))
+        held
+        |> sweeping polarizer.id ExperimentControls.VaryR1 (ExperimentControls.ExperimentRangeEnd 0.0) (ExperimentControls.ExperimentRangeEnd 180.0) (ExperimentControls.ExperimentPointCount 7)
+
+    [<Fact>]
+    let ``a source item emits its own polarization through the run`` () =
+        withMainScene (fun scene ->
+            let swept = laserThroughPolarizer scene
+            let pointsOf (table : TableAndElementRotationModel) : ExperimentControls.ChartPoint list = (Assert.Single table.experimentResult.series).points
+
+            // At its defaults the item emits the default source's unpolarized light, which the polarizer, the intensity
+            // reference (r = 2), reads as 1.
+            let defaultEmission = ExperimentRun.SourceEmission.ofValues (ParameterValues.defaultsOf Library.SourcePreset.lightSourceAxes)
+            Assert.Equal<Result<ExperimentRun.SourceEmission, ControlCaption>>(defaultEmission |> Result.mapError (fun error -> ControlCaption error.describe), swept.runEmission)
+            let atDefaults = pointsOf swept
+            Assert.Equal<float list>([ 0.0; 30.0; 60.0; 90.0; 120.0; 150.0; 180.0 ], atDefaults |> List.map (fun p -> p.x))
+            for p in atDefaults do
+                Assert.True(abs (p.y - 1.0) <= 1.0e-12, $"x = {p.x:R}: the item at its defaults read {p.y:R}, expected 1")
+            let unheld = pointsOf (swept |> applied (AssignSlot ((elem 0 swept).id, None)))
+            for p, q in List.zip atDefaults unheld do
+                Assert.True(abs (p.y - q.y) <= 1.0e-12, $"x = {p.x:R}: the item at its defaults read {p.y:R}, the default source {q.y:R}")
+
+            // Fully polarized at 30°, it is the item's own `emissionWith` light, and the polarizer reads 1 + cos 2(x − 30°).
+            let polarized =
+                swept
+                |> applied (SetParameterState (laserDraft.id, ParameterName.degreeOfPolarization, KnownParameter (ParameterValue 1.0)))
+                |> applied (SetParameterState (laserDraft.id, ParameterName.azimuth, knownDegrees 30.0<deg>))
+            let item = polarized.kitItems |> List.find (fun kitItem -> kitItem.id = laserDraft.id)
+            let ownEmission = laserDraft.model.emissionWith (ParameterValues.ofParameters item.parameters)
+            Assert.Equal<Result<ExperimentRun.SourceEmission, ControlCaption>>(ownEmission |> Result.mapError (fun error -> ControlCaption error.describe), polarized.runEmission)
+            for p in pointsOf polarized do
+                let expected = 1.0 + cos (2.0 * (Angle.degree ((p.x - 30.0) * 1.0<deg>)).value)
+                Assert.True(abs (expected - p.y) <= 1.0e-12, $"x = {p.x:R}: expected {expected:R}, got {p.y:R}"))
+
+    [<Fact>]
+    let ``a source item whose parameters the run cannot evaluate shows that the run cannot be evaluated`` () =
+        withMainScene (fun scene ->
+            let held =
+                laserThroughPolarizer scene
+                |> applied (SetParameterState (laserDraft.id, ParameterName.degreeOfPolarization, KnownParameter (ParameterValue 1.5)))
+            let chart = held.experimentResult
+            Assert.Empty(chart.series)
+            Assert.Equal("The run cannot be evaluated", chart.title.value)
+            Assert.Contains(ParameterName.degreeOfPolarization.value, chart.description.value)
+            Assert.Equal((ParameterOutOfRangeErr "degreeOfPolarization = 1.5 lies outside [0, 1]").describe, chart.description.value)
+            Assert.Equal<Result<ExperimentRun.SourceEmission, ControlCaption>>(Error chart.description, held.runEmission)
+
+            // A source item the kit no longer holds is named on the same chart, never run as the preset it binds.
+            let lost = ({ held with kitItems = [] }).experimentResult
+            Assert.Empty(lost.series)
+            Assert.Equal("The run cannot be evaluated", lost.title.value)
+            Assert.Equal((UnknownSlotItemErr $"the kit holds no item {laserDraft.id.value}").describe, lost.description.value))
 
     // ============ step 018 — the silent ideal-analyzer fallback is RETIRED ============
 
@@ -802,6 +1389,7 @@ module ExperimentControlsTests =
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                     setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
                     addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                    addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
                     viewExperiment = ignore; openChartWindow = ignore
                 }
             let state =
@@ -821,4 +1409,243 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
             Assert.DoesNotContain(texts, fun t -> t.StartsWith "Open chart")
+            window.Close())
+
+    // ============ spec 0050 S9.1 — the bay reads v2: the scan, the loaded experiment's bookkeeping, the rows' badges ============
+
+    /// A live, re-rendering Main view over `seed`, and the model its last message left.
+    let private liveWithLatest (seed : TableAndElementRotationModel) : Window * TableAndElementRotationModel ref =
+        let latest = ref seed
+        let comp =
+            Component(fun ctx ->
+                let st = ctx.useState seed
+                mainView st.Current (fun msg ->
+                    let next = updateTableAndElementRotation msg st.Current
+                    latest.Value <- next
+                    st.Set next))
+        Window(Width = 1000.0, Height = 980.0, Content = comp), latest
+
+    /// The bay's control of that id, by its `Name` or its AutomationId.
+    let private controlIn<'Control when 'Control :> Control> (window : Window) (id : ConstructorUiId) : 'Control option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (fun visual ->
+            match visual with
+            | :? 'Control as c when matchesId id.value c -> Some c
+            | _ -> None)
+
+    /// The scan summary's lines, top to bottom.
+    let private scanLinesIn (window : Window) : string list =
+        match controlIn<StackPanel> window ConstructorUiId.experimentScanSummary with
+        | Some panel -> panel.Children |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
+        | None -> failwith "the scan summary is not in the bay"
+
+    /// Whether the bay's box of that id takes a press.
+    let private enabledIn (window : Window) (id : ConstructorUiId) : bool =
+        match controlIn<Border> window id with
+        | Some box -> box.IsEffectivelyEnabled
+        | None -> failwith $"{id.value} is not in the bay"
+
+    /// The Main scene with a sample at index 2, the Experiments bay open.
+    let private sampleBay () : TableAndElementRotationModel =
+        SceneTestFixture.mainScene ()
+        |> updateTableAndElementRotation (AddElement Sample)
+        |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+
+    /// The Main scene with a polarizer at index 2 varied on R1 and committed as E1, the Experiments bay open.
+    let private committedPolarizer () : TableAndElementRotationModel =
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        m
+        |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
+        |> updateTableAndElementRotation ExpCommit
+        |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+
+    [<Fact>]
+    let ``the bay's scan, role, session and notes UiIds are the stable intent-named ids`` () =
+        Assert.Equal("ExperimentScanSummary", ConstructorUiId.experimentScanSummary.value)
+        Assert.Equal("ExperimentAddScanAxisButton", ConstructorUiId.experimentAddScanAxisButton.value)
+        Assert.Equal("ExperimentAddScanBlockButton", ConstructorUiId.experimentAddScanBlockButton.value)
+        Assert.Equal("ExperimentRole_calibration", (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey).value)
+        Assert.Equal("ExperimentSessionField", ConstructorUiId.experimentSessionField.value)
+        Assert.Equal("ExperimentNotesField", ConstructorUiId.experimentNotesField.value)
+        Assert.Equal("ExperimentBadge_3", (ConstructorUiId.experimentRowBadge (Experiments.ExperimentId 3).uiKey).value)
+        Assert.Equal<string list>(
+            [ "ExperimentRole_science"; "ExperimentRole_calibration"; "ExperimentRole_dark"; "ExperimentRole_drift-check"
+              "ExperimentRole_diagnostic"; "ExperimentRole_ignored"; "ExperimentRole_planned" ],
+            Experiments.ExperimentRole.all |> List.map (fun role -> (ConstructorUiId.experimentRoleChoice role.uiKey).value))
+        Assert.Equal<string list>(
+            [ "Science"; "Calibration"; "Dark"; "Drift check"; "Diagnostic"; "Ignored"; "Planned" ],
+            Experiments.ExperimentRole.all |> List.map (fun role -> role.caption.value))
+
+    [<Fact>]
+    let ``Add variable and Add block list the held axes and blocks under the range`` () =
+        HeadlessSession.run (fun () ->
+            let seed = sampleBay ()
+            let candidate = ConstructorUiId.experimentCandidate (ConstructorUiKey (idOf 2 seed))
+            let window, latest = liveWithLatest seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.Empty(scanLinesIn window)
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "nothing chosen: Add variable is withheld")
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanBlockButton, "nothing chosen: Add block is withheld")
+
+            clickIn window candidate.value
+            clickIn window (ConstructorUiId.experimentVariable ExperimentControls.VaryR2.uiKey).value
+            Assert.True(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "R2 chosen: Add variable is offered")
+            clickIn window ConstructorUiId.experimentAddScanAxisButton.value
+            let held = Assert.Single latest.Value.experimentCollection.draft.outerAxes
+            Assert.Equal(Experiments.VaryR2, held.variable)
+            Assert.Equal<string list>([ $"This block: {held.describe}" ], scanLinesIn window)
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "the edited axis held: Add variable is withheld")
+
+            clickIn window candidate.value
+            clickIn window (ConstructorUiId.experimentVariable ExperimentControls.VaryR1.uiKey).value
+            Assert.True(enabledIn window ConstructorUiId.experimentAddScanBlockButton, "R1 chosen: Add block is offered")
+            clickIn window ConstructorUiId.experimentAddScanBlockButton.value
+            let block = Assert.Single latest.Value.experimentCollection.draft.closedBlocks
+            Assert.Equal<Experiments.VariableParameter list>([ Experiments.VaryR2; Experiments.VaryR1 ], block.axes |> List.map (fun axis -> axis.variable))
+            Assert.Empty(latest.Value.experimentCollection.draft.outerAxes)
+            let r2, r1 = List.item 0 block.axes, List.item 1 block.axes
+            Assert.Equal<string list>([ $"Block 1: {r2.describe} × {r1.describe}, capture {block.capture.label}" ], scanLinesIn window)
+            let line = List.exactlyOne (scanLinesIn window)
+            Assert.True(line.IndexOf "Incidence R2" < line.IndexOf "Rotation R1", $"R2 is the outer axis: {line}")
+            Assert.EndsWith(", capture Transmitted (T)", line)
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "nothing chosen again: Add variable is withheld")
+            Assert.False(enabledIn window ConstructorUiId.experimentAddScanBlockButton, "nothing chosen again: Add block is withheld")
+            window.Close())
+
+    [<Fact>]
+    let ``an experiment loaded in the editor shows its role, session and notes, and a press on a role sends it`` () =
+        HeadlessSession.run (fun () ->
+            let committed = committedPolarizer ()
+            let e1 = Assert.Single committed.experimentCollection.experiments
+            let roleBoxShown (window : Window) (role : Experiments.ExperimentRole) : bool =
+                match controlIn<Border> window (ConstructorUiId.experimentRoleChoice role.uiKey) with
+                | Some box -> box.IsEffectivelyVisible
+                | None -> false
+            let fieldText (window : Window) (id : ConstructorUiId) : string =
+                match controlIn<TextBox> window id with
+                | Some field when field.IsEffectivelyVisible -> Option.ofObj field.Text |> Option.defaultValue ""
+                | Some _ -> failwith $"{id.value} is hidden"
+                | None -> failwith $"{id.value} is not in the bay"
+            let marksWith (chosen : Experiments.ExperimentRole) : (string * ExperimentControls.ExperimentRoleMark) list =
+                Experiments.ExperimentRole.all
+                |> List.map (fun role -> role.uiKey.value, (if role = chosen then ExperimentControls.RoleChosen else ExperimentControls.RoleNotChosen))
+            let marks (model : TableAndElementRotationModel) : (string * ExperimentControls.ExperimentRoleMark) list =
+                model.experimentState.roleOptions |> List.map (fun option -> option.key.value, option.mark)
+
+            // Nothing loaded: no role box, no field shown.
+            let unloaded = committed |> updateTableAndElementRotation ExpNew
+            Assert.Empty(unloaded.experimentState.roleOptions)
+            Assert.Equal(ControlWithheld, unloaded.experimentState.bookkeepingAvailability)
+            let bare, _ = liveWithLatest unloaded
+            bare.Show()
+            Dispatcher.UIThread.RunJobs()
+            for role in Experiments.ExperimentRole.all do
+                Assert.False(roleBoxShown bare role, $"{role.text} is shown with no experiment loaded")
+            for id in [ ConstructorUiId.experimentSessionField; ConstructorUiId.experimentNotesField ] do
+                match controlIn<TextBox> bare id with
+                | Some field -> Assert.False(field.IsEffectivelyVisible, $"{id.value} is shown with no experiment loaded")
+                | None -> ()
+            bare.Close()
+
+            // E1 loaded: Science chosen, the session and notes empty.
+            let loaded = unloaded |> updateTableAndElementRotation (ExpEdit e1.id)
+            Assert.Equal<(string * ExperimentControls.ExperimentRoleMark) list>(marksWith Experiments.ScienceRun, marks loaded)
+            Assert.Equal(ControlOffered, loaded.experimentState.bookkeepingAvailability)
+            let window, latest = liveWithLatest loaded
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            for role in Experiments.ExperimentRole.all do
+                Assert.True(roleBoxShown window role, $"{role.text} is not shown for the loaded experiment")
+            Assert.Equal("", fieldText window ConstructorUiId.experimentSessionField)
+            Assert.Equal("", fieldText window ConstructorUiId.experimentNotesField)
+
+            // A press on Calibration records it for E1.
+            clickIn window (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey).value
+            Assert.Equal<ControlCaption option>(None, latest.Value.kitStatus)
+            let recorded = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
+            Assert.Equal(Experiments.CalibrationRun, recorded.role)
+            Assert.Equal<(string * ExperimentControls.ExperimentRoleMark) list>(marksWith Experiments.CalibrationRun, marks latest.Value)
+
+            // The session and notes commit on Enter, as the range fields do.
+            let typeInto (id : ConstructorUiId) (text : string) : unit =
+                match controlIn<TextBox> window id with
+                | Some field ->
+                    field.Focus() |> ignore
+                    Dispatcher.UIThread.RunJobs()
+                    window.KeyTextInput(text)
+                    Dispatcher.UIThread.RunJobs()
+                    window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                    window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                | None -> failwith $"{id.value} is not in the bay"
+            typeInto ConstructorUiId.experimentSessionField "Run A"
+            typeInto ConstructorUiId.experimentNotesField "dusty mount"
+            let noted = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
+            Assert.Equal(Some "Run A", noted.sessionOpt |> Option.map (fun session -> session.value))
+            Assert.Equal("dusty mount", noted.notes.value)
+            Assert.Equal("Run A", fieldText window ConstructorUiId.experimentSessionField)
+            Assert.Equal("dusty mount", fieldText window ConstructorUiId.experimentNotesField)
+
+            // E2 recorded, then E1 loaded over it straight from its row: the next press is E1's, never E2's.
+            clickIn window ConstructorUiId.experimentNewButton.value
+            clickIn window (ConstructorUiId.experimentCandidate (ConstructorUiKey (idOf 2 committed))).value
+            clickIn window ConstructorUiId.experimentAddButton.value
+            let e2 = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id <> e1.id)
+            Assert.Equal(Some e2.id, latest.Value.experimentCollection.draft.editingId)
+            Assert.Equal("", fieldText window ConstructorUiId.experimentSessionField)
+            clickIn window (ConstructorUiId.experimentEditButton e1.id.uiKey).value
+            Assert.Equal(Some e1.id, latest.Value.experimentCollection.draft.editingId)
+            Assert.Equal("Run A", fieldText window ConstructorUiId.experimentSessionField)
+            clickIn window (ConstructorUiId.experimentRoleChoice Experiments.DarkRun.uiKey).value
+            let roleOf (id : Experiments.ExperimentId) : Experiments.ExperimentRole =
+                (latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = id)).role
+            Assert.Equal(Experiments.DarkRun, roleOf e1.id)
+            Assert.Equal(Experiments.ScienceRun, roleOf e2.id)
+            window.Close())
+
+    [<Fact>]
+    let ``each collected experiment's row shows its name, its role and its data badge`` () =
+        HeadlessSession.run (fun () ->
+            let committed = committedPolarizer ()
+            let e1 = Assert.Single committed.experimentCollection.experiments
+            Assert.Equal("E1", e1.name.value)
+            let row = Assert.Single committed.experimentState.collection
+            Assert.Equal($"E1 [Science] — {e1.description}", row.description.value)
+            Assert.Equal("no data", row.badge.value)
+
+            let window, _ = liveWithLatest committed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let texts (id : ConstructorUiId) : string list =
+                match controlIn<Control> window id with
+                | Some control ->
+                    (control :> Visual).GetSelfAndVisualDescendants()
+                    |> Seq.choose (function :? TextBlock as t when t.IsEffectivelyVisible -> Option.ofObj t.Text | _ -> None)
+                    |> List.ofSeq
+                | None -> failwith $"{id.value} is not in the bay"
+            Assert.Equal<string list>([ $"E1 [Science] — {e1.description}" ], texts (ConstructorUiId.experimentEditButton e1.id.uiKey))
+            Assert.Equal<string list>([ "no data" ], texts (ConstructorUiId.experimentRowBadge e1.id.uiKey))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``pressing Add variable between two axes and Add records one two-variable experiment`` () =
+        HeadlessSession.run (fun () ->
+            let seed = sampleBay ()
+            let candidate = (ConstructorUiId.experimentCandidate (ConstructorUiKey (idOf 2 seed))).value
+            let window, latest = liveWithLatest seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window candidate
+            clickIn window (ConstructorUiId.experimentVariable (ConstructorUiKey "r2")).value
+            clickIn window ConstructorUiId.experimentAddScanAxisButton.value
+            clickIn window candidate
+            clickIn window (ConstructorUiId.experimentVariable (ConstructorUiKey "r1")).value
+            clickIn window ConstructorUiId.experimentAddButton.value
+            let experiment = Assert.Single latest.Value.experimentCollection.experiments
+            let block = Assert.Single experiment.scan.blocks
+            Assert.Equal<Experiments.VariableParameter list>([ Experiments.VaryR2; Experiments.VaryR1 ], block.axes |> List.map (fun axis -> axis.variable))
+            Assert.Equal<Library.ElementId list>([ (elem 2 seed).id; (elem 2 seed).id ], block.axes |> List.map (fun axis -> axis.elementId))
             window.Close())

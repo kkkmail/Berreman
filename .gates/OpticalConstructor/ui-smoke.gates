@@ -28,3 +28,4 @@ selector:
   arg: "{rendered}"
 whole_suite: light
 runtime_actual_whole_seconds: 27
+attempt_timeout_seconds: 600

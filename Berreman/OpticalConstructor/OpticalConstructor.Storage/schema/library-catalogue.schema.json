@@ -27,7 +27,7 @@
           "required": ["kind", "id", "version", "fileName", "contentHash"],
           "additionalProperties": false,
           "properties": {
-            "kind": { "type": "integer", "minimum": 1, "maximum": 6, "description": "The entry kind's wire tag." },
+            "kind": { "type": "integer", "minimum": 1, "maximum": 7, "description": "The entry kind's wire tag." },
             "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/guid" },
             "version": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
             "fileName": { "type": "string", "minLength": 1 },

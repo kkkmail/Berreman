@@ -3,23 +3,32 @@ namespace OpticalConstructor.Ui
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.CatalogueFiles
 open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.LibraryBackup
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.CategoryDatabaseStore
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.ItemModelDatabaseStore
+open OpticalConstructor.Storage.KitHistoryStore
 open OpticalConstructor.Storage.LibraryBackupStore
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.MaterialSourceStore
 open OpticalConstructor.Storage.PresetDatabaseStore
 open OpticalConstructor.Storage.SampleDatabaseStore
 open OpticalConstructor.Storage.SourceDatabaseStore
+open OpticalConstructor.Ui.KitOpening
 open Softellect.Sys.Logging
 
-/// Shares library database stores, catalogue imports, experiment templates, exports and settings across windows.
+/// The one app scope, composed at the root over the configured locations (the SQLite library stores and the catalogue
+/// import of every start) and injected into the launcher, the start screen and every window (spec 0050 Close).
 /// Context identity is by reference; database identity comes from its configured connection.
 [<ReferenceEquality>]
 type AppContext =
@@ -36,9 +45,12 @@ type AppContext =
         sources : Library.SourceProxy
         /// The category database store refuses removal while materials reference the category.
         categories : MaterialLibrary.CategoryProxy
+        /// The item-model store over the app's library database (spec 0050 S7.1).
+        itemModels : ItemModelProxy
         /// The library's backup store, Backups beside the database (spec 0050 001 §G).
         libraryBackups : LibraryBackupProxy
-        /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1).
+        /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1)
+        /// and pulls from refractiveindex.info, PTB OCDB and CXRO Henke over the configured sources folder (spec 0050 S13.1, S13.2).
         catalogueImports : CatalogueImportContext
         /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
         pendingImports : PendingCatalogueImport list
@@ -50,6 +62,10 @@ type AppContext =
         /// window-policy / quick-pick / tree / bucketing fields from HERE, never from
         /// the provider.
         settings : WorkbenchSettings
+        /// The locations the app scope was composed over, where its windows' dialogs start (spec 0050 §3.9, S6).
+        locations : DataLocations
+        /// The kit history the start screen lists and bumps, in the per-user preferences (001 §F, spec 0050 S5.2).
+        kitHistory : KitHistoryProxy
     }
 
     static member private compose (locations : DataLocations) (settings : WorkbenchSettings) (database : LibraryDatabase) : AppContext =
@@ -61,6 +77,22 @@ type AppContext =
             {
                 CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database) with
                     exportFolderOpt = Some locations.cataloguesFolder
+                    // In this order: the Online sources window opens on the first; building them touches nothing (spec 0050 S13.2).
+                    materialSources =
+                        [
+                            MaterialSourceProxy.createRefractiveIndexInfo
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                            MaterialSourceProxy.createPtbOcdb
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                            MaterialSourceProxy.createHenkeCompounds
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                        ]
             }
         let pendingImports =
             match catalogueImports.importOnStart (CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder) with
@@ -81,6 +113,7 @@ type AppContext =
             samples = samples
             sources = sources
             categories = categories
+            itemModels = ItemModelProxy.createInDatabase database
             libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
             catalogueImports = catalogueImports
             pendingImports = pendingImports
@@ -89,6 +122,8 @@ type AppContext =
                     locations.exportsFolder
                     (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
             settings = settings
+            locations = locations
+            kitHistory = KitHistoryProxy.create locations.preferencesFolder
         }
 
     /// Every start imports the shipped catalogue and registered folders by manifest hash, pending confirmation (spec 0050 S2.4; S3.1).

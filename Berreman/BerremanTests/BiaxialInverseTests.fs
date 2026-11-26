@@ -7,13 +7,19 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
-open OpticalProperties.Active
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
+open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
+open BerremanTestSupport.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
+open BerremanTestSupport.BiaxialDesign
 
 /// Spec 0044, manual task 012 — the inverse problem for the HARDEST transparent crystal there is: a
 /// biaxial, optically active, TRICLINIC one.
@@ -92,9 +98,9 @@ open BerremanTests.BiaxialSample            // the triclinic ground truth, share
 /// that fact — and it is the price of the crystal being biaxial.
 ///
 /// The fit driver, the residual, the scaling, the measurement-error model and the acceptance arithmetic
-/// are all shared with `MuellerInverseTests` through `InverseFitHarness`; nothing in this file
-/// re-implements any of it. That is only possible because `MuellerInverse` is generic in its parameter
-/// set — see `ParameterAxis`.
+/// are all shared with `MuellerInverseTests` through `MuellerFitting`, `BenchNoise`, `RecoveryEnsembles`
+/// and `FitUncertainty`; nothing in this file re-implements any of it. That is only possible because
+/// `MuellerInverse` is generic in its parameter set — see `ParameterAxis`.
 type BiaxialInverseTests() =
 
     /// Radians per degree, reached by its full module path. Bound here, ahead of the members (FS0960: in
@@ -114,83 +120,9 @@ type BiaxialInverseTests() =
     /// This suite's wavelength — the sample's reference line.
     let waveLength = referenceWaveLength
 
-    // =================================================================================================
-    // The measurement set.
-    //
-    // THICKNESS FIRST, because it is the design variable that decides whether the fit is possible at
-    // all. Linear retardance enters the model through cos and sin of 2π Δn d / λ, so a plate carrying
-    // many waves gives a residual surface that oscillates into a dense forest of local minima roughly
-    // half a fringe apart, and a start guess more than about half a fringe away lands in the wrong one.
-    // The largest birefringence here is n₃ − n₁ = 0.042349 — five times quartz's — so the plate has to be
-    // FIVE TIMES THINNER than the 20 µm the uniaxial suite uses to stay in the same sub-wave regime:
-    // 4 µm is 0.268 wave, against that suite's 0.286.
-    //
-    // Every configuration therefore uses the same 4 µm plate. Unlike the uniaxial case there is no
-    // retardance-free principal cut to spend thickness on: a biaxial crystal has linear birefringence
-    // along EVERY principal axis, and the only directions free of it are the two optic axes, which are
-    // oblique.
-    //
-    // THE CUTS. Three principal cuts, because three different transverse planes are needed:
-    //
-    //   Z-cut, normal incidence: propagation along the crystal 3-axis. Transverse plane (1,2), so this
-    //          cut sees n₁, n₂, g₁₁, g₂₂ and g₁₂.
-    //   X-cut, normal incidence: propagation along the crystal 1-axis. Transverse plane (2,3): n₂, n₃,
-    //          g₂₂, g₃₃, g₂₃.
-    //   Y-cut, normal incidence: propagation along the crystal 2-axis. Transverse plane (1,3): n₁, n₃,
-    //          g₁₁, g₃₃, g₁₃ — and it is the ONLY cut in which g₁₃ is transverse at normal incidence.
-    //
-    // Four azimuths per cut, because rotating the sample about its own normal changes which linear
-    // combination of the transverse components the polarimeter projects onto, even though it cannot
-    // change which components are transverse at all.
-    //
-    // THE OBLIQUE SWEEPS do three things at once: they supply the Fresnel/angle information that pins
-    // the ABSOLUTE index level (which the retardances alone constrain only weakly), they tilt components
-    // that are longitudinal at normal incidence into the transverse plane, and — at the steepest angles
-    // on the x-cut — they approach an OPTIC AXIS, where the linear birefringence vanishes and what is
-    // left is a nearly pure optical rotation. Reflection is included as well as transmission because it
-    // carries index information that never traverses the sample.
-    // =================================================================================================
-
-    /// A 4 µm plate — 0.268 wave of linear retardance at the largest birefringence, the sub-wave regime
-    /// the whole design depends on.
-    let plate = Thickness.mkm 4.0<mkm>
-
-    let configuration (cut : SampleCut) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
-        configurationOf cut plate incidenceDeg azimuthDeg observable waveLength
-
-    /// The three principal cuts, in the order the transverse planes were listed above.
-    let principalCuts : SampleCut list = [ ZCut; XCut; YCut ]
-
-    /// B1 — three principal cuts, normal incidence, four azimuths, transmission. The backbone: each cut
-    /// contributes its own transverse pair of indices and its own three gyration components.
-    let b1 : MeasurementConfiguration list =
-        [ for cut in principalCuts do
-            for azimuth in [ 0.0; 22.5; 45.0; 67.5 ] ->
-                configuration cut 0.0 azimuth TransmittedMueller ]
-
-    /// B2 — three principal cuts, oblique sweep, two azimuths, transmission and reflection. Absolute
-    /// index leverage, and the mixing that makes each cut's LONGITUDINAL components partially visible.
-    let b2 : MeasurementConfiguration list =
-        [ for cut in principalCuts do
-            for incidence in [ 25.0; 55.0 ] do
-                for azimuth in [ 0.0; 90.0 ] do
-                    for observable in [ TransmittedMueller; ReflectedMueller ] ->
-                        configuration cut incidence azimuth observable ]
-
-    /// B3 — the optic-axis approach: an x-cut plate at 72 deg external incidence, which Snell's law turns
-    /// into ~36.7 deg internally, the angle at which the linear birefringence of this material vanishes.
-    /// Both azimuths are taken because the two optic axes sit on opposite sides of the 1-axis and a
-    /// triclinic crystal has no symmetry making them equivalent.
-    let b3 : MeasurementConfiguration list =
-        [ for azimuth in [ 0.0; 180.0 ] do
-            for observable in [ TransmittedMueller; ReflectedMueller ] ->
-                configuration XCut 72.0 azimuth observable ]
-
-    let fullConfigurations = b1 @ b2 @ b3
-
     /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters.
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        observeWith forward triclinic configurations
+        observeWith forward triclinic configurations |> expectOk
 
     /// The start guess the fit facts run from: every gyration component 25-35 % wrong in ALTERNATING
     /// directions, and the three indices off by +0.2 %, +0.1 % and +0.15 %.
@@ -201,7 +133,7 @@ type BiaxialInverseTests() =
     /// rescaling of the truth, which a fit could exploit. The index perturbations look small in relative
     /// terms and are not: against birefringences of 0.015-0.042 they move n₂ − n₁ by −5.7 % and n₃ − n₂
     /// by +5.5 %, and birefringence, not absolute index, is what the retardance depends on. They cannot
-    /// be larger for the structural reason the thickness commentary above gives — half a fringe is the
+    /// be larger for the structural reason `BiaxialDesign`'s thickness commentary gives — half a fringe is the
     /// basin, and at 0.268 wave that is roughly a factor of two in any one birefringence.
     let perturbedStart : TriclinicParameters =
         {
@@ -231,9 +163,10 @@ type BiaxialInverseTests() =
     // what error bar.
     //
     // The measurement-error model — what is perturbed, by how much, and where those magnitudes come
-    // from — lives in `InverseFitHarness` and is pinned by `MuellerInverseTests`. It describes the
-    // APPARATUS rather than the sample, so this suite measures its crystal on exactly the same bench,
-    // with exactly the same eight seeds, which is what makes the two ensembles comparable at all.
+    // from — is `BenchNoise`, recorded in specs/0044/.manual/011-noisy-measurement-tests.md, and is
+    // pinned by `MuellerInverseTests`. It describes the APPARATUS rather than the sample, so this suite
+    // measures its crystal on exactly the same bench, with exactly the same eight seeds, which is what
+    // makes the two ensembles comparable at all.
     //
     // THE QUESTION THIS SUITE ADDS. The uniaxial ensemble showed that four constants survive a 0.2 deg /
     // 0.005 bench with the two refractive indices at ~0.05 % and the poorly-determined gyration component
@@ -253,7 +186,7 @@ type BiaxialInverseTests() =
     /// 25-35 % wrong. Starting isotropic also means the crystal has no preferred axes at the first step,
     /// so the three index directions are as nearly degenerate there as they can be.
     ///
-    /// It is nonetheless legitimate rather than lucky, for the structural reason the thickness
+    /// It is nonetheless legitimate rather than lucky, for the structural reason `BiaxialDesign`'s thickness
     /// commentary gives: linear retardance enters through cos and sin of 2 pi dn d / lambda, so what
     /// matters is the distance in FRINGES, and the three true birefringences are 0.173, 0.095 and 0.268
     /// wave on a 4 um plate. Zero is under a third of a fringe from the largest of them and closer still
@@ -282,10 +215,10 @@ type BiaxialInverseTests() =
     /// Run ONE noisy experiment end to end: generate its data on the shared bench, fit it from the blind
     /// start, and keep everything the ensemble will want to ask it afterwards.
     let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<TriclinicParameters> =
-        let observations = noisyObserveWith forward triclinic noise seed fullConfigurations
+        let observations = noisyObserveWith forward triclinic noise seed fullConfigurations |> expectOk
         {
             seed = seed
-            fit = fitObservations forward wideBox observations (scalingAround blindStart)
+            fit = fitObservations forward wideBox observations (scalingAround blindStart) |> expectOk
         }
 
     // =================================================================================================
@@ -430,14 +363,7 @@ type BiaxialInverseTests() =
                 g12 = RhoValue 0.0
             }
 
-        let buildUniaxial (p : UniaxialParameters) : OpticalProperties =
-            OpticalProperties.type_3_4_6_Crystal
-                (EpsValue.fromRefractionIndex p.ordinaryIndex)
-                (EpsValue.fromRefractionIndex p.extraordinaryIndex)
-                p.g11
-                p.g33
-
-        let uniaxialForward = createBerremanForward buildUniaxial solverParameters
+        let uniaxialForward = createBerremanForward (fun (p : UniaxialParameters) -> p.opticalProperties) solverParameters
 
         // A handful of configurations spanning all three cuts, normal and oblique, transmission and
         // reflection — enough that a discrepancy in any tensor slot has somewhere to show.
@@ -587,7 +513,7 @@ type BiaxialInverseTests() =
         // rather than copied it.
         let observations = observe fullConfigurations
         let scaling = scalingAround perturbedStart
-        let fit = fitObservations forward box observations scaling
+        let fit = fitObservations forward box observations scaling |> expectOk
 
         // The fit must actually have moved: a "recovery" that never left the start point would pass a
         // sloppy tolerance while proving nothing.
@@ -708,19 +634,16 @@ type BiaxialInverseTests() =
         //
         // The practical consequence for anyone designing this experiment: cutting more plates does not
         // substitute for tilting them, and tilting does not substitute for cutting. Both are required,
-        // which is exactly the shape of the measurement set above.
+        // which is exactly the shape of `BiaxialDesign`'s measurement set.
         let scaling = scalingAround perturbedStart
         let truthPoint = toScaled scaling triclinic
 
         let normsFor (configurations : MeasurementConfiguration list) : float[] =
             (residualJacobianAt (residualFor forward (observe configurations) scaling) truthPoint).columnNorms
 
-        let normalOn (cut : SampleCut) =
-            [ for azimuth in [ 0.0; 22.5; 45.0; 67.5 ] -> configuration cut 0.0 azimuth TransmittedMueller ]
-
-        let zOnly = normalOn ZCut
-        let zAndX = zOnly @ normalOn XCut
-        let everyCutNormal = zAndX @ normalOn YCut
+        let zOnly = normalIncidenceOn ZCut
+        let zAndX = zOnly @ normalIncidenceOn XCut
+        let everyCutNormal = zAndX @ normalIncidenceOn YCut
 
         let zNorms = normsFor zOnly
         let zxNorms = normsFor zAndX
@@ -791,7 +714,7 @@ type BiaxialInverseTests() =
         // machine precision. Whatever the ensemble's scatter is, it is therefore measurement error.
         let observations = observe fullConfigurations
         let scaling = scalingAround blindStart
-        let fit = fitObservations forward wideBox observations scaling
+        let fit = fitObservations forward wideBox observations scaling |> expectOk
 
         let errors = recoveryErrors scaling triclinic fit.recovered
         let report = describeErrors errors + $"; chi2 {fit.chiSquared}; {fit.solution.iterations.value} iterations"
@@ -826,15 +749,16 @@ type BiaxialInverseTests() =
         // scale. The fit then runs from the blind isotropic start against the RECORDED angles. Eight such
         // experiments give eight independent answers, and their spread is the uncertainty.
         //
-        // WHY BOTH A BIAS AND A SCATTER ARE REPORTED, and why they differ in kind: see the commentary in
-        // `InverseFitHarness`. In short, the detector error averages away and the rotation error is fixed
-        // within one experiment and so displaces its answer systematically — whether it also averages
-        // ACROSS experiments is the question an ensemble exists to answer.
+        // WHY BOTH A BIAS AND A SCATTER ARE REPORTED, and why they differ in kind: see `BenchNoise` and
+        // specs/0044/.manual/011-noisy-measurement-tests.md. In short, the detector error averages away
+        // and the rotation error is fixed within one experiment and so displaces its answer
+        // systematically — whether it also averages ACROSS experiments is the question an ensemble
+        // exists to answer.
         //
         // RUNTIME. Eight full nine-parameter fits from a blind start dominate this class. They are run
         // SERIALLY: the uniaxial suite measured concurrency on the same forward model and found it slower
         // rather than faster, because the solves allocate heavily and extra threads buy contention.
-        let experiments = ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments = BerremanTestSupport.BiaxialSample.ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
@@ -862,12 +786,12 @@ type BiaxialInverseTests() =
         // protocol at ~2.5x the observed values: the three indices come out at 0.088-0.091 % and the
         // three birefringences at 0.038-0.097 %.
         for name in [ "n1"; "n2"; "n3" ] do
-            let row = rowFor table name
+            let row = (rowFor table (ParameterName name) |> expectOk)
             Assert.True(row.scatter.value < 2.5e-3, $"{name} scatter {row.scatter.value} out of band: {report}")
             Assert.True(row.worst.value < 4.0e-3, $"{name} worst-case {row.worst.value} out of band: {report}")
 
         for name in [ "n2 - n1"; "n3 - n2"; "n3 - n1" ] do
-            let row = rowFor table name
+            let row = (rowFor table (ParameterName name) |> expectOk)
             Assert.True(row.scatter.value < 2.5e-3, $"{name} scatter {row.scatter.value} out of band: {report}")
             Assert.True(row.worst.value < 6.0e-3, $"{name} worst-case {row.worst.value} out of band: {report}")
 
@@ -896,7 +820,7 @@ type BiaxialInverseTests() =
         //
         // Bands pinned per the §9 protocol at ~2x the observed absolute scatters.
         let gyrationNames = [ "g11"; "g22"; "g33"; "g23"; "g13"; "g12" ]
-        let gyrationScatters = [ for name in gyrationNames -> (rowFor table name).absoluteScatter ]
+        let gyrationScatters = [ for name in gyrationNames -> (rowFor table (ParameterName name) |> expectOk).absoluteScatter.value ]
         for (name, scatter) in List.zip gyrationNames gyrationScatters do
             Assert.True(scatter < 6.0e-5, $"{name} absolute scatter {scatter} out of band: {report}")
 
@@ -911,7 +835,7 @@ type BiaxialInverseTests() =
         // fixed it would announce itself here: at least one component is quoted with an error bar of the
         // same order as its own value.
         Assert.True(
-            gyrationNames |> List.exists (fun name -> (rowFor table name).scatter.value > 0.5),
+            gyrationNames |> List.exists (fun name -> (rowFor table (ParameterName name) |> expectOk).scatter.value > 0.5),
             $"this bench is expected NOT to determine the gyration tensor usefully: {report}")
 
         // THE ERRORS ARE RANDOM, NOT SYSTEMATIC — a result rather than an assumption, and the reason the
@@ -919,7 +843,7 @@ type BiaxialInverseTests() =
         // the standard error of the ensemble MEAN: a departure smaller than that is the random error not
         // yet averaged away, not evidence of anything systematic.
         for row in table do
-            let allowance = 3.0 * (standardErrorOfMean (List.length ensembleSeeds) row).value
+            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length BerremanTestSupport.BiaxialSample.ensembleSeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}): {report}")
@@ -936,11 +860,11 @@ type BiaxialInverseTests() =
         // Measured: the three indices all scatter by ~1.42e-3 in absolute terms, and the three
         // DIFFERENCES by 1.05e-5, 1.46e-5 and 1.57e-5 — 91 to 135 times better. Band pinned at 50x, the
         // same figure the uniaxial suite uses for its single birefringence.
-        let indexRows = [ for name in [ "n1"; "n2"; "n3" ] -> rowFor table name ]
-        let worstIndexScatter = indexRows |> List.map (fun row -> row.absoluteScatter) |> List.max
+        let indexRows = [ for name in [ "n1"; "n2"; "n3" ] -> (rowFor table (ParameterName name) |> expectOk) ]
+        let worstIndexScatter = indexRows |> List.map (fun row -> row.absoluteScatter.value) |> List.max
         for name in [ "n2 - n1"; "n3 - n2"; "n3 - n1" ] do
             Assert.True(
-                (rowFor table name).absoluteScatter < worstIndexScatter / 50.0,
+                (rowFor table (ParameterName name) |> expectOk).absoluteScatter.value < worstIndexScatter / 50.0,
                 $"{name} must be determined far better than any single index in ABSOLUTE terms: {report}")
 
         // ------------------------------------------------------- the fit's OWN account of its error
@@ -951,10 +875,10 @@ type BiaxialInverseTests() =
         // other seven actually produced. There are very few places where that comparison is available at
         // all.
         let first = List.head experiments
-        let quality = fitReportOf first.fit
+        let quality = first.fit.report
 
         let predictions = predictedRelativeErrors triclinic first.fit quality
-        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name.value).scatter
+        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name |> expectOk).scatter
         let comparison =
             System.String.Join(
                 "; ",

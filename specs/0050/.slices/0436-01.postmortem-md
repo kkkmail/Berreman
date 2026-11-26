@@ -1,0 +1,164 @@
+# Post-mortem -- slice 0436, attempt 01
+
+## Summary
+
+Step 0436's test-only diff is correct and stays inside its one authorized file, but AT-2's joint fit through the study engine never ends within the how-to's 1800 s fit deadline or kit-acceptance's frozen 3600 s. It was still in its profile pass at 7171.6 s.
+The time goes to the product's results pass: two Jacobians are recomputed on every σ read, then 24 independent profile re-fits run one after another. That code is outside the step's effects, so the judge escalated on cycle 1 and the resolver confirmed.
+
+## Root cause
+
+**Owner: the product as it stood before the slice.** The cause is the study engine's results pass, written at steps 391, 393 and 397 (S11.4).
+
+The main solve is not the problem. It ran 54 iterations in about 360 s (probe `progress.log`, rows 1–54). The harness's identical seed-1 fit takes 278.5 s (`harness-seed1.log`), which is the step's "about three minutes" premise: 001 §1b's 946 s spread over five seeds.
+
+`StagedStudy.resultsWith` (`StudyEngine.fs:1743-1781`) then adds two costs that together come to about twenty times the main solve.
+
+1. **Two Jacobians on every σ read.**
+   - `FittedProblem.jacobian`, `report` and the private `sigmas` are plain members (`FittedProblems.fs:100-148`).
+   - Each `sigmaAt` therefore evaluates two forward-difference Jacobians: the rank read (`:137`) and `FitQuality.reportFrom`'s own `residualJacobian` (`FitQuality.fs:154`).
+   - `suspectsWith` calls `sigmaAt` once for each of the 15 coordinates (`StudyEngine.fs:1646`), after `quality` has taken a third Jacobian (`:1629`).
+   - That is about 500 residual evaluations at 1.31 s each. It matches the 593.9 s silent gap in the probe between the main fit's last report (359.6 s) and the first profile report (953.5 s).
+   - `sigmasFor`, `quality` per problem, and each `profileAt`'s own `sigmaAt` (`FittedProblems.fs:182`) pay the same cost again.
+2. **A serial profile pass.**
+   - `profilesFrom` (`StudyEngine.fs:1753-1766`) and `pointsFrom` (`FittedProblems.fs:227-243`) run the re-fits one at a time.
+   - Every re-fit is independent: each starts from the solution with one coordinate held (`without start`, `:206-221`).
+   - The harness's report at the seed-1 solution names four suspects (`harness-suspects.log`): n1, n2 and n3 at |ρ| 0.9999–1.0000, and g23 at σ/span 0.107, above the 0.1 threshold. That makes 24 re-fits of fourteen parameters each.
+   - 993 of their iterations took 6218 s. 83 % of that (5168 s, in 149 gaps of about 35 s) went to ALGLIB's numerical Jacobians (`AlglibAdapter.fs:96-97`).
+   - The pass had not ended when the probe was killed, so the fit's total runtime is unmeasured.
+
+**The physics is not at risk.** The harness's seed-1 recovery holds every quantity inside its band; the worst is g23 at 1.58 against 10.
+
+**Contributing cause: the step as written.** It priced the fit at the harness's LM solve alone and left out the results pass that 001 §L requires ("post-fit identifiability by profile likelihood for suspect parameters"). Its 1800 s deadline was never measured against the engine. There is no actionable tool defect here: the figure came from the operator's own 001 §1b.
+
+**Ruled out:**
+- **The worker.** The diff matches how-to (1)–(4), the judge and the resolver agree, and AT-1's six facts pass over the shared host.
+- **The environment.** 128 logical processors; the build gate passed in 25.3 s; kit-acceptance was green at 0435 in 88.2 s.
+- **The provider switch.** Every role from 0432 to 0436 ran on anthropic `claude-opus-5-5[1m]`. The last different spawn was openai `gpt-6-astra` for 0431's attempts 1–3 (idx 430, 2026-11-15T22:28), and 0431–0435 were green afterwards.
+
+**Repeat.** This is the third S12 acceptance step whose effects stop at `KitAcceptanceTests.fs` and which exposed a product shortfall:
+- 0427: R0001 and R0002;
+- 0428: R0003.
+
+Each of those rulings confined its production authority to its own step by design, so none of them reaches 0436. The fix here must therefore carry its own forward clause. This is not 0210's case (`.manual/015`): there the suite passed, and only the descriptor's deadline was too short.
+
+## Evidence
+
+**Trigger and counters**
+- Trigger: `ESCALATION-RECORDED 2026-11-16T06:10:16 idx 435`, "code-judge escalated on cycle 1: The diff implements how-to (1)-(4) faithfully inside the authorized effect (KitAcceptanceTests.fs only)…".
+- Run log for 0436, in order:
+  - SLICE-START 03:20:52; one SLICE-ATTEMPT (n=1);
+  - the worker exited 0 after 9921.6 s;
+  - build passed in 25.3 s;
+  - JUDGE_VERDICT `escalate-to-human`, cycle 1;
+  - RESOLVER-SPAWN run=1, then RESOLVER_RESULT `confirm-escalation`, confidence high;
+  - no REVIEW-ROUTE-BACK for idx 435.
+- Counted from the log: 1 resolver run and 0 route-backs. This agrees with the scalars. The pending gate results are expected, because review escalated before the verify phase.
+- Spawns: implement_worker, code_judge, resolver and postmortem all ran on anthropic `claude-opus-5-5[1m]`. The last different spawn was openai `gpt-6-astra`, implement_worker at idx 430.
+
+**Tree**
+- `git status`:
+  - modified: `KitAcceptanceTests.fs` (150 lines changed) and `specs/0050/.manifest.state.json`;
+  - untracked: the 0436 impl-log, impl-plan and SoW.
+- HEAD is `cd6135ea` (Step 0435).
+- `completed_slices` has 435 rows; the last is index 434 (`0435`, `cd6135ea`).
+- `current_slice` is index 435, `escalated`. The first pending step is 0436, with 58 remaining after it.
+
+**Slice, design and worker artefacts**
+- Slice how-to: "AT-2's with 1800 seconds (one fifteen-parameter fit takes about three minutes, 001 §1b)". `0436.gates` kit-acceptance: `attempt_timeout_seconds: 3600`.
+- 001 §1b: "Runtime: about 946 s". 001 §L: "post-fit identifiability by profile likelihood for suspect parameters".
+- `.artifacts/0436-attempt-01-dev-kit-acceptance.log`: "Test run summary: Failed! total: 11 failed: 5 succeeded: 6 … exit=2 elapsed=1887s".
+- Probe `progress.log`:
+  - the main fit's last report is "54 359.6";
+  - the next is "1 953.5";
+  - the last is "993 7171.6".
+- `harness-suspects.log`:
+  - "n1 … suspect true partners [\"n2 0.9999\"; \"n3 0.9999\"]";
+  - "g23 sigmaFraction 1.069e-001 suspect true";
+  - "suspects 4".
+- `harness-seed1.log`: "iterations 62 time 278.5 s"; every quantity is within its band.
+- Judge: "The memoization alone does not close the gap … should require a measured end-to-end AT-2 build under 1800 s before commit … cover them as well". The resolver concurs.
+
+**Code, read for this post-mortem**
+- `FittedProblems.fs`:
+  - `:100-108` — `jacobian` and `report` are members;
+  - `:134-148` — `sigmas` and `sigmaAt`;
+  - `:182` — `profileAt` reads `sigmaAt`;
+  - `:206-221` — each re-fit starts from `without start`;
+  - `:227-243` — the serial `pointsFrom`.
+- `FitQuality.fs:154`: `reportFrom` calls `residualJacobian`.
+- `StudyEngine.fs`: `:1629` and `:1646` (`suspectsWith`); `:1753-1781` (the serial `profilesFrom`).
+- `MuellerFitting.fs:138-151`: `solveWith` uses `maxIterations 400` and `epsX 1e-12`.
+- `FitResultsTests.fs:283-290` pins a watched profile's counts to the contiguous run `6 .. 5 + N` and pins `run.iterations`.
+- `StudyForward.fs:945`: "nothing after the first error is solved (spec 0050 S11.2)".
+- Thread safety, plausible but not verified by a run:
+  - a grep of `Berreman/Berreman`, `OpticalProperties`, Domain and Optimization finds no module-level `Dictionary`, `let mutable` or memo cache;
+  - the ALGLIB state is local to `runLm`.
+- BerremanTests and BerremanTestSupport reference none of `FittedProblem`, `StagedStudy` or `StudyForward`, so `unit-tests` is unaffected.
+
+**History**
+- 25 ESCALATION-RECORDED: idx 12, 34, 51, 55, 58, 68, 117, 131, 144, 149, 152, 159 (×3), 184, 209, 251 (×2), 318, 362, 413, 425, 426, 427 and 435.
+- 23 slice ESCALATE events, plus one boot health-check ESCALATE (2026-11-15T00:47).
+- 1 INTERRUPTED (2026-11-06T01:34, "cycle 4 out of range").
+- 5 COMMIT-OVERRIDE accepts (idx 34, 51, 55, 117, 152) and 17 OPERATOR-REPLY-CONSUMED.
+- 23 post-mortems in `.slices/`. The ones on the same class: 0427-01 and 0428-01 (owner product, step-confined rulings), and 0210-01 (owner a gate descriptor, a deadline).
+- `.manual/` files on the same cause:
+  - `001` (11-03), the design;
+  - `015` (11-09), the ui-smoke deadline exception through `rebind-commands`;
+  - `030` and `031` (11-15), R0001 and R0002;
+  - `033` (11-15), R0003;
+  - `032` and `034`, their operator replies.
+
+**Forward (ledger)**
+- kit-acceptance, and with it AT-2's build and fit, runs at 0437–0440, 0442, 0444, 0445, 0453, 0454, 0457, 0460, 0462, 0463, 0473, 0474, 0476–0480, 0486, 0493 and 0494.
+- 0439 runs a second fit (`StudyFitParam.runFit` on the committed kit) in the same gate run.
+- 0437's five-fit ensemble is `Explicit`.
+- 0438 commits `AbsorbingTriclinic@20260601T120100Z.fitrun-json` and compares it byte for byte, so the fit must stay deterministic.
+- 0476 moves the offset frame out of `FittedProblem.jacobian` and `report`.
+- 0460 edits `StudyForward.fs`.
+
+## Proposed solutions
+
+Decision: owner product; recommend 1; confidence medium; operator decides whether to authorize the scoped results-pass repair below and its 900 s measured bound per AT-2 fit.
+
+1. **Rule a scoped repair of the results pass, then resume normally.** Five steps, in order:
+   1. Commit the worker's tree as it stands: the test file, the three 0436 worker files, this post-mortem, and the supervisor's state file unedited.
+   2. Write ruling R0004, attached below, and append it with `rulings_cli` while the arc is stopped.
+   3. Make the repair commit under that ruling:
+      - memoize each problem's Jacobian and report;
+      - run the profile re-fits concurrently;
+      - extend the named existing facts;
+      - measure AT-2's fit through the shell.
+   4. Before resuming, run:
+      - the 26 gates of `.slices/0436.gates` as declared: build; elevation from the arc origin; ui-smoke over every discovered test; ui-tests over StudyViewTests and DataStepTests; kit-acceptance over KitAcceptanceTests (all 11 facts, including the new one and AT-1's committed-kit equality); and the twenty-one `invariant-s42-*`;
+      - plus `constructor-unit-tests` as declared in `.slices/0426.gates`, because the repair edits Optimization and OpticalConstructor.Tests.
+   5. Write the operator reply (attached) as `.manual/036-step-0436-operator-reply.md`. Resume with `--executability-profile 1` and that reply, without `--accept-current-slice`, so normal review and the frozen roster publish measured checkpoint 435. This overrides standing rule 3 for this recovery only, as R0001–R0003 did.
+
+   Its forward clause covers every step that runs kit-acceptance, listed in Evidence, plus 0437's on-demand ensemble, 0438's byte comparison, 0439's second fit, 0460 and 0476.
+
+   **Why confidence is medium.** The projection is unmeasured: the 360 s main solve, about 42 s for two Jacobians, plus the longest single re-fit running alongside 23 others. That is why the ruling has a conditional residual clause and requires the measured bound.
+
+2. **OR raise the limits instead.** Rule a raised kit-acceptance attempt timeout and AT-2 fit deadline through the `.manual/015` channel: `.spec-gates`, the live `.gates/OpticalConstructor/kit-acceptance.gates`, and `rebind-commands`, with no product edit. It comes second for four reasons:
+   - The fit's total is unmeasured: it was still running at 7171.6 s.
+   - 0439's second fit pushes each gate run past four hours, and 22 pending steps run that gate.
+   - The app's own Fit for this study would stay above two hours.
+   - 015 covered a suite that passed in 192 s, not an unbounded one.
+
+   If chosen, first measure the full fit once with no deadline.
+
+**Attached: ruling R0004.** File `.manual/035-step-0436-study-fit-runtime-recovery.md`.
+- Title: "Step 0436: the study engine's results pass in bounded time".
+- Opening paragraph: "2026-11-16. Post-mortem `.slices/0436-01.postmortem-md`: AT-2's fit was still profiling at 7171.6 s; each σ read recomputes two Jacobians and 24 independent re-fits run serially."
+- A level-2 heading `Binding ruling`, holding:
+
+> At 0436, authorize editing `Berreman/OpticalConstructor/OpticalConstructor.Optimization/FittedProblems.fs` and `Berreman/OpticalConstructor/OpticalConstructor.Optimization/StudyEngine.fs`, and extending these existing facts: in `OpticalConstructor.Tests/FitResultsTests.fs`, `a fitted problem's Jacobian, sigmas, correlation, rank and condition are those of its least-squares design` and `a cancelled profile answers ProfileCancelledErr, and a watch after earlier iterations counts on from them`; in `OpticalConstructor.Tests/StudyEngineTests.fs`, `a nearly confounded pair is suspect by its correlation and profiled across three sigmas`, `a profile pass under a cancelled watch answers FitCancelledErr` and `a fit's results gather its sigmas, solves, run residuals, realizability and product checks`. No test identity is added, renamed or removed.
+>
+> The rule: (1) a fitted problem's Jacobian and report are each evaluated once, and its quality, every σ, its entry sigmas, the suspects and every profile read those values. (2) A profile pass runs its re-fits concurrently, the points of a suspect and the suspects alike; points and profiles keep their planned order; a watched pass tells one contiguous run of counts from `earlier` + 1, each count once, `ProfileRun.iterations` their number; a cancel still answers `ProfileCancelledErr` / `FitCancelledErr`. (3) Every number a fit run stores is unchanged: no solver, step, tolerance, threshold or start changes, and the optics-mueller kit still equals the committed kit file by file. (4) AT-2's fit through `runStudyFitThroughShell` ends within 900 s, measured on the arc's machine, so 0439's second fit stays inside kit-acceptance's 3600 s; the how-to's 1800 s deadline is unchanged. If (1) and (2) measure above 900 s, `OpticalConstructor.Domain/StudyForward.fs` `residualWith` may also solve its rows concurrently, answering the same vector and the first refusal in row order; that file is then authorized.
+>
+> Verify before commit: the 26 gates of `.slices/0436.gates` as declared plus `constructor-unit-tests` as declared in `.slices/0426.gates`, recording the measured AT-2 fit duration. Resume normally with executability profile 1 and the operator reply, without `--accept-current-slice`, so normal review publishes measured checkpoint 435; this overrides the general committed-green acceptance rule for this recovery only. At 0437–0494 preserve the single evaluation, the concurrent profile pass and the bound; at 0476 the offset frame's move keeps one Jacobian and one report per problem; at 0460 preserve any concurrent residual. The additional production authority is confined to 0436. No gate, floor, deadline, census, durable format, test effect or published-spec amendment is authorized.
+
+**Attached: the `rulings_cli` call.**
+`"C:/Python314/python.exe" -m ai_strategy_generator.multistep.rulings_cli append --spec-folder C:\GitHub\Berreman\specs\0050 --file 035-step-0436-study-fit-runtime-recovery.md --section "Binding ruling" --steps 436- --roles worker,judge,critic,resolver,build_repair,postmortem`
+
+**Attached: the operator reply** (`.manual/036-step-0436-operator-reply.md`; fill in the angle-bracket placeholders):
+
+> Step 0436's worker implementation is committed by the operator (`<sha>`), followed by the operator's repair commit (`<sha>`); git is forward-only, so do not amend, reset or re-stage those commits. Read ruling R0004 (`.manual/035-step-0436-study-fit-runtime-recovery.md`), section "Binding ruling"; the post-mortem `.slices/0436-01.postmortem-md` gives the cause. The repair: each `FittedProblem` evaluates its Jacobian and report once, and the profile re-fits run concurrently in their planned order with contiguous counts <and, if used, the concurrent residual>; every stored number is unchanged and AT-2's fit measured `<seconds>` s. The operator ran, over the repaired tree, the 26 gates of `.slices/0436.gates` as declared plus `constructor-unit-tests` as declared in `.slices/0426.gates` (evidence under `.artifacts/0436-operator-repair/`): `<results>`. Run normal review and the unchanged 26-gate roster over the committed tree, publish measured checkpoint 435 only on green, then continue. Preserve published contracts, descriptors, consumed counters, the arc origin and supervisor metadata. Do not use `--accept-current-slice`. Launch with `--executability-profile 1`.

@@ -24,7 +24,7 @@ module SourceAndDetectorMoveTests =
 
     let private tol = 1.0e-9
     let private close (a : float) (b : float) : bool = abs (a - b) <= tol
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
     let private boundedRange (lowest : float) (highest : float) : RayPositionControls.PositionRange =
         RayPositionControls.BoundedRange { lowest = BarMeters lowest; highest = BarMeters highest }
 
@@ -68,7 +68,7 @@ module SourceAndDetectorMoveTests =
             |> updateTableAndElementRotation (RotateR1By (BarDegrees 15.0))
             |> updateTableAndElementRotation (RotateR2By (BarDegrees 15.0))
             |> updateTableAndElementRotation (RotateR3By (BarDegrees 15.0))
-        Assert.Equal<TestElement>(elem 0 m, elem 0 tried)
+        Assert.Equal<Setups.SetupSlot>(elem 0 m, elem 0 tried)
 
     [<Fact>]
     let ``every other element keeps the old defaults: R3 locked, R1 / R2 and its moves free`` () =

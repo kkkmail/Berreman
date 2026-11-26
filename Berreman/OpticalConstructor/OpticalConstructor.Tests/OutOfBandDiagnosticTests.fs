@@ -8,6 +8,7 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.OutOfBandDiagnostic
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 open Xunit
 
 /// Spec 0038 Part I (step 031) — the pure OUT-OF-BAND dispersion diagnostic. A fixed 600 nm request
@@ -46,15 +47,19 @@ module OutOfBandDiagnosticTests =
             active = None
         }
 
-    /// A library material entry wrapping a complexity.
-    let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
+    /// A library material entry holding a physics.
+    let private physicsEntryOf (name : string) (physics : MaterialPhysics) : MaterialEntry =
         {
             id = newMaterialId ()
             name = EntryName name
             category = CategoryIds.glass
             description = None
-            complexity = c
+            physics = physics
         }
+
+    /// A library material entry wrapping a complexity.
+    let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
+        physicsEntryOf name (ComplexityPhysics c)
 
     // ============================ the acceptance cases ============================
 
@@ -102,6 +107,14 @@ module OutOfBandDiagnosticTests =
         let entry = entryOf "Glass" constantComplexity
         Assert.Empty((ReachableMaterial.ofEntry entry).definedSegments)
         Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 100.0 2000.0)))
+
+    [<Fact>]
+    let ``a crystal-parameter material never flags out of band`` () =
+        // Spec 0050 S11.1: a crystal's tensors hold at every wavelength, so it defines no segment to leave.
+        for crystal in crystals do
+            let entry = physicsEntryOf "Crystal" (CrystalParameterPhysics crystal)
+            Assert.Empty((ReachableMaterial.ofEntry entry).definedSegments)
+            Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 300.0 900.0)))
 
     [<Fact>]
     let ``a coded-preset material (spectrum-spanning band) never flags`` () =
@@ -157,29 +170,62 @@ module OutOfBandDiagnosticTests =
     [<Fact>]
     let ``requestedWavelengthsOf: a wavelength-sweep experiment requests its range; a dark line is fixed`` () =
         let fixedλ = nm 600.0
+        // A test-local setup revision both runs reference (spec 0050 S8.2).
+        let bench : OpticalConstructor.Domain.Kit.SetupReference =
+            {
+                name = OpticalConstructor.Domain.Kit.SetupName "Bench"
+                revision = OpticalConstructor.Domain.Kit.SetupRevision 1
+            }
+        // The source's wavelength over `lo`…`hi` nm.
+        let sourceSweep (lo : float) (hi : float) : ScanAxis =
+            {
+                elementId = OpticalConstructor.Domain.Library.ElementId "src"
+                label = ElementLabel "Light source #1"
+                variable = VaryWaveLength
+                range = { min = OpticalConstructor.Domain.Propagation.SweptValue lo; max = OpticalConstructor.Domain.Propagation.SweptValue hi; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
+            }
         let sweep : Experiment =
             {
                 id = ExperimentId 1
-                setup = []
-                varied = Some { VariedElement.elementId = OpticalConstructor.Domain.Library.ElementId "src"; variable = VaryWaveLength }
-                measurement = CaptureTransmitted
-                range = { min = OpticalConstructor.Domain.Propagation.SweptValue 200.0; max = OpticalConstructor.Domain.Propagation.SweptValue 800.0; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
-                dataFileOpt = None
-                sourceWaveLengthOpt = None
+                name = (ExperimentId 1).defaultName
+                setup = bench
+                scan = ExperimentScan.oneAxis (sourceSweep 200.0 800.0) CaptureTransmitted None
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
+                dataOpt = None
+                corrections = []
             }
         Assert.Equal(SweptWavelengths (band 200.0 800.0), requestedWavelengthsOf fixedλ sweep)
-        // A dark line (varied = None) has no sweep, so it runs at the fixed source λ.
+        // A dark line (a block of no axis) has no sweep, so it runs at the fixed source λ.
         let darkLine : Experiment =
             {
-                id = ExperimentId 1
-                setup = []
-                varied = None
-                measurement = CaptureTransmitted
-                range = VariableRange.forVariable VaryR1
-                dataFileOpt = None
-                sourceWaveLengthOpt = None
+                sweep with scan = ExperimentScan.darkLine CaptureTransmitted
             }
         Assert.Equal(FixedWavelength fixedλ, requestedWavelengthsOf fixedλ darkLine)
+        // Spec 0050 S9.1: two blocks sweeping 300…500 nm and 400…700 nm request their span, 300…700 nm; an R1 axis
+        // beside them requests nothing more.
+        let analyzerTurn : ScanAxis =
+            {
+                elementId = OpticalConstructor.Domain.Library.ElementId "lp"
+                label = ElementLabel "Linear polarizer #2"
+                variable = VaryR1
+                range = VariableRange.forVariable VaryR1
+            }
+        let twoSweeps : Experiment =
+            {
+                sweep with
+                    scan =
+                        {
+                            blocks =
+                                [
+                                    { axes = [ sourceSweep 300.0 500.0 ]; capture = CaptureTransmitted }
+                                    { axes = [ analyzerTurn; sourceSweep 400.0 700.0 ]; capture = CaptureBoth }
+                                ]
+                            sourceWaveLengthOpt = None
+                        }
+            }
+        Assert.Equal(SweptWavelengths (band 300.0 700.0), requestedWavelengthsOf fixedλ twoSweeps)
 
     // ============================ the tooltip / Details text ============================
 

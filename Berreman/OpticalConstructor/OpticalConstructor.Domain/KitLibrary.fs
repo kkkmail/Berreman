@@ -7,22 +7,29 @@ open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.ItemModels
 
 /// Snapshots referenced versions and overlays the session's library with kit entries (spec 0050 S4.2).
 module KitLibrary =
 
-    /// A kit snapshot failure, preserving the storage/import error or missing reference (spec 0050 S4.2).
+    /// A kit snapshot failure, preserving the storage/import error or missing reference (spec 0050 S4.2), an item the
+    /// copy could not take (spec 0050 S7.2), or a setup revision the kit cannot resolve (spec 0050 S8.2).
     type KitLibraryError =
         | KitLibraryKitErr of KitError
         | KitLibraryImportErr of CatalogueImportError
         | UnheldEntryErr of reason : string
+        | KitLibraryItemErr of ItemError
+        /// A referenced setup, revision or slot item could not be resolved (spec 0050 S8.2).
+        | KitLibrarySetupErr of SetupError
 
-        /// Describes the failed condition and its underlying diagnostic payload (spec 0050 S4.2).
+        /// Describes the failed condition and its underlying diagnostic payload (spec 0050 S4.2, S7.2, S8.2).
         member this.describe : string =
             match this with
             | KitLibraryKitErr error -> $"the kit refused the library snapshot: {error.describe}"
             | KitLibraryImportErr error -> $"the library refused the kit snapshot: {error.describe}"
             | UnheldEntryErr reason -> $"neither the library nor the kit holds the reference: {reason}"
+            | KitLibraryItemErr error -> $"the items could not be copied: {error.describe}"
+            | KitLibrarySetupErr error -> $"the setup could not be used: {error.describe}"
 
     /// A kit identity explicitly rebound to a held library envelope (spec 0050 S4.2).
     type EntryReplacement =
@@ -47,6 +54,29 @@ module KitLibrary =
             samples : SampleProxy
             categories : CategoryProxy
         }
+
+    /// Resolves the references, then each envelope's own references, depth first and in order, visiting each version
+    /// once; answers the visited envelopes in visit order, or the first error (spec 0050 S6).
+    let referenceClosure
+        (resolve : EntryReference -> Result<LibraryEntryEnvelope, KitLibraryError>)
+        (references : EntryReference list)
+        : Result<LibraryEntryEnvelope list, KitLibraryError> =
+        let rec visit
+            (visited : Set<LibraryVersionRef>)
+            (closure : LibraryEntryEnvelope list)
+            (pending : EntryReference list)
+            : Result<LibraryEntryEnvelope list, KitLibraryError> =
+            match pending with
+            | [] -> Ok (List.rev closure)
+            | reference :: rest ->
+                resolve reference
+                |> Result.bind (fun envelope ->
+                    let version = envelope.libraryVersionRef
+                    if Set.contains version visited then
+                        visit visited closure rest
+                    else
+                        visit (Set.add version visited) (envelope :: closure) (envelope.content.references @ rest))
+        visit Set.empty [] references
 
     /// One opened kit and the library seam supplying and pinning its versions (spec 0050 S4.2).
     [<ReferenceEquality>]
@@ -114,6 +144,7 @@ module KitLibrary =
 
         /// Pins and writes missing versions depth first, retaining held snapshots and returning writes in visit order (spec 0050 S4.2).
         /// Read-only access performs no IO; the first failure stops traversal and keeps earlier writes for the next call.
+        /// Each reference's closure is resolved before its writes (spec 0050 S6).
         member this.snapshotReferences (references : EntryReference list) : Result<LibraryVersionRef list, KitLibraryError> =
             match this.kit.access with
             | ReadOnlyKitAccess -> Error (KitLibraryKitErr (KitReadOnlyErr "snapshotReferences"))
@@ -148,33 +179,26 @@ module KitLibrary =
                                 |> Option.defaultValue envelope
                                 |> Ok)
 
-                    let rec visitReferences
-                        (visited : Set<LibraryVersionRef>)
-                        (written : LibraryVersionRef list)
-                        (pending : EntryReference list)
-                        : Result<LibraryVersionRef list, KitLibraryError> =
-                        match pending with
-                        | [] -> Ok (List.rev written)
-                        | reference :: rest ->
-                            resolveReference reference
-                            |> Result.bind (fun envelope ->
-                                let version = envelope.libraryVersionRef
-                                if Set.contains version visited then
-                                    visitReferences visited written rest
-                                else
-                                    let writeResult =
-                                        if Map.containsKey version snapshots then
-                                            Ok written
-                                        else
-                                            this.imports.proxy.pinEntryVersion version.entryId version.version
-                                            |> Result.mapError KitLibraryImportErr
-                                            |> Result.bind (fun () -> this.kit.proxy.writeSnapshot envelope |> Result.mapError KitLibraryKitErr)
-                                            |> Result.map (fun () -> version :: written)
-                                    writeResult
-                                    |> Result.bind (fun nextWritten ->
-                                        visitReferences (Set.add version visited) nextWritten (envelope.content.references @ rest)))
+                    let writeLacking (written : LibraryVersionRef list) (envelope : LibraryEntryEnvelope) : Result<LibraryVersionRef list, KitLibraryError> =
+                        let version = envelope.libraryVersionRef
+                        if Map.containsKey version snapshots || List.contains version written then
+                            Ok written
+                        else
+                            this.imports.proxy.pinEntryVersion version.entryId version.version
+                            |> Result.mapError KitLibraryImportErr
+                            |> Result.bind (fun () -> this.kit.proxy.writeSnapshot envelope |> Result.mapError KitLibraryKitErr)
+                            |> Result.map (fun () -> version :: written)
 
-                    visitReferences Set.empty [] references)
+                    let writeClosure (written : LibraryVersionRef list) (closure : LibraryEntryEnvelope list) : Result<LibraryVersionRef list, KitLibraryError> =
+                        closure
+                        |> List.fold (fun result envelope -> result |> Result.bind (fun current -> writeLacking current envelope)) (Ok written)
+
+                    // One closure per reference, so an unheld later reference keeps the earlier ones' writes (spec 0050 S6).
+                    references
+                    |> List.fold (fun result reference ->
+                        result |> Result.bind (fun written ->
+                            referenceClosure resolveReference [ reference ] |> Result.bind (writeClosure written))) (Ok [])
+                    |> Result.map List.rev)
 
     let private tryOverlayReplacement (overlay : KitLibraryOverlay) (id : LibraryEntryId) : LibraryEntryEnvelope option =
         overlay.replacements
@@ -237,7 +261,7 @@ module KitLibrary =
                 | SourceEntryKind -> content.toSourcePreset |> Result.map (SourceItem >> Some)
                 | PolarizerEntryKind -> content.toPolarizerPreset |> Result.map (PolarizerItem >> Some)
                 | DetectorEntryKind -> content.toDetectorPreset |> Result.map (DetectorItem >> Some)
-                | MaterialEntryKind | CategoryEntryKind -> Ok None
+                | MaterialEntryKind | CategoryEntryKind | ItemModelEntryKind -> Ok None
                 |> Result.mapError (fun error -> LibraryUnavailableErr $"snapshot {content.describe}: {error.describe}")
 
             let entriesForKind (kind : CatalogueKind) : Result<LibraryEntry list, LibraryError> =
@@ -354,4 +378,43 @@ module KitLibrary =
                 materials = this.materials.overlaidWith overlay
                 samples = this.samples.overlaidWith overlay
                 categories = this.categories.overlaidWith overlay
+            }
+
+    /// The session's item models over read-only kit versions, so a kit's items resolve their models on any machine
+    /// (spec 0050 S7.2; 001 §E). Composed beside `KitLibraryStores`, not inside it.
+    type ItemModelProxy with
+
+        /// Re-bound entries resolve to the held one and exact versions prefer the kit's snapshot; listings append the
+        /// kit's snapshot-only item models by name, then id; saves pass through (spec 0050 S7.2, S4.2).
+        member this.overlaidWith (overlay : KitLibraryOverlay) : ItemModelProxy =
+            let decode (envelope : LibraryEntryEnvelope) : Result<ItemModelVersion, ItemModelError> =
+                let content = envelope.content
+                content.toItemModel
+                |> Result.map (fun entry ->
+                    let itemModel : ItemModelVersion =
+                        {
+                            version = content.version
+                            entry = entry
+                        }
+                    itemModel)
+                |> Result.mapError (fun error -> ItemModelStoreUnavailableErr $"snapshot {content.describe}: {error.describe}")
+            {
+                this with
+                    resolveItemModelVersion = fun versionId ->
+                        resolveOverlayReference
+                            overlay
+                            versionId.entryReference
+                            (fun () -> this.resolveItemModelVersion versionId)
+                            (decode >> Result.map Some)
+                    listItemModels = fun () ->
+                        this.listItemModels ()
+                        |> Result.bind (fun stored ->
+                            overlayListingSnapshots overlay [ ItemModelEntryKind ]
+                            |> List.filter (fun envelope ->
+                                not (stored |> List.exists (fun held -> held.entry.id.toLibraryEntryId = envelope.content.id)))
+                            |> List.fold (fun result envelope ->
+                                result |> Result.bind (fun itemModels ->
+                                    decode envelope |> Result.map (fun itemModel -> itemModel :: itemModels))) (Ok [])
+                            |> Result.map (fun snapshots ->
+                                stored @ (snapshots |> List.sortBy (fun itemModel -> itemModel.entry.name, itemModel.entry.id))))
             }

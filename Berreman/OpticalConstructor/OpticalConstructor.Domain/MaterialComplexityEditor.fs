@@ -889,6 +889,16 @@ type MaterialComplexity with
             | Some (PublishedLawRho _) -> false
         epsIsEditable && activeIsEditable
 
+type MaterialPhysics with
+
+    /// The complexity the editor can seed from this physics, when `isEditable` holds; the host
+    /// editability seams gate on it. The ladder edits complexity trees, so a crystal has none (spec 0050 S11.1).
+    member this.editableComplexityOpt : MaterialComplexity option =
+        match this with
+        | ComplexityPhysics complexity when complexity.isEditable -> Some complexity
+        | ComplexityPhysics _
+        | CrystalParameterPhysics _ -> None
+
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so
 /// `toComplexity (ofComplexity c) = Ok c` value-identically. A dispersive

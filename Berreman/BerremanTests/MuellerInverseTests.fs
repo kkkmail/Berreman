@@ -7,14 +7,20 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Solvers
-open OpticalProperties.Active
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused, not re-declared
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
+open OpticalConstructor.Optimization.FitUncertainty
 open Xunit
 open BerremanTests.MatrixComparison
-open BerremanTests.InverseFitHarness                   // the fit driver both inverse-problem suites share
+open BerremanTests.InverseFitHarness
+open BerremanTestSupport.QuartzSample
 
 
 /// Spec 0044 — the inverse problem for a transparent, optically active, anisotropic, homogeneous
@@ -31,8 +37,8 @@ open BerremanTests.InverseFitHarness                   // the fit driver both in
 /// Mueller element by up to 0.005 of full scale, and eight fixed seeds give eight complete experiments
 /// whose spread IS the uncertainty. Those facts fit from a blind `n = 1.5`, `g = 0` start, and they are
 /// what turns this suite from a measurement of the inverse MACHINERY into a measurement of the
-/// EXPERIMENT. See the commentary above `NoiseParam.decentLab` for the error model and where its magnitudes come
-/// from.
+/// EXPERIMENT. The error model is `BenchNoise`; where its magnitudes come from is
+/// specs/0044/.manual/011-noisy-measurement-tests.md.
 ///
 /// Deliberately NOT asserted here — each is a candidate for a future slice:
 ///   - multistart / global search, needed once the retardance order is unknown;
@@ -44,212 +50,21 @@ open BerremanTests.InverseFitHarness                   // the fit driver both in
 ///
 /// BIAXIAL materials are no longer on that list: manual task 012 added `BiaxialInverseTests`, which runs
 /// the same recovery on a TRICLINIC crystal with nine unknowns. The fit driver both suites use lives in
-/// `InverseFitHarness`, and the parameter-set genericity that makes one driver serve both lives in
-/// `MuellerInverse.ParameterAxis`.
+/// `OpticalConstructor.Optimization.MuellerFitting`, and the parameter-set genericity that makes one
+/// driver serve both lives in `MuellerInverse.ParameterAxis`.
 type MuellerInverseTests() =
 
     /// Radians per degree, reached by its full module path (mirrors `MuellerReconstructionTests`). Bound
     /// here, ahead of the members (FS0960: in a class type every `let` binding precedes the first member).
     let degree = Angle.radiansPerDegree
 
-    // =================================================================================================
-    // Ground truth: quartz at 632.8 nm.
-    //
-    // Spec R3 puts the material in the TEST rather than in the OpticalProperties library. The library has
-    // no quartz: the gyration constants exist only as a fixture in RhoWithDispValueTests and as a doc
-    // comment in MaterialComplexityEditor, and there is no quartz permittivity anywhere. Rather than add a
-    // shipped material for a single test, the constants live here with their provenance.
-    //
-    // Two things a reader must know about these numbers, so that nobody mistakes a synthetic round trip
-    // for a literature validation:
-    //
-    //   * g33 agrees with the literature almost exactly (10.1 here vs Arteaga/Canillas/Jellison's
-    //     10.06 ± 0.07 e-5 at 632.8 nm), but g11 sits at the HIGH end (5.9 vs 4.8 ± 0.5 e-5; ratio -0.584
-    //     vs -0.486). Since the forward data is generated FROM these values, they are the ground truth by
-    //     definition and the discrepancy cannot affect pass or fail.
-    //
-    //   * Handedness is one overall sign. Active.assembleRho applies hand.sign to every component, so the
-    //     left-handed enantiomorph is the negation of this set. These are the right-handed values.
-    // =================================================================================================
-
-    /// He-Ne. The wavelength the quartz literature is densest at, and the one every constant below is
-    /// quoted for.
-    let waveLength = WaveLength.nm 632.8<nm>
-
-    /// Ghosh 1999 ordinary Sellmeier for alpha-quartz, evaluated at 0.6328 um.
-    let quartzOrdinaryIndex = RefractionIndex 1.542606
-
-    /// Ghosh 1999 extraordinary Sellmeier for alpha-quartz, evaluated at 0.6328 um. The birefringence is
-    /// therefore n_e - n_o = 0.009045.
-    let quartzExtraordinaryIndex = RefractionIndex 1.551651
-
-    /// Gyration component perpendicular to the optic axis (class 32, 24 C). Same value as the existing
-    /// RhoWithDispValueTests fixture.
-    let quartzG11 = RhoValue 5.9e-5
-
-    /// Gyration component along the optic axis. Same value as the existing RhoWithDispValueTests fixture.
-    let quartzG33 = RhoValue -10.1e-5
-
-    /// The ground-truth parameter set the forward data is generated from and the fit must recover.
-    let quartz : UniaxialParameters =
-        {
-            ordinaryIndex = quartzOrdinaryIndex
-            extraordinaryIndex = quartzExtraordinaryIndex
-            g11 = quartzG11
-            g33 = quartzG33
-        }
-
-    /// Build the engine's optical properties for a uniaxial gyrotropic (class 3/32/4/422/6/622) crystal
-    /// from the four unknowns. This is the ONE material-specific function in the whole pipeline, and the
-    /// reason MuellerInverse takes it as a parameter rather than knowing it: the Domain project does not
-    /// reference OpticalProperties, and the inverse machinery is not specific to quartz.
-    ///
-    /// It delegates entirely to the existing Active.OpticalProperties.type_3_4_6_Crystal builder, so the
-    /// diagonal forms diag(n_o^2, n_o^2, n_e^2) and diag(g11, g11, g33) are the engine's own and are not
-    /// re-derived here.
-    let buildUniaxialGyrotropic (p : UniaxialParameters) : OpticalProperties =
-        OpticalProperties.type_3_4_6_Crystal
-            (EpsValue.fromRefractionIndex p.ordinaryIndex)
-            (EpsValue.fromRefractionIndex p.extraordinaryIndex)
-            p.g11
-            p.g33
-
-    /// Spec R4: three internal reflections, stated explicitly at the composition root rather than
-    /// inherited from SolverParameters.defaultValue.
-    ///
-    /// This is a physics choice, not a knob. With numberOfReflections = 3 the Plate branch of the solver
-    /// accumulates five emerging beams and getMuellerMatrix SUMS their Mueller matrices, so
-    /// muellerMatrixT() is the direct beam plus the beam that has bounced twice inside the plate. A sum of
-    /// Mueller-Jones matrices is in general weakly DEPOLARIZING - which is why the realizability fact
-    /// below asserts a bounded depolarization index rather than strict non-depolarization, and why the
-    /// closed-form analytic inversion is used for starting values rather than as the reported answer.
-    /// At quartz's ~4.55 % surface reflectance the second transmitted beam carries only ~0.2 % of the
-    /// first, so the effect is small but real.
-    let solverParameters : SolverParameters = { numberOfReflections = NumberOfReflections 3 }
-
-    /// The real Berreman-backed forward model, wired once for the whole class.
-    let forward = createBerremanForward buildUniaxialGyrotropic solverParameters
-
-    // =================================================================================================
-    // The measurement set (spec §3.4, C1-C4).
-    //
-    // Why more than one configuration is needed at all. A wave only ever sees the components of the
-    // material tensors TRANSVERSE to its own propagation direction, so no single propagation direction can
-    // constrain the whole tensor:
-    //
-    //   z-cut, normal incidence (C1): the wave travels along the optic axis. The two transverse directions
-    //           are equivalent, so there is NO linear birefringence at all and the plate is a pure
-    //           circular retarder. The transverse Rho components are both g11, so this configuration
-    //           measures g11 cleanly and is completely BLIND to g33 (asserted by the ablation fact below).
-    //
-    //   x-cut, normal incidence (C3): the wave travels across the optic axis. Now one transverse direction
-    //           is ordinary and the other extraordinary, so linear birefringence is maximal and buries the
-    //           much smaller optical activity - and the transverse Rho components are g11 and g33, so this
-    //           is the configuration that makes g33 reachable at all. It is the hard measurement, exactly
-    //           as the analogous case is in the literature.
-    //
-    // The trap: those two regimes CANNOT be reached from one sample by tilting it. Snell's law caps the
-    // internal angle at arcsin(1/n_o) = 40.41 deg for quartz, so a z-cut plate never gets the wave more
-    // than 40 deg off its optic axis however far it is tilted. That is why C3/C4 exist, and it is the same
-    // constraint that makes the transverse gyration component the poorly-determined one in published
-    // measurements (Arteaga/Canillas/Jellison report their axial component to 0.7 % and their transverse
-    // one only to ~10 % from a single z-cut crystal). The ablation fact below asserts the resulting
-    // unobservability directly rather than assuming it.
-    //
-    // Thickness is KNOWN (spec R2) and is not fitted; it is still a DESIGN variable, because it controls
-    // the shape of the chi-squared surface:
-    //
-    //   * C1 is 1.0 mm. It carries NO linear retardance (normal incidence on a z-cut), so thickness costs
-    //     nothing here and buys a large, well-conditioned optical rotation of 18.62 deg.
-    //   * Every configuration that DOES carry linear retardance is 20 um, which is 0.286 wave at 632.8 nm.
-    //     Sub-wave retardance keeps the residual smooth and unimodal in n_e - n_o; at 1 mm the same
-    //     configuration would be 14.29 waves and the residual would oscillate into a dense forest of local
-    //     minima roughly half a fringe apart.
-    //
-    // NOTE, and a correction to spec §3.4 as written: the spec put C2 (z-cut, OBLIQUE incidence) at
-    // 1.0 mm, on the reasoning that a z-cut plate carries no linear retardance. That reasoning holds only
-    // at normal incidence. Tilted, the internal angle is non-zero, the effective birefringence grows as
-    // sin^2 t, and a 1 mm z-cut plate at 70 deg incidence carries ~5.9 waves - exactly the multimodality
-    // §3.3 exists to avoid. C2 therefore uses the same 20 um plate, which puts it at ~0.12 wave. This
-    // applies the spec's own stated rule to a configuration the spec mis-classified.
-    // =================================================================================================
-
-    /// A 1.0 mm plate — used only where there is no linear retardance to alias.
-    let thickPlate = Thickness.mm 1.0<mm>
-
-    /// A 20 um plate — sub-wave linear retardance, used by every retardance-bearing configuration.
-    let thinPlate = Thickness.mkm 20.0<mkm>
-
-    let configuration (cut : SampleCut) (thickness : Thickness) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
-        configurationOf cut thickness incidenceDeg azimuthDeg observable waveLength
-
-    /// C1 — z-cut, normal incidence, 1.0 mm. The anchor: a pure optical rotator, and the configuration
-    /// that fixes g11 almost independently of everything else — while being completely blind to g33.
-    let c1 : MeasurementConfiguration list =
-        [ configuration ZCut thickPlate 0.0 0.0 TransmittedMueller ]
-
-    /// C2 — z-cut, oblique incidence sweep, both azimuths, transmission and reflection. Supplies the
-    /// Fresnel/angle information that pins the absolute indices, and lets g33 begin to enter as the
-    /// internal angle tilts the crystal 3-axis into the transverse plane — weakly, since Snell caps that
-    /// tilt at 40.4 deg.
-    let c2 : MeasurementConfiguration list =
-        [ for incidence in [ 10.0; 30.0; 50.0; 70.0 ] do
-            for azimuth in [ 0.0; 45.0 ] do
-                for observable in [ TransmittedMueller; ReflectedMueller ] ->
-                    configuration ZCut thinPlate incidence azimuth observable ]
-
-    /// C3 — x-cut, normal incidence, four azimuths. The configuration that makes g33 identifiable at all:
-    /// the optic axis lies in the surface plane, so the crystal 3-axis is transverse to the propagation
-    /// direction and its Rho component finally enters.
-    let c3 : MeasurementConfiguration list =
-        [ for azimuth in [ 0.0; 22.5; 45.0; 67.5 ] ->
-            configuration XCut thinPlate 0.0 azimuth TransmittedMueller ]
-
-    /// C4 — x-cut, oblique sweep, both azimuths, transmission and reflection. A second independent look at
-    /// g33 and extra index/angle leverage.
-    let c4 : MeasurementConfiguration list =
-        [ for incidence in [ 15.0; 45.0 ] do
-            for azimuth in [ 0.0; 45.0 ] do
-                for observable in [ TransmittedMueller; ReflectedMueller ] ->
-                    configuration XCut thinPlate incidence azimuth observable ]
-
-    let fullConfigurations = c1 @ c2 @ c3 @ c4
-
     /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters.
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        observeWith forward quartz configurations
+        observeWith forward quartz configurations |> expectOk
 
     // =================================================================================================
     // T7 / T8 / T9 — Stage B: the nonlinear fit, its identifiability diagnostics, and the ablation.
     // =================================================================================================
-
-    /// The dimensionless fit space (spec §3.5), specialized to this material. `centre` is the START
-    /// GUESS, so the initial scaled vector is exactly zero; `scale` sets what one unit of each coordinate
-    /// means physically, and `axes` is what makes the shared, material-agnostic fit driver able to read
-    /// and write a `UniaxialParameters` without knowing its field names.
-    ///
-    /// The scale choice is the whole reason `ParameterScaling` exists. ALGLIB's Levenberg-Marquardt
-    /// differentiates with a FIXED ABSOLUTE step of 1e-6, so a unit of 1e-3 in refractive index makes
-    /// that step a 1e-9 perturbation of n, and a unit of 1e-5 in gyration makes it a 1e-11 perturbation
-    /// of g. Both are small enough to be genuinely linear and large enough to move the Mueller elements
-    /// far above the solver's own numerical noise. Handing the optimizer raw physical parameters instead
-    /// would make the same 1e-6 step a 1 % perturbation of g and a 6e-7 relative perturbation of n - four
-    /// orders of magnitude apart, and the former far outside the linear regime a Jacobian assumes.
-    ///
-    /// It deliberately shadows the harness's general `scalingAround`: this is the uniaxial specialization
-    /// of it, and every fit in this file wants exactly these axes and exactly this scale.
-    let scalingAround (centre : UniaxialParameters) : ParameterScaling<UniaxialParameters> =
-        {
-            axes = UniaxialParameters.axes
-            centre = centre
-            scale =
-                {
-                    ordinaryIndex = RefractionIndex 1.0e-3
-                    extraordinaryIndex = RefractionIndex 1.0e-3
-                    g11 = RhoValue 1.0e-5
-                    g33 = RhoValue 1.0e-5
-                }
-        }
 
     /// The start guess shared by the fit facts: the two gyration components 30 % wrong, the two refractive
     /// indices off by +0.2 % and +0.1 %.
@@ -277,9 +92,9 @@ type MuellerInverseTests() =
     let nearBox = SearchBox 50.0
 
     /// Recover the material parameters from a GIVEN set of observations, from a given start guess, over a
-    /// given box — the shared harness runner, with this material's scaling baked in. Every fit in this
-    /// file, noiseless or noisy, goes through it, so the noisy facts differ from the noiseless one in
-    /// their DATA and nothing else.
+    /// given box — `MuellerFitting.fitObservations`, with this material's scaling baked in. Every fit in this
+    /// file goes through it or through `recoverQuartzFromNoisy`, which runs the same fit, so the noisy facts
+    /// differ from the noiseless one in their DATA and nothing else.
     ///
     /// It deliberately takes observations rather than configurations: that is the seam noise enters
     /// through. A noisy experiment is the same fit run against data generated at slightly wrong angles
@@ -289,7 +104,7 @@ type MuellerInverseTests() =
         (observations : MuellerObservation list)
         (start : UniaxialParameters)
         : ParameterScaling<UniaxialParameters> * (ScaledVector -> ResidualVector) * NonlinearSolution =
-        let fit = InverseFitHarness.fitObservations forward box observations (scalingAround start)
+        let fit = MuellerFitting.fitObservations forward box observations (quartzScalingAround start) |> expectOk
         fit.scaling, fit.residual, fit.solution
 
     /// Run the fit on NOISELESS data generated for a configuration set, from a given start guess.
@@ -300,70 +115,22 @@ type MuellerInverseTests() =
 
     let parameterNames = UniaxialParameters.axes |> List.map (fun a -> a.name.value) |> Array.ofList
 
-    let relativeError (actual : float) (expected : float) : RelativeError = RelativeError.between actual expected
+    let relativeError (actual : float) (expected : float) : RelativeError =
+        RelativeError.between (QuantityValue actual) (QuantityValue expected)
 
     // =================================================================================================
     // Manual task 010 — the noisy experiments. The measurement-error model itself — what is perturbed,
-    // by how much, and where those magnitudes come from — lives in `InverseFitHarness`, because it
-    // describes the APPARATUS rather than this crystal, and `BiaxialInverseTests` measures its own
-    // sample on the same bench.
+    // by how much, and where those magnitudes come from — is the shared `BenchNoise`
+    // (specs/0044/.manual/011-noisy-measurement-tests.md), because it describes the APPARATUS rather
+    // than this crystal, and `BiaxialInverseTests` measures its own sample on the same bench.
     // =================================================================================================
-
-    /// The BLIND start guess the noisy facts fit from: `n_o = n_e = 1.5` and no optical activity at all.
-    ///
-    /// It is the honest starting point for a material whose constants are not already known — "some
-    /// ordinary transparent glass-like solid, no measured birefringence, no measured rotation" — and it
-    /// is a far harder start than `perturbedStart`: the two indices are 2.8 % and 3.3 % low, the
-    /// BIREFRINGENCE starts at exactly zero instead of 17 % wrong, and both gyration components start at
-    /// exactly zero instead of 30 % wrong.
-    ///
-    /// It is nonetheless a legitimate start rather than a lucky one, for the structural reason the
-    /// `perturbedStart` comment gives: linear retardance enters through cos and sin of
-    /// 2 pi (n_e - n_o) d / lambda, so what matters is the distance in FRINGES. The truth is 0.286 wave
-    /// for the 20 um plates, and zero birefringence is therefore just under a third of a fringe away —
-    /// inside the same basin of attraction. The control fact below asserts exactly this by recovering
-    /// every constant to machine precision from this start on noiseless data, which is what makes the
-    /// noisy ensemble's scatter attributable to the NOISE rather than to the start guess.
-    let blindStart : UniaxialParameters =
-        {
-            ordinaryIndex = RefractionIndex 1.5
-            extraordinaryIndex = RefractionIndex 1.5
-            g11 = RhoValue 0.0
-            g33 = RhoValue 0.0
-        }
-
-    /// The box for the blind start. It must be wide enough to CONTAIN the truth: quartz's n_e is 51.65
-    /// scaled units from 1.5, so the +-50 box that comfortably brackets `perturbedStart` would exclude
-    /// the answer and the fit would converge against a bound. +-200 is +-0.2 in refractive index and
-    /// +-2e-3 in gyration — still physically sensible, and still far from the degenerate n = 0.
-    let wideBox = SearchBox 200.0
-
-    /// This suite's noisy data: the shared bench applied to quartz.
-    let noisyObserve (noise : NoiseParam) (seed : NoiseSeed) (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        noisyObserveWith forward quartz noise seed configurations
-
-    /// Run ONE noisy experiment end to end: generate its data, fit it, and keep everything the ensemble
-    /// will want to ask it afterwards.
-    let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<UniaxialParameters> =
-        let observations = noisyObserve noise seed fullConfigurations
-        let (scaling, residual, solution) = fitObservations wideBox observations blindStart
-        {
-            seed = seed
-            fit =
-                {
-                    recovered = ofScaled scaling solution.solution
-                    solution = solution
-                    scaling = scaling
-                    residual = residual
-                }
-        }
 
     /// The quantities the ensemble reports on: the four fitted unknowns, plus the BIREFRINGENCE, which
     /// is not a fit parameter and is nevertheless what this data determines best (see
     /// `RecoveredQuantity`).
     let recoveredQuantities : RecoveredQuantity<UniaxialParameters> list =
         [ for a in UniaxialParameters.axes -> RecoveredQuantity.ofAxis a ]
-        @ [ RecoveredQuantity.derived "n_e - n_o" (fun p -> p.extraordinaryIndex.value - p.ordinaryIndex.value) ]
+        @ [ RecoveredQuantity.derived (ParameterName "n_e - n_o") (fun p -> QuantityValue (p.extraordinaryIndex.value - p.ordinaryIndex.value)) ]
 
     // =================================================================================================
     // T1 / T2 — the forward-side pure helpers.
@@ -417,7 +184,7 @@ type MuellerInverseTests() =
         //
         // The expected tensors are read element-wise from the ENGINE's own types rather than rebuilt, so
         // this fact checks the orientation, not the tensor construction (which Active.fs already owns).
-        let props = buildUniaxialGyrotropic quartz
+        let props = quartz.opticalProperties
         let nOrdSq = quartzOrdinaryIndex.value ** 2.0
         let nExtSq = quartzExtraordinaryIndex.value ** 2.0
 
@@ -803,7 +570,7 @@ type MuellerInverseTests() =
     member _.``both proxies compare by reference (the ReferenceEquality convention)`` () =
         // Both records' only fields are function-valued, so they have no structural equality; the
         // attribute makes them compare by identity so a host context holding one stays comparable. Mirrors
-        // the ExperimentDataProxy / MuellerSolverProxy / MuellerDataProxy convention.
+        // the ExperimentDataProxy / MuellerSolverProxy convention.
         let f : ForwardModelProxy<UniaxialParameters> = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
         let g : ForwardModelProxy<UniaxialParameters> = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
         Assert.True((f = f))
@@ -923,7 +690,7 @@ type MuellerInverseTests() =
         // x = 0. The Jacobian must not be evaluated at the origin of the scaled space; centring the
         // scaling on the perturbed start puts the truth at a non-zero scaled point.
         let observations = observe fullConfigurations
-        let scaling = scalingAround perturbedStart
+        let scaling = quartzScalingAround perturbedStart
         let residual = residualFor forward observations scaling
         let truthPoint = toScaled scaling quartz
         Assert.True(truthPoint.value |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
@@ -1002,7 +769,7 @@ type MuellerInverseTests() =
         // steps each parameter by sqrt(eps) * max(|x_p|, 1e-12), which collapses to ~1e-20 at x = 0 and
         // would report EVERY column as dead — including the one that is genuinely alive, turning this fact
         // into a false positive.
-        let scaling = scalingAround perturbedStart
+        let scaling = quartzScalingAround perturbedStart
         let truthPoint = toScaled scaling quartz
         let residual = residualFor forward (observe c1) scaling
         let jacobian = residualJacobianAt residual truthPoint
@@ -1039,7 +806,8 @@ type MuellerInverseTests() =
             Assert.True(restoredNorms.[i] > 1.0e-6, $"adding the second cut must make {parameterNames.[i]} observable: {restoredReport}")
 
     // =================================================================================================
-    // Manual task 010 — the NOISY facts. See the measurement-error commentary above `NoiseParam.decentLab`.
+    // Manual task 010 — the NOISY facts. The measurement-error model is `BenchNoise`, recorded in
+    // specs/0044/.manual/011-noisy-measurement-tests.md.
     // =================================================================================================
 
     [<Fact>]
@@ -1051,7 +819,7 @@ type MuellerInverseTests() =
 
         // REPRODUCIBILITY. A seed determines the stream completely, and different seeds give different
         // streams. This is the property that makes a failing ensemble run a debuggable one.
-        let firstTen (d : UniformDeviateProvider) = [ for _ in 1 .. 10 -> d.nextDeviate () ]
+        let firstTen (d : UniformDeviateProvider) = [ for _ in 1 .. 10 -> (d.nextDeviate ()).value ]
         let fromSeven = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 7))
         let fromSevenAgain = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 7))
         let fromEight = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 8))
@@ -1098,7 +866,7 @@ type MuellerInverseTests() =
         let clean = observe c1 |> List.exactlyOne
         match clean.measured.normalized with
         | Ok trueNormalized ->
-            let reported = misread (UniformDeviateProvider.fromSeed (NoiseSeed 5)) NoiseParam.decentLab clean.measured
+            let reported = misread (UniformDeviateProvider.fromSeed (NoiseSeed 5)) NoiseParam.decentLab clean.measured |> expectOk
             Assert.True(abs (reported.element 0 0 - 1.0) < 1.0e-15, "m00 must stay at exactly 1")
             let deviations =
                 [ for i in 0 .. 3 do
@@ -1112,7 +880,7 @@ type MuellerInverseTests() =
         // THE NOISELESS BUDGET IS A PURE OVERLAY: with both uncertainties at zero the noisy path returns
         // the ground truth itself (normalized, which is what every residual compares anyway). This is
         // what proves the noisy machinery adds noise and changes nothing else.
-        let quiet = noisyObserve NoiseParam.noiseless (NoiseSeed 1) c1 |> List.exactlyOne
+        let quiet = noisyQuartzObservations NoiseParam.noiseless (NoiseSeed 1) c1 |> expectOk |> List.exactlyOne
         match clean.measured.normalized with
         | Ok trueNormalized -> assertMuellerEqual trueNormalized quiet.measured
         | Error e -> Assert.Fail($"the C1 ground-truth matrix should normalize, got %A{e}")
@@ -1120,9 +888,9 @@ type MuellerInverseTests() =
         // A WHOLE EXPERIMENT is reproducible from its seed, differs between seeds, and is filed against
         // the NOMINAL configurations — the last being the property that makes the angle error a real
         // error rather than a relabelling.
-        let runA = noisyObserve NoiseParam.decentLab (NoiseSeed 4) c3
-        let runAgain = noisyObserve NoiseParam.decentLab (NoiseSeed 4) c3
-        let runOther = noisyObserve NoiseParam.decentLab (NoiseSeed 9) c3
+        let runA = noisyQuartzObservations NoiseParam.decentLab (NoiseSeed 4) c3 |> expectOk
+        let runAgain = noisyQuartzObservations NoiseParam.decentLab (NoiseSeed 4) c3 |> expectOk
+        let runOther = noisyQuartzObservations NoiseParam.decentLab (NoiseSeed 9) c3 |> expectOk
         for (x, y) in List.zip runA runAgain do
             assertMuellerEqual x.measured y.measured
         let biggestGap =
@@ -1201,7 +969,9 @@ type MuellerInverseTests() =
         // took 504 s against the 365 s this serial version measures — so the seeds are run serially,
         // deliberately. The forward solves allocate heavily, and extra threads buy contention rather than
         // throughput.
-        let experiments = ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments =
+            BerremanTestSupport.BiaxialSample.ensembleSeeds
+            |> List.map (fun seed -> recoverQuartzFromNoisy NoiseParam.decentLab seed |> expectOk)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
@@ -1249,7 +1019,7 @@ type MuellerInverseTests() =
         // error — fixed within an experiment, and therefore genuinely systematic FOR that experiment —
         // has no preferred direction across experiments.
         for row in table do
-            let allowance = 3.0 * (standardErrorOfMean (List.length ensembleSeeds) row).value
+            let allowance = 3.0 * (standardErrorOfMean (EnsembleSize (List.length BerremanTestSupport.BiaxialSample.ensembleSeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}) — the error is systematic, not random: {report}")
@@ -1264,7 +1034,7 @@ type MuellerInverseTests() =
         // swaps the two roles for the reason finding F1 records (the engine's rho is the bi-anisotropic
         // tensor, not the crystallographic gyration tensor). The ~5 % measured here is the same order as
         // the literature's ~10 % on ITS poorly-determined component.
-        let axial = rowFor table "g33"
+        let axial = (rowFor table (ParameterName "g33") |> expectOk)
         for row in table do
             if row.quantity.name.value <> "g33" then
                 Assert.True(
@@ -1282,12 +1052,12 @@ type MuellerInverseTests() =
         // The comparison is in ABSOLUTE units and must be. Relatively the difference looks no better
         // than the indices (4.0e-4 against 4.9e-4), because it is being divided by a value 170 times
         // smaller — which is exactly the arithmetic that hides the effect.
-        let birefringence = rowFor table "n_e - n_o"
+        let birefringence = (rowFor table (ParameterName "n_e - n_o") |> expectOk)
         for row in table do
             match row.quantity.name.value with
             | "n_o" | "n_e" ->
                 Assert.True(
-                    birefringence.absoluteScatter < row.absoluteScatter / 50.0,
+                    birefringence.absoluteScatter.value < row.absoluteScatter.value / 50.0,
                     $"the birefringence must be determined far better than {row.quantity.name.value} in ABSOLUTE terms: {report}")
             | _ -> ()
 
@@ -1308,10 +1078,10 @@ type MuellerInverseTests() =
         // The report lives in the SCALED space the fit searches, so each standard error is converted back
         // through that parameter's own scale before being compared with a relative scatter.
         let first = List.head experiments
-        let quality = fitReportOf first.fit
+        let quality = first.fit.report
 
         let predictions = predictedRelativeErrors quartz first.fit quality
-        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name.value).scatter
+        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name |> expectOk).scatter
         let comparison =
             System.String.Join(
                 "; ",
@@ -1356,16 +1126,17 @@ type MuellerInverseTests() =
         // DIFFERENCE of two coordinates that share a scale is that scale itself, not the difference of
         // the scales. With the conversion right, the route works — and the "five-digit cancellation
         // kills it" story was an artifact of the bug rather than a measurement.
-        let birefringenceRow = rowFor table "n_e - n_o"
-        let pairVariance = combinationVariance quality (differenceWeights first.fit.scaling "n_e" "n_o")
+        let birefringenceRow = (rowFor table (ParameterName "n_e - n_o") |> expectOk)
+        let pairVariance =
+            combinationVariance quality (differenceWeights first.fit.scaling (ParameterName "n_e") (ParameterName "n_o") |> expectOk)
         let pairPrediction =
-            sqrt (max 0.0 pairVariance) * abs first.fit.scaling.scale.ordinaryIndex.value
+            sqrt (max 0.0 pairVariance.value) * abs first.fit.scaling.scale.ordinaryIndex.value
             / abs (quartz.extraordinaryIndex.value - quartz.ordinaryIndex.value)
         let pairRatio = pairPrediction / birefringenceRow.scatter.value
         Assert.True(
             pairRatio > 0.5 && pairRatio < 2.0,
             $"the pair-covariance route predicts {pairPrediction} against an observed {birefringenceRow.scatter.value} "
-            + $"(ratio {pairRatio}, raw quadratic form {pairVariance})")
+            + $"(ratio {pairRatio}, raw quadratic form {pairVariance.value})")
 
         // Finally, the interval the single experiment would have QUOTED must contain the truth — the
         // question an experimenter actually asks of a fit report.

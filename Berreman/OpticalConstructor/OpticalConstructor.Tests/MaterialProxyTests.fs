@@ -4,6 +4,8 @@ open System
 open Xunit
 open Berreman.Constants
 open Berreman.Media
+open Berreman.MaterialProperties
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialStore
@@ -15,6 +17,61 @@ open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
 open OpticalConstructor.Storage.MaterialDatabaseStore
 
+/// One crystal of each record, shared by this project's crystal-parameter material facts (spec 0050 S11.1).
+/// They live here because this file compiles first among those facts.
+module CrystalMaterialFixtures =
+
+    let uniaxialParameters : UniaxialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.544
+            extraordinaryIndex = RefractionIndex 1.553
+            g11 = RhoValue 3.0e-5
+            g33 = RhoValue (-1.0e-5)
+        }
+
+    let triclinicParameters : TriclinicParameters =
+        {
+            index1 = RefractionIndex 1.52
+            index2 = RefractionIndex 1.56
+            index3 = RefractionIndex 1.61
+            g11 = RhoValue 3.0e-5
+            g22 = RhoValue 4.0e-5
+            g33 = RhoValue 5.0e-5
+            g23 = RhoValue 1.0e-5
+            g13 = RhoValue 2.0e-5
+            g12 = RhoValue 6.0e-6
+        }
+
+    /// Fifteen distinct values, so a field read from the wrong slot shows.
+    let absorbingTriclinicParameters : AbsorbingTriclinicParameters =
+        {
+            index1 = RefractionIndex 1.71
+            index2 = RefractionIndex 1.74
+            index3 = RefractionIndex 1.78
+            epsIm11 = EpsValue 2.0e-3
+            epsIm22 = EpsValue 3.0e-3
+            epsIm33 = EpsValue 4.0e-3
+            epsIm23 = EpsValue 5.0e-4
+            epsIm13 = EpsValue 6.0e-4
+            epsIm12 = EpsValue 7.0e-4
+            g11 = RhoValue 3.0e-5
+            g22 = RhoValue 4.0e-5
+            g33 = RhoValue 5.0e-5
+            g23 = RhoValue 1.0e-5
+            g13 = RhoValue 2.0e-5
+            g12 = RhoValue 6.0e-6
+        }
+
+    /// The three crystals in case order: uniaxial, triclinic, absorbing triclinic.
+    let crystals : CrystalParameters list =
+        [
+            UniaxialCrystal uniaxialParameters
+            TriclinicCrystal triclinicParameters
+            AbsorbingTriclinicCrystal absorbingTriclinicParameters
+        ]
+
+open CrystalMaterialFixtures
+
 module private MaterialProxyTestData =
 
     let glass : MaterialEntry =
@@ -24,7 +81,7 @@ module private MaterialProxyTestData =
         BuiltinCatalogue.material MaterialIds.glass200
 
     let glassPhysicsChanged : MaterialEntry =
-        { glass with complexity = otherPhysics.complexity }
+        { glass with physics = otherPhysics.physics }
 
     let glassRenamed : MaterialEntry =
         { glass with name = EntryName "Renamed glass (metadata only)" }
@@ -153,7 +210,7 @@ type MaterialProxyContract () =
         | Ok None -> ()
         | other -> Assert.Fail($"expected no version 2 after a no-op save, got %A{other}")
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(glass.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(glass.physics, e.physics)
         | other -> Assert.Fail($"expected version 1 intact, got %A{other}")
 
     [<Fact>]
@@ -177,7 +234,7 @@ type MaterialProxyContract () =
         | Error err -> Assert.Fail($"%A{err}")
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, proxy.resolveVersion (v2Id MaterialIds.glass152))
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(otherPhysics.physics, e.physics)
         | other -> Assert.Fail($"expected version 1 physics mutated in place, got %A{other}")
 
     [<Fact>]
@@ -187,13 +244,13 @@ type MaterialProxyContract () =
         | Ok () -> ()
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.resolveVersion (v1Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(glass.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(glass.physics, e.physics)
         | other -> Assert.Fail($"expected version 1 frozen with original physics, got %A{other}")
         match proxy.resolveVersion (v2Id MaterialIds.glass152) with
-        | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(otherPhysics.physics, e.physics)
         | other -> Assert.Fail($"expected version 2 with the new physics, got %A{other}")
         match proxy.tryGetMaterial MaterialIds.glass152 with
-        | Ok (Some e) -> Assert.Equal(otherPhysics.complexity, e.complexity)
+        | Ok (Some e) -> Assert.Equal(otherPhysics.physics, e.physics)
         | other -> Assert.Fail($"expected the latest entry to be version 2, got %A{other}")
 
     [<Fact>]
@@ -207,7 +264,7 @@ type MaterialProxyContract () =
             Assert.Equal(List.length (BuiltinCatalogue.materials ()), List.length entries)
             let glassEntries = entries |> List.filter (fun e -> e.id = MaterialIds.glass152)
             Assert.Equal(1, List.length glassEntries)
-            Assert.Equal(otherPhysics.complexity, glassEntries.Head.complexity)
+            Assert.Equal(otherPhysics.physics, glassEntries.Head.physics)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
@@ -347,17 +404,17 @@ type MaterialProxyContract () =
 
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glassPhysicsChanged)
         match proxy.resolveVersion second with
-        | Ok (Some entry) -> Assert.Equal(glassPhysicsChanged.complexity, entry.complexity)
+        | Ok (Some entry) -> Assert.Equal(glassPhysicsChanged.physics, entry.physics)
         | other -> Assert.Fail($"expected a minted version 2, got %A{other}")
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial glass)
         match proxy.resolveVersion second with
-        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
+        | Ok (Some entry) -> Assert.Equal(glass.physics, entry.physics)
         | other -> Assert.Fail($"expected version 2 to mutate in place, got %A{other}")
         match proxy.resolveVersion third with
         | Ok None -> ()
         | other -> Assert.Fail($"expected no version 3, got %A{other}")
         match proxy.resolveVersion first with
-        | Ok (Some entry) -> Assert.Equal(glass.complexity, entry.complexity)
+        | Ok (Some entry) -> Assert.Equal(glass.physics, entry.physics)
         | other -> Assert.Fail($"expected version 1 to keep its original physics, got %A{other}")
 
         for version in [ missing; third ] do
@@ -374,6 +431,19 @@ type MaterialProxyContract () =
             Assert.Contains(string glass.id.value, reason)
             Assert.Contains("2 version(s) pinned: v1, v2", reason)
         | other -> Assert.Fail($"expected both pinned versions to block removal, got %A{other}")
+
+    [<Fact>]
+    member this.``a crystal-parameter material is stored and resolved at its version by its physics`` () : unit =
+        // Spec 0050 S11.1: a crystal physics is a material version's physics like any complexity.
+        let proxy = this.freshProxy ()
+        let crystal = { minted () with physics = CrystalParameterPhysics (AbsorbingTriclinicCrystal absorbingTriclinicParameters) }
+        Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial crystal)
+        match proxy.resolveVersion (v1Id crystal.id) with
+        | Ok (Some entry) -> Assert.Equal<MaterialEntry>(crystal, entry)
+        | other -> Assert.Fail($"expected version 1 of the crystal material, got %A{other}")
+        match proxy.listMaterials ActiveOnly with
+        | Ok entries -> Assert.Contains(crystal, entries)
+        | Error err -> Assert.Fail($"%A{err}")
 
 type MaterialProxyTests () =
     inherit MaterialProxyContract ()
@@ -591,7 +661,7 @@ type MaterialProxySqliteTests () =
         let first = MaterialVersionId.firstOf silicon.id
         let changed =
             {
-                renamed with complexity = (BuiltinCatalogue.material MaterialIds.langasite).complexity
+                renamed with physics = (BuiltinCatalogue.material MaterialIds.langasite).physics
             }
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.pinMaterialVersion first)
         Assert.Equal<Result<unit, MaterialError>>(Ok (), proxy.saveMaterial changed)

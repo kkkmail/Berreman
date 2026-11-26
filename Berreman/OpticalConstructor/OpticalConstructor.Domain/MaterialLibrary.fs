@@ -6,6 +6,7 @@ open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalProperties.Active
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.CrystalPhysics
 
 /// Material identities, editable physics, pure search and store contracts (§D.8; spec 0050 §3.3).
 /// Built-in entries are loaded from Catalogue/Builtin through CatalogueImportProxy.
@@ -193,23 +194,34 @@ module MaterialLibrary =
                 | None -> defaults.rhoWithDisp
             { defaults with muWithDisp = muWithDisp; rhoWithDisp = rhoWithDisp }
 
+    /// The forms a material's physics can take: the complexity tree or a crystal-parameter record
+    /// (spec 0050 S11.1).
+    type MaterialPhysics =
+        | ComplexityPhysics of complexity : MaterialComplexity
+        | CrystalParameterPhysics of crystal : CrystalParameters
+
+        /// The physics' engine composition (spec 0050 S11.1).
+        member this.toProperties : OpticalPropertiesWithDisp =
+            match this with
+            | ComplexityPhysics complexity -> complexity.toProperties
+            | CrystalParameterPhysics crystal -> crystal.toProperties
+
     /// A library entry: a stable id (the `materialEntry` id, §A.7), a display name,
     /// a category, an optional description (mirroring the engine's `description`
     /// fields, e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), and its
-    /// physics, the `complexity` value tree (spec 0050 step 13, 001 §B). Every field is
-    /// data, so entries compare structurally.
+    /// physics (spec 0050 step 13, S11.1). Every field is data, so entries compare structurally.
     type MaterialEntry =
         {
             id : MaterialId
             name : EntryName
             category : CategoryId
             description : EntryDescription option
-            complexity : MaterialComplexity
+            physics : MaterialPhysics
         }
 
         /// The entry's engine composition (`OpticalPropertiesWithDisp`, `Dispersion.fs:53`),
-        /// derived from its complexity on every read.
-        member this.properties : OpticalPropertiesWithDisp = this.complexity.toProperties
+        /// derived from its physics on every read (spec 0050 S11.1).
+        member this.properties : OpticalPropertiesWithDisp = this.physics.toProperties
 
     /// Net-new error channel for material resolution (errors as values, §0). Returned
     /// — never thrown — by `resolveMaterial` on an unknown id; the case carries a

@@ -27,7 +27,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 module ElementRotationTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
-    let private elem (i : int) (m : ElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : ElementRotationModel) : Setups.SetupSlot = List.item i m.elements
     let private deg (a : Angle) : float = a.degrees
 
     // ============================ pure MVU ============================

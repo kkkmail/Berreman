@@ -14,6 +14,7 @@ open OpticalConstructor.Storage.EntryFileJson
 open OpticalConstructor.Storage.CatalogueFolderStore
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialImport
 open Softellect.Sys
 
 module CatalogueImportStore =
@@ -134,6 +135,41 @@ module CatalogueImportStore =
                                 select latest.EntryId
                             }
                         |> Seq.map LibraryEntryId |> Seq.toList |> collectHeld context)
+                pulledRecordsOf = fun source ->
+                    runImport (fun context ->
+                        query
+                            {
+                                for row in context.PulledSources do
+                                where (row.Source = source.value)
+                                select row
+                            }
+                        |> Seq.toList
+                        |> List.fold (fun result row ->
+                            result |> Result.bind (fun records ->
+                                let reference : LibraryVersionRef =
+                                    {
+                                        entryId = LibraryEntryId row.EntryId
+                                        version = VersionNumber row.Version
+                                    }
+                                context.tryStoredVersion reference.entryId reference.version
+                                |> Result.bind (fun storedOpt ->
+                                    match storedOpt with
+                                    | Some stored ->
+                                        match stored.envelope.content.provenance with
+                                        | SourcePullProvenance pull when pull.source = source ->
+                                            let record : PulledRecord =
+                                                {
+                                                    version = reference
+                                                    pull = pull
+                                                }
+                                            Ok (record :: records)
+                                        | BuiltInProvenance _ | UserProvenance | KitImportProvenance _ | SourcePullProvenance _
+                                        | ForkProvenance _ | FitProvenance _ | FileImportProvenance _ ->
+                                            Error (LibraryRowInvalidErr $"the pulled-source row of {reference.describe} names a version not pulled from '{source.value}'")
+                                    | None ->
+                                        Error (LibraryRowInvalidErr $"the pulled-source row of {reference.describe} names a version the library does not hold")))) (Ok [])
+                        |> Result.map PulledRecord.inRecordOrder
+                        |> storageResult)
                 pinEntryVersion = fun id version ->
                     runImport (fun context ->
                         context.stagePin id version
@@ -221,7 +257,8 @@ module CatalogueImportStore =
 
     type CatalogueImportContext with
 
-        /// Supplies canonical hashes, fresh identities, the UTC clock and catalogue/entry-file IO (spec 0050 S3.1; S3.2; S3.3).
+        /// Supplies canonical hashes, fresh identities, the UTC clock and catalogue, entry-file and glass-catalogue IO
+        /// (spec 0050 S3.1; S3.2; S3.3; S13.2).
         [<ElevationBoundary(nameof IoBoundary, "the catalogue import composition root: canonical hashing, ambient clock, fresh identities and filesystem proxies")>]
         static member create (proxy : CatalogueImportProxy) : CatalogueImportContext =
             {
@@ -240,9 +277,26 @@ module CatalogueImportStore =
                 readEntryFile = fun kind file ->
                     LibraryFileText.readEntryFile kind file
                     |> Result.mapError (fun error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+                readGlassCatalogue = fun file ->
+                    let bytesRead : Result<FileByteContent, CatalogueImportError> =
+                        try Ok (FileByteContent (File.ReadAllBytes file.value))
+                        with e -> Error (DroppedFileRefusedErr $"{file.value}: {e.Message}")
+                    bytesRead
+                    |> Result.bind (fun bytes ->
+                        (GlassCatalogueText.ofBytes bytes).importGlasses
+                        |> Result.mapError (fun error -> DroppedFileRefusedErr $"{file.value}: {error.describe}")
+                        |> Result.map (fun glasses ->
+                            let read : GlassCatalogueRead =
+                                {
+                                    file = file.leafName
+                                    fileHash = ContentHash.ofBytes bytes
+                                    glasses = glasses
+                                }
+                            read))
                 writeEntryFile = fun file envelope ->
                     envelope.fileText
                     |> Result.bind (fun text -> text.writeAtomically file)
                     |> Result.mapError (fun error -> ExportFileWriteErr $"{file.value}: {error.describe}")
                 exportFolderOpt = None
+                materialSources = []
             }

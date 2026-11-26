@@ -587,11 +587,22 @@ module Dispersion =
             | _ -> None
 
 
-    /// Why `TabulatedNkTable.tryCreate` refused its columns.
+    /// Why `TabulatedNkTable.tryCreate` refused its columns, or `withUncertainty` its uncertainties.
     type TabulatedTableError =
         | EmptyTableErr of reason : string
         | SampleCountMismatchErr of reason : string
         | UnsortedSamplesErr of reason : string
+        | InvalidUncertaintyErr of reason : string
+
+
+    /// The one-sigma uncertainties of n and k a source gives for each sample of a tabulated table, in the
+    /// table's order (spec 0050 S13.2).
+    [<Softellect.Sys.NumericCarrier("per-sample one-sigma uncertainties of a tabulated n,k table, read beside its columns")>]
+    type TabulatedNkUncertainty =
+        {
+            sigmaN : float array
+            sigmaK : float array
+        }
 
 
     /// A tabulated n,k table (spec 0050 step 2, 001 §B): the samples of one principal axis,
@@ -603,6 +614,8 @@ module Dispersion =
             n : float array
             k : float array
             interpolation : TabulatedInterpolation
+            /// The source's one-sigma uncertainty of each sample, `None` where the source gives none (spec 0050 S13.2).
+            uncertaintyOpt : TabulatedNkUncertainty option
         }
 
         /// The table over these columns, read linearly in λ and clamped. Refuses an empty table,
@@ -615,7 +628,24 @@ module Dispersion =
             else
                 match wavelengths |> Array.pairwise |> Array.tryFindIndex (fun (a, b) -> b < a) with
                 | Some i -> Error (UnsortedSamplesErr $"the wavelength at index {i + 1} ({wavelengths.[i + 1]} m) is below the one at index {i} ({wavelengths.[i]} m)")
-                | None -> Ok { wavelengths = wavelengths; n = n; k = k; interpolation = LinearInWaveLengthClamped }
+                | None -> Ok { wavelengths = wavelengths; n = n; k = k; interpolation = LinearInWaveLengthClamped; uncertaintyOpt = None }
+
+        /// This table holding per-sample one-sigma uncertainties of n and k, kept in the given order (spec 0050 S13.2).
+        /// Refuses columns whose length is not the table's and a NaN, infinite or negative value.
+        member this.withUncertainty (uncertainty : TabulatedNkUncertainty) : Result<TabulatedNkTable, TabulatedTableError> =
+            let count = this.wavelengths.Length
+            let invalidReason (column : string) (sigmas : float array) : string option =
+                sigmas
+                |> Array.tryFindIndex (fun sigma -> System.Double.IsNaN sigma || System.Double.IsInfinity sigma || sigma < 0.0)
+                |> Option.map (fun i -> $"{column} at index {i} is {sigmas.[i]}; an uncertainty is finite and non-negative")
+
+            if uncertainty.sigmaN.Length <> count || uncertainty.sigmaK.Length <> count then
+                Error (SampleCountMismatchErr $"{count} samples, {uncertainty.sigmaN.Length} sigma n values and {uncertainty.sigmaK.Length} sigma k values")
+            else
+                match invalidReason "sigma n" uncertainty.sigmaN, invalidReason "sigma k" uncertainty.sigmaK with
+                | Some reason, _
+                | None, Some reason -> Error (InvalidUncertaintyErr reason)
+                | None, None -> Ok { this with uncertaintyOpt = Some uncertainty }
 
         /// The first to the last sample.
         member this.sampleRange : WaveLengthInterval =

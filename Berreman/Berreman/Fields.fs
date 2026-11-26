@@ -229,13 +229,15 @@ module Fields =
         /// The x component of normalized Poynting vector s gives sin(fi).
         static member create (emv : EigenValueVector) amplitude (nsf : N1SinFita) (o : OpticalProperties) =
             let n1SinFita = nsf.complex
+            // Read once: `rhoT` builds a new matrix on every access, and the generated terms below read it ten times (`.manual/036` R0005).
+            let rhoT = o.rhoT
             let bf = emv.vector |> BerremanFieldEH
 
             let getEz eX eY hX hY =
-                ((-(o.eps.[2, 0] * o.mu.[2, 2]) + o.rho.[2, 2] * o.rhoT.[2, 0]) * eX - o.eps.[2, 1] * o.mu.[2, 2] * eY + o.rho.[2, 2] * o.rhoT.[2, 1] * eY - o.rho.[2, 2] * n1SinFita * eY - o.mu.[2, 2] * o.rho.[2, 0] * hX + o.mu.[2, 0] * o.rho.[2, 2] * hX + (o.mu.[2, 1] * o.rho.[2, 2] - o.mu.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
+                ((-(o.eps.[2, 0] * o.mu.[2, 2]) + o.rho.[2, 2] * rhoT.[2, 0]) * eX - o.eps.[2, 1] * o.mu.[2, 2] * eY + o.rho.[2, 2] * rhoT.[2, 1] * eY - o.rho.[2, 2] * n1SinFita * eY - o.mu.[2, 2] * o.rho.[2, 0] * hX + o.mu.[2, 0] * o.rho.[2, 2] * hX + (o.mu.[2, 1] * o.rho.[2, 2] - o.mu.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * rhoT.[2, 2])
 
             let getHz eX eY hX hY =
-                 ((-(o.eps.[2, 2] * o.rhoT.[2, 0]) + o.eps.[2, 0] * o.rhoT.[2, 2]) * eX - o.eps.[2, 2] * o.rhoT.[2, 1] * eY + o.eps.[2, 1] * o.rhoT.[2, 2] * eY + o.eps.[2, 2] * n1SinFita * eY - o.eps.[2, 2] * o.mu.[2, 0] * hX + o.rho.[2, 0] * o.rhoT.[2, 2] * hX + (-(o.eps.[2, 2] * o.mu.[2, 1]) + o.rhoT.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
+                 ((-(o.eps.[2, 2] * rhoT.[2, 0]) + o.eps.[2, 0] * rhoT.[2, 2]) * eX - o.eps.[2, 2] * rhoT.[2, 1] * eY + o.eps.[2, 1] * rhoT.[2, 2] * eY + o.eps.[2, 2] * n1SinFita * eY - o.eps.[2, 2] * o.mu.[2, 0] * hX + o.rho.[2, 0] * rhoT.[2, 2] * hX + (-(o.eps.[2, 2] * o.mu.[2, 1]) + rhoT.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * rhoT.[2, 2])
 
             let eX = bf.eX
             let eY = bf.eY

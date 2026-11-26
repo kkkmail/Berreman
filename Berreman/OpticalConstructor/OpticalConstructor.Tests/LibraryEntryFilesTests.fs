@@ -4,13 +4,16 @@ open System
 open System.Text
 open Xunit
 open Berreman.Geometry
+open Berreman.Fields
 open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 
 /// The kinds, provenance, ids, name rule and content of the library-entry files, with the builders
 /// and decoders that join the content to the domain values (spec 0050 001 §A, §B; .spec-md §3.11, §5).
@@ -43,6 +46,19 @@ module LibraryEntryFilesTests =
         Assert.Equal<string>("Licence CC-BY-4.0 — cite: PTB optical constants, 2026", (ccBy.attributionWith citation).text)
         Assert.Equal<string>("Licence CC0-1.0", (cc0.attributionWith citation).text)
 
+    let private fittedInKit : EntryFitInfo =
+        {
+            kit = KitId (Guid.Parse "8c4e2a6f-3b1d-4f7e-a9c5-2d6b8e0f4a13")
+            studyStem = FileStem "QZ-LR"
+            fitRunStem = FileStem "QZ-LR@20261101T120000Z"
+        }
+
+    let private importedFromFile : EntryFileImportInfo =
+        {
+            file = FileName "test-glasses.agf"
+            fileHash = Encoding.UTF8.GetBytes "abc" |> FileByteContent |> ContentHash.ofBytes
+        }
+
     [<Fact>]
     let ``a pulled entry and its forks carry its licence's attribution, and every other provenance none`` () : unit =
         let materialId = MaterialId (Guid.Parse "c31a053b-bce8-40b9-852d-bd3d1c6e542f")
@@ -74,7 +90,14 @@ module LibraryEntryFilesTests =
 
         let userContent = BuiltinCatalogue.userMaterialContent materialId entryName
         let kitId = KitId (Guid.Parse "f36ee953-dce4-4779-a448-dc0a4cfb286f")
-        let unlicensed = [ BuiltInProvenance CatalogueIds.builtInCatalogue; userContent.provenance; KitImportProvenance kitId ]
+        let unlicensed =
+            [
+                BuiltInProvenance CatalogueIds.builtInCatalogue
+                userContent.provenance
+                KitImportProvenance kitId
+                FitProvenance fittedInKit
+                FileImportProvenance importedFromFile
+            ]
 
         for provenance in unlicensed do
             Assert.Equal<EntryAttribution option>(None, provenance.attributionOpt)
@@ -134,7 +157,7 @@ module LibraryEntryFilesTests =
         for envelope in envelopes do
             match envelope.content.schema.kind with
             | MaterialEntryKind | SampleEntryKind -> ()
-            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind ->
+            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind | ItemModelEntryKind ->
                 Assert.Empty(envelope.content.referencedEntryIds)
 
     [<Fact>]
@@ -225,7 +248,7 @@ module LibraryEntryFilesTests =
         for envelope in envelopes do
             match envelope.content.schema.kind with
             | MaterialEntryKind | SampleEntryKind -> ()
-            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind ->
+            | CategoryEntryKind | SourceEntryKind | PolarizerEntryKind | DetectorEntryKind | ItemModelEntryKind ->
                 Assert.Empty(envelope.content.references)
 
     [<Fact>]
@@ -247,7 +270,7 @@ module LibraryEntryFilesTests =
         Assert.Equal(6, descriptions |> List.distinct |> List.length)
 
     let private kindsInTagOrder : LibraryEntryKind list =
-        [ MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; CategoryEntryKind ]
+        [ MaterialEntryKind; SampleEntryKind; SourceEntryKind; PolarizerEntryKind; DetectorEntryKind; CategoryEntryKind; ItemModelEntryKind ]
 
     [<Fact>]
     let ``a file's extension names its entry kind, ignoring case`` () : unit =
@@ -272,10 +295,11 @@ module LibraryEntryFilesTests =
 
     [<Fact>]
     let ``every library entry kind round-trips its wire tag and renders its 001 extension`` () =
-        Assert.Equal<int list>([ 1; 2; 3; 4; 5; 6 ], kindsInTagOrder |> List.map (fun k -> k.value))
+        Assert.Equal<int list>([ 1; 2; 3; 4; 5; 6; 7 ], kindsInTagOrder |> List.map (fun k -> k.value))
         Assert.Equal<LibraryEntryKind option list>(kindsInTagOrder |> List.map Some, kindsInTagOrder |> List.map (fun k -> LibraryEntryKind.tryOfWire k.value))
+        Assert.Equal<LibraryEntryKind option>(Some ItemModelEntryKind, LibraryEntryKind.tryOfWire 7)
         Assert.Equal<LibraryEntryKind option>(None, LibraryEntryKind.tryOfWire 0)
-        Assert.Equal<LibraryEntryKind option>(None, LibraryEntryKind.tryOfWire 7)
+        Assert.Equal<LibraryEntryKind option>(None, LibraryEntryKind.tryOfWire 8)
 
         let extensions =
             [
@@ -285,6 +309,7 @@ module LibraryEntryFilesTests =
                 FileExtension ".polarizer-json"
                 FileExtension ".detector-json"
                 FileExtension ".category-json"
+                FileExtension ".item-model-json"
             ]
 
         Assert.Equal<FileExtension list>(extensions, kindsInTagOrder |> List.map (fun k -> k.extension))
@@ -307,6 +332,7 @@ module LibraryEntryFilesTests =
             {
                 source = MaterialSourceName "refractiveindex.info"
                 record = MaterialSourceRecordId "main/Si/Aspnes"
+                recordHash = Encoding.UTF8.GetBytes "shelf: main\nbook: Si\npage: Aspnes\n" |> FileByteContent |> ContentHash.ofBytes
                 sourceVersion = MaterialSourceVersion "2024-08-14"
                 licence = EntryLicence "CC0-1.0"
                 citation = EntryCitation "D. E. Aspnes and A. A. Studna, Phys. Rev. B 27, 985 (1983)"
@@ -326,10 +352,12 @@ module LibraryEntryFilesTests =
                 KitImportProvenance (KitId (Guid.Parse "b2e4f6a8-1c3d-4e5f-8a9b-c0d1e2f3a4b5"))
                 SourcePullProvenance pulled
                 ForkProvenance forkInfo
+                FitProvenance fittedInKit
+                FileImportProvenance importedFromFile
             ]
 
-        Assert.Equal<EntryProtection list>([ ProtectedBuiltIn; UserManaged; UserManaged; UserManaged; UserManaged ], provenances |> List.map (fun p -> p.protection))
-        Assert.Equal<CategoryOrigin list>([ BuiltInCategory; UserCategory; UserCategory; UserCategory; UserCategory ], provenances |> List.map (fun p -> p.categoryOrigin))
+        Assert.Equal<EntryProtection list>([ ProtectedBuiltIn; UserManaged; UserManaged; UserManaged; UserManaged; UserManaged; UserManaged ], provenances |> List.map (fun p -> p.protection))
+        Assert.Equal<CategoryOrigin list>([ BuiltInCategory; UserCategory; UserCategory; UserCategory; UserCategory; UserCategory; UserCategory ], provenances |> List.map (fun p -> p.categoryOrigin))
 
     [<Fact>]
     let ``a library entry id keeps the GUID of the kind's own id`` () =
@@ -411,6 +439,72 @@ module LibraryEntryFilesTests =
 
         let notMaterials = [ sampleContent; sourceContent; detectorContent; polarizerContent; categoryContent ]
         Assert.Equal<CategoryId option list>(notMaterials |> List.map (fun _ -> None), notMaterials |> List.map (fun c -> c.categoryOpt))
+
+    [<Fact>]
+    let ``a crystal-parameter material's builder and decoder are inverse`` () =
+        // Spec 0050 S11.1: a crystal is filed as its record, references its category, and decodes only as a material.
+        for crystal in crystals do
+            let entry = { langasite with physics = CrystalParameterPhysics crystal }
+            let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue entry
+            Assert.Equal<EntrySchema>(schemaOf MaterialEntryKind, content.schema)
+            Assert.Equal<LibraryEntryPayload>(CrystalMaterialPayload crystal, content.payload)
+            Assert.Equal<EntryReference list>([ EntryLatestReference CategoryIds.crystal.toLibraryEntryId ], content.references)
+            Assert.Equal<Result<MaterialEntry, LibraryEntryError>>(Ok entry, content.toMaterialEntry)
+            match content.toSample with
+            | Error (EntryKindMismatchErr _) -> ()
+            | other -> Assert.Fail($"a crystal material decoded as a sample: expected EntryKindMismatchErr, got %A{other}")
+
+    [<Fact>]
+    let ``an item-model builder and decoder are inverse, and a protection its provenance disagrees with is refused`` () =
+        let userCompound : ItemModelEntry =
+            {
+                id = ItemModelId (Guid.Parse "7f3b2c1d-5e6a-4b8c-9d0e-1f2a3b4c5d6e")
+                name = EntryName "My polarizer and dispersive half-wave plate"
+                description = EntryDescription "A real polarizer, then a zero-order retarder whose fast axis sits at 22.5°."
+                model =
+                    OpticalElementModel (
+                        CompoundModel
+                            [
+                                { form = RealPolarizerModel DiattenuationLeakage; offset = Angle.zero }
+                                {
+                                    form = RetarderPlateModel (InverseWaveLengthRetardance (WaveLength.nm 632.8<Berreman.Constants.nm>))
+                                    offset = Angle.degree 22.5<Berreman.Constants.deg>
+                                }
+                            ])
+                protection = UserManaged
+            }
+
+        let content = LibraryEntryContent.ofItemModel VersionNumber.first.next UserProvenance userCompound |> okOf
+        Assert.Equal<EntrySchema>(schemaOf ItemModelEntryKind, content.schema)
+        Assert.Equal<LibraryEntryId>(userCompound.id.toLibraryEntryId, content.id)
+        Assert.Equal<Guid>(userCompound.id.value, content.id.value)
+        Assert.Equal<VersionNumber>(VersionNumber.first.next, content.version)
+        Assert.Equal<EntryName>(userCompound.name, content.name)
+        Assert.Equal<CategoryId option>(None, content.categoryOpt)
+        Assert.Equal<EntryDescription option>(Some userCompound.description, content.descriptionOpt)
+        Assert.Equal<LibraryEntryPayload>(ItemModelPayload userCompound.model, content.payload)
+        Assert.Equal<Result<ItemModelEntry, LibraryEntryError>>(Ok userCompound, content.toItemModel)
+        Assert.Empty(content.references)
+
+        let pinned : ItemModelVersionId = { itemModelId = userCompound.id; version = content.version }
+        let expectedReference = EntryVersionReference { entryId = content.id; version = content.version }
+        Assert.Equal<EntryReference>(expectedReference, pinned.entryReference)
+
+        match { content with descriptionOpt = None }.toItemModel with
+        | Error (MissingEntryFieldErr _) -> ()
+        | other -> Assert.Fail($"an item model without a description: expected MissingEntryFieldErr, got %A{other}")
+
+        let protectedEntry : ItemModelEntry = { userCompound with protection = ProtectedBuiltIn }
+
+        match LibraryEntryContent.ofItemModel VersionNumber.first UserProvenance protectedEntry with
+        | Error (ProvenanceMismatchErr _) -> ()
+        | other -> Assert.Fail($"a protected built-in item model under a user provenance: expected ProvenanceMismatchErr, got %A{other}")
+
+        let siliconContent = LibraryEntryContent.ofMaterialEntry VersionNumber.first builtInCatalogue (BuiltinCatalogue.material MaterialIds.silicon)
+
+        match siliconContent.toItemModel with
+        | Error (EntryKindMismatchErr _) -> ()
+        | other -> Assert.Fail($"Silicon's content decoded as an item model: expected EntryKindMismatchErr, got %A{other}")
 
     [<Fact>]
     let ``a decoder refuses another kind's content`` () =

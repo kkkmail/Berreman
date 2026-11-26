@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "6e1591bf4ba35c1befff9169dd54758a437a8db05237bafb3935c40b47b869e7",
+  "descriptionOpt": null,
+  "id": "f1d38e6a-16e7-405d-9678-45c990f5a155",
+  "name": "Ideal linear polarizer",
+  "payload": {
+    "Case": "PolarizerPayload",
+    "Fields": [
+      {
+        "behavior": {
+          "Case": "ComputedIdeal",
+          "Fields": [
+            "IdealLinear"
+          ]
+        },
+        "category": "LpCategory"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 4,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,12 @@
+{
+  "author": "optics-mueller lab",
+  "created": "2026-05-31T12:00:00Z",
+  "id": "e63c9d6e-7961-4d9f-9c8d-e5a151414e0e",
+  "importProfiles": [],
+  "modified": "2026-05-31T12:00:00Z",
+  "name": "optics-mueller",
+  "namingTemplate": "{source:LP1=LP,CPL1=CPL}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer:LP2=LP,CPL2=CPL}-{note}",
+  "notes": "",
+  "schemaVersion": 1,
+  "sendExclude": []
+}

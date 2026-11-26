@@ -1,0 +1,1027 @@
+{
+  "calibrationUse": 1,
+  "dataRead": [
+    {
+      "contentHash": "0fc29a63fd7de90b85842af5020cd79fb1e74ac2d24b49f7c7673cbead82cd81",
+      "path": "data/raw/final/lp_lp.csv"
+    },
+    {
+      "contentHash": "0fc29a63fd7de90b85842af5020cd79fb1e74ac2d24b49f7c7673cbead82cd81",
+      "path": "data/raw/final/lp_lp.csv"
+    },
+    {
+      "contentHash": "d014c90144a98eb1949d30716be1f01049ec9763e0e3b94ceb68d2e43c4b1ba8",
+      "path": "data/raw/final/lp_cpl.csv"
+    },
+    {
+      "contentHash": "d014c90144a98eb1949d30716be1f01049ec9763e0e3b94ceb68d2e43c4b1ba8",
+      "path": "data/raw/final/lp_cpl.csv"
+    },
+    {
+      "contentHash": "9737ebe6534446ce3d4e1bcbcda222b88fae2d3c58de0cc8db1d322a5c002f39",
+      "path": "data/raw/final/cpl_lp.csv"
+    },
+    {
+      "contentHash": "9737ebe6534446ce3d4e1bcbcda222b88fae2d3c58de0cc8db1d322a5c002f39",
+      "path": "data/raw/final/cpl_lp.csv"
+    },
+    {
+      "contentHash": "9920ae4768558bd865c0190878adf97dde9901e9436a299a0c49e7d48ed39664",
+      "path": "data/raw/final/cpl_cpl_day1_main.csv"
+    },
+    {
+      "contentHash": "9920ae4768558bd865c0190878adf97dde9901e9436a299a0c49e7d48ed39664",
+      "path": "data/raw/final/cpl_cpl_day1_main.csv"
+    },
+    {
+      "contentHash": "fcace7c401940d6b4a84347acd2b2afb925f5ea9c2c57e64fcc6d88e4ad26b2e",
+      "path": "data/raw/final/cpl_cpl_day2_corrections.csv"
+    },
+    {
+      "contentHash": "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2",
+      "path": "data/raw/final/darkness_checks.csv"
+    },
+    {
+      "contentHash": "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2",
+      "path": "data/raw/final/darkness_checks.csv"
+    },
+    {
+      "contentHash": "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2",
+      "path": "data/raw/final/darkness_checks.csv"
+    },
+    {
+      "contentHash": "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2",
+      "path": "data/raw/final/darkness_checks.csv"
+    },
+    {
+      "contentHash": "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2",
+      "path": "data/raw/final/darkness_checks.csv"
+    },
+    {
+      "contentHash": "3b11f42dd67f29a09275b13442849415c82d7a967f5d5933713abb06dfb43cc2",
+      "path": "data/raw/final/darkness_checks.csv"
+    }
+  ],
+  "engine": 1,
+  "entries": [
+    {
+      "fitted": 1.440829364504494,
+      "owner": {
+        "Case": "ItemOwner",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac"
+        ]
+      },
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+          "c2.retardance"
+        ]
+      },
+      "start": 1.5707963267948966
+    },
+    {
+      "fitted": -0.09929174198757551,
+      "owner": {
+        "Case": "ItemOwner",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac"
+        ]
+      },
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+          "c2.fastAxisOffset"
+        ]
+      },
+      "start": 0
+    },
+    {
+      "fitted": 1.4602828621140413,
+      "owner": {
+        "Case": "ItemOwner",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f"
+        ]
+      },
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+          "c2.retardance"
+        ]
+      },
+      "start": 1.5707963267948966
+    },
+    {
+      "fitted": 1.6929018888915375,
+      "owner": {
+        "Case": "ItemOwner",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f"
+        ]
+      },
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+          "dialZero"
+        ]
+      },
+      "start": 1.3962634015954636
+    },
+    {
+      "fitted": 2.7129418540435832,
+      "owner": {
+        "Case": "ItemOwner",
+        "Fields": [
+          "72d0505d-8685-4884-89ad-ea13694c8693"
+        ]
+      },
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "72d0505d-8685-4884-89ad-ea13694c8693",
+          "dialZero"
+        ]
+      },
+      "start": 2.652900463031381
+    }
+  ],
+  "members": [
+    {
+      "outcome": {
+        "Case": "MemberConverged",
+        "Fields": [
+          [
+            1.440829364504494,
+            -0.09929174198757551,
+            1.4602828621140413,
+            1.6929018888915375,
+            2.7129418540435832
+          ],
+          null
+        ]
+      },
+      "start": [
+        1.5707963267948966,
+        0,
+        1.5707963267948966,
+        1.3962634015954636,
+        2.652900463031381
+      ]
+    }
+  ],
+  "mode": 2,
+  "name": "QZ-LR@20260531T120100Z",
+  "notes": "",
+  "objectMatrices": [],
+  "parameters": [
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+          "c1.extinctionRatio"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+          "c1.axisOffset"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+          "c2.retardance"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": 0,
+              "upper": 3.141592653589793
+            },
+            "priorOpt": null,
+            "start": 1.5707963267948966
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+          "c2.fastAxisOffset"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": -0.7853981633974483,
+              "upper": 0.7853981633974483
+            },
+            "priorOpt": null,
+            "start": 0
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+          "c1.extinctionRatio"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+          "c1.axisOffset"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+          "c2.retardance"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": 0,
+              "upper": 3.141592653589793
+            },
+            "priorOpt": null,
+            "start": 1.5707963267948966
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+          "c2.fastAxisOffset"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+          "dialZero"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": 0,
+              "upper": 6.283185307179586
+            },
+            "priorOpt": null,
+            "start": 1.3962634015954636
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "375bde88-fe45-4bd7-ad77-f13708076224",
+          "extinctionRatio"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "375bde88-fe45-4bd7-ad77-f13708076224",
+          "axisOffset"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "72d0505d-8685-4884-89ad-ea13694c8693",
+          "extinctionRatio"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "72d0505d-8685-4884-89ad-ea13694c8693",
+          "axisOffset"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "72d0505d-8685-4884-89ad-ea13694c8693",
+          "dialZero"
+        ]
+      },
+      "state": {
+        "Case": "UnknownParameter",
+        "Fields": [
+          {
+            "bounds": {
+              "lower": 0,
+              "upper": 6.283185307179586
+            },
+            "priorOpt": null,
+            "start": 2.652900463031381
+          }
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "d4d8dfc0-3d43-4a24-853c-369479de4f5d",
+          "azimuth"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "d4d8dfc0-3d43-4a24-853c-369479de4f5d",
+          "ellipticity"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "d4d8dfc0-3d43-4a24-853c-369479de4f5d",
+          "degreeOfPolarization"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "d4d8dfc0-3d43-4a24-853c-369479de4f5d",
+          "intensityScale"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          1
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "93fae6cc-d838-45b7-b5f0-949f7a759e91",
+          "gain"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          1
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "93fae6cc-d838-45b7-b5f0-949f7a759e91",
+          "darkOffset"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "93fae6cc-d838-45b7-b5f0-949f7a759e91",
+          "rotationUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.003490658503988659
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "93fae6cc-d838-45b7-b5f0-949f7a759e91",
+          "elementUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.005
+        ]
+      }
+    },
+    {
+      "parameter": {
+        "Case": "ItemParameterRef",
+        "Fields": [
+          "93fae6cc-d838-45b7-b5f0-949f7a759e91",
+          "throughputUncertainty"
+        ]
+      },
+      "state": {
+        "Case": "KnownParameter",
+        "Fields": [
+          0.01
+        ]
+      }
+    }
+  ],
+  "results": {
+    "problems": [
+      {
+        "chiSquared": 0.46329701022585296,
+        "columnNorms": [
+          7.001382913013543,
+          4.242640687046733
+        ],
+        "conditionOpt": 1.6502417785240124,
+        "coordinates": [
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "ItemOwner",
+                    "Fields": [
+                      "72d0505d-8685-4884-89ad-ea13694c8693"
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "ItemParameterRef",
+                    "Fields": [
+                      "72d0505d-8685-4884-89ad-ea13694c8693",
+                      "dialZero"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          "FringeVisibilityCoordinate"
+        ],
+        "correlationOpt": [
+          [
+            1,
+            1.4901037307750194E-06
+          ],
+          [
+            1.4901037307750192E-06,
+            1
+          ]
+        ],
+        "rank": 2,
+        "rmse": 0.11344320779651192,
+        "subject": {
+          "Case": "AirFringeProblem",
+          "Fields": [
+            [
+              "LP-(AIR#0)-LP-2",
+              "LP-(AIR#0)-LP-2R"
+            ]
+          ]
+        }
+      },
+      {
+        "chiSquared": 0.03419936313969324,
+        "columnNorms": [
+          0.9358302081622156,
+          4.216759229004035
+        ],
+        "conditionOpt": 4.505902023925983,
+        "coordinates": [
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "ItemOwner",
+                    "Fields": [
+                      "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f"
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "ItemParameterRef",
+                    "Fields": [
+                      "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+                      "dialZero"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "ItemOwner",
+                    "Fields": [
+                      "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f"
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "ItemParameterRef",
+                    "Fields": [
+                      "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+                      "c2.retardance"
+                    ]
+                  }
+                }
+              ]
+            ]
+          }
+        ],
+        "correlationOpt": [
+          [
+            1,
+            -1.4901129546783225E-06
+          ],
+          [
+            -1.4901129546783225E-06,
+            1
+          ]
+        ],
+        "rank": 2,
+        "rmse": 0.030821783034664353,
+        "subject": {
+          "Case": "AirFringeProblem",
+          "Fields": [
+            [
+              "LP-(AIR#0)-CPL-2",
+              "LP-(AIR#0)-CPL-2R"
+            ]
+          ]
+        }
+      },
+      {
+        "chiSquared": 0.10924424671664057,
+        "columnNorms": [
+          7.385577167785009,
+          4.124182057427718
+        ],
+        "conditionOpt": 1.8581242258435866,
+        "coordinates": [
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "ItemOwner",
+                    "Fields": [
+                      "0d2c2b6e-c91f-486b-b80b-a1b815c03aac"
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "ItemParameterRef",
+                    "Fields": [
+                      "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+                      "c2.fastAxisOffset"
+                    ]
+                  }
+                }
+              ]
+            ]
+          },
+          {
+            "Case": "EntryCoordinate",
+            "Fields": [
+              [
+                {
+                  "owner": {
+                    "Case": "ItemOwner",
+                    "Fields": [
+                      "0d2c2b6e-c91f-486b-b80b-a1b815c03aac"
+                    ]
+                  },
+                  "parameter": {
+                    "Case": "ItemParameterRef",
+                    "Fields": [
+                      "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+                      "c2.retardance"
+                    ]
+                  }
+                }
+              ]
+            ]
+          }
+        ],
+        "correlationOpt": [
+          [
+            1,
+            -0.19727793027912371
+          ],
+          [
+            -0.1972779302791237,
+            1
+          ]
+        ],
+        "rank": 2,
+        "rmse": 0.05508686239744982,
+        "subject": {
+          "Case": "AirFringeProblem",
+          "Fields": [
+            [
+              "CPL-(AIR#0)-LP-2",
+              "CPL-(AIR#0)-LP-2R"
+            ]
+          ]
+        }
+      }
+    ],
+    "productChecks": [],
+    "profiles": [],
+    "realizability": [],
+    "runResiduals": [
+      {
+        "residuals": [
+          0.05509106919175466,
+          -0.2619742560752321,
+          -0.012834193449100084,
+          0.16055867484192432,
+          0.05033057991277867,
+          -0.10292828721791986,
+          -0.0837646116696289,
+          0.04426105649755829,
+          0.09901081636626508,
+          0.04038297359896681,
+          -0.20093148092891394,
+          -0.03103128330892757,
+          0.16618849092060162,
+          0.059788888203641144,
+          -0.08713797663691247,
+          -0.13991025953334868,
+          0.09293983878618939,
+          0.15195996050030214
+        ],
+        "rmse": 0.12077837731680975,
+        "run": "LP-(AIR#0)-LP-2"
+      },
+      {
+        "residuals": [
+          0.05251412757301932,
+          -0.11416980868903265,
+          -0.022922681769447117,
+          0.16799762656344386,
+          0.04609593909156895,
+          -0.12239893117977013,
+          -0.09298264553637181,
+          0.02698103211882752,
+          0.07805220154398484,
+          0.025789075962822428,
+          -0.22459806077027972,
+          -0.039343129486204,
+          0.16791800200397156,
+          0.05697189155271398,
+          -0.11985772183490206,
+          -0.07116212796177035,
+          0.05417197210891678,
+          0.13094323870850766
+        ],
+        "rmse": 0.1055997460368324,
+        "run": "LP-(AIR#0)-LP-2R"
+      },
+      {
+        "residuals": [
+          0.01992472061955662,
+          0.03320501312698408,
+          -0.04712812581878129,
+          0.012392082327070883,
+          0.004716522977733173,
+          -0.005836705731967762,
+          -0.018959811836200297,
+          -0.01576201780448669,
+          0.008044418756435606,
+          0.029811594521590642,
+          0.03944935453879514,
+          -0.03639060061663546,
+          0.024282504895669077,
+          0.013877383132785331,
+          -0.0025743177787912047,
+          -0.021689374249746332,
+          -0.027060411995717484,
+          -0.010302229064294524
+        ],
+        "rmse": 0.024117847992188256,
+        "run": "LP-(AIR#0)-CPL-2"
+      },
+      {
+        "residuals": [
+          0.03212328336686153,
+          -0.047093109106169276,
+          -0.062408000609082866,
+          0.02443387384661809,
+          0.02295815541742463,
+          0.008794971841301125,
+          -0.01184495237358138,
+          -0.011596918708085628,
+          0.015089236386444577,
+          0.044048792806646184,
+          0.0032914548391052845,
+          -0.09621861139249799,
+          0.04557382902743279,
+          0.03416388537227669,
+          0.013838184487931546,
+          -0.007466029604014282,
+          -0.012529144120288906,
+          0.00484109852167873
+        ],
+        "rmse": 0.03630831897923047,
+        "run": "LP-(AIR#0)-CPL-2R"
+      },
+      {
+        "residuals": [
+          -0.10373742192877608,
+          0.02496908104472359,
+          0.005822789272334761,
+          -0.023409662524865316,
+          -0.030598729050318296,
+          -0.008167213732332756,
+          -0.011009086514921579,
+          0.01851410914122381,
+          0.05927079865707463,
+          0.09459972618352677,
+          0.0793610028248998,
+          0.02938218892373068,
+          0.007292887685099614,
+          -0.005638815661483054,
+          -0.0012548296418646576,
+          -0.003651084417086531,
+          0.03450330764365739,
+          -0.16624904790462056
+        ],
+        "rmse": 0.05868300525892057,
+        "run": "CPL-(AIR#0)-LP-2"
+      },
+      {
+        "residuals": [
+          -0.030493370393805036,
+          -0.14777502530718303,
+          0.0435235878376366,
+          -0.003268676621964617,
+          -0.02546536959740381,
+          -0.0005677583268079989,
+          -0.0065597072007594626,
+          0.03045285855564922,
+          0.06945397151427435,
+          -0.08160202212548537,
+          0.07792643241160527,
+          0.02615444165809022,
+          0.0023294016277686236,
+          -0.005548099027422149,
+          0.00148828085629657,
+          0.0059226918208387935,
+          0.05103273890975957,
+          -0.007004376591088962
+        ],
+        "rmse": 0.05123894721179039,
+        "run": "CPL-(AIR#0)-LP-2R"
+      }
+    ],
+    "sigmas": [
+      {
+        "entry": {
+          "owner": {
+            "Case": "ItemOwner",
+            "Fields": [
+              "0d2c2b6e-c91f-486b-b80b-a1b815c03aac"
+            ]
+          },
+          "parameter": {
+            "Case": "ItemParameterRef",
+            "Fields": [
+              "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+              "c2.retardance"
+            ]
+          }
+        },
+        "sigmaOpt": 0.014019802959251437
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "ItemOwner",
+            "Fields": [
+              "0d2c2b6e-c91f-486b-b80b-a1b815c03aac"
+            ]
+          },
+          "parameter": {
+            "Case": "ItemParameterRef",
+            "Fields": [
+              "0d2c2b6e-c91f-486b-b80b-a1b815c03aac",
+              "c2.fastAxisOffset"
+            ]
+          }
+        },
+        "sigmaOpt": 0.007828801798378275
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "ItemOwner",
+            "Fields": [
+              "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f"
+            ]
+          },
+          "parameter": {
+            "Case": "ItemParameterRef",
+            "Fields": [
+              "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+              "c2.retardance"
+            ]
+          }
+        },
+        "sigmaOpt": 0.007521262507466436
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "ItemOwner",
+            "Fields": [
+              "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f"
+            ]
+          },
+          "parameter": {
+            "Case": "ItemParameterRef",
+            "Fields": [
+              "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+              "dialZero"
+            ]
+          }
+        },
+        "sigmaOpt": 0.033890071954830105
+      },
+      {
+        "entry": {
+          "owner": {
+            "Case": "ItemOwner",
+            "Fields": [
+              "72d0505d-8685-4884-89ad-ea13694c8693"
+            ]
+          },
+          "parameter": {
+            "Case": "ItemParameterRef",
+            "Fields": [
+              "72d0505d-8685-4884-89ad-ea13694c8693",
+              "dialZero"
+            ]
+          }
+        },
+        "sigmaOpt": 0.01667272012361086
+      }
+    ]
+  },
+  "runs": [
+    "LP-(AIR#0)-LP-2",
+    "LP-(AIR#0)-LP-2R",
+    "LP-(AIR#0)-CPL-2",
+    "LP-(AIR#0)-CPL-2R",
+    "CPL-(AIR#0)-LP-2",
+    "CPL-(AIR#0)-LP-2R",
+    "CPL-(AIR#0)-CPL",
+    "CPL-(AIR#0)-CPL-BR",
+    "CPL-(AIR#0)-CPL-2"
+  ],
+  "schemaVersion": 1,
+  "stage": 2,
+  "stamp": "2026-05-31T12:01:00Z",
+  "study": "QZ-LR"
+}

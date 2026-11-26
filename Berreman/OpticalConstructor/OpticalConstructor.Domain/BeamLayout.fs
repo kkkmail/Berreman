@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Domain
 
 open Berreman.Constants
+open Berreman.Fields
+open Berreman.Geometry
 open OpticalConstructor.Domain.Placement
 
 /// Spec 0046 — the Main-scene BEAM TREE: which beam each element sits on, where it lands on that beam,
@@ -446,6 +448,28 @@ module BeamLayout =
     /// Lay the scene out with every element rotating about its centre (the default `RotationPivot`).
     let layout (elements : LayoutElement list) : SceneLayout = layoutWith PivotAtCentre elements
 
+    type PlacedElement with
+
+        /// The incidence the beam meets this element at: the angle between its DRAWN face normal and its arriving beam
+        /// (spec 0046 — its R2 for an in-plane tilt), kept computable (below 90°); 0° for the root (spec 0050 S11.2).
+        member placed.incidenceOn (placement : ElementPlacement) : IncidenceAngle =
+            let degrees =
+                match placed.incoming with
+                | Some d ->
+                    let n = RayModel.faceNormal d placement
+                    let c = min 1.0 (abs (n.normalized.dot d.normalized).value)
+                    min Propagation.r2SweepMaxDegrees.value (acos c * 180.0 / System.Math.PI)
+                | None -> 0.0
+            IncidenceAngle.create (Angle.degree (degrees * 1.0<deg>))
+
+    type BeamTree.BeamBranch with
+
+        /// The engine branch a run solves an element for when the light leaves it by this beam branch (spec 0050 S11.2).
+        member branch.propagationBranch : Propagation.Branch =
+            match branch with
+            | BeamTree.TransmittedBeam -> Propagation.BranchTransmitted
+            | BeamTree.ReflectedBeam -> Propagation.BranchReflected
+
     /// Every element hosted — directly or through other side beams — on the reflected rays of `id`,
     /// i.e. the elements that move with it. Moving an element onto a beam inside this set would loop.
     let hostedUnder (elements : LayoutElement list) (id : Library.ElementId) : Set<Library.ElementId> =
@@ -480,28 +504,48 @@ module BeamLayout =
 
     // --- What the experiments can capture (spec 0046 task 5) -----------------
 
-    /// The branches through which the light reaching any of `detectors` left the `measured` element,
-    /// counting only LIT detectors (one behind another detector receives nothing) that also see the
-    /// `varied` element (the variation must reach them).
-    /// `T` for a detector behind it on its transmitted beam, `R` for one on its reflected beam.
+    /// One detector an experiment captures and the branch it captures (spec 0050 S8.1).
+    type DetectorCapture =
+        {
+            detector : Library.ElementId
+            branch : BeamTree.BeamBranch
+        }
+
+    /// Spec 0050 S8.1: each LIT detector of `detectors` that sees `varied` captures the branch its light leaves the
+    /// LAST of `objects` on its path by, in scene order; with no object on its path, a run is a pass-through, so it
+    /// captures only light `varied` transmits (the no-sample rule).
+    let detectorCaptures
+        (scene : SceneLayout)
+        (detectors : Library.ElementId list)
+        (varied : Library.ElementId)
+        (objects : Library.ElementId list)
+        : DetectorCapture list =
+        scene.elements
+        |> List.choose (fun p ->
+            match p.light with
+            | Lit when List.contains p.id detectors ->
+                match p.path |> List.tryFind (fun s -> s.element = varied) with
+                | Some variedStep ->
+                    let capturedOpt =
+                        match p.path |> List.filter (fun s -> List.contains s.element objects) |> List.tryLast with
+                        | Some lastObject -> Some lastObject.branch
+                        | None ->
+                            match variedStep.branch with
+                            | BeamTree.TransmittedBeam -> Some BeamTree.TransmittedBeam
+                            | BeamTree.ReflectedBeam -> None
+                    capturedOpt |> Option.map (fun branch -> { detector = p.id; branch = branch })
+                | None -> None
+            | Lit | Unlit -> None)
+
+    /// Spec 0050 S8.1: the distinct branches `detectorCaptures` gives `detectors`, in their order, so one rule decides
+    /// both what each detector captures and what an experiment may capture.
     let detectedBranches
         (scene : SceneLayout)
         (detectors : Library.ElementId list)
         (varied : Library.ElementId)
-        (measured : Library.ElementId)
+        (objects : Library.ElementId list)
         : BeamTree.BeamBranch list =
-        scene.elements
-        |> List.filter (fun p ->
-            List.contains p.id detectors
-            && (match p.light with
-                | Lit -> true
-                | Unlit -> false))
-        |> List.choose (fun p ->
-            let sees (id : Library.ElementId) = p.path |> List.exists (fun s -> s.element = id)
-            match sees varied with
-            | true -> p.path |> List.tryFind (fun s -> s.element = measured) |> Option.map (fun s -> s.branch)
-            | false -> None)
-        |> List.distinct
+        detectorCaptures scene detectors varied objects |> List.map (fun capture -> capture.branch) |> List.distinct
 
     /// The capture modes the detected branches allow: a transmitted detector offers T, a reflected one R,
     /// both offer T, R and Both; none offers nothing.

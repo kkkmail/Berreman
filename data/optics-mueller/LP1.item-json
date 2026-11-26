@@ -1,0 +1,41 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "375bde88-fe45-4bd7-ad77-f13708076224",
+    "label": "LP1",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "940bda4e-db9c-4103-b59c-dab2f3ee5875",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "extinctionRatio",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "axisOffset",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

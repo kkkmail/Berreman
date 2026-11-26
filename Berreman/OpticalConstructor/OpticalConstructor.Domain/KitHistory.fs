@@ -35,6 +35,14 @@ module KitHistory =
             star : KitStar
         }
 
+    /// The text typed into the start screen's filter box; `none` is the empty box (spec 0050 S5.2).
+    type KitHistoryFilter =
+        | KitHistoryFilter of string
+
+        member this.value : string = let (KitHistoryFilter text) = this in text
+
+        static member none : KitHistoryFilter = KitHistoryFilter ""
+
     /// The whole history, `entries` held newest open first; a kit is identified by its folder (spec 0050 S5.1).
     type KitHistory =
         {
@@ -50,15 +58,21 @@ module KitHistory =
                 entries = []
             }
 
-        /// The one folder comparison, ordinal ignoring case as `RecentFiles.bump` compares paths: `change` maps the
-        /// matching entry, `None` drops it. It answers no `bool` so no primitive sits beside our types (spec 0050 S5.1).
+        /// The one folder comparison, of the two folders' `canonical`s: `Some entry` when `entry` is the kit in `folder`.
+        /// It answers no `bool` so no primitive sits beside our types (spec 0050 S5.1, S5.3).
+        static member private tryMatchFolder (folder : KitFolder) (entry : KitHistoryEntry) : KitHistoryEntry option =
+            match entry.folder.canonical = folder.canonical with
+            | true -> Some entry
+            | false -> None
+
+        /// `change` maps the kit in `folder`, `None` drops it; every other entry is kept (spec 0050 S5.1).
         member private this.changeEntry (folder : KitFolder) (change : KitHistoryEntry -> KitHistoryEntry option) : KitHistory =
             let changed =
                 this.entries
                 |> List.choose (fun entry ->
-                    match String.Equals(entry.folder.value.value, folder.value.value, StringComparison.OrdinalIgnoreCase) with
-                    | true -> change entry
-                    | false -> Some entry)
+                    match KitHistory.tryMatchFolder folder entry with
+                    | Some matched -> change matched
+                    | None -> Some entry)
 
             { this with entries = changed }
 
@@ -73,6 +87,29 @@ module KitHistory =
         /// Removes the kit in `folder`, starred or not; the folder itself is untouched (spec 0050 S5.1, S5.2).
         member this.forget (folder : KitFolder) : KitHistory =
             this.changeEntry folder (fun _ -> None)
+
+        /// Locate…'s answer: the kit in `missing` takes `found` as its folder, keeping its id, name, time, star and place,
+        /// and any other entry of `found` is dropped, so a folder is listed once. Without a kit in `missing` the history is
+        /// unchanged; no disk is touched (spec 0050 S5.2).
+        member this.relocate (missing : KitFolder) (found : KitFolder) : KitHistory =
+            let indexed = List.indexed this.entries
+
+            let movedOpt =
+                indexed
+                |> List.tryPick (fun (index, entry) -> KitHistory.tryMatchFolder missing entry |> Option.map (fun moved -> index, moved))
+
+            match movedOpt with
+            | Some (movedIndex, moved) ->
+                let relocated =
+                    indexed
+                    |> List.choose (fun (index, entry) ->
+                        match index = movedIndex, KitHistory.tryMatchFolder found entry with
+                        | true, _ -> Some { moved with folder = found }
+                        | false, Some _ -> None
+                        | false, None -> Some entry)
+
+                { this with entries = relocated }
+            | None -> this
 
         /// Drops unstarred kits, the earliest open first and the later of equal times first, until at most `limit`
         /// remain; a starred kit is never dropped and the survivors keep their order (spec 0050 S5.1).
@@ -94,6 +131,28 @@ module KitHistory =
 
             { this with entries = kept }
 
+        /// Puts the kit opened from `folder` first, with `kitFile`'s id and name, one reading of `clock` and the star of
+        /// the entry it replaces (unstarred when new), then evicts down to `limit`, which can drop it (spec 0050 S5.1).
+        member this.bump (limit : KitHistoryLimit) (clock : ClockProvider) (folder : KitFolder) (kitFile : KitFile) : KitHistory =
+            let star =
+                this.entries
+                |> List.tryPick (KitHistory.tryMatchFolder folder)
+                |> Option.map _.star
+                |> Option.defaultValue UnstarredKit
+
+            let opened : KitHistoryEntry =
+                {
+                    folder = folder
+                    kitId = kitFile.id
+                    name = kitFile.name
+                    lastOpened = clock.now ()
+                    star = star
+                }
+
+            let others = this.forget folder
+            let reopened = { others with entries = opened :: others.entries }
+            reopened.evict limit
+
         /// The starred kits, then the rest, each group newest open first and equal times in stored order (spec 0050 S5.1).
         member this.displayOrder : KitHistoryEntry list =
             let newestFirst (star : KitStar) : KitHistoryEntry list =
@@ -103,10 +162,36 @@ module KitHistory =
 
             newestFirst StarredKit @ newestFirst UnstarredKit
 
+        /// `displayOrder` keeping the kits whose name or folder holds the filter's trimmed text, ignoring case; a blank
+        /// filter trims to the empty text, which every kit holds, so it keeps them all (spec 0050 S5.2).
+        member this.entriesMatching (filter : KitHistoryFilter) : KitHistoryEntry list =
+            let text = filter.value.Trim()
+
+            this.displayOrder
+            |> List.filter (fun entry ->
+                entry.name.value.Contains(text, StringComparison.OrdinalIgnoreCase)
+                || entry.folder.value.value.Contains(text, StringComparison.OrdinalIgnoreCase))
+
     /// Whether a history entry's folder is on disk now; it is probed, never stored, so it has no tag (spec 0050 S5.1).
     type KitFolderPresence =
         | KitFolderPresent
         | KitFolderMissing
+
+    /// One row of the start screen's kit list: a history entry and whether its folder is on disk now (spec 0050 S5.2).
+    type KitHistoryRow =
+        {
+            entry : KitHistoryEntry
+            presence : KitFolderPresence
+        }
+
+    type KitHistory with
+
+        /// `entriesMatching filter`, in its order, each paired with `probe`'s answer for its folder. The caller supplies
+        /// the probe (`KitHistoryProxy.probeFolder`), so the history stays pure (spec 0050 S5.2).
+        member this.rowsMatching (filter : KitHistoryFilter) (probe : KitFolder -> KitFolderPresence) : KitHistoryRow list =
+            let rowOf (entry : KitHistoryEntry) : KitHistoryRow = { entry = entry; presence = probe entry.folder }
+
+            this.entriesMatching filter |> List.map rowOf
 
     /// Why the kit history failed; the reason names the file or folder and the cause (spec 0050 S5.1).
     type KitHistoryError =
@@ -116,7 +201,7 @@ module KitHistory =
             match this with
             | KitHistoryWriteErr reason -> $"the kit history could not be written: {reason}"
 
-    /// The kit history's seam over the per-user preferences, built once at the composition root (spec 0050 S5.1).
+    /// The kit history's seam: Storage's `KitHistoryProxy.create` at the composition root, `createInMemory` the double (spec 0050 S5.1).
     [<ReferenceEquality>]
     type KitHistoryProxy =
         {
@@ -147,3 +232,9 @@ module KitHistory =
                         | true -> KitFolderPresent
                         | false -> KitFolderMissing
             }
+
+        /// Reads the stored history, applies `change`, writes the result and answers it, or the write's error: the one
+        /// read-change-write sequence behind every history verb's caller (spec 0050 S5.2).
+        member this.changeHistory (change : KitHistory -> KitHistory) : Result<KitHistory, KitHistoryError> =
+            let changed = change (this.readHistory ())
+            this.writeHistory changed |> Result.map (fun () -> changed)

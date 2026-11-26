@@ -113,14 +113,3 @@ module LifecycleTests =
             Assert.Equal<EntryLifecycle option>(None, EntryLifecycle.tryOfDb tag)
             Assert.Equal<EntryProtection option>(None, EntryProtection.tryOfDb tag)
             Assert.Equal<PinState option>(None, PinState.tryOfDb tag)
-
-    // ----- cross-store version reference -----
-
-    [<Fact>]
-    let ``version ref distinguishes a material version from a sample version`` () =
-        let m : VersionRef = MaterialVersionRef { materialId = MaterialIds.silicon; version = VersionNumber.first }
-        let s : VersionRef = SampleVersionRef { sampleId = SampleId.create (); version = VersionNumber.first }
-        Assert.True(m <> s)
-        match m with
-        | MaterialVersionRef mv -> Assert.Equal(MaterialIds.silicon, mv.materialId)
-        | SampleVersionRef _ -> Assert.Fail("expected a material version ref")

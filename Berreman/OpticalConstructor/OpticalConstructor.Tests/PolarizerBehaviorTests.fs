@@ -16,8 +16,6 @@ module PolarizerBehaviorTests =
 
     let private deg (d : float) : Angle = Angle.degree (d * 1.0<Berreman.Constants.deg>)
 
-    let private stokesComponents (sv : StokesVector) : float * float * float * float = sv.s0, sv.s1, sv.s2, sv.s3
-
     /// The reference-orientation ideal LP (θ = 0) every compound test builds components from.
     let private lp0 : MuellerMatrix = analyzerMueller IdealLinear (deg 0.0)
 
@@ -39,15 +37,6 @@ module PolarizerBehaviorTests =
         for kind in [ IdealLinear; IdealCircularLeft; IdealCircularRight ] do
             for d in sampledDegrees do
                 assertMuellerEqual (analyzerMueller kind (deg d)) (behaviorMueller (ComputedIdeal kind) (deg d))
-
-    [<Fact>]
-    let ``behaviorInputStokes of a ComputedIdeal equals inputStokes across kinds and orientations`` () =
-        for kind in [ IdealLinear; IdealCircularLeft; IdealCircularRight ] do
-            for d in sampledDegrees do
-                let e0, e1, e2, e3 = stokesComponents (inputStokes kind (deg d))
-                let a0, a1, a2, a3 = stokesComponents (behaviorInputStokes (ComputedIdeal kind) (deg d))
-                Assert.True(abs (e0 - a0) <= 1.0e-9 && abs (e1 - a1) <= 1.0e-9 && abs (e2 - a2) <= 1.0e-9 && abs (e3 - a3) <= 1.0e-9,
-                            $"%A{kind} at %g{d}°: expected (%g{e0}, %g{e1}, %g{e2}, %g{e3}), got (%g{a0}, %g{a1}, %g{a2}, %g{a3})")
 
     // ============================ the component rotation R(−θ)·M·R(θ) ============================
 
@@ -106,16 +95,6 @@ module PolarizerBehaviorTests =
         let compound = ConstantMueller [ { matrix = lp0; offset = deg 20.0 }; { matrix = lp0; offset = deg 65.0 } ]
         let expected = analyzerMueller IdealLinear (deg 95.0) * analyzerMueller IdealLinear (deg 50.0)
         assertMuellerEqual expected (behaviorMueller compound (deg 30.0))
-
-    [<Fact>]
-    let ``behaviorInputStokes applies a constant compound to unpolarized light un-normalized`` () =
-        // One LP component at reference, element rotated to 30°: ½·[1; cos60°; sin60°; 0].
-        let behavior = ConstantMueller [ { matrix = lp0; offset = deg 0.0 } ]
-        let a0, a1, a2, a3 = stokesComponents (behaviorInputStokes behavior (deg 30.0))
-        Assert.True(abs (a0 - 0.5) <= 1.0e-9)
-        Assert.True(abs (a1 - 0.5 * cos (60.0 * System.Math.PI / 180.0)) <= 1.0e-9)
-        Assert.True(abs (a2 - 0.5 * sin (60.0 * System.Math.PI / 180.0)) <= 1.0e-9)
-        Assert.True(abs a3 <= 1.0e-9)
 
     // ============================ EntryProtection (acceptance 3) ============================
 

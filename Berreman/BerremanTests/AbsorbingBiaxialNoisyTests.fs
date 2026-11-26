@@ -7,12 +7,17 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
+open OpticalConstructor.Optimization.BenchNoise
+open OpticalConstructor.Optimization.RecoveryEnsembles
 open Xunit
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample
-open BerremanTests.AbsorbingBiaxialSample              // the fifteen-parameter sample, shared with the noiseless suite
+open BerremanTestSupport.BiaxialSample
+open BerremanTestSupport.AbsorbingBiaxialSample        // the fifteen-parameter sample, shared with the noiseless suite
 
 /// Spec 0044, manual task 016 part 3 — what a decent-but-ordinary optical bench actually recovers from
 /// an ABSORBING, gyrotropic, TRICLINIC crystal, and with what error bar.
@@ -59,39 +64,6 @@ open BerremanTests.AbsorbingBiaxialSample              // the fifteen-parameter 
 /// lever. A loose budget on a direct, redundant measurement beats a tight budget on an indirect one.
 type AbsorbingBiaxialNoisyTests() =
 
-    let forward = createBerremanForward buildAbsorbing solverParameters
-
-    /// The seeds this ensemble uses. FIVE rather than the shared eight, and the reason is runtime: a
-    /// fifteen-parameter fit on noisy data is roughly three times the work of the nine-parameter
-    /// transparent one, and eight of them would put this single fact past forty minutes. Five still gives
-    /// a sample standard deviation, at 35 % relative uncertainty against the eight-seed 27 %. The seeds
-    /// are the first five of the shared list, so the ensembles remain directly comparable as far as they
-    /// overlap.
-    let seeds = ensembleSeeds |> List.truncate 5
-
-    /// Run ONE noisy absorbing experiment end to end.
-    let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<AbsorbingTriclinicParameters> =
-        let observations = noisyObserveAbsoluteWith forward absorbing noise seed fullConfigurations
-        {
-            seed = seed
-            fit = fitAbsorbingObservations forward searchBox observations (absorbingScalingAround perturbedStart)
-        }
-
-    /// The quantities the ensemble reports on: the fifteen fitted unknowns, plus the three birefringences
-    /// and the ISOTROPIC ABSORPTION.
-    ///
-    /// The isotropic absorption is here because it is the whole reason absolute throughput was added to
-    /// the measurement. It is not a fitted parameter — it is the mean of three of them — and the
-    /// noiseless suite showed it is the direction normalized data suppresses. Reporting only the six
-    /// individual components would leave the one quantity this design exists to rescue unmeasured.
-    let reportedQuantities : RecoveredQuantity<AbsorbingTriclinicParameters> list =
-        [ for a in AbsorbingTriclinicParameters.axes -> RecoveredQuantity.ofAxis a ]
-        @ [ RecoveredQuantity.derived "n2 - n1" (fun p -> p.index2.value - p.index1.value)
-            RecoveredQuantity.derived "n3 - n2" (fun p -> p.index3.value - p.index2.value)
-            RecoveredQuantity.derived "n3 - n1" (fun p -> p.index3.value - p.index1.value)
-            RecoveredQuantity.derived "isotropic absorption" (fun p ->
-                (p.epsIm11.value + p.epsIm22.value + p.epsIm33.value) / 3.0) ]
-
     let absorptionNames = [ "e11"; "e22"; "e33"; "e23"; "e13"; "e12" ]
     let gyrationNames = [ "g11"; "g22"; "g33"; "g23"; "g13"; "g12" ]
     let indexNames = [ "n1"; "n2"; "n3" ]
@@ -104,13 +76,13 @@ type AbsorbingBiaxialNoisyTests() =
         // normalized Mueller elements wrong by up to 0.005 of full scale, absolute throughput wrong by up
         // to 1 %. Each fits fifteen unknowns from the perturbed start against the RECORDED angles. Their
         // spread is the uncertainty.
-        let experiments = seeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+        let experiments = noisySeeds |> List.map (fun seed -> recoverAbsorbingFromNoisy NoiseParam.decentLab seed |> expectOk)
 
         for e in experiments do
             Assert.True(e.fit.solution.iterations.value > 0, $"the fit for seed {e.seed.value} never took a step")
 
         let recovered = experiments |> List.map (fun e -> e.fit.recovered)
-        let table = reportedQuantities |> List.map (statisticsFor absorbing recovered)
+        let table = absorbingReportedQuantities |> List.map (statisticsFor absorbing recovered)
         let residualLevels =
             [ for e in experiments ->
                 $"seed {e.seed.value}: chi2 {e.fit.chiSquared}, rms {e.fit.rmsResidual}, {e.fit.solution.iterations.value} iterations" ]
@@ -138,25 +110,15 @@ type AbsorbingBiaxialNoisyTests() =
         // two sit between 3 and 3.6 (e22 at 3.5, the isotropic absorption at 3.2) and every other is
         // below 2.7 — which is what an unbiased set of nineteen t(4) estimates looks like.
         for row in table do
-            let allowance = 5.0 * (standardErrorOfMean (List.length seeds) row).value
+            let allowance = 5.0 * (standardErrorOfMean (EnsembleSize (List.length noisySeeds)) row).value
             Assert.True(
                 row.bias.value < allowance,
                 $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}): {report}")
 
-        // Bands pinned per the spec §9 protocol from the observed ensemble.
-        for row in table do
-            // Bands ~3x the observed scatters: indices 3.3e-4, birefringences 1.4e-4 to 4.5e-4,
-            // absorption components 5.1e-4 to 5.1e-3, isotropic absorption 6.3e-4, gyration 2.4e-2 to
-            // 3.12 (yes, 312 % — g23 is not measured by this bench in any useful sense).
-            let scatterBand =
-                match row.quantity.name.value with
-                | "n1" | "n2" | "n3" -> 1.0e-3
-                | "n2 - n1" | "n3 - n2" | "n3 - n1" -> 1.5e-3
-                | "e11" | "e22" | "e33" | "e23" | "e13" | "e12" -> 1.5e-2
-                | "isotropic absorption" -> 2.0e-3
-                | "g11" | "g22" | "g33" | "g23" | "g13" | "g12" -> 1.0e1
-                | other -> failwith $"no acceptance band is pinned for {other}"
-            Assert.True(row.scatter.value < scatterBand, $"{row.quantity.name.value} scatter {row.scatter.value} out of band: {report}")
+        let breaches = absorbingBandBreaches (fun q -> (rowFor table q.name |> expectOk).scatter)
+        Assert.True(
+            List.isEmpty breaches,
+            System.String.Join("; ", [ for breach in breaches -> breach.describe ]) + ": " + report)
 
         // ------------------------------------------------------------------ the ordering of the result
         //
@@ -169,13 +131,13 @@ type AbsorbingBiaxialNoisyTests() =
         // components are worse than 10 % and one — g23 — is worse than 300 %. Stated as two separate
         // bounds rather than as a ratio, because a ratio would be dominated by g13, the one gyration
         // component this design happens to constrain well (2.4 %).
-        let worstAbsorption = absorptionNames |> List.map (fun n -> (rowFor table n).scatter.value) |> List.max
+        let worstAbsorption = absorptionNames |> List.map (fun n -> (rowFor table (ParameterName n) |> expectOk).scatter.value) |> List.max
         Assert.True(
             worstAbsorption < 1.0e-2,
             $"every absorption component should be recovered to better than 1 %%: {report}")
 
         let badlyDeterminedGyration =
-            gyrationNames |> List.filter (fun n -> (rowFor table n).scatter.value > 0.1) |> List.length
+            gyrationNames |> List.filter (fun n -> (rowFor table (ParameterName n) |> expectOk).scatter.value > 0.1) |> List.length
         Assert.True(
             badlyDeterminedGyration >= 4,
             $"most gyration components should be worse than 10 %%, got {badlyDeterminedGyration} of six: {report}")
@@ -184,9 +146,9 @@ type AbsorbingBiaxialNoisyTests() =
         // header for the prediction this refutes. 0.063 % against the 0.17-0.51 % of the three
         // off-diagonal components, despite being bought with the loosest budget on the bench, because a
         // throughput reading is a direct and redundant measurement of it repeated 44 times over.
-        let isotropicScatter = (rowFor table "isotropic absorption").scatter.value
+        let isotropicScatter = (rowFor table (ParameterName "isotropic absorption") |> expectOk).scatter.value
         let worstAnisotropic =
-            [ "e23"; "e13"; "e12" ] |> List.map (fun n -> (rowFor table n).scatter.value) |> List.max
+            [ "e23"; "e13"; "e12" ] |> List.map (fun n -> (rowFor table (ParameterName n) |> expectOk).scatter.value) |> List.max
         Assert.True(
             isotropicScatter < worstAnisotropic,
             $"the isotropic absorption is expected to beat the off-diagonal components: {report}")
@@ -196,8 +158,8 @@ type AbsorbingBiaxialNoisyTests() =
         // DIFFERENCES, so the data pins them far harder than the common index level and the three indices
         // wander together. Measured 5.7e-6 to 8.1e-6 against 5.2e-4, i.e. 64x to 91x better. Banded at
         // 50x, the figure the transparent suites use.
-        let worstIndexScatter = indexNames |> List.map (fun n -> (rowFor table n).absoluteScatter) |> List.max
+        let worstIndexScatter = indexNames |> List.map (fun n -> (rowFor table (ParameterName n) |> expectOk).absoluteScatter.value) |> List.max
         for name in [ "n2 - n1"; "n3 - n2"; "n3 - n1" ] do
             Assert.True(
-                (rowFor table name).absoluteScatter < worstIndexScatter / 50.0,
+                (rowFor table (ParameterName name) |> expectOk).absoluteScatter.value < worstIndexScatter / 50.0,
                 $"{name} must be determined far better than any single index in ABSOLUTE terms: {report}")

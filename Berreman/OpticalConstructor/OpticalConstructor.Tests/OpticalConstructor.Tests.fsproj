@@ -46,7 +46,6 @@
         <Compile Include="ChartSettingsTests.fs" />
         <Compile Include="PolarizationPlotTests.fs" />
         <!-- Persistence II (§I.5-I.8, slice 013). -->
-        <Compile Include="HistoryTests.fs" />
         <Compile Include="ExportImportTests.fs" />
         <!-- Part J UX shell I (§J.1-J.5, slice 014). TemplatesTests left with the
              retired Templates module (spec 0038 Part B.1). -->
@@ -143,12 +142,12 @@
         <!-- Spec 0038 Part H (step 020): the pure entry-lifecycle foundation — the shared
              version-creation rule (decideVersioning) enumerated over the pinned/unpinned ×
              physics-changed/identical × metadata-only decision table, plus the VersionNumber /
-             version-id / EntryLifecycle / VersionRef surface. Avalonia-free. -->
+             version-id / EntryLifecycle surface. Avalonia-free. -->
         <Compile Include="LifecycleTests.fs" />
-        <!-- Spec 0038 step 027; spec 0050 S4.3: capture and restore through the scene's kit file,
-             preserving element ids, kinds, placements, bindings and view state; file replacement,
-             missing/malformed files, SceneName validation and SnapMode wire forms. -->
-        <Compile Include="SceneRoundTripTests.fs" />
+        <!-- Spec 0050 S8.2: a setup through its kit file, preserving its slots, their items and
+             its revisions; file replacement, an empty kit, unreadable or misnamed files and
+             SnapMode wire forms. -->
+        <Compile Include="SetupRoundTripTests.fs" />
         <!-- Experiment kit files preserve setups and attachments (spec 0050 S4.3). -->
         <Compile Include="ExperimentCollectionRoundTripTests.fs" />
         <!-- Spec 0038 Part I (step 031): the pure out-of-band dispersion diagnostic — a fixed 600 nm
@@ -165,19 +164,7 @@
              the detector) and DataRangeMismatch (abscissa outside the range, never trimmed). Every case
              runs against an in-memory string — no file IO. -->
         <Compile Include="MeasuredDataTests.fs" />
-        <!-- Spec 0038 Part I (035, ADD_CONTRACT STORE_XDUO_0006): the measured-data LOAD seam — the
-             DECLARED [<ReferenceEquality>] ExperimentDataProxy (tryLoadIntensity / tryLoadEllipsometric).
-             The inline mock keyed by path (canned series built through the step-34 parsers) + the
-             mock-driven test exercising both fields through their EXACT signatures: a hit returns the
-             canned series, an unknown path returns a typed ExperimentDataError (never a throw), and the
-             proxy compares by reference. Declared contract: types + mock + test, no real store yet. -->
         <Compile Include="ExperimentDataProxyTests.fs" />
-        <!-- Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006): the REAL file-backed
-             ExperimentDataProxy — ExperimentDataStore.createFileBacked. A temp file written under the
-             test output round-trips a known intensity and a known ellipsometric series (the store's
-             parsed result equals the step-34 parser's own output); a missing path yields a typed
-             ExperimentDataError from both fields (never a throw); an empty-but-existing file yields the
-             parser's EmptyDataFile, proving the adapter reads then delegates and adds no parsing logic. -->
         <Compile Include="ExperimentDataStoreTests.fs" />
         <Compile Include="CatalogueImportProxyTests.fs" />
         <Compile Include="CatalogueImportInMemoryTests.fs" />
@@ -206,13 +193,83 @@
         <Compile Include="KitOpeningTests.fs" />
         <Compile Include="KitHistoryTests.fs" />
         <Compile Include="KitHistoryProxyTests.fs" />
+        <Compile Include="KitHistoryJsonTests.fs" />
+        <Compile Include="KitStartTests.fs" />
+        <Compile Include="ExplorerProxyTests.fs" />
+        <Compile Include="KitWindowModelTests.fs" />
+        <Compile Include="DataLocationsTests.fs" />
+        <Compile Include="KitArchiveTests.fs" />
+        <Compile Include="KitArchiveProxyTests.fs" />
+        <Compile Include="KitArchiveJobTests.fs" />
+        <Compile Include="ItemModelsTests.fs" />
+        <Compile Include="ItemModelProxyTests.fs" />
+        <Compile Include="KitItemTests.fs" />
+        <Compile Include="KitItemFileTests.fs" />
+        <Compile Include="ExperimentCopyTests.fs" />
+        <Compile Include="ItemsPanelModelTests.fs" />
+        <Compile Include="ItemEvaluationTests.fs" />
+        <Compile Include="SetupTests.fs" />
+        <Compile Include="SetupModelTests.fs" />
+        <Compile Include="NamingTemplateTests.fs" />
+        <Compile Include="SetupGridTests.fs" />
+        <Compile Include="ExperimentModelTests.fs" />
+        <Compile Include="ImportProfileTests.fs" />
+        <Compile Include="LabFileImportTests.fs" />
+        <Compile Include="DataSplitTests.fs" />
+        <Compile Include="DataSplitModelTests.fs" />
+        <Compile Include="ExperimentMatrixTests.fs" />
+        <Compile Include="StagedMuellerPathTests.fs" />
+        <Compile Include="StudySessionTests.fs" />
+        <Compile Include="StudyTests.fs" />
+        <Compile Include="KitStudyFileTests.fs" />
+        <Compile Include="StudyMaterialTests.fs" />
+        <Compile Include="StudyMessageTests.fs" />
+        <Compile Include="PrefitCheckTests.fs" />
+        <Compile Include="StudyForwardTests.fs" />
+        <Compile Include="StudyEngineTests.fs" />
+        <Compile Include="FitRunTests.fs" />
+        <Compile Include="KitFitRunFileTests.fs" />
+        <Compile Include="StudyFitJobTests.fs" />
+        <Compile Include="FitResultsTests.fs" />
+        <Compile Include="StudyPublishingTests.fs" />
+        <Compile Include="StudyWindowModelTests.fs" />
+        <Compile Include="MaterialSourceProxyTests.fs" />
+        <Compile Include="MaterialSourcePullTests.fs" />
+        <Compile Include="MaterialSourceFixture.fs" />
+        <Compile Include="MaterialSourceStoreTests.fs" />
+        <Compile Include="MaterialSourcePullSqliteTests.fs" />
+        <Compile Include="MaterialSourcesModelTests.fs" />
+        <Compile Include="HenkeCompoundsTests.fs" />
+        <Compile Include="PlannerSymmetryTests.fs" />
+        <Compile Include="PlannerReportTests.fs" />
+        <Compile Include="PlannerInputsTests.fs" />
+        <Compile Include="PlannerInformationTests.fs" />
+        <Compile Include="PlannerCacheTests.fs" />
+        <Compile Include="PlanRunTests.fs" />
+        <Compile Include="PlanJobTests.fs" />
+        <Compile Include="PlanWindowModelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <Content Include="fixtures\Si.yml">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        <Content Include="fixtures\catalog-nk.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Content Include="fixtures\sample-nk.csv">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\ptb-Co.txt">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\test-glasses.agf">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\si.nff">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\o.nff">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <!-- Spec 0033 step 025: one minimal RII-style page per dispersion formula

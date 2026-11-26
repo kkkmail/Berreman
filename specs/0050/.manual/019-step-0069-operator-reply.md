@@ -1,0 +1,9 @@
+The operator committed ASG (76e953f3) and Berreman recovery records (a3e6c47) and explicitly authorized this restart.
+
+Resume slice 0069 normally with executability profile 1. Follow specs/0050/.manual/007-inherited-registry-recovery.md and the current 0069-state-of-the-world.md handoff. The product implementation is already committed in 308fead; preserve it. Review against accepted 0068 (38c6d3c5d5c86cef040f069108b06062756ba96b). Do not repeat or restore the implementation.
+
+ASG now prepares planned inherited lifecycle records before publishing the receipt. The current receipt validates. MaterialProxy's implemented row and every earlier row are preserved; the remaining inherited CategoryProxy, SampleProxy and CatalogueImportProxy rows are initialized. All 988 compiled slice/gate artifacts are unchanged. Preserve the current arc's registry and all origin registries.
+
+All 15 unchanged 0069 gates passed during operator recovery: 835 constructor cases, 208 UI-smoke cases, 35 selected MaterialsWindowTests, zero failures/skips and exact censuses. Supplemental elevation against accepted 0068 checked seven affected/dependent projects with zero new findings. Evidence is in specs/0050/.artifacts/0069-operator-repair/.
+
+Run normal review, all gates and the measured checkpoint cycle before advancing. Checkpoint 67 stays at 811 constructor cases; checkpoint 68 is absent and must be written from the normal successful cycle with its full-suite case evidence. The selected 35 UI cases must not become a whole-suite baseline. This recovery explicitly requires normal resumption even though the implementation is committed. Do not waive gates, alter published requirements, or manufacture checkpoint evidence. Follow the existing case-accounting ruling in .manual/006 for subsequent retirement steps as well.

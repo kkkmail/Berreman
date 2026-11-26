@@ -16,12 +16,123 @@ open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Domain.StudyPublishing
 
 /// The Controls values derived from a Domain value: the automation ids (spec 0048 R1) and a control's
 /// keys, counts and captions. Controls references no Domain type, so they are extension members here,
 /// the lowest project that sees both.
 [<AutoOpen>]
 module ConstructorUiIdOfDomain =
+
+    type StudyName with
+
+        /// The name shown by the study selector (spec 0050 S11.5).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type ExperimentName with
+
+        /// The name shown by the new study's experiment choices (spec 0050 S11.5).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type SessionGainModel with
+
+        /// The gain choice with its anchor or interpolation run names (spec 0050 S12.1).
+        member this.caption : ControlCaption =
+            match this with
+            | FreeSessionGain -> ControlCaption "Free"
+            | AnchoredSessionGain anchors ->
+                let names = anchors |> List.map _.value |> String.concat ", "
+                ControlCaption $"Anchored to {names}"
+            | InterpolatedSessionGain repeats ->
+                ControlCaption $"Interpolated from {repeats.opening.value} to {repeats.closing.value}"
+
+    type StudyParameterRef with
+
+        member private this.studyParameterUiKey : ConstructorUiKey =
+            match this with
+            | ItemParameterRef (item, name) -> ConstructorUiKey $"{item.value}_{name.value}"
+            | MaterialParameterRef (version, name) ->
+                ConstructorUiKey $"{version.materialId.value}_v{version.version.value}_{name.value}"
+
+    type MeasurementPlanner.PlanCandidate with
+
+        /// `<plate item GUID>_<t or r>_<line in nm, one decimal>`, the candidate's key in its ids (spec 0050 S14.2).
+        member private this.planCandidateUiKey : ConstructorUiKey =
+            let branch : string =
+                match this.observable with
+                | MuellerInverse.TransmittedMueller -> "t"
+                | MuellerInverse.ReflectedMueller -> "r"
+            let nanometres = (wavelengthToUnit Nanometer this.source.waveLength).value
+            let line = nanometres.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+            ConstructorUiKey $"{this.plate.item.value}_{branch}_{line}"
+
+    type ConstructorUiId with
+
+        /// Promotes the fitted material version or black-box item under its stable identity (spec 0050 S11.5).
+        static member promoteButton (subject : PromotionSubject) : ConstructorUiId =
+            match subject with
+            | MaterialPromotion version -> ConstructorUiId $"Promote_{version.materialId.value}_v{version.version.value}"
+            | BlackBoxPromotion item -> ConstructorUiId $"Promote_{item.value}"
+
+        /// The pre-fit check of the experiment named by its file stem (spec 0050 S11.5).
+        static member studyPrefitRow (name : ExperimentName) : ConstructorUiId =
+            ConstructorUiId $"StudyPrefitRow_{name.fileStem.value}"
+
+        /// Selects the fit run named by its file stem (spec 0050 S11.5).
+        static member fitRunRow (name : FitRunName) : ConstructorUiId =
+            ConstructorUiId $"FitRunRow_{name.fileStem.value}"
+
+        /// Chooses the study by its file stem (spec 0050 S11.5).
+        static member studyChoice (name : StudyName) : ConstructorUiId = ConstructorUiId $"StudyChoice_{name.fileStem.value}"
+
+        /// Toggles an experiment in the new study (spec 0050 S11.5).
+        static member newStudyExperimentToggle (name : ExperimentName) : ConstructorUiId =
+            ConstructorUiId $"NewStudyExperiment_{name.fileStem.value}"
+
+        /// Adds an experiment to the selected study (spec 0050 S11.5).
+        static member addExperimentToStudyButton (name : ExperimentName) : ConstructorUiId =
+            ConstructorUiId $"AddExperimentToStudy_{name.fileStem.value}"
+
+        /// Opens a referenced material version in the study (spec 0050 S11.5).
+        static member openMaterialButton (version : MaterialVersionId) : ConstructorUiId =
+            ConstructorUiId $"OpenMaterial_{version.materialId.value}_v{version.version.value}"
+
+        /// Chooses the opened crystal material version the plan plans (spec 0050 S14.2).
+        static member planMaterialChoice (version : MaterialVersionId) : ConstructorUiId =
+            ConstructorUiId $"PlanMaterial_{version.materialId.value}_v{version.version.value}"
+
+        /// The Plan view's row of one ranked candidate (spec 0050 S14.2).
+        static member planCandidateRow (candidate : MeasurementPlanner.PlanCandidate) : ConstructorUiId =
+            ConstructorUiId $"PlanCandidate_{candidate.planCandidateUiKey.value}"
+
+        /// Records the candidate in the kit as a planned experiment (spec 0050 S14.2).
+        static member addPlanCandidateButton (candidate : MeasurementPlanner.PlanCandidate) : ConstructorUiId =
+            ConstructorUiId $"AddPlanCandidate_{candidate.planCandidateUiKey.value}"
+
+        /// Opens the parameter editor for this owner and parameter (spec 0050 S11.5).
+        static member studyParameterRow (parameter : StudyParameterRef) : ConstructorUiId =
+            ConstructorUiId $"StudyParameterRow_{parameter.studyParameterUiKey.value}"
+
+        /// Chooses a session's gain model under its shared file-stem identity (spec 0050 S12.1).
+        static member studySessionGainChoice (session : SessionName) : ConstructorUiId =
+            let stem = FileStem.ofText session.value
+            ConstructorUiId $"StudySessionGain_{stem.value}"
+
+        /// Chooses the study's fit mode under its integer tag (spec 0050 S12.1).
+        static member studyFitModeChoice (mode : FitMode) : ConstructorUiId =
+            ConstructorUiId $"StudyFitMode_{mode.value}"
+
+        /// Chooses the unknown's sharing scope (spec 0050 S11.5).
+        static member studyParameterScopeChoice (parameter : StudyParameterRef) : ConstructorUiId =
+            ConstructorUiId $"StudyParameterScope_{parameter.studyParameterUiKey.value}"
+
+        /// Chooses another unknown as the parameter's leader (spec 0050 S11.5).
+        static member studyParameterLinkChoice (parameter : StudyParameterRef) : ConstructorUiId =
+            ConstructorUiId $"StudyParameterLink_{parameter.studyParameterUiKey.value}"
 
     type LibraryEntryId with
 
@@ -39,6 +150,7 @@ module ConstructorUiIdOfDomain =
             | PolarizerEntryKind -> ControlCaption "Polarizer"
             | DetectorEntryKind -> ControlCaption "Detector"
             | CategoryEntryKind -> ControlCaption "Category"
+            | ItemModelEntryKind -> ControlCaption "Item model"
 
     type ImportStatus with
 
@@ -165,28 +277,59 @@ module ConstructorUiIdOfDomain =
             | index when index > 0 -> ControlCaption (labelled.Substring(0, index))
             | _ -> ControlCaption labelled
 
+    type Setups.SlotRole with
+
+        /// The role as the key of its slot-bar ids: its `text` without spaces (`Source`, `Prep1`, `Obj2`) (spec 0050 S8.4).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey (this.text.Replace(" ", ""))
+
     type ConstructorUiId with
 
-        /// Loads this named scene from the kit (spec 0050 S4.3).
-        static member savedScene (name : Scene.SceneName) : ConstructorUiId = ConstructorUiId $"SavedScene_{name.value}"
+        /// Draws this kit setup on the table (spec 0050 S8.2).
+        static member savedSetup (name : Kit.SetupName) : ConstructorUiId = ConstructorUiId $"SavedSetup_{name.value}"
+
+        /// The Data step's re-point of the reviewed experiment to this kit setup: `DataCorrectSetup_<name>` (spec 0050 S9.3).
+        static member dataCorrectSetupChoice (name : Kit.SetupName) : ConstructorUiId = ConstructorUiId $"DataCorrectSetup_{name.value}"
 
         /// An element's invisible hover target on the Main table, which carries its tooltip (spec 0046).
         static member elementHover (elementId : ElementId) : ConstructorUiId = ConstructorUiId $"ElementHover_{elementId.value}"
+
+        /// A slot's chip on the slot bar: `SlotChip_<role.uiKey>` (spec 0050 S8.4; 001 §O "Automation").
+        static member slotChip (role : Setups.SlotRole) : ConstructorUiId = ConstructorUiId $"SlotChip_{role.uiKey.value}"
+
+        /// An item of a chip's open list: `SlotChipChoice_<role.uiKey>_<the item's GUID>` (spec 0050 S8.4).
+        static member slotChipChoice (role : Setups.SlotRole) (item : Kit.ItemId) : ConstructorUiId =
+            ConstructorUiId $"SlotChipChoice_{role.uiKey.value}_{item.value}"
+
+        /// An item a slot's row of the grid panel offers: `SetupGridItem_<role.uiKey>_<the item's GUID>` (spec 0050 S8.4).
+        static member setupGridItemChoice (role : Setups.SlotRole) (item : Kit.ItemId) : ConstructorUiId =
+            ConstructorUiId $"SetupGridItem_{role.uiKey.value}_{item.value}"
+
+        /// A slot's R1 field in the grid panel: `SetupGridAngleField_<role.uiKey>` (spec 0050 S8.4).
+        static member setupGridAngleField (role : Setups.SlotRole) : ConstructorUiId = ConstructorUiId $"SetupGridAngleField_{role.uiKey.value}"
+
+        /// A slot's tried R1 in the grid panel: `SetupGridAngle_<role.uiKey>_<its degreeCaption without the °>` (spec 0050 S8.4).
+        static member setupGridAngle (role : Setups.SlotRole) (angle : Berreman.Geometry.Angle) : ConstructorUiId =
+            ConstructorUiId $"SetupGridAngle_{role.uiKey.value}_{(BarDegrees angle.degrees).text}"
 
         /// The element menu's "Place on the reflected ray of" this element (spec 0046).
         static member elementMenuPlaceOnReflectedOf (elementId : ElementId) : ConstructorUiId =
             ConstructorUiId $"ElementMenuPlaceOnReflectedOf_{elementId.value}"
 
-        /// A collected experiment's summary block and its typed validation-status line (`SolverHandoffView`).
-        static member solverHandoffRow (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"SolverHandoffRow_{experimentId.value}"
-
-        static member solverHandoffStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"SolverHandoffStatus_{experimentId.value}"
-
-        /// A collected experiment's "Attach data file…" verb and its inline parse / validation status (the
-        /// Main workbench's collection builder).
+        /// A collected experiment's "Attach data file…" verb and its inline parse / validation status (the Inverse
+        /// constructor's Data step, spec 0050 S9.3).
         static member attachDataFile (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"AttachDataFile_{experimentId.value}"
 
         static member dataFileStatus (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataFileStatus_{experimentId.value}"
+
+        /// The copy panel's toggle choosing this experiment of the source kit (spec 0050 S6).
+        static member kitCopyExperimentToggle (experimentId : ExperimentId) : ConstructorUiId =
+            ConstructorUiId $"KitCopyExperimentToggle_{experimentId.value}"
+
+        /// The mapping table's choice for a source item: `_Add`, or `_<the kit item's GUID>` it maps onto (spec 0050 S7.2).
+        static member kitCopyItemChoice (sourceItem : Kit.ItemId) (choice : Kit.ItemCopyChoice) : ConstructorUiId =
+            match choice with
+            | Kit.AddCopiedItem -> ConstructorUiId $"KitCopyItemChoice_{sourceItem.value}_Add"
+            | Kit.MapOntoKitItem kitItem -> ConstructorUiId $"KitCopyItemChoice_{sourceItem.value}_{kitItem.value}"
 
         /// A material-category option of the Material editor.
         static member materialEditorCategoryOption (categoryId : CategoryId) : ConstructorUiId =
@@ -365,9 +508,40 @@ module ConstructorUiIdOfDomain =
         /// The experiment as the key of its Experiments-bay collection row (its number's text).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
 
-    type Scene.SceneName with
+    type ExperimentRole with
 
-        /// The scene name as its saved-scene button's caption (spec 0050 S4.3).
+        /// The role as the code of its Experiments-bay role box (spec 0050 S9.1).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | ScienceRun -> ConstructorUiKey "science"
+            | CalibrationRun -> ConstructorUiKey "calibration"
+            | DarkRun -> ConstructorUiKey "dark"
+            | DriftCheckRun -> ConstructorUiKey "drift-check"
+            | DiagnosticRun -> ConstructorUiKey "diagnostic"
+            | IgnoredRun -> ConstructorUiKey "ignored"
+            | PlannedRun -> ConstructorUiKey "planned"
+
+        /// The role as its box and a collection row show it (spec 0050 S9.1).
+        member this.caption : ControlCaption = ControlCaption this.text
+
+    type SessionName with
+
+        /// The session as the Experiments bay's Session field shows it (spec 0050 S9.1).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type ExperimentNotes with
+
+        /// The notes as the Experiments bay's Notes field shows them (spec 0050 S9.1).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type Kit.SetupName with
+
+        /// The setup name as its saved-setup button's caption (spec 0050 S8.2).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type Kit.NamingTemplate with
+
+        /// The template's text as the kit bar's naming-template field shows it (spec 0050 S8.3).
         member this.caption : ControlCaption = ControlCaption this.value
 
     type EntryName with
@@ -441,15 +615,32 @@ module ConstructorUiIdOfDomain =
             | DetectorKind.Intensity -> ControlCaption "Intensity"
             | DetectorKind.Ellipsometer -> ControlCaption "Ellipsometer"
 
-    type OpticalConstructor.Domain.Kit.KitError with
+    type OpticalConstructor.Domain.KitLibrary.KitLibraryError with
 
-        /// The kit failure as the measured-data attachment status (spec 0050 S4.2).
-        member this.caption : ControlCaption = ControlCaption this.describe
+        /// The failed kit open as the start screen and the launcher show it (spec 0050 S5.2).
+        member this.openFailedCaption : ControlCaption = ControlCaption $"The kit could not be opened: {this.describe}"
 
-    type OpticalConstructor.Domain.Kit.KitRelativePath with
+    type OpticalConstructor.Domain.Kit.KitLockHolder with
 
-        /// The kit-relative path as its data-file caption (spec 0050 S4.2).
-        member this.toControlCaption : ControlCaption = ControlCaption this.value
+        /// The kit held by another session as the start screen and the launcher show it (spec 0050 S5.2).
+        member this.openElsewhereCaption : ControlCaption = ControlCaption $"The kit is open elsewhere: {this.describe}."
+
+    type OpticalConstructor.Domain.KitHistory.KitHistoryError with
+
+        /// The failed kit-history write as the start screen shows it (spec 0050 S5.2).
+        member this.notSavedCaption : ControlCaption = ControlCaption $"The kit history was not saved — {this.describe}"
+
+    type OpticalConstructor.Domain.KitHistory.KitHistoryEntry with
+
+        /// The kit's last open as its history row shows it, in the invariant culture as `KitLockHolder.describe` (spec 0050 S5.2).
+        member this.lastOpenedCaption : ControlCaption =
+            let instant = this.lastOpened.value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+            ControlCaption $"Last opened {instant} UTC"
+
+    type OpticalConstructor.Domain.Kit.KitFolder with
+
+        /// Open kit…'s offer for a folder without `.kit-json` (spec 0050 S5.2).
+        member this.notAKitCaption : ControlCaption = ControlCaption $"{this.value.value} holds no kit."
 
     type OpticalConstructor.Domain.MeasuredData.ExperimentDataError with
 
@@ -460,6 +651,22 @@ module ConstructorUiIdOfDomain =
             | OpticalConstructor.Domain.MeasuredData.EmptyDataFileErr reason
             | OpticalConstructor.Domain.MeasuredData.DataRangeMismatchErr reason
             | OpticalConstructor.Domain.MeasuredData.DataUnitsMismatchErr reason -> ControlCaption reason
+
+    type ExperimentDataLoad.ExperimentDataBadge with
+
+        /// The badge as the experiment's data-file row shows it, keeping the captions of the status it replaced (spec 0050
+        /// S9.1).
+        member this.caption : ControlCaption =
+            match this with
+            | ExperimentDataLoad.NoDataBadge -> ControlCaption "No data"
+            | ExperimentDataLoad.MappedDataBadge None -> ControlCaption "Mapped — not validated"
+            | ExperimentDataLoad.MappedDataBadge (Some problem) -> ControlCaption $"Parse error — {problem.caption.value}"
+            | ExperimentDataLoad.ValidatedDataBadge points -> ControlCaption $"Loaded — {points.value} point(s), schema-valid"
+            | ExperimentDataLoad.ExcludedPointsBadge counts ->
+                ControlCaption $"Loaded — {counts.kept.value} point(s) kept, {counts.excluded.value} excluded"
+            | ExperimentDataLoad.DataChangedBadge (_, Some _) -> ControlCaption "Data changed since attach — attach it again to validate it"
+            | ExperimentDataLoad.DataChangedBadge (attachment, None) -> ControlCaption $"Data file missing — {attachment.path.value}"
+            | ExperimentDataLoad.OutOfRangeBadge problem -> ControlCaption $"Validation error — {problem.caption.value}"
 
     type UnitOfMeasure with
 
@@ -570,3 +777,475 @@ module ConstructorUiIdOfDomain =
             match this with
             | ScalarMuKind -> ControlCaption "Scalar"
             | GyromagneticMuKind -> ControlCaption "Gyromagnetic"
+
+    type FolderName with
+
+        /// The folder's text as its Data locations row shows it (spec 0050 S5.3).
+        member this.pathCaption : ControlCaption = ControlCaption this.value
+
+    type FileName with
+
+        /// The library file's full path as its Data locations row shows it (spec 0050 S5.3).
+        member this.pathCaption : ControlCaption = ControlCaption this.value
+
+    type DataLocationKind with
+
+        /// The location as its Data locations row names it (spec 0050 S5.3).
+        member this.caption : ControlCaption =
+            match this with
+            | LibraryDatabaseLocation -> ControlCaption "Library database"
+            | LibraryBackupsLocation -> ControlCaption "Library backups"
+            | PreferencesLocation -> ControlCaption "Preferences"
+            | KitsLocation -> ControlCaption "Kit folders (suggested parent)"
+            | ExportsLocation -> ControlCaption "Exports"
+            | CataloguesLocation -> ControlCaption "Catalogue exports"
+            | ShippedCatalogueLocation -> ControlCaption "Shipped catalogue"
+            | MaterialSourcesLocation -> ControlCaption "Online source snapshots"
+
+        /// The location as the key of its Data locations row's ids (spec 0050 S5.3).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | LibraryDatabaseLocation -> ConstructorUiKey "LibraryDatabase"
+            | LibraryBackupsLocation -> ConstructorUiKey "LibraryBackups"
+            | PreferencesLocation -> ConstructorUiKey "Preferences"
+            | KitsLocation -> ConstructorUiKey "Kits"
+            | ExportsLocation -> ConstructorUiKey "Exports"
+            | CataloguesLocation -> ConstructorUiKey "Catalogues"
+            | ShippedCatalogueLocation -> ConstructorUiKey "ShippedCatalogue"
+            | MaterialSourcesLocation -> ConstructorUiKey "MaterialSources"
+
+    type ConstructorUiId with
+
+        /// A location's row in the Data locations window (spec 0050 S5.3).
+        static member dataLocationRow (kind : DataLocationKind) : ConstructorUiId = ConstructorUiId $"DataLocationRow_{kind.uiKey.value}"
+
+        /// The path a location's row shows (spec 0050 S5.3).
+        static member dataLocationPathText (kind : DataLocationKind) : ConstructorUiId = ConstructorUiId $"DataLocationPath_{kind.uiKey.value}"
+
+        /// A location's Open folder, present only where the row has a folder (spec 0050 S5.3).
+        static member dataLocationOpenFolderButton (kind : DataLocationKind) : ConstructorUiId =
+            ConstructorUiId $"DataLocationOpenFolder_{kind.uiKey.value}"
+
+    type ConstructorUiId with
+
+        /// A kit item's row in the Items panel's list: `KitItemRow_<the item's GUID>` (spec 0050 S7.2).
+        static member kitItemRow (itemId : Kit.ItemId) : ConstructorUiId = ConstructorUiId $"KitItemRow_{itemId.value}"
+
+        /// An add-form offer: `AddItemOffer_<model GUID>_v<n>`, then its preset's id or sample's `<GUID>_v<n>` (spec 0050 S7.2).
+        static member addItemOffer (choice : Kit.ItemModelChoice) : ConstructorUiId =
+            let modelPart (model : ItemModels.ItemModelVersionId) : string = $"{model.itemModelId.value}_v{model.version.value}"
+            match choice.instance with
+            | Kit.ItemModelVersionInstance model -> ConstructorUiId $"AddItemOffer_{modelPart model}"
+            | Kit.PresetInstance (model, preset) -> ConstructorUiId $"AddItemOffer_{modelPart model}_{preset.value}"
+            | Kit.SampleInstance (model, sample) ->
+                ConstructorUiId $"AddItemOffer_{modelPart model}_{sample.sampleId.value}_v{sample.version.value}"
+
+        /// The add form's choice of a mounting: `NewItemDial_Fixed`, `_Positive` or `_Negative` (spec 0050 S7.2).
+        static member newItemDialChoice (dial : Kit.ItemDial) : ConstructorUiId =
+            match dial with
+            | Kit.FixedMounting -> ConstructorUiId "NewItemDial_Fixed"
+            | Kit.DialMounted ItemModels.DialPositive -> ConstructorUiId "NewItemDial_Positive"
+            | Kit.DialMounted ItemModels.DialNegative -> ConstructorUiId "NewItemDial_Negative"
+
+        /// A parameter's row of the selected item's grid: `ItemParameterRow_<the name>` (spec 0050 S7.2).
+        static member itemParameterRow (name : ItemModels.ParameterName) : ConstructorUiId = ConstructorUiId $"ItemParameterRow_{name.value}"
+
+        /// A revision's line of the selected item's revisions: `ItemRevisionRow_<n>` (spec 0050 S7.2).
+        static member itemRevisionRow (revision : Kit.ItemRevision) : ConstructorUiId = ConstructorUiId $"ItemRevisionRow_{revision.value}"
+
+    type Kit.ItemModelChoice with
+
+        /// The offer as the add form shows it: the model's name, version and GUID, after its binding's (spec 0050 S7.2).
+        member this.caption : ControlCaption =
+            let modelCaption (model : ItemModels.ItemModelVersion) : ControlCaption =
+                ControlCaption $"{model.entry.name.value} v{model.version.value} ({model.entry.id.value})"
+            match this with
+            | Kit.LibraryModelChoice model -> modelCaption model
+            | Kit.SourcePresetChoice (model, source) ->
+                ControlCaption $"{source.name.value} ({source.id.value}) — {(modelCaption model).value}"
+            | Kit.PolarizerPresetChoice (model, polarizer) ->
+                ControlCaption $"{polarizer.name.value} ({polarizer.id.value}) — {(modelCaption model).value}"
+            | Kit.StackSampleChoice (model, version, sample) ->
+                ControlCaption $"{sample.name.value} v{version.version.value} ({version.sampleId.value}) — {(modelCaption model).value}"
+
+    type Kit.ItemDial with
+
+        /// The mounting as the Items panel names it (spec 0050 S7.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.FixedMounting -> ControlCaption "Fixed mounting"
+            | Kit.DialMounted ItemModels.DialPositive -> ControlCaption "On a dial, sign +1"
+            | Kit.DialMounted ItemModels.DialNegative -> ControlCaption "On a dial, sign −1"
+
+    type ItemModels.ParameterName with
+
+        /// The parameter's name as its grid row shows it (spec 0050 S7.2).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    /// A parameter's cells after its name in the Items panel's grid (spec 0050 S7.2; 001 §O).
+    type ParameterGridCells =
+        {
+            state : ControlCaption
+            value : ControlCaption
+            bounds : ControlCaption
+            sigma : ControlCaption
+            provenance : ControlCaption
+        }
+
+    type Kit.Parameter with
+
+        /// The grid's state, value, bounds, σ and provenance, each number G6 in its own unit (spec 0050 S7.2, step 207).
+        member this.gridCells : ParameterGridCells =
+            let number (value : ItemModels.ParameterValue) : ControlCaption =
+                ControlCaption (value.value.ToString("G6", System.Globalization.CultureInfo.InvariantCulture))
+            let sigmaText (sigma : Kit.ParameterSigma) : ControlCaption =
+                ControlCaption (sigma.value.ToString("G6", System.Globalization.CultureInfo.InvariantCulture))
+            let absent = ControlCaption "—"
+            match this.state with
+            | Kit.KnownParameter known ->
+                {
+                    state = ControlCaption "Known"
+                    value = number known
+                    bounds = absent
+                    sigma = absent
+                    provenance = ControlCaption "Given"
+                }
+            | Kit.UnknownParameter unknown ->
+                {
+                    state = ControlCaption "Unknown"
+                    value = number unknown.start
+                    bounds = ControlCaption $"[{(number unknown.bounds.lower).value}, {(number unknown.bounds.upper).value}]"
+                    sigma =
+                        match unknown.priorOpt with
+                        | Some prior -> sigmaText prior.sigma
+                        | None -> absent
+                    provenance = ControlCaption "To be fitted"
+                }
+            | Kit.CalibratedParameter calibrated ->
+                {
+                    state = ControlCaption "Calibrated"
+                    value = number calibrated.value
+                    bounds = absent
+                    sigma = sigmaText calibrated.sigma
+                    provenance = ControlCaption $"Fit run {calibrated.fitRun.value}"
+                }
+
+    type Kit.ItemRevisionRecord with
+
+        /// An earlier revision as the Items panel lists it: `Revision <n>: <name> <value>, …` (spec 0050 S7.2).
+        member this.caption : ControlCaption =
+            match this.parameters with
+            | [] -> ControlCaption $"Revision {this.revision.value}: no parameters"
+            | parameters ->
+                let values =
+                    parameters
+                    |> List.map (fun parameter -> $"{parameter.name.value} {parameter.gridCells.value.value}")
+                    |> String.concat ", "
+                ControlCaption $"Revision {this.revision.value}: {values}"
+
+    type Kit.ItemLabel with
+
+        /// The label as a slot-bar chip or a chip's list names the item (spec 0050 S8.4).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type Berreman.Geometry.Angle with
+
+        /// The angle in degrees as the rotation bar writes them (`BarDegrees.text`), then `°` (spec 0050 S8.4).
+        member this.degreeCaption : ControlCaption = ControlCaption $"{(BarDegrees this.degrees).text}°"
+
+    type Kit.ItemId with
+
+        /// The label of this item among `items`, `(not in this kit)` when `items` lacks it (spec 0050 S8.4).
+        member this.labelAmong (items : Kit.Item list) : ControlCaption =
+            match items |> List.tryFind (fun item -> item.id = this) with
+            | Some item -> item.label.caption
+            | None -> ControlCaption "(not in this kit)"
+
+    type Setups.RoledSlot with
+
+        /// The chip's `<role>: <item label>`, `—` for nothing and `(not in this kit)` for an item `items` lacks; an
+        /// object holding an item adds ` @ ` and its `turnAngle`, the angle a name writes (spec 0050 S8.3, S8.4).
+        member this.chipCaption (items : Kit.Item list) : ControlCaption =
+            match this.slot.content.itemOpt with
+            | None -> ControlCaption $"{this.role.text}: —"
+            | Some held ->
+                let label = (held.labelAmong items).value
+                match this.role with
+                | Setups.ObjectSlotRole _ -> ControlCaption $"{this.role.text}: {label} @ {this.slot.turnAngle.degreeCaption.value}"
+                | Setups.SourceSlotRole
+                | Setups.PrepSlotRole _
+                | Setups.AnalyzerSlotRole _
+                | Setups.DetectorSlotRole _ -> ControlCaption $"{this.role.text}: {label}"
+
+    type SetupGrids.GridCombination with
+
+        /// Each pick in order as `<its slot's role in the table's light order>: <item label> @ <R1>`, `—` for nothing and
+        /// `(not in this kit)` for an item `items` lacks, joined by `, `; no pick is `The table as it is` (spec 0050 S8.4).
+        member this.caption (table : Setups.SetupSlot list) (items : Kit.Item list) : ControlCaption =
+            let roles = Setups.SetupSlot.inLightOrder table
+            let pickCaption (pick : SetupGrids.SlotPick) : string =
+                let role =
+                    match roles |> List.tryFind (fun roled -> roled.slot.id = pick.slot) with
+                    | Some roled -> roled.role.text
+                    | None -> pick.slot.value
+                let label =
+                    match pick.choice.itemOpt with
+                    | Some held -> (held.labelAmong items).value
+                    | None -> "—"
+                $"{role}: {label} @ {pick.choice.r1.degreeCaption.value}"
+            match this.picks with
+            | [] -> ControlCaption "The table as it is"
+            | picks -> ControlCaption (picks |> List.map pickCaption |> String.concat ", ")
+
+    type Kit.DataDelimiter with
+
+        /// The delimiter as the key of its wizard box (spec 0050 S9.2).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | Kit.CommaDelimiter -> ConstructorUiKey "comma"
+            | Kit.SemicolonDelimiter -> ConstructorUiKey "semicolon"
+            | Kit.TabDelimiter -> ConstructorUiKey "tab"
+
+        /// The delimiter as its wizard box names it (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.CommaDelimiter -> ControlCaption "Comma"
+            | Kit.SemicolonDelimiter -> ControlCaption "Semicolon"
+            | Kit.TabDelimiter -> ControlCaption "Tab"
+
+    type Kit.HeaderRowChoice with
+
+        /// The header choice as the key of its wizard box (spec 0050 S9.2).
+        member this.uiKey : ConstructorUiKey =
+            match this with
+            | Kit.HeaderOnFirstRow -> ConstructorUiKey "first-row"
+            | Kit.NoHeaderRow -> ConstructorUiKey "no-header"
+
+        /// The header choice as its wizard box names it (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.HeaderOnFirstRow -> ControlCaption "First row is a header"
+            | Kit.NoHeaderRow -> ControlCaption "No header row"
+
+    type Kit.ByteOrderMark with
+
+        /// The mark as the wizard's layout block states it (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | Kit.ByteOrderMarkPresent -> ControlCaption "Byte-order mark: yes"
+            | Kit.ByteOrderMarkAbsent -> ControlCaption "Byte-order mark: no"
+
+    type Kit.ImportProfileName with
+
+        /// The profile's name as the key of its wizard box (spec 0050 S9.2).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+        /// The profile's name as its wizard box shows it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type Kit.DataColumnNumber with
+
+        /// The column's number as the position of its wizard choices (spec 0050 S9.2).
+        member this.uiPosition : ConstructorUiPosition = ConstructorUiPosition this.value
+
+    type Kit.ImportProfileError with
+
+        /// The refusal as the wizard's message shows it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.describe
+
+    type ImportProfiles.ColumnRoleChoice with
+
+        /// The role as a column's role choice lists it, `scan variable` for every scan role (spec 0050 S9.2).
+        member this.caption : ControlCaption =
+            match this with
+            | ImportProfiles.ScanColumnRole _ -> ControlCaption "scan variable"
+            | ImportProfiles.UnmappedColumnRole
+            | ImportProfiles.SignalColumnRole
+            | ImportProfiles.SigmaColumnRole
+            | ImportProfiles.TimestampColumnRole
+            | ImportProfiles.CaptureIndexColumnRole
+            | ImportProfiles.ObservableColumnRole
+            | ImportProfiles.KeyColumnRole
+            | ImportProfiles.ThroughputColumnRole
+            | ImportProfiles.MuellerElementRole _ -> ControlCaption this.text
+
+    type Kit.ScanColumnUnit with
+
+        /// The unit as a scan column's unit choice lists it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.text
+
+    type Kit.ScanReading with
+
+        /// The reading as a scan column's reading choice lists it (spec 0050 S9.2).
+        member this.caption : ControlCaption = ControlCaption this.text
+
+    type Kit.DataRowKey with
+
+        /// The key as the code of its group's row and offer toggle in the Data step's split panel (spec 0050 S9.3).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+    type Kit.MappedPointNumber with
+
+        /// The point's number as the position of its row, dot and ring in the Data step's review (spec 0050 S9.3).
+        member this.uiPosition : ConstructorUiPosition = ConstructorUiPosition this.value
+
+    type ImportProfiles.MappedReading with
+
+        /// The reading's first value, the signal or the matrix's m00, as a mapped row's caption and chart point read it.
+        member private this.firstValue : float =
+            match this with
+            | ImportProfiles.SignalReading (signal, _) -> signal.value
+            | ImportProfiles.MuellerReading measured -> measured.element 0 0
+
+    type ImportProfiles.MappedPoints with
+
+        /// One caption per point in order, its numbers by `%g`, as its row of the Data step's review reads it (spec 0050 S9.3).
+        member this.pointCaptions : ControlCaption list =
+            match this with
+            | ImportProfiles.SeriesPoints (MeasuredData.IntensityData series) ->
+                series.points |> List.map (fun point -> ControlCaption $"x = %g{point.x.value}, I = %g{point.intensity.value}")
+            | ImportProfiles.SeriesPoints (MeasuredData.EllipsometricData series) ->
+                series.points
+                |> List.map (fun point ->
+                    let nanometres = (wavelengthToUnit Nanometer point.waveLength).value
+                    ControlCaption $"λ = %g{nanometres} nm, Ψ = %g{point.psi.degrees}°, Δ = %g{point.delta.degrees}°")
+            | ImportProfiles.CapturePoints captures ->
+                captures
+                |> List.map (fun capture ->
+                    ControlCaption
+                        $"{capture.experiment.value} #{capture.captureIndex.value}: %g{capture.description.degrees}° → %g{capture.avgTotal.value}")
+            | ImportProfiles.ObservationPoints observations ->
+                observations
+                |> List.map (fun keyed ->
+                    let configuration = keyed.observation.configuration
+                    let observable =
+                        match configuration.observable with
+                        | MuellerInverse.TransmittedMueller -> "T"
+                        | MuellerInverse.ReflectedMueller -> "R"
+                    let angles = $"θ = %g{configuration.incidenceAngle.angle.degrees}°, φ = %g{configuration.azimuth.angle.degrees}°"
+                    ControlCaption $"{keyed.key.value} {observable}: {angles}, m00 = %g{keyed.observation.measured.element 0 0}")
+            | ImportProfiles.ColumnPoints rows ->
+                rows
+                |> List.map (fun row ->
+                    let scan = row.scan |> List.map (fun cell -> $"%g{cell.displayValue.value}") |> String.concat ", "
+                    ControlCaption $"{scan}: %g{row.reading.firstValue}")
+
+        /// One chart point per point: x its 1-based number, y its reading's first value — the intensity, Ψ in degrees,
+        /// `avg_total`, or the m00 or signal (spec 0050 S9.3).
+        member this.chartPoints : ExperimentControls.ChartPoint list =
+            let readings : float list =
+                match this with
+                | ImportProfiles.SeriesPoints (MeasuredData.IntensityData series) -> series.points |> List.map (fun point -> point.intensity.value)
+                | ImportProfiles.SeriesPoints (MeasuredData.EllipsometricData series) -> series.points |> List.map (fun point -> point.psi.degrees)
+                | ImportProfiles.CapturePoints captures -> captures |> List.map (fun capture -> capture.avgTotal.value)
+                | ImportProfiles.ObservationPoints observations -> observations |> List.map (fun keyed -> keyed.observation.measured.element 0 0)
+                | ImportProfiles.ColumnPoints rows -> rows |> List.map (fun row -> row.reading.firstValue)
+            readings
+            |> List.mapi (fun index reading ->
+                let point : ExperimentControls.ChartPoint =
+                    {
+                        x = float (index + 1)
+                        y = reading
+                    }
+                point)
+
+    type ConstructorUiId with
+
+        /// A group's row of the Data step's split panel: `DataSplitGroup_<key>` (spec 0050 S9.3).
+        static member dataSplitGroupRow (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitGroup_{key.uiKey.value}"
+
+        /// An offered group's toggle, ticking its setup and experiment for creation: `DataSplitOffer_<key>` (spec 0050 S9.3).
+        static member dataSplitOfferToggle (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitOffer_{key.uiKey.value}"
+
+        /// An unmatched group's setup choice: `DataSplitGroupSetup_<key stem>` (spec 0050 S12.1).
+        static member dataSplitGroupSetupChoice (key : Kit.DataRowKey) : ConstructorUiId =
+            let stem = FileStem.ofText key.value
+            ConstructorUiId $"DataSplitGroupSetup_{stem.value}"
+
+        /// A data-file row's Review, showing the experiment's points in the Data step: `DataReview_<id>` (spec 0050 S9.3).
+        static member dataReviewButton (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataReview_{experimentId.value}"
+
+        /// A point's row of the Data step's review: `DataPoint_<n>` (spec 0050 S9.3).
+        static member dataPointRow (point : Kit.MappedPointNumber) : ConstructorUiId = ConstructorUiId $"DataPoint_{point.uiPosition.value}"
+
+        /// A kept point's Exclude, sending it with the typed reason: `DataExcludePoint_<n>` (spec 0050 S9.3).
+        static member dataExcludePointButton (point : Kit.MappedPointNumber) : ConstructorUiId =
+            ConstructorUiId $"DataExcludePoint_{point.uiPosition.value}"
+
+        /// An excluded point's Include, taking its exclusion back: `DataIncludePoint_<n>` (spec 0050 S9.3).
+        static member dataIncludePointButton (point : Kit.MappedPointNumber) : ConstructorUiId =
+            ConstructorUiId $"DataIncludePoint_{point.uiPosition.value}"
+
+        /// An experiment's entry in the Data step's matrix, reviewing it when pressed: `ExperimentMatrixEntry_<id>` (spec
+        /// 0050 S9.3).
+        static member experimentMatrixEntry (experimentId : ExperimentId) : ConstructorUiId =
+            ConstructorUiId $"ExperimentMatrixEntry_{experimentId.value}"
+
+    type ExperimentMatrices.MatrixRowKey with
+
+        /// The row as the matrix heads it: its sources joined by ` + `, ` · `, then its objects at their angles joined by
+        /// ` → `, `—` for none (spec 0050 S9.3).
+        member this.caption : ControlCaption =
+            let sources =
+                match this.sources with
+                | [] -> "—"
+                | labels -> labels |> List.map (fun label -> label.value) |> String.concat " + "
+            let objects =
+                match this.objects with
+                | [] -> "—"
+                | held -> held |> List.map (fun placed -> $"{placed.item.value}@{placed.angle.degreeCaption.value}") |> String.concat " → "
+            ControlCaption $"{sources} · {objects}"
+
+    type ExperimentMatrices.MatrixColumnKey with
+
+        /// The column as the matrix heads it: its analyzers joined by ` + `, `—` for none (spec 0050 S9.3).
+        member this.caption : ControlCaption =
+            match this.analyzers with
+            | [] -> ControlCaption "—"
+            | labels -> ControlCaption (labels |> List.map (fun label -> label.value) |> String.concat " + ")
+
+    type DataSplits.DataSplitError with
+
+        /// Why a group matches nothing or refuses a manually chosen setup (spec 0050 S9.3, S12.1).
+        member this.caption : ControlCaption = ControlCaption this.describe
+
+    type MaterialSourceName with
+
+        /// The source as its choice in the Online sources window names it (spec 0050 S13.1).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type MaterialSourcePulls.MaterialSourcePullError with
+
+        /// Why a search, pull or update was refused, as the Online sources window tells it (spec 0050 S13.1).
+        member this.caption : ControlCaption = ControlCaption this.describe
+
+    type MaterialSourcePulls.SourcePullResult with
+
+        /// What one pull or refresh did to its entry, as the Online sources window tells it (spec 0050 S13.1).
+        member this.caption : ControlCaption =
+            let version = this.version.version.value
+            match this.change with
+            | MaterialSourcePulls.PullAddedEntry -> ControlCaption $"Pulled {this.name.value} as version {version}."
+            | MaterialSourcePulls.PullMintedVersion -> ControlCaption $"{this.name.value}: the record changed; pulled as version {version}."
+            | MaterialSourcePulls.PullFoundUnchanged -> ControlCaption $"{this.name.value} is unchanged at version {version}."
+            | MaterialSourcePulls.PullRecordAbsent ->
+                ControlCaption $"{this.name.value}: the snapshot no longer lists {this.record.value}; left at version {version}."
+
+    type MaterialSourcePulls.SourceRefreshInfo with
+
+        /// The installed snapshot and its file count, then each refreshed pull's caption, joined by spaces (spec 0050 S13.1).
+        member this.caption : ControlCaption =
+            let installed = $"Snapshot {this.snapshot.version.value} holds {this.snapshot.files.value} files."
+            installed :: (this.pulls |> List.map _.caption.value) |> String.concat " " |> ControlCaption
+
+    type ConstructorUiId with
+
+        /// A source's choice in the Online sources window: `MaterialSourceChoice_<name>` (spec 0050 S13.1).
+        static member materialSourceChoice (name : MaterialSourceName) : ConstructorUiId = ConstructorUiId $"MaterialSourceChoice_{name.value}"
+
+        /// A search hit's row: `MaterialSourceHit_<record>` (spec 0050 S13.1).
+        static member materialSourceHitRow (record : MaterialSourceRecordId) : ConstructorUiId = ConstructorUiId $"MaterialSourceHit_{record.value}"
+
+        /// A search hit's Pull: `MaterialSourcePull_<record>` (spec 0050 S13.1).
+        static member materialSourcePullButton (record : MaterialSourceRecordId) : ConstructorUiId =
+            ConstructorUiId $"MaterialSourcePull_{record.value}"

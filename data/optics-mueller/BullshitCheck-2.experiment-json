@@ -1,0 +1,49 @@
+{
+  "experiment": {
+    "corrections": [],
+    "dataOpt": {
+      "attachment": {
+        "contentHash": "f2f7d28d881b57f5760562d030c12d1e554c7c8cc82d6657e9e4fb5c281c2c9e",
+        "path": "data/raw/final/bullshit_checks.csv"
+      },
+      "exclusions": [],
+      "profile": "Phone ROI CSV",
+      "rows": {
+        "Case": "KeyedDataRows",
+        "Fields": [
+          "BullshitCheck-2"
+        ]
+      }
+    },
+    "id": 53,
+    "name": "BullshitCheck-2",
+    "notes": "",
+    "role": 5,
+    "scan": {
+      "blocks": [
+        {
+          "axes": [
+            {
+              "elementId": "97b4178c-8eee-42f9-8f2d-23499a64f3eb",
+              "label": "Linear polarizer #6",
+              "range": {
+                "max": 360,
+                "min": 0,
+                "points": 19
+              },
+              "variable": "VaryDialReading"
+            }
+          ],
+          "capture": "CaptureTransmitted"
+        }
+      ],
+      "sourceWaveLengthOpt": null
+    },
+    "sessionOpt": null,
+    "setup": {
+      "name": "CPL-(AIR#0)-LP",
+      "revision": 1
+    }
+  },
+  "schemaVersion": 1
+}

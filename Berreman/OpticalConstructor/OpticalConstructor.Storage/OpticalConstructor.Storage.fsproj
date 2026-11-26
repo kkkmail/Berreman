@@ -25,34 +25,30 @@
         <Compile Include="SampleDatabaseStore.fs" />
         <Compile Include="SourceDatabaseStore.fs" />
         <Compile Include="PresetDatabaseStore.fs" />
+        <Compile Include="ItemModelDatabaseStore.fs" />
         <Compile Include="LibraryBackupStore.fs" />
+        <Compile Include="MaterialImport.fs" />
         <Compile Include="CatalogueImportStore.fs" />
         <Compile Include="KitFolderStore.fs" />
         <Compile Include="KitContentFiles.fs" />
+        <Compile Include="PlannerCacheStore.fs" />
+        <Compile Include="KitHistoryStore.fs" />
+        <Compile Include="KitArchiveStore.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
              collections store. Reuses CanonicalJson.options + the validate-on-load seam;
              compiles after CanonicalJson (its shared options). -->
         <Compile Include="GroupsLibrary.fs" />
         <Compile Include="Sidecar.fs" />
-        <Compile Include="MaterialImport.fs" />
+        <Compile Include="MaterialSourceStore.fs" />
         <Compile Include="SpectralImport.fs" />
-        <!-- Persistence II (§I.5-I.8, slice 013): recent-files,
-             export, and the material-library module. -->
-        <Compile Include="RecentFiles.fs" />
+        <!-- Persistence II (§I.5-I.8, slice 013): export. -->
         <Compile Include="Export.fs" />
         <!-- Spec 0046: the file-backed experiment-data export proxy (CSV). -->
         <Compile Include="ExperimentExportFile.fs" />
         <Compile Include="Report.fs" />
-        <!-- Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006): the real file-backed adapter
-             behind the step-035 ExperimentDataProxy — the ONLY new real IO this spec permits
-             (spec-md §0.3c). Reads the data file text at the boundary and delegates to the step-34
-             pure MeasuredData parsers; depends only on the Domain project reference. -->
-        <Compile Include="ExperimentDataStore.fs" />
-        <!-- Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009): the real file-backed adapter behind the
-             step-005 MuellerDataProxy — the pure header-aware CSV parser (parseMuellerCsv) plus the
-             disk-read edge (createFileBacked). Reads the CSV text at the boundary and delegates to the
-             pure parser; depends only on the Domain project reference (Angle + MuellerReconstruction). -->
         <Compile Include="MuellerDataStore.fs" />
+        <Compile Include="LabFileImport.fs" />
+        <Compile Include="ExperimentDataStore.fs" />
         <Compile Include="Storage.fs" />
     </ItemGroup>
 
@@ -89,13 +85,31 @@
         <Content Include="schema\library-category.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        <Content Include="schema\library-item-model.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Content Include="schema\library-catalogue.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="schema\kit.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        <Content Include="schema\kit-history.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\material-source-snapshot.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Content Include="schema\experiment.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\item.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\study.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\fitrun.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="schema\setup.schema.json">

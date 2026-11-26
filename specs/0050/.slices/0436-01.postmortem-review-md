@@ -1,0 +1,75 @@
+# Post-mortem review -- slice 0436, attempt 01
+
+Second review of `.slices/0436-01.postmortem-md` (agent-written), arc-watch event
+`84c7e3b79ab14890b2f906ab13979b80`, ESCALATE 2026-11-16T06:21Z for 0436 (index 435),
+supervisor PID 175992; the code judge escalated on cycle 1 and resolver
+`0436-resolver-01.md` confirmed. 0428-0435 were accepted normally (`f5513ffd` ..
+`cd6135ea`). Recommendations only; implementation awaits the operator.
+
+## Verdict
+
+**Agree** on cause, owner (the product's results pass and forward model, not the
+worker) and the need for an operator scope grant. **Disagree** on which lever is
+primary: I recommend the row-concurrent residual first and the concurrent profile
+pass only as the fallback, the reverse of the post-mortem's ruling.
+
+## Re-verified against current source
+
+- `FittedProblems.fs:100-148`: `jacobian`, `report` and the private `sigmas` are plain
+  members, so every `sigmaAt` evaluates the rank's Jacobian and `reportFrom`'s own
+  one again; `quality` a third. Memoizing them is plainly right and changes no number.
+- `FittedProblems.fs:227-243`: `pointsFrom` re-fits one point at a time, each told to
+  the watch from `told.Value`; `FitResultsTests` pins those counts as one contiguous
+  run.
+- `StudyForward.fs:925-975` `residualWith` walks every run's rows serially through
+  `predictedReadingOf`; one residual of AT-2's 44 configurations costs 1.31 s
+  (probe), and every phase of the fit is made of residuals: the main solve (54
+  iterations, 360 s), each Jacobian (15 columns, ~20 s) and every re-fit iteration
+  (~35 s, 83 % of the profile pass in ALGLIB's numeric Jacobian).
+
+## Why the residual first
+
+- It is the only lever that shortens every phase. The concurrent profile pass leaves
+  the 360 s main solve and ~400 s for the longest re-fit (6218 s / 24, plus its
+  Jacobians), projecting ~800 s against a 900 s bound: the post-mortem's own medium
+  confidence. Rows are independent Berreman solves; spread over the machine's 128
+  logical processors, 44 rows bring a residual far below a second, and the whole fit,
+  profiles still serial, into minutes.
+- It keeps the vector bit-identical (each row deterministic, assembled in order), so
+  every stored number stays the same, which 0438's byte comparison of the fit run
+  needs; and AT-1's committed-kit equality (its two `QZ-LR` fit runs compared byte for
+  byte) proves it on every kit-acceptance run.
+- It changes no watch semantics: the profile counts stay contiguous and in order, so
+  no `FitResultsTests` fact needs extending. The concurrent pass would need a new
+  ordering contract for counts that the UI's progress reads.
+- It also fixes the product: the app's own Fit of this study would otherwise stay
+  above two hours.
+- Its one cost is S11.2's "nothing after the first error is solved": rows after a
+  refusal are now solved and dropped. The answer (the first refusal in row order) is
+  unchanged; the ruling states it.
+
+Risk: thread safety of the forward model. The post-mortem's grep found no
+module-level cache or mutable state in the solver, Domain or Optimization; the
+committed-kit byte comparison and `constructor-unit-tests` are the check.
+
+## Recommendation
+
+Option 1 reshaped, as ruling R0004 in `.manual/035-step-0436-study-fit-runtime-recovery.md`:
+(1) a `FittedProblem` evaluates its Jacobian and report once (`FittedProblems.fs`);
+(2) `residualWith` solves the rows of all runs concurrently and answers the same
+vector, or the first refusal in row order (`StudyForward.fs`); (3) only if AT-2's fit
+then measures above 900 s, the profile re-fits run concurrently (`FittedProblems.fs`,
+`StudyEngine.fs`, with the named `FitResultsTests`/`StudyEngineTests` facts
+extended). No solver, tolerance, threshold, start or stored number changes; the
+measured AT-2 fit duration is recorded. Verify with the 26 gates of
+`.slices/0436.gates` plus `constructor-unit-tests` as declared in `.slices/0426.gates`.
+Forward: preserve at 0437-0494; 0460 (edits `StudyForward.fs`) keeps the concurrent
+residual; 0476 (moves the offset frame) keeps one Jacobian and one report per problem.
+
+Option 2 (raising the deadlines) is rejected as the post-mortem argues: the fit's
+total is unmeasured and 22 pending steps run the gate.
+
+First, commit the worker's tree as it stands (the `KitAcceptanceTests.fs` diff, the
+three 0436 worker files, this review and the post-mortem, the supervisor's state file
+unedited). Resume with `.manual/036-step-0436-operator-reply.md`, profile 1, no
+`--accept-current-slice`, so normal review publishes checkpoint 435.

@@ -1,5 +1,6 @@
 namespace OpticalConstructor.Optimization
 
+open System.Threading
 open OpticalConstructor.Domain.MuellerInverse
 
 /// §G.1 — the library-agnostic optimization interface (spec 0022 Part G §G.1).
@@ -11,8 +12,7 @@ open OpticalConstructor.Domain.MuellerInverse
 /// is realised in `AlglibAdapter` (the only file permitted to reference ALGLIB);
 /// §0 constraint 6 forbids an extra indirection layer here just to declare it.
 ///
-/// No caching, retry, or progress-callback registry lives here — progress
-/// reporting is wired separately in G.10 (slice 011).
+/// No caching or retry lives here; a watched solve reports its iterations through `IterationWatch` (spec 0050 S11.3).
 module OptimizationInterface =
 
     /// One number per design parameter, in the parameters' order and canonical units (§0 constraint 3):
@@ -88,6 +88,20 @@ module OptimizationInterface =
             epsX : StepTolerance
         }
 
+    /// Told after each iteration of a watched solve how many it has made (1, 2, …), and read after each whether to stop
+    /// (spec 0050 S11.3).
+    [<ReferenceEquality>]
+    type OptimizerIterationObserver =
+        {
+            reportIteration : IterationCount -> unit
+            cancellation : CancellationToken
+        }
+
+    /// Whether a solve reports its iterations and honours a stop request (spec 0050 S11.3).
+    type IterationWatch =
+        | UnwatchedIterations
+        | WatchedIterations of OptimizerIterationObserver
+
     /// The completion code an optimizer backend reported (ALGLIB's `terminationtype`).
     type CompletionCode =
         | CompletionCode of int
@@ -103,7 +117,8 @@ module OptimizationInterface =
         | BackendFailed of CompletionCode
         /// `NelderMead`'s simplex backend is the deferred G.2 decision.
         | SimplexBackendUnresolved
-        /// A §G.9 loop observed its cancellation flag (AC-G7).
+        /// A §G.9 loop observed its cancellation flag (AC-G7), or a watched Levenberg–Marquardt solve was asked to stop
+        /// (spec 0050 S11.3).
         | SearchCancelled
 
     /// Whether a run's solution can be used.

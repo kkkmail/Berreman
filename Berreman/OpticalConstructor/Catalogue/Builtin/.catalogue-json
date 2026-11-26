@@ -426,6 +426,83 @@
       "id": "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081",
       "kind": 6,
       "version": 1
+    },
+    {
+      "contentHash": "f94ae2bd261baa97e2162875345d2931c0eb743b88c9344860d57c55a5b260bb",
+      "fileName": "Black-box Mueller matrix.item-model-json",
+      "id": "852cbb95-e9f8-4963-8098-866303071e67",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "8a403099fbb9c616e614bde3ec211e7394e51987d41fedfe9e430ef76011f81c",
+      "fileName": "Circular polarizer (linear polarizer and retarder).item-model-json",
+      "id": "33486eec-836a-4cbf-ac79-e3f14439ad4b",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "bd364b5b37f3094663669ef79ef76dc2c0ab7d915cb04a11516460a582719d1c",
+      "fileName": "Ellipsometer (noise budget).item-model-json",
+      "id": "608caa06-1b53-464e-962f-073730270af6",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "ac61c2c497398ce56efddc5ba3c3e00e42877e7f6549e7efbf3d4439da732721",
+      "fileName": "Empty slot (air).item-model-json",
+      "id": "628b87f6-8e8c-460b-8a91-1815063aa9dd",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "b975edf766bc3f67170a1c9fea119ce7f25fcf6ebee744fae29e4671a11792b5",
+      "fileName": "Ideal polarizer (preset binding).item-model-json",
+      "id": "d47e5ce3-3e74-5058-848e-3aa54930e377",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "d263345e7e3d69db37725d7495259fe2e406a1d1fefe4a27b7dd45a69b0358db",
+      "fileName": "Intensity detector (gain, dark offset and noise).item-model-json",
+      "id": "01cfdc64-d07e-4e2b-963e-ea3caa8428e6",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "1fb57013f7a5680f6c9e10b9d037b228a54e9ea29605ef6031da025ebb8af4da",
+      "fileName": "Light source (preset binding).item-model-json",
+      "id": "239b0cfb-9938-5f3b-a767-c4252ea671b6",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "818f55020c01bfb91adc68d4e8b983b58df8a06f8e688d97a53343d78833219f",
+      "fileName": "Mueller polarimeter.item-model-json",
+      "id": "7e74324f-ded2-4607-b9d8-a40d477ac437",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "01057efb7ad6736f4bb188ee29d181299d012e42d6cb2632dd130ef07311c57e",
+      "fileName": "Real linear polarizer.item-model-json",
+      "id": "940bda4e-db9c-4103-b59c-dab2f3ee5875",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "a5905b549405f36d710890c8c0fc2228e33cac3057340c7d59906f38c002631f",
+      "fileName": "Retarder plate.item-model-json",
+      "id": "8e9797b7-f0db-443f-b33d-61f9901881cd",
+      "kind": 7,
+      "version": 1
+    },
+    {
+      "contentHash": "64e14fd01a684af40d4b21ecfecf31ccddfd835ba505d3ea81adf0e67ba5ee95",
+      "fileName": "Sample by stack.item-model-json",
+      "id": "4d13ecb1-2006-576f-99e7-e8bc266e8624",
+      "kind": 7,
+      "version": 1
     }
   ],
   "id": "499ae2ca-4f4c-4d4f-b53e-62ef2627130a",
