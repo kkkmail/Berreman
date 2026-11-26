@@ -1,0 +1,21 @@
+# Step 0075 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Tests]
+depends_on: [52]
+required_gates: [build, elevation, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceLibraryTests.fs"], "tests": [{"op": "change_expectation", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.SourceLibraryTests.the user-sources store inserts, replaces by id, and removes", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceLibraryTests.fs", "obligations": ["S23-SOURCE-SUITE"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceLibraryTests.fs"], "tests": [{"op": "change_expectation", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.SourceLibraryTests.the user-sources store inserts, replaces by id, and removes", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceLibraryTests.fs", "obligations": ["S23-SOURCE-SUITE"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** The user-sources facts of `SourceLibraryTests` become a contract suite that any user-sources store runs (001 §C 'Contract tests'; .spec-md §9; the S2.3 brief's 'proxy part of SourceLibraryTests'), as step 66 did for materials. This step moves facts and adds no store. (1) `OpticalConstructor.Tests/SourceLibraryTests.fs`: the helper `userSource` takes `(id : ElementValueId)` in place of a `string`, so a fixture holds its id elevated where it is born (AGENTS.md 'Elevate at origin'): each caller passes a text id as `ElementValueId "<text>"` and a minted one as `newSourceId ()` itself. `[<AbstractClass>] type SourceProxyContract ()` declares `abstract freshSources : unit -> SourceProxy`, a user-sources store holding no user source. These two facts become `[<Fact>]` members of the contract: `the user-sources store inserts, replaces by id, and removes`; `the user-sources store refuses a blank name, a non-positive wavelength, and a protected source`. `the user-sources store inserts, replaces by id, and removes` saves its source under `newSourceId ()` where it used the text id `src-user-1`, because the database keys every entry by a GUID (001 §B 'Identity is GUID + version + hash'; step 20); its assertions are unchanged. `type SourceLibraryTests () = inherit SourceProxyContract ()` is the in-memory store: `freshSources` is `SourceProxy.createInMemory ()`. The other facts stay members of `SourceLibraryTests` alone: `every seeded Library entry id is the canonical string of a GUID, and no two are equal`; `newSourceId mints the canonical string of a fresh GUID`; `the live Library offers and resolves a user source after the seeded ones`; `the live Library resolves a sample created in the samples store`; `the live Library resolves a seeded preset, a user source and a sample by their GUID ids`; `the seeded sources are protected, uniquely identified, and cover the lasers and the lithography lines`; `the seeded tree lists every seeded source under Sources`. The private helpers (`nm`, `userSource`, `sourceIds`) move unchanged into a private module above the classes. (2) The in-memory class keeps the name `SourceLibraryTests`, so every fact keeps its id. The abstract contract gets no `ADD_TEST`, and the file keeps its compile position.
+
+**Acceptance.** After the move, `SourceProxyContract` MUST be an abstract class holding the two user-sources store facts and `SourceLibraryTests` its in-memory subclass, and `SourceLibraryTests.fs` MUST NOT contain `src-user-1`; constructor-unit-tests MUST pass with its count unchanged and every SourceLibraryTests fact under its old id; and build, elevation and the eleven s10 invariants MUST pass.

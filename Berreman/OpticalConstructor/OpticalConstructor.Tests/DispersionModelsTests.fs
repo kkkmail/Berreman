@@ -46,8 +46,8 @@ module DispersionModelsTests =
 
     [<Fact>]
     let ``the silicon library entry reproduces the engine Silicon preset bit-for-bit`` () =
-        // Built-in entries reuse the engine presets directly — no dispersion re-derived.
-        let entry = builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
+        // BuiltinCatalogue.material must reproduce the engine's Silicon preset (spec 0050 S1.7).
+        let entry = BuiltinCatalogue.material MaterialIds.silicon
         for nm in [ 400.0<nm>; 500.0<nm>; 600.0<nm> ] do
             let w = WaveLength.nm nm
             let got = entry.properties.epsWithDisp.getEps w
@@ -115,8 +115,8 @@ module DispersionModelsTests =
                     wavelengthUnit = Micrometer
                     thermoOptic = Some { dndT = 1.0e-4<1/K>; referenceTemperature = 293.15<K> }
                 }
-        let json = JsonSerializer.Serialize(model, ProjectJson.options)
-        let back = JsonSerializer.Deserialize<DispersionModel>(json, ProjectJson.options)
+        let json = JsonSerializer.Serialize(model, CanonicalJson.options)
+        let back = JsonSerializer.Deserialize<DispersionModel>(json, CanonicalJson.options)
         Assert.Equal(model, back)
         Assert.Contains("dndT", json)
         Assert.Contains("referenceTemperature", json)
@@ -124,37 +124,57 @@ module DispersionModelsTests =
 
     [<Fact>]
     let ``resolveMaterial returns the concrete tensor for a known id at the supplied wavelength`` () =
+        let library : MaterialLibrary =
+            {
+                entries = BuiltinCatalogue.materials ()
+            }
         let w = WaveLength.nm 500.0<nm>
-        match resolveMaterial standard MaterialIds.silicon w with
+        match resolveMaterial library MaterialIds.silicon w with
         | Ok op -> Assert.True(epsClose 1e-12 op.eps (siliconOpticalProperties.getProperties w).eps)
         | Error e -> Assert.Fail($"expected Ok, got {e}")
 
     [<Fact>]
     let ``resolveMaterial returns Error UnknownMaterialId for an unknown id and never throws`` () =
+        let library : MaterialLibrary =
+            {
+                entries = BuiltinCatalogue.materials ()
+            }
         // The error's reason (spec 0033 step 002) names the offending id's Guid string form.
         let unknown = MaterialId.create ()
-        match resolveMaterial standard unknown (WaveLength.nm 500.0<nm>) with
+        match resolveMaterial library unknown (WaveLength.nm 500.0<nm>) with
         | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
         | other -> Assert.Fail($"expected Error (UnknownMaterialIdErr _), got {other}")
 
     [<Fact>]
     let ``a minted MaterialId round-trips create-store-lookup through the library`` () =
         // Spec 0033 step 002 acceptance: create an entry with a MINTED id, store it in a library,
-        // and the by-id lookup returns THAT entry's properties; the id also round-trips its Guid
-        // string form through the `tryCreate` IO-boundary parse.
+        // and the by-id lookup resolves THAT entry's physics; the id also round-trips its Guid
+        // string form through the `tryCreate` IO-boundary parse. The physics is compared by value,
+        // not by reference, because `properties` is derived on every read (spec 0050 steps 11, 13).
         let id = MaterialId.create ()
+        let complexity : MaterialComplexity =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.5))
+                magnetic = None
+                active = None
+            }
         let entry =
             {
                 id = id
                 name = EntryName "Round-trip entry"
                 category = CategoryIds.glass
                 description = None
-                properties = siliconOpticalProperties
-                complexity = None
+                physics = ComplexityPhysics complexity
             }
-        let lib : MaterialLibrary = { entries = entry :: standard.entries }
+        let lib : MaterialLibrary =
+            {
+                entries = entry :: BuiltinCatalogue.materials ()
+            }
         match resolveMaterialWithDisp lib id with
-        | Ok p -> Assert.True(System.Object.ReferenceEquals(p, entry.properties), "lookup must return the STORED entry's properties")
+        | Ok p ->
+            for nm in [ 400.0<nm>; 600.0<nm>; 800.0<nm> ] do
+                let w = WaveLength.nm nm
+                Assert.True(epsClose 1e-12 (p.epsWithDisp.getEps w) (complexity.eps.toEpsWithDisp.getEps w), $"λ={nm}")
         | Error e -> Assert.Fail($"expected Ok, got {e}")
         Assert.Equal(Some id, MaterialId.tryCreate (string id.value))
         Assert.Equal(None, MaterialId.tryCreate "not-a-guid")
@@ -297,44 +317,77 @@ module DispersionModelsTests =
                 }
         assertLoweringMatchesEvaluate 1e-8 model
 
+    /// The Tauc-Lorentz set the transcendental lowering facts share, a fresh record on every call.
+    let private taucLorentzCoefficients () : TaucLorentzCoefficients =
+        {
+            epsInf = 1.5
+            amplitude = 100.0
+            resonance = 3.5
+            broadening = 0.8
+            bandGap = 2.2
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
+    /// The Gaussian-oscillator set the transcendental lowering facts share, a fresh record on every call.
+    let private gaussianOscillatorCoefficients () : GaussianOscillatorCoefficients =
+        {
+            epsInf = 2.0
+            amplitude = 0.5
+            energy = 2.5
+            broadening = 0.4
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
     [<Fact>]
     let ``AC-B5 transcendental models lower to the evaluated case and match evaluate`` () =
         // TaucLorentz / GaussianOscillator are not finite term sums (band-gap step,
-        // exp): toEpsAxis lowers them to EpsAxisEvaluated carrying `evaluate`, so its
-        // complexIndex reproduces `evaluate` exactly and toOpticalProperties keeps
-        // them fully working through the evaluated segment.
-        let tl =
-            TaucLorentz
-                {
-                    epsInf = 1.5
-                    amplitude = 100.0
-                    resonance = 3.5
-                    broadening = 0.8
-                    bandGap = 2.2
-                    wavelengthUnit = ElectronVolt
-                    thermoOptic = None
-                }
-        let go =
-            GaussianOscillator
-                {
-                    epsInf = 2.0
-                    amplitude = 0.5
-                    energy = 2.5
-                    broadening = 0.4
-                    wavelengthUnit = ElectronVolt
-                    thermoOptic = None
-                }
+        // exp): toEpsAxis lowers each to its own core law (spec 0050 step 5), the one
+        // kernel `evaluate` answers too, so its complexIndex reproduces `evaluate`
+        // exactly and toOpticalProperties keeps them fully working through the law segment.
+        let tl = TaucLorentz (taucLorentzCoefficients ())
+        let go = GaussianOscillator (gaussianOscillatorCoefficients ())
         for model in [ tl; go ] do
             let axis = model.toEpsAxis
-            match axis with
-            | EpsAxisEvaluated _ -> ()
-            | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
+            match model, axis with
+            | TaucLorentz _, TaucLorentzAxis _
+            | GaussianOscillator _, GaussianOscillatorAxis _ -> ()
+            | _, other -> Assert.Fail($"a transcendental model must lower to its own law case, got {other}")
             let f = model.evaluate
             let op = model.toOpticalProperties
             for w in visibleGrid do
                 Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)
                 Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")
+
+    /// One model lowered twice, and two separately built equal models, give equal axes with equal
+    /// hashes and equal eps values; `shifted`, one coefficient away, gives an unequal axis.
+    let private assertLowersToEqualData (label : string) (build : unit -> DispersionModel) (shifted : DispersionModel) : unit =
+        let model = build ()
+        let twin = build ()
+        let first = model.toEpsAxis
+        let second = model.toEpsAxis
+        Assert.True((first = second), $"{label}: one model lowered twice gave unequal axes ({first} vs {second})")
+        Assert.True((hash first = hash second), $"{label}: one model lowered twice gave unequal axis hashes")
+        let twinAxis = twin.toEpsAxis
+        Assert.True((first = twinAxis), $"{label}: two equal models lowered to unequal axes ({first} vs {twinAxis})")
+        Assert.True((hash first = hash twinAxis), $"{label}: two equal models lowered to unequal axis hashes")
+        Assert.True((model.toEpsValue = model.toEpsValue), $"{label}: one model's toEpsValue twice gave unequal values")
+        Assert.True((model.toEpsValue = twin.toEpsValue), $"{label}: two equal models' toEpsValue gave unequal values")
+        Assert.False((first = shifted.toEpsAxis), $"{label}: a model one coefficient away lowered to an equal axis")
+
+    [<Fact>]
+    let ``equal Tauc-Lorentz and Gaussian-oscillator models lower to equal axis data`` () =
+        // An analytic model lowers to DATA, so equal models lower to equal axes (spec 0050 §3.1, 001 §B).
+        assertLowersToEqualData
+            "Tauc-Lorentz"
+            (fun () -> TaucLorentz (taucLorentzCoefficients ()))
+            (TaucLorentz { (taucLorentzCoefficients ()) with bandGap = 2.4 })
+        assertLowersToEqualData
+            "Gaussian oscillator"
+            (fun () -> GaussianOscillator (gaussianOscillatorCoefficients ()))
+            (GaussianOscillator { (gaussianOscillatorCoefficients ()) with energy = 2.7 })
 
     [<Fact>]
     let ``AC-B5 SumOfTerms is the identity under toEpsAxis and evaluates through complexIndex`` () =
@@ -375,11 +428,11 @@ module DispersionModelsTests =
                     wavelengthUnit = ElectronVolt
                     thermoOptic = None
                 }
-        // A transcendental model is now total too: one isotropic segment carrying
-        // the evaluated case (no lowering error).
+        // A transcendental model is total too: one isotropic segment carrying its
+        // law (spec 0050 step 5; no lowering error).
         match tl.toEpsValue with
-        | EpsWithDispValue (IsotropicDispersive [ { dispersion = EpsAxisEvaluated _ } ]) -> ()
-        | other -> Assert.Fail($"a transcendental model must become one evaluated segment, got {other}")
+        | EpsWithDispValue (IsotropicDispersive [ { dispersion = TaucLorentzAxis _ } ]) -> ()
+        | other -> Assert.Fail($"a Tauc-Lorentz model must become one law segment, got {other}")
 
     [<Fact>]
     let ``AC-B5 toOpticalProperties routes a lowerable model through the serializable tree`` () =
@@ -399,34 +452,37 @@ module DispersionModelsTests =
     /// The published Forouhi–Bloomer a-Si coefficient set (Horiba TN13, which
     /// implements the 1986 five-parameter form and tabulates ε∞ = 3.453 —
     /// hence n∞ = √ε∞ — A = 0.865 eV, B = 6.703 eV, C = 13.237 eV²,
-    /// Eg = 0.906 eV over 0.6–5 eV).
-    let private forouhiBloomerASi =
-        ForouhiBloomer
-            {
-                nInf = sqrt 3.453
-                a = 0.865
-                b = 6.703
-                c = 13.237
-                bandGap = 0.906
-                wavelengthUnit = ElectronVolt
-                thermoOptic = None
-            }
+    /// Eg = 0.906 eV over 0.6–5 eV), a fresh record on every call.
+    let private forouhiBloomerASiCoefficients () : ForouhiBloomerCoefficients =
+        {
+            nInf = sqrt 3.453
+            a = 0.865
+            b = 6.703
+            c = 13.237
+            bandGap = 0.906
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
+    let private forouhiBloomerASi = ForouhiBloomer (forouhiBloomerASiCoefficients ())
 
     /// Rakić et al. 1998 (Appl. Opt. 37, 5271) Brendel–Bormann parameters for
-    /// gold — the set behind the refractiveindex.info Au/Rakic-BB entry.
-    let private brendelBormannGold =
-        BrendelBormann
-            {
-                plasmaFrequency = 9.03
-                intrabandStrength = 0.770
-                intrabandDamping = 0.050
-                strength = [ 0.054; 0.050; 0.312; 0.719; 1.648 ]
-                resonance = [ 0.218; 2.885; 4.069; 6.137; 27.97 ]
-                damping = [ 0.074; 0.035; 0.083; 0.125; 0.179 ]
-                broadening = [ 0.742; 0.349; 0.830; 1.246; 1.795 ]
-                wavelengthUnit = ElectronVolt
-                thermoOptic = None
-            }
+    /// gold — the set behind the refractiveindex.info Au/Rakic-BB entry — a fresh
+    /// record on every call.
+    let private brendelBormannGoldCoefficients () : BrendelBormannCoefficients =
+        {
+            plasmaFrequency = 9.03
+            intrabandStrength = 0.770
+            intrabandDamping = 0.050
+            strength = [ 0.054; 0.050; 0.312; 0.719; 1.648 ]
+            resonance = [ 0.218; 2.885; 4.069; 6.137; 27.97 ]
+            damping = [ 0.074; 0.035; 0.083; 0.125; 0.179 ]
+            broadening = [ 0.742; 0.349; 0.830; 1.246; 1.795 ]
+            wavelengthUnit = ElectronVolt
+            thermoOptic = None
+        }
+
+    let private brendelBormannGold = BrendelBormann (brendelBormannGoldCoefficients ())
 
     [<Fact>]
     let ``AC-B6 evaluate ForouhiBloomer reproduces the published a-Si reference values`` () =
@@ -534,19 +590,34 @@ module DispersionModelsTests =
     [<Fact>]
     let ``AC-B6 ForouhiBloomer and BrendelBormann lower to the evaluated case and match evaluate`` () =
         // The transcendental models (band-gap step in k / Faddeeva-function Voigt
-        // broadening) are not finite term sums, so toEpsAxis lowers them to the
-        // evaluated case carrying `evaluate`; its complexIndex reproduces `evaluate`
-        // and toOpticalProperties keeps both models fully working through it.
+        // broadening) are not finite term sums, so toEpsAxis lowers each to its own
+        // core law (spec 0050 step 7), the one kernel `evaluate` answers too; its
+        // complexIndex reproduces `evaluate` and toOpticalProperties keeps both models
+        // fully working through the law segment.
         for model in [ forouhiBloomerASi; brendelBormannGold ] do
             Assert.Equal(ElectronVolt, model.wavelengthUnit)
             Assert.Equal(None, model.thermoOptic)
             let axis = model.toEpsAxis
-            match axis with
-            | EpsAxisEvaluated _ -> ()
-            | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
+            match model, axis with
+            | ForouhiBloomer _, ForouhiBloomerAxis _
+            | BrendelBormann _, BrendelBormannAxis _ -> ()
+            | _, other -> Assert.Fail($"a transcendental model must lower to its own law case, got {other}")
             let f = model.evaluate
             let op = model.toOpticalProperties
             for w in visibleGrid do
                 Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)
                 Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")
+
+    [<Fact>]
+    let ``equal Forouhi-Bloomer and Brendel-Bormann models lower to equal axis data`` () =
+        // An analytic model lowers to DATA, so equal models lower to equal axes (spec 0050 §3.1, 001 §B).
+        assertLowersToEqualData
+            "Forouhi-Bloomer"
+            (fun () -> ForouhiBloomer (forouhiBloomerASiCoefficients ()))
+            (ForouhiBloomer { (forouhiBloomerASiCoefficients ()) with bandGap = 1.0 })
+        let gold = brendelBormannGoldCoefficients ()
+        assertLowersToEqualData
+            "Brendel-Bormann"
+            (fun () -> BrendelBormann (brendelBormannGoldCoefficients ()))
+            (BrendelBormann { gold with broadening = List.updateAt 0 0.8 gold.broadening })

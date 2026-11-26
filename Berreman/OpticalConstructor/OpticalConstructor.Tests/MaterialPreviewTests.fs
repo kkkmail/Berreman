@@ -16,7 +16,7 @@ open Xunit
 /// engine plots — only the axis labels/ticks rescale.
 module MaterialPreviewTests =
 
-    let private entry = builtInEntries |> List.head
+    let private entry = BuiltinCatalogue.material MaterialIds.silicon
 
     [<Fact>]
     let ``AC-D7 the spectral-axis unit does not alter the canonical Range<WaveLength>`` () =

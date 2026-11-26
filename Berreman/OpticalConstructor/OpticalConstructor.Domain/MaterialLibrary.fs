@@ -1,33 +1,19 @@
 namespace OpticalConstructor.Domain
 
 open System
-open System.Numerics
-open Berreman.Constants
-open Berreman.MathNetNumericsMath
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Dispersion
-open OpticalProperties.Dispersive
-open OpticalProperties.Standard
 open OpticalProperties.Active
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.CrystalPhysics
 
-/// The searchable, categorised materials library aggregate (§D.8). A `MaterialEntry`
-/// pairs display metadata with the engine's `OpticalPropertiesWithDisp` (produced by
-/// D.6/D.7); the `MaterialLibrary` holds the entry list plus pure linear search
-/// (no indexing/caching — out of scope). The by-id `resolveMaterial` is the single
-/// resolution seam Part B §B.6 (slice 005) and Part J §J.4 (slice 014) delegate to.
-/// Built-in entries REUSE the already-coded engine presets (`siliconOpticalProperties`,
-/// `langasiteOpticalProperties`, the `Standard` glass/crystal presets) — no dispersion
-/// is re-derived here.
+/// Material identities, editable physics, pure search and store contracts (§D.8; spec 0050 §3.3).
+/// Built-in entries are loaded from Catalogue/Builtin through CatalogueImportProxy.
 module MaterialLibrary =
 
-    /// Elevated material-entry identity (spec 0033 step 002): a Guid-backed single-case DU — no raw
-    /// string material id appears in a domain record or public signature. `create` MINTS a fresh id
-    /// (imports, user-authored entries); the built-in seeds parse FIXED literal Guids (`MaterialIds`)
-    /// so identity is deterministic across runs; `tryCreate` parses the Guid string form at a genuine
-    /// IO boundary (library JSON, the drag payload) — an unparsable string is `None`, never a throw
-    /// (no legacy string-id path).
+    /// Stable material identity; create mints a new id and tryCreate parses an external Guid string.
+    /// MaterialIds names the Built-in catalogue's identities (spec 0033 step 002; spec 0050 §3.3).
     type MaterialId =
         | MaterialId of Guid
 
@@ -43,10 +29,7 @@ module MaterialLibrary =
     /// `MaterialLibrary.MaterialId.create` resolves to the case rather than the static member).
     let newMaterialId () : MaterialId = MaterialId.create ()
 
-    /// The FIXED ids of the built-in library entries (spec 0033 step 002): literal Guids parsed once,
-    /// so the seeds, the sample structures (`Library.SeedSamples`), the grouping trees, and the tests
-    /// all reference the SAME deterministic identity across runs. A new built-in adds a new literal
-    /// here — seed construction never calls `MaterialId.create`.
+    /// Well-known identities of the Built-in catalogue's materials (spec 0033 step 002; spec 0050 §3.3).
     module MaterialIds =
         let silicon : MaterialId = Guid.Parse "0f698851-dca1-412a-ad46-fac413496667" |> MaterialId
         let langasite : MaterialId = Guid.Parse "e95f01fb-0442-42c4-ba69-74d82f52e544" |> MaterialId
@@ -90,20 +73,16 @@ module MaterialLibrary =
 
         member this.value = let (CategoryName s) = this in s
 
-    /// Elevated material-category identity (spec 0035 step 001): a Guid-backed single-case DU,
-    /// mirroring `MaterialId` (:27). `create` MINTS a fresh id (a user-authored category); the
-    /// seeded built-ins parse FIXED literal Guids (`CategoryIds`) so a category's identity is
-    /// deterministic across runs and a persisted entry resolves to the SAME category.
+    /// Stable category identity; create mints a new id for a user-authored category.
+    /// CategoryIds names the Built-in catalogue's identities (spec 0035 step 001; spec 0050 §3.3).
     type CategoryId =
         | CategoryId of Guid
 
         member this.value = let (CategoryId g) = this in g
         static member create () : CategoryId = Guid.NewGuid() |> CategoryId
 
-    /// Whether a category is offered as a target in the create/edit picker (spec 0035 step 001):
-    /// a named two-case DU, never a naked `bool`. A `HiddenOnCreate` category (Vacuum) categorises
-    /// seed entries the structural multilayer stacks reference but is NOT a user-selectable
-    /// creation target — it is removed from the picker, not greyed.
+    /// Whether the create/edit picker offers a category; HiddenOnCreate omits it entirely
+    /// (spec 0035 step 001; spec 0050 §3.3).
     type CategoryVisibility =
         | SelectableOnCreate
         | HiddenOnCreate
@@ -114,12 +93,8 @@ module MaterialLibrary =
         | BuiltInCategory
         | UserCategory
 
-    /// Material category as DATA (spec 0035 step 001): the closed `MaterialCategory` union is
-    /// replaced by a record so categories are a seeded, extensible catalogue resolved by id — not
-    /// a fixed compile-time set. A category `name` is resolved through the catalogue by
-    /// `CategoryId` (the sole seam consumers read); `visibility` and `origin` are named DUs. No
-    /// domain record or public signature carries a closed union — `MaterialEntry.category` and
-    /// `MaterialQuery.category` are `CategoryId`-typed.
+    /// Extensible category data resolved by CategoryId through the live category store
+    /// (spec 0035 step 001; spec 0050 §3.3).
     type MaterialCategory =
         {
             id : CategoryId
@@ -128,10 +103,7 @@ module MaterialLibrary =
             origin : CategoryOrigin
         }
 
-    /// The FIXED ids of the built-in categories (spec 0035 step 001): literal Guids parsed once
-    /// (mirroring `MaterialIds` at :51), so the seeded catalogue, the entry seeds, and the tests
-    /// all reference the SAME deterministic identity across runs. A new built-in category adds a
-    /// new literal here; catalogue construction never calls `CategoryId.create`.
+    /// Well-known identities of the Built-in catalogue's categories (spec 0035 step 001; spec 0050 §3.3).
     module CategoryIds =
         let glass : CategoryId = Guid.Parse "2a4b6c8d-1e3f-4a5b-8c7d-9e0f1a2b3c4d" |> CategoryId
         let metal : CategoryId = Guid.Parse "3b5c7d9e-2f4a-5b6c-9d8e-0f1a2b3c4d5e" |> CategoryId
@@ -139,64 +111,38 @@ module MaterialLibrary =
         let crystal : CategoryId = Guid.Parse "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70" |> CategoryId
         let vacuumCategory : CategoryId = Guid.Parse "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081" |> CategoryId
 
-    /// The seeded built-in category catalogue (spec 0035 step 001). Glass/Metal/Semiconductor/
-    /// Crystal are `SelectableOnCreate` creation targets; `Vacuum` is `HiddenOnCreate` — it
-    /// categorises the vacuum spacer entry the structural multilayer seeds reference but is not
-    /// offered in the create picker. Every seed is `BuiltInCategory`.
-    let standardCategories : MaterialCategory list =
-        [
-            { id = CategoryIds.glass; name = CategoryName "Glass"; visibility = SelectableOnCreate; origin = BuiltInCategory }
-            { id = CategoryIds.metal; name = CategoryName "Metal"; visibility = SelectableOnCreate; origin = BuiltInCategory }
-            { id = CategoryIds.semiconductor; name = CategoryName "Semiconductor"; visibility = SelectableOnCreate; origin = BuiltInCategory }
-            { id = CategoryIds.crystal; name = CategoryName "Crystal"; visibility = SelectableOnCreate; origin = BuiltInCategory }
-            { id = CategoryIds.vacuumCategory; name = CategoryName "Vacuum"; visibility = HiddenOnCreate; origin = BuiltInCategory }
-        ]
-
-    /// Resolve a category record by its id through the seeded catalogue (spec 0035 step 001): the
-    /// single name-resolution seam consumers read instead of matching a closed union. An id absent
-    /// from the catalogue is `None`, never a throw.
-    let tryFindCategory (id : CategoryId) : MaterialCategory option =
-        standardCategories |> List.tryFind (fun c -> c.id = id)
+    /// Resolve an id through the caller's live category store's listCategories; absent ids return None
+    /// (spec 0035 step 001; spec 0050 S1.7).
+    let tryFindCategory (categories : MaterialCategory list) (id : CategoryId) : MaterialCategory option =
+        categories |> List.tryFind (fun c -> c.id = id)
 
     type CategoryId with
 
-        /// The display name of a category id, resolved through the catalogue (spec 0035 step 001); an
-        /// id absent from the catalogue falls back to its Guid string form (a diagnostic, never a throw).
-        member this.categoryName : string =
-            match tryFindCategory this with
-            | Some c -> c.name.value
-            | None -> string this.value
+        /// Resolve through the caller's live category store's listCategories, or return the id's GUID
+        /// label when absent (spec 0035 step 001; spec 0050 S1.7).
+        member this.categoryName (categories : MaterialCategory list) : CategoryName =
+            match tryFindCategory categories this with
+            | Some c -> c.name
+            | None -> CategoryName (string this.value)
 
-    /// Resolve a category record by its display name through the catalogue (spec 0035 step 001):
-    /// the inverse of `CategoryId.categoryName`, used at the persisted/wire boundary (library JSON). An
-    /// unknown name is `None`, never a throw.
-    let tryFindCategoryByName (name : CategoryName) : MaterialCategory option =
-        standardCategories |> List.tryFind (fun c -> c.name = name)
+    /// Resolve a name through the caller's live category store's listCategories; unknown names return None
+    /// (spec 0035 step 001; spec 0050 S1.7).
+    let tryFindCategoryByName (categories : MaterialCategory list) (name : CategoryName) : MaterialCategory option =
+        categories |> List.tryFind (fun c -> c.name = name)
 
-    /// The category write-seam error channel (spec 0035 step 002, contract STORE_XDUO_0003 —
-    /// DECLARED lifecycle): errors as values, each case carrying a diagnostic `reason` — a bare
-    /// error case is useless in a log. Mirrors `MaterialError` (below) and `SampleError`
-    /// (`ElementId.fs`): an unknown id on update/remove, adding a category under an id the
-    /// catalogue already holds, and removing a category a material entry still references. Adds
-    /// `BuiltInNotRemovable` — a `BuiltInCategory` is shipped with the app and MUST NOT be deleted
-    /// (only a `UserCategory` may be removed) — and `InvalidCategory` for a malformed (blank-name)
-    /// category.
+    /// Category failures identify the refused operation, referenced entry or unavailable store
+    /// (spec 0035 step 002; spec 0050 §3.4, S2.2).
     type CategoryError =
         | UnknownCategoryIdErr of reason : string
         | DuplicateCategoryIdErr of reason : string
         | CategoryStillReferencedErr of reason : string
         | BuiltInNotRemovableErr of reason : string
         | InvalidCategoryErr of reason : string
+        | CategoryStoreUnavailableErr of reason : string
 
-    /// The mutating category write-seam (spec 0035 step 002, contract STORE_XDUO_0003 — DECLARED
-    /// lifecycle): the functional-proxy convention `LibraryProxy`/`MaterialProxy`/`SampleProxy`
-    /// set (`ElementId.fs`; `MaterialProxy` below), a record of camelCase `Result`-returning
-    /// functions. A test substitutes a stub of the SAME shape. Function-valued fields have no
-    /// structural equality, so the proxy compares by reference — a host model holding one keeps
-    /// its (Elmish-required) equality, comparing the proxy by identity. This step ships the
-    /// DECLARED surface, a mock, and a mock-driven test only; the real, stateful in-memory store
-    /// behind this surface (`CategoryProxy.createInMemory`) is the later `IMPLEMENT_CONTRACT
-    /// STORE_XDUO_0003` step.
+    /// Category reads and validated writes, with typed refusals (spec 0035 step 002; spec 0050 §3.4).
+    /// Stores: CategoryProxy.createInMemory and Storage's CategoryProxy.createInDatabase.
+    /// Function-valued fields make proxy equality reference-based.
     [<ReferenceEquality>]
     type CategoryProxy =
         {
@@ -248,24 +194,34 @@ module MaterialLibrary =
                 | None -> defaults.rhoWithDisp
             { defaults with muWithDisp = muWithDisp; rhoWithDisp = rhoWithDisp }
 
+    /// The forms a material's physics can take: the complexity tree or a crystal-parameter record
+    /// (spec 0050 S11.1).
+    type MaterialPhysics =
+        | ComplexityPhysics of complexity : MaterialComplexity
+        | CrystalParameterPhysics of crystal : CrystalParameters
+
+        /// The physics' engine composition (spec 0050 S11.1).
+        member this.toProperties : OpticalPropertiesWithDisp =
+            match this with
+            | ComplexityPhysics complexity -> complexity.toProperties
+            | CrystalParameterPhysics crystal -> crystal.toProperties
+
     /// A library entry: a stable id (the `materialEntry` id, §A.7), a display name,
     /// a category, an optional description (mirroring the engine's `description`
-    /// fields, e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), the
-    /// engine's `OpticalPropertiesWithDisp` (`Dispersion.fs:53`), and the optional
-    /// edit model (spec 0033 step 013): `Some complexity` is the EDITABLE source of
-    /// truth — `properties` IS `complexity.toProperties` (the seeds construct it so;
-    /// the Part F editor re-derives it at save) — while `None` marks an
-    /// engine-preset entry whose physics is coded rather than data (silicon /
-    /// langasite / the vacuum spacer), shown view-only.
+    /// fields, e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), and its
+    /// physics (spec 0050 step 13, S11.1). Every field is data, so entries compare structurally.
     type MaterialEntry =
         {
             id : MaterialId
             name : EntryName
             category : CategoryId
             description : EntryDescription option
-            properties : OpticalPropertiesWithDisp
-            complexity : MaterialComplexity option
+            physics : MaterialPhysics
         }
+
+        /// The entry's engine composition (`OpticalPropertiesWithDisp`, `Dispersion.fs:53`),
+        /// derived from its physics on every read (spec 0050 S11.1).
+        member this.properties : OpticalPropertiesWithDisp = this.physics.toProperties
 
     /// Net-new error channel for material resolution (errors as values, §0). Returned
     /// — never thrown — by `resolveMaterial` on an unknown id; the case carries a
@@ -279,11 +235,24 @@ module MaterialLibrary =
         | DuplicateMaterialIdErr of reason : string
         | MaterialStillReferencedErr of reason : string
         | InvalidMaterialErr of reason : string
-        /// Spec 0038 Part H (step 021): removal is additionally hard-blocked when ANY version of
-        /// the material is currently bound by a live experiment (the injected `VersionsInUse`
-        /// seam). A used version can never be deleted; the case names the offending versions so
-        /// the refusal is actionable in a log / status line.
-        | MaterialVersionInUseErr of reason : string
+        /// Removal is refused while any version is pinned (spec 0038 Part H; spec 0050 S2.2).
+        | MaterialVersionPinnedErr of reason : string
+        | MaterialStoreUnavailableErr of reason : string
+
+    type MaterialError with
+
+        /// Reports an unresolved material identity (spec 0050 S2.2).
+        static member unknownMaterial (id : MaterialId) : MaterialError =
+            UnknownMaterialIdErr $"unknown material id '%s{string id.value}'"
+
+        /// Reports removal blocked by sample references, with quoted, sorted names (spec 0050 S2.2).
+        static member stillReferenced (entry : MaterialEntry) (samples : EntryName list) : MaterialError =
+            let names =
+                samples
+                |> List.map (fun name -> $"'%s{name.value}'")
+                |> List.sort
+                |> String.concat ", "
+            MaterialStillReferencedErr $"material '%s{entry.name.value}' ('%s{string entry.id.value}') is still referenced by %d{List.length samples} sample(s): %s{names}"
 
     /// The in-memory, additive material library (§D.8). Persistence of an entry is the
     /// JSON `materialEntry` `$def` (§A.7); a shareable library FILE format is Part I §I.8.
@@ -317,285 +286,10 @@ module MaterialLibrary =
     let resolveMaterialWithDisp (lib : MaterialLibrary) (id : MaterialId) : Result<OpticalPropertiesWithDisp, MaterialError> =
         match lib.entries |> List.tryFind (fun e -> e.id = id) with
         | Some e -> Ok e.properties
-        | None -> Error (UnknownMaterialIdErr $"unknown material id '%s{string id.value}'")
+        | None -> Error (MaterialError.unknownMaterial id)
 
     let resolveMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
         resolveMaterialWithDisp lib id |> Result.map (fun p -> p.getProperties w)
-
-    type ConstantEpsValue with
-
-        /// A constant-eps complexity with no magnetic/active aspect — the shape shared by
-        /// every re-expressed transparent/absorbing built-in below.
-        member private eps.constantComplexity : MaterialComplexity =
-            {
-                eps = EpsWithoutDispValue eps
-                magnetic = None
-                active = None
-            }
-
-    // ==========================================================================
-    // Complexities of the re-expressed built-ins (spec 0033 step 013). Each is the
-    // editable source of truth of its entry: the entry sets
-    // properties = complexity.toProperties, so the sync invariant holds by
-    // construction at seed time, and each construction reuses the preset constants
-    // and the preset arithmetic path so the seeded tensors stay VALUE-IDENTICAL to
-    // the original engine presets (PropagationTests pins the seeded systems with
-    // exact equality). The uniaxial and active crystals are encoded as
-    // BiaxialTransparent per-axis values, NOT UniaxialTransparent: the engine maps
-    // UniaxialTransparent to the (ordinary, extraordinary, ordinary) diagonal
-    // (Dispersion.fs:297), but Eps.uniaxialCrystal is diag(1.5², 1.65², 1.65²)
-    // (unique axis x) and planarCrystal is diag(n₁₁², n₁₁², n₃₃²) (unique axis z) —
-    // neither has the (o, e, o) shape, and the AC-B7 acceptance (reproduce the
-    // original preset's tensors) wins over the case name.
-    // ==========================================================================
-
-    let private glass152Complexity : MaterialComplexity =
-        (IsotropicTransparent RefractionIndex.transparentGlass).constantComplexity
-
-    let private glass150Complexity : MaterialComplexity =
-        (IsotropicTransparent RefractionIndex.transparentGlass150).constantComplexity
-
-    let private glass175Complexity : MaterialComplexity =
-        (IsotropicTransparent RefractionIndex.transparentGlass175).constantComplexity
-
-    let private glass200Complexity : MaterialComplexity =
-        (IsotropicTransparent RefractionIndex.transparentGlass200).constantComplexity
-
-    let private uniaxialCrystalComplexity : MaterialComplexity =
-        (BiaxialTransparent { nx = RefractionIndex 1.5; ny = RefractionIndex 1.65; nz = RefractionIndex 1.65 }).constantComplexity
-
-    let private biaxialCrystalComplexity : MaterialComplexity =
-        (BiaxialTransparent { nx = RefractionIndex 1.5; ny = RefractionIndex 1.65; nz = RefractionIndex 1.75 }).constantComplexity
-
-    let private euvMolybdenumComplexity : MaterialComplexity =
-        (Complex.create (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta |> ComplexRefractionIndex |> IsotropicAbsorbing).constantComplexity
-
-    let private euvSiliconComplexity : MaterialComplexity =
-        (Complex.create (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta |> ComplexRefractionIndex |> IsotropicAbsorbing).constantComplexity
-
-    /// The per-axis indices go through the SAME EpsValue → sqrt round-trip the
-    /// engine's `planarCrystal` preset performs, so the rebuilt eps is
-    /// value-identical to the original (not merely within tolerance).
-    let private activeCrystalComplexity : MaterialComplexity =
-        let n11 = (RefractionIndex 2.315 |> EpsValue.fromRefractionIndex).refractionIndex
-        let n33 = (RefractionIndex 2.226 |> EpsValue.fromRefractionIndex).refractionIndex
-        {
-            eps = EpsWithoutDispValue (BiaxialTransparent { nx = n11; ny = n11; nz = n33 })
-            magnetic = None
-            active = Some (RhoWithoutDispValue { gyration = PlanarActive (RhoValue 1.5e-6); hand = RightHanded })
-        }
-
-    // ==========================================================================
-    // The three coded-preset complexities (spec 0040 step 004, Part B). Silicon,
-    // Langasite and the Vacuum spacer used to carry `complexity = None` (their
-    // physics is a coded engine closure, not data), so `MaterialComplexity.anisotropy` /
-    // `ConstantEpsValue.transparency` could not read their single-valued class and the facets did
-    // not sum to the population (spec 0040 Part B.0). They now carry a
-    // `complexity = Some` value tree that ENCODES the class as data — Silicon
-    // Isotropic, Langasite Uniaxial (retaining its optical activity), Vacuum
-    // Isotropic + Transparent — with `properties = complexity.toProperties`, exactly
-    // the seed convention every other built-in already uses.
-    //
-    // The dispersion is REPRODUCED through the ladder's `EpsAxisEvaluated` rung
-    // (`DispersionModel.toEpsAxis` lowers the transcendental models to the very
-    // same case): the engine exposes only the Eps-VALUED closure of Silicon /
-    // Langasite (`OpticalProperties/Dispersive.fs`), not the scalar index, so
-    // faithful reproduction re-states the published closed-form index. This is
-    // REPRODUCTION, never CLASSIFICATION — the anisotropy is read from the value
-    // tree's CASE (Isotropic/Uniaxial/Biaxial), never by evaluating the engine ε
-    // tensor (spec 0040 Part B.1 / §0.4). `DispersionModelsTests` pins the Silicon
-    // reproduction to the engine preset at 1e-12; a Langasite ε reproduction test
-    // guards the copied index. Because a coded preset carries an OPAQUE evaluated
-    // segment (no editable coefficients), the editor keeps it VIEW-ONLY through
-    // `MaterialComplexity.isEditable` (MaterialComplexityEditor).
-    // ==========================================================================
-
-    /// The spectrum-spanning interval of a coded preset's single segment (spec 0040
-    /// step 004): the evaluated closure is valid at every wavelength — it extrapolates
-    /// exactly as the engine's own `EpsWithDisp` case does — so its band is UNBOUNDED.
-    /// The topmost (only) segment always applies (`Dispersion.fs` `selectSegment`), and
-    /// the out-of-band diagnostic sees a band covering every request, so a coded preset
-    /// never flags out of band. `1.0e12<nm>` is 1 km — far beyond any optical request.
-    let private codedPresetInterval : WaveLengthInterval =
-        { lower = WaveLength.nm 0.0<nm>; upper = WaveLength.nm 1.0e12<nm> }
-
-    type WaveLength with
-
-        /// Reproduction of the engine `Silicon` preset's scalar complex refraction index
-        /// (`OpticalProperties/Dispersive.fs`), re-stated verbatim so the isotropic
-        /// dispersive value tree can carry it. Pinned to the engine preset at 1e-12 by
-        /// `DispersionModelsTests`.
-        member private w.siliconRefractionIndex : ComplexRefractionIndex =
-            let lambda = w.value / 1.0<meter>
-            let n = 3.41696 - 2.09e7 * lambda ** 2.0 + 1.48e17 * lambda ** 4.0 + 0.013924 / (-0.028 + 1.e12 * lambda ** 2.0) ** 2.0 + 0.138497 / (-0.028 + 1.e12 * lambda ** 2.0)
-            let xi = (4.402681698765214e9 * lambda ** 2.0) / (0.0001 + (-0.12189462353667012 + 1.0e12 * lambda ** 2.0) ** 2.0)
-            Complex.create n xi |> ComplexRefractionIndex
-
-        /// Reproduction of the engine `Langasite` preset's ORDINARY complex refraction
-        /// index (`OpticalProperties/Dispersive.fs`), re-stated verbatim; `exp 1.0` is the
-        /// preset's `numberE`.
-        member private w.langasiteOrdinaryIndex : ComplexRefractionIndex =
-            let lambda = w.value / 1.0<meter>
-            (((Complex.ofReal 0.00005) * complexI) / ((exp 1.0) ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> Complex.ofReal) + (sqrt (1.0 + (2.4981088 * lambda ** 2.0) / (-1.6845031370328092e-14 + lambda ** 2.0)) |> Complex.ofReal))
-            |> ComplexRefractionIndex
-
-        /// Reproduction of the engine `Langasite` preset's EXTRAORDINARY complex
-        /// refraction index (`OpticalProperties/Dispersive.fs`), re-stated verbatim.
-        member private w.langasiteExtraordinaryIndex : ComplexRefractionIndex =
-            let lambda = w.value / 1.0<meter>
-            (((Complex.ofReal 0.0001) * complexI) / ((exp 1.0) ** (1.2011325347955075e15 * (-2.8e-7 + lambda) ** 2.0) |> Complex.ofReal) + (sqrt (1.0 + (2.5408145 * lambda ** 2.0) / (-1.6679115500522497e-14 + lambda ** 2.0)) |> Complex.ofReal))
-            |> ComplexRefractionIndex
-
-    /// Silicon (spec 0040 step 004): Isotropic, dispersive, absorbing. The isotropic
-    /// dispersive tree carries the engine index through the ladder's evaluated rung,
-    /// so `MaterialComplexity.anisotropy` reads Isotropic from the CASE and `toProperties` reproduces
-    /// `siliconOpticalProperties`.
-    let private siliconComplexity : MaterialComplexity =
-        {
-            eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = codedPresetInterval; dispersion = EpsAxisEvaluated (fun w -> w.siliconRefractionIndex) } ])
-            magnetic = None
-            active = None
-        }
-
-    /// Langasite (spec 0040 step 004): Uniaxial, dispersive, optically active. The
-    /// uniaxial dispersive tree carries the engine ordinary/extraordinary indices, so
-    /// `MaterialComplexity.anisotropy` reads Uniaxial from the CASE. The optical-activity component is
-    /// RETAINED as a representative uniaxial gyration (class 3/4/6): the engine's
-    /// dispersive gyration ρ (`rhoLa3Ga5SiO14`) is transcendental and
-    /// `RhoWithDispValue` carries only `DispersionFormula` components — it has NO
-    /// closure escape as ε's `EpsAxisEvaluated` does — so the dispersive ρ cannot be
-    /// reproduced by the value tree; a class-correct constant gyration keeps Langasite
-    /// optically active for the facets while the ε stays faithful.
-    let private langasiteComplexity : MaterialComplexity =
-        {
-            eps =
-                EpsWithDispValue
-                    (UniaxialDispersive
-                        [ {
-                            wavelengthInterval = codedPresetInterval
-                            ordinaryDispersion = EpsAxisEvaluated (fun w -> w.langasiteOrdinaryIndex)
-                            extraordinaryDispersion = EpsAxisEvaluated (fun w -> w.langasiteExtraordinaryIndex)
-                          } ])
-            magnetic = None
-            active = Some (RhoWithoutDispValue { gyration = UniaxialActive { g11 = RhoValue 1.0e-5; g33 = RhoValue 1.0e-5 }; hand = RightHanded })
-        }
-
-    /// The Vacuum spacer (spec 0040 step 004): Isotropic, Transparent, constant n = 1.
-    /// `(IsotropicTransparent RefractionIndex.vacuum).constantComplexity.toProperties`
-    /// is byte-identical to `OpticalProperties.vacuum` (`Eps.vacuum` = the identity =
-    /// `Eps.fromRefractionIndex 1.0`), so the multilayer spacer physics is unchanged.
-    let private vacuumComplexity : MaterialComplexity =
-        (IsotropicTransparent RefractionIndex.vacuum).constantComplexity
-
-    /// Built-in entries (§D.8). Every entry now carries `complexity = Some` with
-    /// `properties = complexity.toProperties` (spec 0040 step 004 re-seeds the three
-    /// former coded presets — Silicon / Langasite / the Vacuum spacer — so their
-    /// single-valued class is DATA the facets read; the nine already-expressible
-    /// entries were re-expressed under spec 0033 step 013). The AC-B7 tests pin the
-    /// re-expressed seeds against the original `Standard.fs`/`Active.fs` presets at
-    /// reference wavelengths; the Silicon reproduction is pinned to the engine preset.
-    let builtInEntries : MaterialEntry list =
-        [
-            {
-                id = MaterialIds.silicon
-                name = EntryName "Silicon"
-                category = CategoryIds.semiconductor
-                description = Some (EntryDescription "Crystalline silicon (engine preset Silicon).")
-                properties = siliconComplexity.toProperties
-                complexity = Some siliconComplexity
-            }
-            {
-                id = MaterialIds.langasite
-                name = EntryName "Langasite (La3Ga5SiO14)"
-                category = CategoryIds.crystal
-                description = Some (EntryDescription "Langasite, optically active uniaxial crystal (engine preset Langasite).")
-                properties = langasiteComplexity.toProperties
-                complexity = Some langasiteComplexity
-            }
-            {
-                id = MaterialIds.glass152
-                name = EntryName "Transparent glass (n = 1.52)"
-                category = CategoryIds.glass
-                description = Some (EntryDescription "Standard transparent glass preset.")
-                properties = glass152Complexity.toProperties
-                complexity = Some glass152Complexity
-            }
-            {
-                id = MaterialIds.glass150
-                name = EntryName "Transparent glass (n = 1.50)"
-                category = CategoryIds.glass
-                description = None
-                properties = glass150Complexity.toProperties
-                complexity = Some glass150Complexity
-            }
-            {
-                id = MaterialIds.glass175
-                name = EntryName "Transparent glass (n = 1.75)"
-                category = CategoryIds.glass
-                description = None
-                properties = glass175Complexity.toProperties
-                complexity = Some glass175Complexity
-            }
-            {
-                id = MaterialIds.glass200
-                name = EntryName "Transparent glass (n = 2.00)"
-                category = CategoryIds.glass
-                description = None
-                properties = glass200Complexity.toProperties
-                complexity = Some glass200Complexity
-            }
-            {
-                id = MaterialIds.uniaxialCrystal
-                name = EntryName "Uniaxial crystal"
-                category = CategoryIds.crystal
-                description = Some (EntryDescription "Standard uniaxial crystal preset.")
-                properties = uniaxialCrystalComplexity.toProperties
-                complexity = Some uniaxialCrystalComplexity
-            }
-            {
-                id = MaterialIds.biaxialCrystal
-                name = EntryName "Biaxial crystal"
-                category = CategoryIds.crystal
-                description = Some (EntryDescription "Standard biaxial crystal preset.")
-                properties = biaxialCrystalComplexity.toProperties
-                complexity = Some biaxialCrystalComplexity
-            }
-            {
-                id = MaterialIds.vacuumMaterial
-                name = EntryName "Vacuum"
-                category = CategoryIds.vacuumCategory
-                description = Some (EntryDescription "Vacuum (n = 1) — the spacer material of the structural multilayer stacks.")
-                properties = vacuumComplexity.toProperties
-                complexity = Some vacuumComplexity
-            }
-            {
-                id = MaterialIds.euvMolybdenum
-                name = EntryName "Molybdenum (Mo, EUV)"
-                category = CategoryIds.metal
-                description = Some (EntryDescription "Molybdenum for EUV multilayers (engine preset, complex n around 10–13.5 nm).")
-                properties = euvMolybdenumComplexity.toProperties
-                complexity = Some euvMolybdenumComplexity
-            }
-            {
-                id = MaterialIds.euvSilicon
-                name = EntryName "Silicon (Si, EUV)"
-                category = CategoryIds.semiconductor
-                description = Some (EntryDescription "Silicon for EUV multilayers (engine preset, complex n around 10–13.5 nm).")
-                properties = euvSiliconComplexity.toProperties
-                complexity = Some euvSiliconComplexity
-            }
-            {
-                id = MaterialIds.activeCrystal
-                name = EntryName "Active (gyrotropic) crystal"
-                category = CategoryIds.crystal
-                description = Some (EntryDescription "Planar active (gyrotropic) crystal: n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6 (from ActiveCrystal.fsx).")
-                properties = activeCrystalComplexity.toProperties
-                complexity = Some activeCrystalComplexity
-            }
-        ]
-
-    /// The default in-memory library seeded with the built-in entries (§D.8).
-    let standard : MaterialLibrary = { entries = builtInEntries }
 
     /// The dispersion facet of a materials search (spec 0033 step 003): match every entry,
     /// only entries whose optical properties depend on wavelength, or only
@@ -627,14 +321,8 @@ module MaterialLibrary =
                 dispersion = AnyDispersion
             }
 
-    /// A monotonically increasing version number of a library entry (spec 0038 Part H, step 020).
-    /// A single-case `int` DU — no naked int stands in for a version. `first` is the version every
-    /// entry starts at; `.next` mints the successor the store freezes onto when a USED version's
-    /// physics changes; `.value` is the wire/disk integer, reached only at the IO boundary. Moved
-    /// here from `Lifecycle.fs` at step 021 because the versioned `MaterialProxy` surface below
-    /// references it (through `MaterialVersionId`), and the record is re-typed IN PLACE in this
-    /// file, which compiles before `Lifecycle.fs`; `Lifecycle.fs` reuses it through its existing
-    /// `open …MaterialLibrary`.
+    /// Monotonically increasing library version: entries start at first and pinned physics edits
+    /// mint next (spec 0038 Part H; spec 0050 S2.2). The wire/disk integer is value.
     type VersionNumber =
         | VersionNumber of int
 
@@ -643,8 +331,7 @@ module MaterialLibrary =
         /// The successor version — one past this one. Pure; `VersionNumber.first.next` is version 2.
         member this.next : VersionNumber = VersionNumber (this.value + 1)
 
-        /// The version every entry starts at (1). New entries and the re-expressed seeds begin here;
-        /// the store never fabricates a version number by hand.
+        /// The first version of a newly stored entry.
         static member first : VersionNumber = VersionNumber 1
 
     /// A specific version of a material entry (spec 0038 Part H): the material identity plus the
@@ -660,14 +347,26 @@ module MaterialLibrary =
             version : VersionNumber
         }
 
-        /// The version-ONE reference of a material (spec 0038 step 022) — the pin the seeded
-        /// samples and freshly-authored sample layers carry. At this in-memory step every material
-        /// lives at version 1 (an unused version's edit mutates in place; a mint needs a USED
-        /// version, and `VersionsInUse` is `empty` until step 25), so `firstOf` IS the material's
-        /// current latest version. Centralised so step 25 (real `VersionsInUse`) has ONE place to
-        /// revisit pin-latest — the seeds and the editor both pin through here.
+        /// References version one of a material, regardless of its latest stored version or pin
+        /// (spec 0038 step 022; spec 0050 §3.3).
         static member firstOf (materialId : MaterialId) : MaterialVersionId =
             { materialId = materialId; version = VersionNumber.first }
+
+    type MaterialError with
+
+        /// Reports an unresolved material version (spec 0050 S2.2).
+        static member unknownMaterialVersion (version : MaterialVersionId) : MaterialError =
+            UnknownMaterialIdErr $"unknown material version '%s{string version.materialId.value}' v%d{version.version.value}"
+
+        /// Reports removal blocked by pins, with ascending version numbers (spec 0050 S2.2).
+        static member versionsPinned (entry : MaterialEntry) (versions : VersionNumber list) : MaterialError =
+            let versionList =
+                versions
+                |> List.map (fun version -> version.value)
+                |> List.sort
+                |> List.map (fun n -> $"v%d{n}")
+                |> String.concat ", "
+            MaterialVersionPinnedErr $"material '%s{entry.name.value}' ('%s{string entry.id.value}') has %d{List.length versions} version(s) pinned: %s{versionList}"
 
     /// Whether a store listing shows only the LIVE (latest-active) entries or also the retired
     /// ones (spec 0038 Part H, step 021): a named two-case DU, never a naked bool. `ActiveOnly` —
@@ -694,16 +393,16 @@ module MaterialLibrary =
     /// - `resolveVersion mvid` — the EXACT version's entry, IGNORING lifecycle (reference
     ///   resolution: an experiment binding a superseded/inactive version still resolves it);
     /// - `saveMaterial entry` — applies the step-20 shared `decideVersioning` rule against the
-    ///   injected `VersionsInUse` (a new material inserts version 1; an existing one mutates in
+    ///   latest version's pin (a new material inserts version 1; an existing one mutates in
     ///   place, mints the next version, or is a no-op);
     /// - `markMaterialInactive` / `markMaterialActive` — retire / revive the latest version;
     /// - `supersedeMaterial` — retire the latest version (a superseded version behaves as inactive);
+    /// - `pinMaterialVersion` — pins one version permanently (spec 0050 S2.2);
     /// - `removeMaterial id` — keeps the `MaterialStillReferencedErr` hard-block AND additionally
-    ///   refuses any material carrying a used version (`MaterialVersionInUseErr`).
+    ///   refuses any material carrying a pinned version (`MaterialVersionPinnedErr`).
     ///
-    /// The real, stateful in-memory store behind this surface is `MaterialProxy.createInMemory`
-    /// (a type augmentation in `MaterialStore.fs`, after `Lifecycle.fs`: it needs both the shared
-    /// `decideVersioning` rule and its `samplesReferencing` parameter's `Sample` type).
+    /// Implemented by `MaterialProxy.createInMemory` and the SQLite
+    /// `MaterialProxy.createInDatabase` store (spec 0050 S2.2).
     [<ReferenceEquality>]
     type MaterialProxy =
         {
@@ -715,6 +414,7 @@ module MaterialLibrary =
             markMaterialInactive : MaterialId -> Result<unit, MaterialError>
             markMaterialActive : MaterialId -> Result<unit, MaterialError>
             supersedeMaterial : MaterialId -> Result<unit, MaterialError>
+            pinMaterialVersion : MaterialVersionId -> Result<unit, MaterialError>
             removeMaterial : MaterialId -> Result<unit, MaterialError>
         }
 
@@ -723,8 +423,7 @@ module MaterialLibrary =
     /// component still carrying a function case (`EpsWithDisp` / `MuWithDisp` /
     /// `RhoWithDisp`; every dispersive built-in carries the eps func case). This is the
     /// classification `DispersionFilter` matches against AND the constant-vs-dispersive
-    /// facet extractor (`LibraryFacets`) keys — it reads `properties`, so it classifies
-    /// the coded presets (`complexity = None`) too.
+    /// facet extractor (`LibraryFacets`) keys.
     type MaterialDispersion =
         | ConstantMaterial
         | DispersiveMaterial
@@ -734,7 +433,8 @@ module MaterialLibrary =
         /// The entry's wavelength dependence, classified from its engine `properties` (see
         /// `MaterialDispersion`; the step-011 facet catalogue keys it).
         member this.dispersion : MaterialDispersion =
-            match this.properties.epsWithDisp, this.properties.muWithDisp, this.properties.rhoWithDisp with
+            let properties = this.properties
+            match properties.epsWithDisp, properties.muWithDisp, properties.rhoWithDisp with
             | EpsWithoutDisp _, MuWithoutDisp _, RhoWithoutDisp _ -> ConstantMaterial
             | _ -> DispersiveMaterial
 
@@ -745,12 +445,8 @@ module MaterialLibrary =
             then Error (InvalidMaterialErr $"material '%s{string this.id.value}' has a blank name")
             else Ok ()
 
-    /// The pure materials search (spec 0033 steps 003/006): the case-insensitive
-    /// name-fragment filter (`byNameContains` — empty matches all), then the optional
-    /// category facet (`byCategory`), then the `DispersionFilter` facet. The one query seam
-    /// every producer of the `MaterialProxy` shape answers `searchMaterials` from — the real
-    /// store (`MaterialProxy.createInMemory`, `ElementId.fs`) applies it to its current
-    /// entries.
+    /// Filters by case-insensitive name fragment, optional category and dispersion
+    /// (spec 0033 steps 003/006); an empty name fragment matches every entry.
     let byQuery (q : MaterialQuery) (lib : MaterialLibrary) : MaterialEntry list =
         let byText = byNameContains q.text lib
         let byCat =
@@ -762,31 +458,31 @@ module MaterialLibrary =
         | OnlyDispersive -> byCat |> List.filter (fun e -> e.dispersion = DispersiveMaterial)
         | OnlyNonDispersive -> byCat |> List.filter (fun e -> e.dispersion = ConstantMaterial)
 
-    /// The real, stateful in-memory category store behind the write-seam (spec 0035 step 003 —
-    /// IMPLEMENT_CONTRACT STORE_XDUO_0003; replaces the step-002 declared mock). `createInMemory`
-    /// closes over a `ref` `Map<CategoryId, MaterialCategory>` seeded from `standardCategories` —
-    /// the elevated `CategoryId` is the Map key directly (the `SampleProxy` / `MaterialProxy`
-    /// `createInMemory` precedent, `ElementId.fs`). Mutation stays INSIDE the closure (the IO
-    /// boundary), so the logic holding the proxy stays pure: `listCategories` answers from the
-    /// current map; `addCategory` keeps the step-002 blank-name validation (`InvalidCategoryErr`)
-    /// then hard-blocks an id the store already holds (`DuplicateCategoryIdErr`); `updateCategory`
-    /// validates then replaces a known id and rejects an unknown one (`UnknownCategoryIdErr`) —
-    /// built-ins ARE renamable, so there is no origin guard on update; `removeCategory` refuses a
-    /// `BuiltInCategory` outright (`BuiltInNotRemovableErr`) and, for a `UserCategory`, consults
-    /// `materialsReferencingCategory` and returns `CategoryStillReferencedErr` NAMING the referencing
-    /// materials whenever any remain — it never cascades and never silently deletes — else removes
-    /// it. Deterministic under test — every category carries its own id, no clock, no IO. (An
-    /// INTRINSIC augmentation staying in this file, mirroring `SampleProxy.createInMemory`: the
-    /// referencing lookup is `MaterialEntry`-typed and `MaterialEntry` compiles above, so — unlike
-    /// `MaterialProxy.createInMemory`, whose `Sample`-typed lookup forces it into `ElementId.fs` —
-    /// this store needs nothing declared later. At composition the lookup is
-    /// `materialsReferencingCategory` below, backed by the step-006 `MaterialProxy` store.)
+    type CategoryError with
+
+        /// Reports an unresolved category identity (spec 0050 S2.2).
+        static member unknownCategory (id : CategoryId) : CategoryError =
+            UnknownCategoryIdErr $"unknown category id '%s{string id.value}'"
+
+        /// Reports a category identity already assigned to an existing category (spec 0050 S2.2).
+        static member duplicateCategory (existing : MaterialCategory) : CategoryError =
+            DuplicateCategoryIdErr $"category id '%s{string existing.id.value}' already names '%s{existing.name.value}'"
+
+        /// Reports removal blocked by a category's built-in origin (spec 0050 S2.2).
+        static member builtInNotRemovable (category : MaterialCategory) : CategoryError =
+            BuiltInNotRemovableErr $"category '%s{category.name.value}' ('%s{string category.id.value}') ships with the app and cannot be removed"
+
+        /// Reports removal blocked by material references, with quoted, sorted names (spec 0050 S2.2).
+        static member stillReferenced (category : MaterialCategory) (materials : EntryName list) : CategoryError =
+            let names =
+                materials
+                |> List.map (fun name -> $"'%s{name.value}'")
+                |> List.sort
+                |> String.concat ", "
+            CategoryStillReferencedErr $"category '%s{category.name.value}' ('%s{string category.id.value}') is still referenced by %d{List.length materials} material(s): %s{names}"
+
     type CategoryProxy with
 
-        /// The shared in-memory category-store body (spec 0038 step 042 — IMPLEMENT_CONTRACT
-        /// STORE_XDUO_0008), parameterised by the INITIAL catalogue so the SELF-SEEDING
-        /// `createInMemory` and the EMPTY-store `createInMemoryEmpty` (which the seeding pipeline
-        /// fills) never drift — everything below the seed line is identical.
         static member private createInMemoryStore
             (initialCategories : MaterialCategory list)
             (materialsReferencingCategory : CategoryId -> MaterialEntry list)
@@ -794,8 +490,6 @@ module MaterialLibrary =
             let store = ref (initialCategories |> List.map (fun c -> c.id, c) |> Map.ofList)
             let currentCategories () : MaterialCategory list =
                 store.Value |> Map.toList |> List.map snd
-            let unknown (id : CategoryId) : CategoryError =
-                UnknownCategoryIdErr $"unknown category id '%s{string id.value}'"
             {
                 listCategories = fun () -> Ok (currentCategories ())
                 addCategory =
@@ -804,7 +498,7 @@ module MaterialLibrary =
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind category.id with
                             | Some existing ->
-                                Error (DuplicateCategoryIdErr $"category id '%s{string category.id.value}' already names '%s{existing.name.value}'")
+                                Error (CategoryError.duplicateCategory existing)
                             | None ->
                                 store.Value <- store.Value |> Map.add category.id category
                                 Ok ())
@@ -816,38 +510,28 @@ module MaterialLibrary =
                             | Some _ ->
                                 store.Value <- store.Value |> Map.add category.id category
                                 Ok ()
-                            | None -> Error (unknown category.id))
+                            | None -> Error (CategoryError.unknownCategory category.id))
                 removeCategory =
                     fun id ->
                         match store.Value |> Map.tryFind id with
                         | Some category ->
                             match category.origin with
                             | BuiltInCategory ->
-                                Error (BuiltInNotRemovableErr $"category '%s{category.name.value}' ('%s{string id.value}') ships with the app and cannot be removed")
+                                Error (CategoryError.builtInNotRemovable category)
                             | UserCategory ->
                                 match materialsReferencingCategory id with
                                 | [] ->
                                     store.Value <- store.Value |> Map.remove id
                                     Ok ()
                                 | referencing ->
-                                    let names =
-                                        referencing
-                                        |> List.map (fun e -> $"'%s{e.name.value}'")
-                                        |> List.sort
-                                        |> String.concat ", "
-                                    Error (CategoryStillReferencedErr $"category '%s{category.name.value}' ('%s{string id.value}') is still referenced by %d{List.length referencing} material(s): %s{names}")
-                        | None -> Error (unknown id)
+                                    let materials = referencing |> List.map (fun e -> e.name)
+                                    Error (CategoryError.stillReferenced category materials)
+                        | None -> Error (CategoryError.unknownCategory id)
             }
 
-        /// The SELF-SEEDING in-memory category store (spec 0035 step 003; the app composition root
-        /// keeps calling this unchanged): a `ref Map` seeded from `standardCategories`.
+        /// Empty category store filled through validated writes (spec 0038 step 042; spec 0050 §3.4).
+        /// Refuses duplicate ids and removal of built-in or referenced categories; built-ins remain renamable.
         static member createInMemory (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
-            CategoryProxy.createInMemoryStore standardCategories materialsReferencingCategory
-
-        /// The EMPTY in-memory category store (spec 0038 step 042): a BLANK `ref Map` the seeding
-        /// pipeline (`SeedingProxy`) fills through `addCategory`. Same write/remove behaviour as the
-        /// seeded store — only the initial catalogue differs.
-        static member createInMemoryEmpty (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
             CategoryProxy.createInMemoryStore [] materialsReferencingCategory
 
     /// The composition-root referencing lookup for `CategoryProxy.createInMemory` (spec 0035 step

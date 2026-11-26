@@ -1,0 +1,59 @@
+{
+  "experiment": {
+    "corrections": [],
+    "dataOpt": {
+      "attachment": {
+        "contentHash": "59d22014520d2089d5ce6b9bc80c26d071203264190d67d01dcb8be579c42674",
+        "path": "data/noisy-observations-seed-1.csv"
+      },
+      "exclusions": [],
+      "profile": "Mueller-matrix observations",
+      "rows": {
+        "Case": "KeyedDataRows",
+        "Fields": [
+          "XCut"
+        ]
+      }
+    },
+    "id": 4,
+    "name": "XCut",
+    "notes": "",
+    "role": 1,
+    "scan": {
+      "blocks": [
+        {
+          "axes": [
+            {
+              "elementId": "sample",
+              "label": "Sample #2",
+              "range": {
+                "max": 45,
+                "min": 0,
+                "points": 2
+              },
+              "variable": "VaryR2"
+            },
+            {
+              "elementId": "sample",
+              "label": "Sample #2",
+              "range": {
+                "max": 90,
+                "min": 0,
+                "points": 2
+              },
+              "variable": "VaryR1"
+            }
+          ],
+          "capture": "CaptureBoth"
+        }
+      ],
+      "sourceWaveLengthOpt": null
+    },
+    "sessionOpt": null,
+    "setup": {
+      "name": "XCut",
+      "revision": 1
+    }
+  },
+  "schemaVersion": 1
+}

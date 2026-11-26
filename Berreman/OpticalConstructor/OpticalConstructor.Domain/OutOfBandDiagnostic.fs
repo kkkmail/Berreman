@@ -80,14 +80,15 @@ module OutOfBandDiagnostic =
         /// its display name and its defined dispersion segments. An entry with coded
         /// dispersion (a single spectrum-spanning segment — silicon / langasite) declares
         /// an unbounded band, so no request leaves it and it never flags — the diagnostic
-        /// only warns where a material declares a finite band.
+        /// only warns where a material declares a finite band. A crystal's tensors hold at every
+        /// wavelength, so it defines no segment and never flags, as a constant complexity (spec 0050 S11.1).
         static member ofEntry (entry : MaterialEntry) : ReachableMaterial =
             {
                 materialName = entry.name
                 definedSegments =
-                    entry.complexity
-                    |> Option.map ReachableMaterial.definedSegmentsOf
-                    |> Option.defaultValue []
+                    match entry.physics with
+                    | ComplexityPhysics complexity -> ReachableMaterial.definedSegmentsOf complexity
+                    | CrystalParameterPhysics _ -> []
             }
 
     /// One material flagged out-of-band (spec 0038 step 031): its name and both
@@ -212,14 +213,20 @@ module OutOfBandDiagnostic =
                 }
         | Some VaryR1
         | Some VaryR2
+        | Some VaryDialReading
         | None -> FixedWavelength fixedWavelength
 
-    /// The wavelengths a step-25 `Experiment` requests (spec 0038 step 031): its
-    /// varied element's wavelength sweep, or the fixed scene-source λ. A dark line
-    /// (`varied = None`) is a fixed setting.
+    /// The wavelengths an `Experiment` requests (spec 0038 step 031): its scan's wavelength axes from the lowest `min`
+    /// to the highest `max`, read as one range by `requestedWavelengthsFor`, else the fixed scene-source λ (spec 0050 S9.1).
     let requestedWavelengthsOf (fixedWavelength : WaveLength) (experiment : Experiment) : RequestedWavelengths =
-        requestedWavelengthsFor
-            fixedWavelength
-            (experiment.varied |> Option.map (fun v -> v.variable))
-            experiment.range
+        match experiment.scan.axes |> List.filter (fun axis -> axis.variable = VaryWaveLength) with
+        | [] -> FixedWavelength fixedWavelength
+        | first :: _ as swept ->
+            let span : VariableRange =
+                {
+                    first.range with
+                        min = swept |> List.map (fun axis -> axis.range.min) |> List.minBy (fun value -> value.value)
+                        max = swept |> List.map (fun axis -> axis.range.max) |> List.maxBy (fun value -> value.value)
+                }
+            requestedWavelengthsFor fixedWavelength (Some VaryWaveLength) span
 

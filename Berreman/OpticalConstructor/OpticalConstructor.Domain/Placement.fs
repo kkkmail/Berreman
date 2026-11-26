@@ -276,7 +276,7 @@ module Placement =
         | MovesAlongBeam
 
     /// Whether a rotation axis may be turned (A.4.5). The project file keeps it a
-    /// boolean, `true` for locked (`ProjectJson`).
+    /// boolean, `true` for locked (`CanonicalJson`).
     type RotationLock =
         | RotationLocked
         | RotationFree

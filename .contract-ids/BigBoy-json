@@ -1,0 +1,74 @@
+{
+  "STORE_BigBoy_0001": {
+    "name": "CatalogueProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_BigBoy_0002": {
+    "name": "LibraryDbContext",
+    "kind": "component",
+    "language": "csharp",
+    "declaringProject": "OpticalConstructor.Database",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_BigBoy_0003": {
+    "name": "LibraryBackupProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_BigBoy_0004": {
+    "name": "KitProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_BigBoy_0005": {
+    "name": "KitHistoryProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "SVC_BigBoy_0001": {
+    "name": "ExplorerProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "FILE_BigBoy_0001": {
+    "name": "KitArchiveProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_BigBoy_0006": {
+    "name": "ItemModelProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "SVC_BigBoy_0002": {
+    "name": "MaterialSourceProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  }
+}

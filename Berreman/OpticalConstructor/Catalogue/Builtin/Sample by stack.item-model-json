@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "64e14fd01a684af40d4b21ecfecf31ccddfd835ba505d3ea81adf0e67ba5ee95",
+  "descriptionOpt": "A sample bound to a library sample (StackSampleBinding): the sample's layer stack, with each finite layer's thickness as a parameter.",
+  "id": "4d13ecb1-2006-576f-99e7-e8bc266e8624",
+  "name": "Sample by stack",
+  "payload": {
+    "Case": "ItemModelPayload",
+    "Fields": [
+      "StackSampleItemModel"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 7,
+    "version": 1
+  },
+  "version": 1
+}

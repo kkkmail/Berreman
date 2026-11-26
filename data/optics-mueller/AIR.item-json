@@ -1,0 +1,22 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "dc89cf47-6d94-4887-a0fb-49e3a8ca1cb4",
+    "label": "AIR",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "628b87f6-8e8c-460b-8a91-1815063aa9dd",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

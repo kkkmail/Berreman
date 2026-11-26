@@ -1,0 +1,138 @@
+# Spec 0050: gap analysis
+
+This file is the gap-analysis companion to `.summary-md` (the narrative) and `.stat-md` (the numbers). It does not replace either.
+
+- **Preliminary spec (named explicitly):** `.manual/001-library-files-database-multi-setup-inverse.md`, the operator's feature list (called **001**).
+- **Full spec:** `.spec-md` plus `.spec-jsonl` (494 steps).
+- **Implementation:** the tree at the arc's end (step 0494, accepted by override at `5d1c16b5`), `data/optics-mueller/` and `data/absorbing-biaxial-noisy/`.
+- **Operator rulings read:** `.manual/004`-`016` and `.manual/030`-`036` (R0001-R0005).
+
+## Method
+
+**Pass 1.** I searched every 001 feature bullet against the `how_to` and `acceptance` text of `.spec-jsonl`. Each one has at least one step: WAL, `VACUUM INTO`, photo, Show in Explorer, Reload changes, mode switch, diff preview, "use my", Locate, the filter box, weights and ablation, auto-split, profile likelihood, realizability, product check, D/A-optimal, PTB, Henke, AGF, Update snapshot, attribution, the badges, priors, scopes, links, `sendExclude`, Make this a kit, `InactiveEntry`, HAUP, the "18 of 21" classes, and others.
+
+**Pass 2.** I grepped the product tree for the 001 §R and §T removals. All of them are absent:
+
+- `MuellerDataSet`, `Data/MuellerMatrix`, `experimentRegex`, `objectRegex`, `.parsed`;
+- `SolverHandoff`, `measuredElementOf`, `OpticalConstructor.Seeding`, `recent.json`, `TestDbContext`, `ocproj`;
+- `VersionsInUse`, `EpsAxisEvaluated`, `buildTabulatedClosure`, `SceneProxy`, `ExperimentCollectionProxy`, `mssqlConnectionString`;
+- the `let builtInEntries|seedEntries|standardCategories` definitions;
+- `let noisyObserveAbsoluteWith` in `BerremanTests` (it now lives in `OpticalConstructor.Optimization/BenchNoise.fs:234`);
+- the `Berreman/Data` folder.
+
+I then confirmed in code that every major 001 feature is present:
+
+- the per-scope DU (`Studies.fs:272`);
+- the session gain models (`Studies.fs:101`);
+- calibration held fixed or used as a prior (`FitRuns.fs:52`);
+- the badges (`ExperimentDataLoad.fs:61`);
+- the Planner facts (`BerremanTests/MeasurementPlannerTests.fs:122-277`);
+- AT-1 and AT-2 with the Explicit ensemble (`KitAcceptanceTests.fs:1264-2643`);
+- the online-source adapters (`MaterialSourceStore.fs`);
+- WAL (`LibraryDatabaseStore.fs:340`);
+- backup and restore, the kit-menu verbs, the mode switch (`KitWindowView.fs:97-109`);
+- item photo and history (`Kit.fs:1005-1016`);
+- the import-dialog diff (`ImportDialogView.fs:82`).
+
+The gaps below are what remains after those checks.
+
+## Gaps
+
+### Pass 1: prelim->spec
+
+- origin: `prelim->spec`
+  kind: `added`
+  ref: `.spec-md` §3.1; `.spec-jsonl` steps 1-7 (S1.1)
+  note: 001 §B asks only for a tabulated data case, but the spec also turns the four transcendental oscillator models (Tauc-Lorentz, Gaussian, Forouhi-Bloomer, Brendel-Bormann) into axis data and moves their kernels into the core.
+
+- origin: `prelim->spec`
+  kind: `added`
+  ref: `.spec-md` §3.7; `.slices/0494-state-of-the-world.md` "Gotchas"
+  note: 001 §B makes "Add" the default for a new id, but the spec requires every changed catalogue (including a fresh library's first built-in import) to wait for the dialog's Apply. As a result, built-ins such as silicon are absent right after `AppContext.create` until the user confirms.
+
+- origin: `prelim->spec`
+  kind: `added`
+  ref: `.spec-md` §3.16; `OpticalConstructor.Domain/MuellerInverse.fs`
+  note: The spec adds parameter-record `opticalProperties` members in product code and re-points the uniaxial builder in `MuellerInverseTests` to them, a refactor 001 §Q never asked for.
+
+- origin: `prelim->spec`
+  kind: `added`
+  ref: `.spec-md` §3.18; `AppConfig.fs`
+  note: The spec deletes the MSSQL settings keys and their fixture, which 001 never mentions (it is inferred from 001 §W).
+
+- origin: `prelim->spec`
+  kind: `added`
+  ref: `.spec-md` §10.6
+  note: A negative UI commitment (omit the LLM-profile select, web-search provider, token counters and `.specrc.agent` dropdown) is carried over from ASG's web-control template. It has no basis in 001 and no bearing on a desktop optics app.
+
+- origin: `prelim->spec`
+  kind: `narrowed`
+  ref: 001 §L "Fit modes"; `.spec-jsonl` steps 385, 389 (S11.3)
+  note: 001's "Eigenvalue Calibration Method" for stage 1 became the reference pipeline's AIR cosine calibration (`calibrateFromAirRows`), and no general ECM exists (no "eigenvalue calibration" appears anywhere in product code).
+
+- origin: `prelim->spec`
+  kind: `narrowed`
+  ref: 001 §1a "Unknowns"; `OpticalConstructor.Ui.Tests/KitAcceptanceTests.fs:146-166`, `:985-987`
+  note: 001 lists "about five gains, one dark level" among AT-1's unknowns. In AT-1 the gains are AIR-anchored or interpolated session gain rules and the dark comes from the Darkness runs (the Phone's `gain` and `darkOffset` stay `Known`), so free-gain fitting is not exercised by the acceptance kit.
+
+### Pass 2: spec->impl
+
+- origin: `spec->impl`
+  kind: `unverified`
+  ref: `KitAcceptanceTests.fs:2641-2643` (`Fact(Explicit = true)`); `.slices/0437-state-of-the-world.md:34`; `.slices/0442-state-of-the-world.md:40`
+  note: AT-2's five-seed ensemble passed once, on demand, at step 0437 (4043 s). It has not run since, through later changes to `StudyForward.fs` (0460), the offset-frame move (0476) (R0004/R0005 landed at 0436, before that run), because every gate skips Explicit facts.
+
+- origin: `spec->impl`
+  kind: `unverified`
+  ref: S13; `OpticalConstructor.Storage/MaterialSourceStore.fs:81-86`, `:421`, `:511`, `:593-626`; `.spec-md` §8 (no network in tests)
+  note: The real downloads of the refractiveindex.info GitHub archive, the `PTB-SR/ocdb` archive and the CXRO Henke `.nff` files are never exercised by a test (all are stubbed), so the live endpoints and their archive layouts are unproven.
+
+- origin: `spec->impl`
+  kind: `added`
+  ref: `.manual/031` (R0002); `ItemEvaluation.fs`, `SetupSlot.runElementAs`
+  note: A rule the spec did not state shipped: a compound in an analyzer slot is traversed from behind, F·(A₁…Aₙ)·F with F = diag(1, 1, −1, −1), in both the study forward model and the table run.
+
+- origin: `spec->impl`
+  kind: `added`
+  ref: `.manual/030` (R0001); `OpticalConstructor.Optimization/StudyEngine.fs` (`StagedStudy.engineWith`)
+  note: The automatic engine choice gained a series rule beyond `.spec-md` S11.0. A path with several unknown matrices goes linear only when each matrix is also fitted from its own lone runs, and an unresolved series, a double pass or a linked product stays nonlinear.
+
+- origin: `spec->impl`
+  kind: `added`
+  ref: `.manual/033` (R0003), `.manual/035`-`036` (R0004, R0005)
+  note: Several operator-authorized changes went in that the spec never called for:
+  - `ElementIdProvider` (injected table-slot identities);
+  - a single Jacobian/report evaluation per `FittedProblem`;
+  - a concurrent `Study.residualWith`;
+  - a hand edit of generated solver code (`BerremanMatrix.fs` and `Fields.fs` read `rhoT` once);
+  - the server GC in the App and the UI test host.
+
+  Stored numbers are unchanged; these exist to fit AT-2's runtime (811 s measured).
+
+- origin: `spec->impl`
+  kind: `unverified`
+  ref: `.manifest.overrides.jsonl` (index 493); `.slices/0494-01.postmortem-md`
+  note: The closing whole-tree step was accepted by `--accept-current-slice`, not by the supervisor's normal commit cycle. Its 28 gates (whole suites, `elevation-full` and `kit-acceptance` included) were measured green in the verify run before an ASG pull invalidated the receipt, so the evidence lives only in `.manifest-arc-runner.log`.
+
+## Verdict
+
+The implementation is close to a complete delivery of 001 and of the full spec:
+
+- Every 001 §S section (1-14) and the Close part landed.
+- Every §R removal and §T invariant holds in the tree.
+- AT-1 and AT-2 exist under `kit-acceptance` with the assertions §Q asks for.
+- The two reference kits are committed.
+- The Planner reproduces the §M facts.
+
+Pass 1 found no 001 feature dropped. The spec added a few things (oscillator models as data, confirmation-gated first import, the parameter-record refactor, the MSSQL cleanup, an irrelevant template UI clause). It narrowed two:
+
+- stage-1 "Eigenvalue Calibration Method" became the reference AIR calibration;
+- AT-1's gain and dark unknowns became data-driven rules.
+
+Pass 2 found no spec commitment missing. The material residue is about verification and drift, not missing features. The highest-priority gaps:
+
+1. The AT-2 five-seed ensemble has not been re-run on the final tree.
+2. The online-source adapters have never touched their live endpoints.
+3. The first-start import waits for confirmation, which leaves a fresh install without built-ins until Apply.
+4. ECM is narrowed to the reference AIR calibration.
+5. The operator-ruled solver and engine rules (R0001-R0005) now carry behaviour the published spec does not describe.

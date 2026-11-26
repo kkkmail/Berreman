@@ -175,16 +175,19 @@ type MaterialComplexityEditState =
         polderDispersion : PolderValue<DispersionFormula>
     }
 
-/// The typed rejections of the edit arms (errors as values, each case carrying a
-/// diagnostic `reason` — never a throw). Derivation (`toComplexity`) no longer
-/// rejects: every `DispersionModel` lowers (the transcendental cases through the
-/// evaluated segment), so there is no `SegmentNotLowerable`.
+/// The typed rejections of the edit arms and of `ofComplexity` (errors as values, each
+/// case carrying a diagnostic `reason` — never a throw). Derivation (`toComplexity`) no longer
+/// rejects: every `DispersionModel` lowers (the transcendental cases to their law
+/// segment, spec 0050 steps 5 and 7), so there is no `SegmentNotLowerable`.
 type MaterialComplexityEditError =
     /// A segment edit aimed at an index outside the segment list.
     | NoSuchSegmentErr of reason : string
     /// The dispersive eps needs at least one segment (the engine's segment
     /// selection extrapolates from the topmost segment and cannot run on none).
     | LastSegmentNotRemovableErr of reason : string
+    /// A published gyration law (`PublishedLawRho`, spec 0050 step 10) has no class or
+    /// components the ladder could seed, so `ofComplexity` refuses it.
+    | PublishedGyrationNotEditableErr of reason : string
 
 /// The editor's message DU: one arm per ladder operation, applied by
 /// `applyMaterialComplexityMsg`.
@@ -753,7 +756,8 @@ type MaterialComplexityEditState with
     /// The dispersive eps of the current anisotropy: each edit segment lowers its
     /// active axis models into the engine's per-symmetry segment records through
     /// `DispersionModels.toEpsAxis`. Lowering is TOTAL — every model lowers, the
-    /// transcendental cases to the evaluated segment — so this never fails.
+    /// transcendental cases to their law segment (spec 0050 steps 5 and 7) — so this
+    /// never fails.
     member private state.dispersiveEps : EpsDispersiveValue =
         match state.anisotropy with
         | Isotropic ->
@@ -783,8 +787,8 @@ type MaterialComplexityEditState with
     /// Derive the `MaterialComplexity` the state currently denotes. Each toggle
     /// off means its aspect's DEFAULT (constant eps / absent option) regardless of
     /// the stored facet — the lossless-uncheck mechanic. Derivation never fails now
-    /// (every segment model lowers, the transcendental cases to the evaluated
-    /// segment); the `Result` return is kept for the consumer contract, mirroring
+    /// (every segment model lowers, the transcendental cases to their law segment);
+    /// the `Result` return is kept for the consumer contract, mirroring
     /// `ofComplexity`.
     member state.toComplexity : Result<MaterialComplexity, MaterialComplexityEditError> =
         let eps =
@@ -852,31 +856,57 @@ type EpsDispersiveValue with
 type MaterialComplexity with
 
     /// Whether the complexity can be LOSSLESSLY edited through this ladder (spec 0040
-    /// step 004). A dispersive eps segment lowered to the OPAQUE evaluated case
-    /// (`EpsAxisEvaluated` — a coded closure with no editable term coefficients, the
-    /// form the re-seeded engine presets Silicon / Langasite carry) cannot be
+    /// step 004). A dispersive eps segment without editable term coefficients cannot be
     /// re-derived into model coefficients, so an editor seeded from it would surface a
     /// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
     /// entry opens VIEW-ONLY instead: the host editability seams
     /// (`MaterialEditorView.init`, `MaterialsWindowModel.editableSelection`) gate on
-    /// this predicate rather than on `complexity` presence alone. A constant or
-    /// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
+    /// this predicate. A constant eps is editable, and a dispersive one exactly when
+    /// every axis is `RealNK` or `ComplexEps` term data (spec 0050 step 9). A tabulated
+    /// n,k table (step 2), a transcendental law (steps 5 and 7) and a published law (the
+    /// form the re-seeded Silicon / Langasite carry, step 8) open view-only, and so does
+    /// a published gyration law in the active aspect (step 10).
     member this.isEditable : bool =
-        let axisIsEvaluated (axis : EpsAxisDispersion) : bool =
+        let axisIsEditable (axis : EpsAxisDispersion) : bool =
             match axis with
-            | EpsAxisEvaluated _ -> true
-            | RealNK _ | ComplexEps _ -> false
-        match this.eps with
-        | EpsWithoutDispValue _ -> true
-        | EpsWithDispValue dispersive -> not (dispersive.axisDispersions |> List.exists axisIsEvaluated)
+            | RealNK _
+            | ComplexEps _ -> true
+            | TabulatedNK _
+            | TaucLorentzAxis _
+            | GaussianOscillatorAxis _
+            | ForouhiBloomerAxis _
+            | BrendelBormannAxis _
+            | PublishedLawAxis _ -> false
+        let epsIsEditable =
+            match this.eps with
+            | EpsWithoutDispValue _ -> true
+            | EpsWithDispValue dispersive -> dispersive.axisDispersions |> List.forall axisIsEditable
+        let activeIsEditable =
+            match this.active with
+            | None
+            | Some (RhoWithoutDispValue _)
+            | Some (RhoWithDispValue _) -> true
+            | Some (PublishedLawRho _) -> false
+        epsIsEditable && activeIsEditable
+
+type MaterialPhysics with
+
+    /// The complexity the editor can seed from this physics, when `isEditable` holds; the host
+    /// editability seams gate on it. The ladder edits complexity trees, so a crystal has none (spec 0050 S11.1).
+    member this.editableComplexityOpt : MaterialComplexity option =
+        match this with
+        | ComplexityPhysics complexity when complexity.isEditable -> Some complexity
+        | ComplexityPhysics _
+        | CrystalParameterPhysics _ -> None
 
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so
 /// `toComplexity (ofComplexity c) = Ok c` value-identically. A dispersive
 /// gyration (`RhoWithDispValue`) or Polder μ (`MuWithDispValue`) seeds its
 /// per-component `DispersionFormula` facet directly (spec Part C — the
-/// `UnsupportedComplexity` view-only fallback is gone, §0.2). Seeding never
-/// fails; the `Result` return is kept for the consumer contract.
+/// `UnsupportedComplexity` view-only fallback is gone, §0.2). Seeding fails only
+/// on a published gyration law (`PublishedGyrationNotEditableErr`, spec 0050 step
+/// 10), which has no class or components to seed.
 let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEditState, MaterialComplexityEditError> =
     let epsSeed =
         match complexity.eps with
@@ -905,20 +935,26 @@ let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEd
                 | BiaxialDispersive segs ->
                     Biaxial, segs |> List.map (fun s -> seedSegment s.wavelengthInterval s.xDispersion s.yDispersion s.zDispersion)
             Ok (anisotropy, defaultState.transparency, DispersiveSegments, defaultState.index1, defaultState.index2, defaultState.index3, segments)
+    // Active: a constant gyration seeds the CONSTANT facet verbatim (the dispersive
+    // facet re-shapes to its class with default formulas); a dispersive gyration
+    // seeds the DISPERSIVE facet verbatim (the constant facet takes the class's
+    // default magnitudes) — either way the two facets stay class-synced.
+    let activeSeed =
+        match complexity.active with
+        | None ->
+            Ok (ActivityOff, defaultState.activityDispersion, defaultState.gyration, defaultState.gyrationDispersion, defaultState.hand)
+        | Some (RhoWithoutDispValue g) ->
+            Ok (ActivityOn, ConstantComponents, g.gyration, syncGyrationDispersion g.gyration defaultState.gyrationDispersion, g.hand)
+        | Some (RhoWithDispValue g) ->
+            Ok (ActivityOn, DispersiveComponents, g.gyration.map (fun _ -> defaultGyrationComponent), g.gyration, g.hand)
+        | Some (PublishedLawRho law) ->
+            let lawName =
+                match law with
+                | LangasiteGyrationLaw -> "Langasite"
+            Error (PublishedGyrationNotEditableErr $"the {lawName} gyration is a published law with no class or components the editor can seed — view-only")
     epsSeed
-    |> Result.map (fun (anisotropy, transparency, dispersion, index1, index2, index3, segments) ->
-        // Active: a constant gyration seeds the CONSTANT facet verbatim (the dispersive
-        // facet re-shapes to its class with default formulas); a dispersive gyration
-        // seeds the DISPERSIVE facet verbatim (the constant facet takes the class's
-        // default magnitudes) — either way the two facets stay class-synced.
-        let activity, activityDispersion, gyration, gyrationDispersion, hand =
-            match complexity.active with
-            | None ->
-                ActivityOff, defaultState.activityDispersion, defaultState.gyration, defaultState.gyrationDispersion, defaultState.hand
-            | Some (RhoWithoutDispValue g) ->
-                ActivityOn, ConstantComponents, g.gyration, syncGyrationDispersion g.gyration defaultState.gyrationDispersion, g.hand
-            | Some (RhoWithDispValue g) ->
-                ActivityOn, DispersiveComponents, g.gyration.map (fun _ -> defaultGyrationComponent), g.gyration, g.hand
+    |> Result.bind (fun eps -> activeSeed |> Result.map (fun active -> eps, active))
+    |> Result.map (fun ((anisotropy, transparency, dispersion, index1, index2, index3, segments), (activity, activityDispersion, gyration, gyrationDispersion, hand)) ->
         // Magnetic: a constant μ seeds the CONSTANT Polder facet verbatim; a dispersive
         // μ seeds the DISPERSIVE facet verbatim (the constant facet takes the default,
         // its axis matched to the dispersive tensor's).

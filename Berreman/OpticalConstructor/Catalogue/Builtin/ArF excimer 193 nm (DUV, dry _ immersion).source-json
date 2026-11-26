@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "7ed7402543d60dbbf4f70305c60768cefa8547df13d0b744e77bb9c8b3e3c737",
+  "descriptionOpt": null,
+  "id": "a890f53e-4727-47f7-8392-5774c58219f9",
+  "name": "ArF excimer 193 nm (DUV, dry / immersion)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            193.4
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

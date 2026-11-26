@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "45ed4a53da235aa20657675c0685967248a6c283a16e4ea21731b874996d0cf0",
+  "descriptionOpt": null,
+  "id": "ffa07a4d-1fd4-4e71-83e9-d15f5dfa25b6",
+  "name": "Intensity detector",
+  "payload": {
+    "Case": "DetectorPayload",
+    "Fields": [
+      "Intensity"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 5,
+    "version": 1
+  },
+  "version": 1
+}

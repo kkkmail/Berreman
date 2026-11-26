@@ -16,12 +16,11 @@ open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.MaterialEditorView
 open OpticalConstructor.Ui.NkDispersionChart
@@ -33,7 +32,7 @@ open OpticalConstructor.Ui.NkDispersionChart
 /// WINDOW BY ITS UiIds — the slice acceptance: choosing biaxial exposes three principal-index
 /// fields, enabling activity on a uniaxial medium offers only the uniaxial gyration classes,
 /// unchecking a toggle restores the default model losslessly, and Save round-trips the entry
-/// through `MaterialProxy` with `complexity = Some`. Declared, not wired.
+/// through `MaterialProxy` with its physics. Declared, not wired.
 module MaterialEditorWindowTests =
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
@@ -92,14 +91,14 @@ module MaterialEditorWindowTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
 
-    /// Fresh, isolated in-memory stores per test (the composition the App would perform).
+    /// Isolated BuiltinCatalogue.materialStore and BuiltinCatalogue.sampleStore preserve live reference checks per test.
     let private freshProxies () : MaterialProxy * SampleProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         materials, samples
 
     let private builtIn (id : MaterialId) : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = id)
+        BuiltinCatalogue.material id
 
     /// A recording stub context (the functional-proxy seam — the test substitutes in-memory
     /// stubs of the SAME shape and observes which proxy function a Save/Cancel reached, and
@@ -117,9 +116,15 @@ module MaterialEditorWindowTests =
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
+                pinMaterialVersion = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
-        calls, saved, { materials = stub; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> calls.Add "close" }
+        calls, saved,
+        {
+            materials = stub
+            categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+            requestClose = fun () -> calls.Add "close"
+        }
 
     /// Apply one edit message, failing the test on an unexpected typed rejection.
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
@@ -307,13 +312,14 @@ module MaterialEditorWindowTests =
         for code in [ "ForouhiBloomer"; "BrendelBormann" ] do
             let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, modelOfKind code) ]
             Assert.Equal(code, st.segments.[0].model1.kindCode)
-            // The transcendental pick now DERIVES (no rejection): one isotropic
-            // dispersive segment carrying the evaluated case.
+            // The transcendental pick DERIVES (no rejection): one isotropic
+            // dispersive segment carrying the model's own law (spec 0050 step 7).
             match (derived st).eps with
             | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
-                match seg.dispersion with
-                | EpsAxisEvaluated _ -> ()
-                | other -> Assert.Fail($"expected the evaluated case for %s{code}, got %A{other}")
+                match code, seg.dispersion with
+                | "ForouhiBloomer", ForouhiBloomerAxis _
+                | "BrendelBormann", BrendelBormannAxis _ -> ()
+                | _, other -> Assert.Fail($"expected the law case for %s{code}, got %A{other}")
             | other -> Assert.Fail($"expected one isotropic dispersive segment for %s{code}, got %A{other}")
 
     [<Fact>]
@@ -371,7 +377,7 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     let ``spec 0033 G9: PlanarActive (mm2) is reachable under biaxial and round-trips`` () =
-        // The seeded active crystal is biaxial + PlanarActive; it must derive (and thus be
+        // BuiltinCatalogue.material's active crystal is biaxial + PlanarActive; it must derive (and thus be
         // editable, not view-only) now that mm2 is offered under biaxial.
         let st = applied [ ChooseAnisotropy Biaxial; SetActivity ActivityOn; ChooseGyrationClass (PlanarActive (RhoValue 1.5e-6)) ]
         Assert.Equal("Planar", st.gyration.classCode)
@@ -469,12 +475,12 @@ module MaterialEditorWindowTests =
             ]
         for id in editable do
             let entry = builtIn id
-            match entry.complexity with
-            | Some c ->
-                match ofComplexity c with
-                | Ok st -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, st.toComplexity)
+            match entry.physics with
+            | ComplexityPhysics complexity ->
+                match ofComplexity complexity with
+                | Ok st -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok complexity, st.toComplexity)
                 | Error e -> Assert.Fail($"%s{entry.name.value} must seed the editor, got %A{e}")
-            | None -> Assert.Fail($"%s{entry.name.value} must carry an edit model")
+            | CrystalParameterPhysics crystal -> Assert.Fail($"%s{entry.name.value}: expected a complexity physics, got %A{crystal}")
 
     [<Fact>]
     let ``the imaginaryIndexGainWarning rule flags a finite negative k only`` () =
@@ -497,24 +503,26 @@ module MaterialEditorWindowTests =
         Assert.Equal(EditableMaterial, m.mode)
         Assert.Equal(EntryName "", m.name)
         Assert.Equal<MaterialComplexityEditState>(defaultState, m.editor)
-        // An existing editable entry seeds the ladder from its complexity.
+        // An existing editable entry seeds the ladder from its physics' complexity.
         let glass = builtIn MaterialIds.glass152
         let _, _, context = recordingContext ()
         let existing = initMaterialEditor context (EditMaterial glass)
         Assert.Equal({ materialId = glass.id; freshness = WindowLauncher.Persisted }, existing.target)
         Assert.Equal(glass.name, existing.name)
         Assert.Equal(EditableMaterial, existing.mode)
-        match glass.complexity with
-        | Some c -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, existing.editor.toComplexity)
-        | None -> Assert.Fail("glass must carry an edit model")
-        // A complexity-less entry (engine-coded physics) opens view-only.
-        let silicon = initMaterialEditor context (EditMaterial (builtIn MaterialIds.silicon))
+        match glass.physics with
+        | ComplexityPhysics complexity ->
+            Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok complexity, existing.editor.toComplexity)
+        | CrystalParameterPhysics crystal -> Assert.Fail($"expected a complexity physics, got %A{crystal}")
+        // An entry whose physics is not editable term data opens view-only, showing that physics.
+        let siliconEntry = builtIn MaterialIds.silicon
+        let silicon = initMaterialEditor context (EditMaterial siliconEntry)
         match silicon.mode with
-        | ViewOnlyMaterial _ -> ()
-        | EditableMaterial -> Assert.Fail("silicon (complexity = None) must open view-only")
+        | ViewOnlyMaterial (_, shown) -> Assert.Equal<MaterialPhysics>(siliconEntry.physics, shown)
+        | EditableMaterial -> Assert.Fail("silicon (published-law physics) must open view-only")
 
     [<Fact>]
-    let ``Save adds a NEW material with complexity Some, updates an EXISTING one, and Cancel writes nothing`` () =
+    let ``Save adds a NEW material with its complexity, updates an EXISTING one, and Cancel writes nothing`` () =
         // NewUnsaved → saveMaterial under the UPFRONT-minted id (spec 0038 step 008 — the mint
         // happened at window open, not here; step 021 collapsed the add/update split into the ONE
         // versioned saveMaterial, which inserts version 1 for an id the store does not yet hold),
@@ -527,13 +535,11 @@ module MaterialEditorWindowTests =
         |> ignore
         Assert.Equal<string list>([ "save:Fresh"; "close" ], List.ofSeq calls)
         Assert.Equal(minted, saved.[0].id)
-        match saved.[0].complexity with
-        | Some c ->
-            Assert.Equal<MaterialComplexity>(defaultComplexity, c)
-            // properties IS complexity.toProperties — the sync invariant at save time.
-            let eps = saved.[0].properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
-            Assert.True(close (eps.[0, 0].Real) (1.5 * 1.5), $"eps11 = %A{eps.[0, 0]}")
-        | None -> Assert.Fail("Save must store complexity = Some model")
+        match saved.[0].physics with
+        | ComplexityPhysics complexity -> Assert.Equal<MaterialComplexity>(defaultComplexity, complexity)
+        | CrystalParameterPhysics crystal -> Assert.Fail($"expected a complexity physics, got %A{crystal}")
+        let eps = saved.[0].properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
+        Assert.True(close (eps.[0, 0].Real) (1.5 * 1.5), $"eps11 = %A{eps.[0, 0]}")
         // Persisted → saveMaterial under the SAME id (metadata-only edit → mutate in place),
         // then close.
         let calls2, saved2, context2 = recordingContext ()
@@ -573,9 +579,15 @@ module MaterialEditorWindowTests =
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
+                pinMaterialVersion = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
-        let context : MaterialEditorContext = { materials = failing; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> closes.Add "close" }
+        let context : MaterialEditorContext =
+            {
+                materials = failing
+                categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+                requestClose = fun () -> closes.Add "close"
+            }
         let m = initMaterialEditor context (NewMaterial (newMaterialId ())) |> updateMaterialEditor MaterialSaveClicked
         Assert.Empty(closes)
         match m.status with
@@ -619,7 +631,7 @@ module MaterialEditorWindowTests =
     let ``the window mounts with every slice-mandated UiId present`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(matchesId ConstructorUiId.materialEditorWindow.value window, "the window itself carries the MaterialEditorWindow id")
@@ -654,7 +666,7 @@ module MaterialEditorWindowTests =
         // wrapping property is enabled (and AcceptsReturn, so a long description grows downward).
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             match tryFindControl window ConstructorUiId.materialDescriptionBox.value with
@@ -670,7 +682,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: choosing biaxial exposes three principal-index fields`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Isotropic (the default): one index field.
@@ -693,7 +705,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: enabling activity on a uniaxial medium offers only the uniaxial gyration classes`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window (ConstructorUiId.anisotropyOption Uniaxial.uiKey).value
@@ -710,7 +722,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: unchecking a toggle restores the default model losslessly`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let initial = textOf window ConstructorUiId.materialComplexitySummary.value
@@ -733,7 +745,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the eps branch offers Constant and Dispersive as two mutually-exclusive options`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Both options are present from the start — not a sticky single toggle (spec 0035 step 017).
@@ -756,14 +768,14 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: Save round-trips a NEW entry through MaterialProxy with complexity Some`` () =
+    let ``acceptance: Save round-trips a NEW entry through MaterialProxy with its complexity`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
             let seededCount =
                 match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.materialNameBox.value "Headless material"
@@ -778,18 +790,18 @@ module MaterialEditorWindowTests =
                 Assert.Equal(seededCount + 1, List.length all)
                 match all |> List.tryFind (fun e -> e.name.value = "Headless material") with
                 | Some savedEntry ->
-                    match savedEntry.complexity with
-                    | Some c ->
-                        match c.eps with
+                    match savedEntry.physics with
+                    | ComplexityPhysics complexity ->
+                        match complexity.eps with
                         | EpsWithoutDispValue (BiaxialTransparent { nx = RefractionIndex n1; ny = RefractionIndex n2; nz = RefractionIndex n3 }) ->
                             Assert.True(close n1 1.6 && close n2 1.7 && close n3 1.8, $"n = %g{n1}, %g{n2}, %g{n3}")
                         | other -> Assert.Fail($"expected the biaxial transparent constant case, got %A{other}")
-                        // properties IS complexity.toProperties: the stored tensors agree.
-                        let eps = savedEntry.properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
-                        Assert.True(close (eps.[0, 0].Real) (1.6 * 1.6), $"eps11 = %A{eps.[0, 0]}")
-                        Assert.True(close (eps.[1, 1].Real) (1.7 * 1.7), $"eps22 = %A{eps.[1, 1]}")
-                        Assert.True(close (eps.[2, 2].Real) (1.8 * 1.8), $"eps33 = %A{eps.[2, 2]}")
-                    | None -> Assert.Fail("the saved entry must carry complexity = Some model")
+                    | CrystalParameterPhysics crystal -> Assert.Fail($"expected a complexity physics, got %A{crystal}")
+                    // The stored entry's engine tensors are its physics'.
+                    let eps = savedEntry.properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
+                    Assert.True(close (eps.[0, 0].Real) (1.6 * 1.6), $"eps11 = %A{eps.[0, 0]}")
+                    Assert.True(close (eps.[1, 1].Real) (1.7 * 1.7), $"eps22 = %A{eps.[1, 1]}")
+                    Assert.True(close (eps.[2, 2].Real) (1.8 * 1.8), $"eps33 = %A{eps.[2, 2]}")
                 | None -> Assert.Fail("the new material was not persisted")
             | Error e -> Assert.Fail($"listMaterials failed: %A{e}"))
 
@@ -806,7 +818,7 @@ module MaterialEditorWindowTests =
                 match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, EditMaterial existing)
+            let window = MaterialEditorWindow(materials, EditMaterial existing, BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window ConstructorUiId.materialNameBox.value "Renamed glass"
@@ -815,9 +827,7 @@ module MaterialEditorWindowTests =
             match materials.tryGetMaterial MaterialIds.glass152 with
             | Ok (Some updated) ->
                 Assert.Equal("Renamed glass", updated.name.value)
-                match updated.complexity with
-                | Some _ -> ()
-                | None -> Assert.Fail("the updated entry must keep complexity = Some model")
+                Assert.Equal<MaterialPhysics>(existing.physics, updated.physics)
             | Ok None -> Assert.Fail("the existing entry vanished")
             | Error e -> Assert.Fail($"tryGetMaterial failed: %A{e}")
             match materials.listMaterials ActiveOnly with
@@ -829,7 +839,7 @@ module MaterialEditorWindowTests =
     let ``a negative k surfaces the advisory gain warning and a non-negative k clears it`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal("", textOf window ConstructorUiId.materialGainWarning.value)
@@ -842,10 +852,10 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``a complexity-less entry opens view-only with no Save affordance and no ladder`` () =
+    let ``a non-editable entry opens view-only with no Save affordance and no ladder`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, EditMaterial (builtIn MaterialIds.silicon))
+            let window = MaterialEditorWindow(materials, EditMaterial (builtIn MaterialIds.silicon), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window ConstructorUiId.materialViewOnlyNote.value, "a view-only entry must say why it cannot be edited")
@@ -860,7 +870,7 @@ module MaterialEditorWindowTests =
     let ``the segment editor adds segments and a transcendental pick derives a dispersive eps`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window ConstructorUiId.dispersiveToggle.value
@@ -882,7 +892,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the activity Dispersive sub-toggle swaps each gyration component for a formula editor and back`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A uniaxial active medium's class carries exactly g11 and g33.
@@ -911,7 +921,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the magnetic Dispersive sub-toggle swaps the Polder components for formula editors and back`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window ConstructorUiId.magneticToggle.value
@@ -939,7 +949,7 @@ module MaterialEditorWindowTests =
     let ``the editor is a two-pane split whose full-height n/k chart renders one frame`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The two panes are split by a vertical GridSplitter; the right pane is a tabbed preview.
@@ -958,7 +968,7 @@ module MaterialEditorWindowTests =
     let ``the Gyration tab appears exactly when optically active`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.False(isPresent window ConstructorUiId.materialPreviewGyrationTab.value, "no Gyration tab before activity is enabled")
@@ -973,7 +983,7 @@ module MaterialEditorWindowTests =
     let ``the mu tab appears exactly when magnetic`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.False(isPresent window ConstructorUiId.materialPreviewMuTab.value, "no μ tab before magnetic is enabled")
@@ -1041,7 +1051,7 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     let ``spec 0040 006: a view-only entry reads the class off its stored complexity tree — Langasite carries g₁₁ / g₃₃`` () =
-        // Langasite opens VIEW-ONLY (its ε is an opaque evaluated closure) yet its stored complexity
+        // Langasite opens VIEW-ONLY (its ε is published laws, not editable term data) yet its stored complexity
         // tree carries a UniaxialActive gyration class — so the preview restricts to g₁₁ / g₃₃.
         let _, _, context = recordingContext ()
         let m = initMaterialEditor context (EditMaterial (builtIn MaterialIds.langasite))
@@ -1051,17 +1061,50 @@ module MaterialEditorWindowTests =
         Assert.Equal<GyrationComponent list>([ G11; G33 ], m.previewGyrationComponents)
 
     [<Fact>]
-    let ``spec 0040 006: a coded preset with no stored tree still renders all components`` () =
-        // Simulate the pre-step-004 coded preset: a view-only entry whose complexity is absent. The
-        // preview keeps the full six-component gyration and the full gyromagnetic μ rendering.
+    let ``a published gyration law opens the editor view-only`` () =
+        // Spec 0050 step 10: a published gyration law has no class the ladder can seed, so
+        // `isEditable` is false and the entry opens view-only.
         let _, _, context = recordingContext ()
-        let codedPreset = { builtIn MaterialIds.silicon with complexity = None }
-        let m = initMaterialEditor context (EditMaterial codedPreset)
+        let complexity =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = Some (PublishedLawRho LangasiteGyrationLaw)
+            }
+        let entry = { builtIn MaterialIds.glass152 with physics = ComplexityPhysics complexity }
+        let m = initMaterialEditor context (EditMaterial entry)
         match m.mode with
         | ViewOnlyMaterial _ -> ()
-        | EditableMaterial -> Assert.Fail("a complexity-less entry must open view-only")
-        Assert.Equal<GyrationComponent list>(NkDispersionChart.allGyrationComponents, m.previewGyrationComponents)
-        Assert.Equal(GyromagneticMuKind, m.previewMuKind)
+        | EditableMaterial -> Assert.Fail("a published gyration law must open view-only")
+
+    [<Fact>]
+    let ``a crystal-parameter entry opens the editor view-only and previews its crystal's properties`` () =
+        // Spec 0050 S11.1: the ladder edits complexity trees, so a crystal entry opens view-only; in that mode
+        // the preview charts the shown physics' `toProperties` (`previewProperties` is internal to the Ui).
+        let _, _, context = recordingContext ()
+        let crystal =
+            UniaxialCrystal
+                {
+                    ordinaryIndex = RefractionIndex 1.544
+                    extraordinaryIndex = RefractionIndex 1.553
+                    g11 = RhoValue 3.0e-5
+                    g33 = RhoValue (-1.0e-5)
+                }
+        let entry = { builtIn MaterialIds.glass152 with physics = CrystalParameterPhysics crystal }
+        let m = initMaterialEditor context (EditMaterial entry)
+        match m.mode with
+        | ViewOnlyMaterial (reason, shown) ->
+            Assert.Equal(ControlCaption "this entry's physics is not editable term data — view-only", reason)
+            Assert.Equal<MaterialPhysics>(entry.physics, shown)
+            let previewed = shown.toProperties.getProperties (WaveLength.nm 600.0<nm>)
+            let expected = crystal.opticalProperties
+            for i in 0..2 do
+                for j in 0..2 do
+                    for name, actual, wanted in [ "eps", previewed.eps.[i, j], expected.eps.[i, j]; "mu", previewed.mu.[i, j], expected.mu.[i, j]; "rho", previewed.rho.[i, j], expected.rho.[i, j] ] do
+                        Assert.True(close actual.Real wanted.Real && close actual.Imaginary wanted.Imaginary, $"{name}[{i},{j}] = {actual}, expected {wanted}")
+        | EditableMaterial -> Assert.Fail("a crystal-parameter entry must open view-only")
+        Assert.Equal<GyrationComponent list>(allGyrationComponents, m.previewGyrationComponents)
+        Assert.Equal(ScalarMuKind, m.previewMuKind)
 
     // ============================ spec 0038 (033): the unsaved-edit exit confirm ============================
 
@@ -1110,7 +1153,7 @@ module MaterialEditorWindowTests =
     let ``spec 0038 (033): a pristine editor's Cancel closes immediately`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.False(isPresent window ConstructorUiId.materialEditorExitConfirm.value, "no confirm surface before any edit")
@@ -1126,7 +1169,7 @@ module MaterialEditorWindowTests =
                 match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A name edit makes it dirty; Cancel shows the confirm instead of closing.
@@ -1156,7 +1199,7 @@ module MaterialEditorWindowTests =
     let ``spec 0038 (033): the window chrome (OnClosing) is equally gated`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The OS title-bar X routes through ChromeCloseIntercepted — the OnClosing override

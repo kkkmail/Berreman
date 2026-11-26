@@ -22,7 +22,7 @@ open Xunit
 
 /// §J.6/J.7/J.8 environment persistence (AC-J6/AC-J7/AC-J8). `EnvironmentSettings`
 /// serializes to schema-validated JSON (never `.binz`) reusing the slice-003 shared
-/// options, round-trips (favorites board, recent files, last folder, panel layout,
+/// options, round-trips (favorites board, last folder, panel layout,
 /// theme, preferences preserved), and falls back to built-in defaults on a
 /// deliberately invalid file WITHOUT migration. Preference edits touch only
 /// display/boundary labels and leave stored `double<meter>` magnitudes identical;
@@ -47,9 +47,9 @@ module EnvironmentRoundTripTests =
 
     /// A representative non-default environment exercising every persisted field —
     /// all four favorite-pin shapes (§A.7), last folders, a Dark theme, an edited
-    /// panel layout, a non-default chart palette, and edited preferences. (Recent
-    /// files are no longer an EnvironmentSettings field — they live in
-    /// `Storage.RecentFiles`.)
+    /// panel layout, a non-default chart palette, and edited preferences. Recently
+    /// opened kits are not kept here — the kit history keeps them
+    /// (`KitHistoryProxy`, spec 0050 S5.1).
     let private sample : EnvironmentSettings =
         { defaults with
             favorites =
@@ -369,9 +369,9 @@ module EnvironmentRoundTripTests =
         let back = (edited.serialize |> okOr).deserialize |> okOr
         Assert.Equal<Map<PickerPurpose, FolderName>>(edited.lastFolders, back.lastFolders)
 
-    // --- Spec 0038 step 043: the two recent-files stores are collapsed into one.
-    // --- `EnvironmentSettings` no longer carries a `recentFiles` field (that store
-    // --- is now solely `Storage.RecentFiles`), but the total-load contract must keep
+    // --- Spec 0038 step 043: `EnvironmentSettings` no longer carries a `recentFiles`
+    // --- field (recently opened kits are kept by the kit history, `KitHistoryProxy`,
+    // --- spec 0050 S5.1, not here), but the total-load contract must keep
     // --- OLD environment.json files — which still carry a `recentFiles` array — loading
     // --- with the dropped field simply ignored (no migration, §J.6 item 3).
 
@@ -380,7 +380,7 @@ module EnvironmentRoundTripTests =
         // Take a valid serialized envelope and graft a legacy `recentFiles` array onto
         // it, simulating a file written before the field was dropped.
         let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
-        envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj", "b.ocproj" ]"""
+        envelope.["recentFiles"] <- JsonNode.Parse """[ "C:/kits/a", "C:/kits/b" ]"""
         // The root schema is permissive (no additionalProperties:false), so the legacy
         // field still VALIDATES; STJ ignores the unmapped property on bind.
         let back = (EnvironmentJsonText (envelope.ToJsonString())).deserialize |> okOr
@@ -392,7 +392,7 @@ module EnvironmentRoundTripTests =
         let path = Path.Combine(Path.GetTempPath(), $"""oc-env-legacy-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             let envelope = (JsonNode.Parse (sample.serialize |> okOr).value).AsObject()
-            envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj" ]"""
+            envelope.["recentFiles"] <- JsonNode.Parse """[ "C:/kits/a" ]"""
             File.WriteAllText(path, envelope.ToJsonString())
             // A genuine total load off disk: the legacy file loads to the real settings,
             // NOT the built-in defaults (which would signal a validation/migration miss).

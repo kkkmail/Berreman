@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "89a2b0d022c3fe3a56bca6ea2c2889c430833c5cb29fbc1f0af716f6c27451aa",
+  "descriptionOpt": null,
+  "id": "2f7a45ee-4fa2-4dd3-b0c5-f81e44eaa1c9",
+  "name": "F₂ excimer 157 nm (VUV)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            157.6
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

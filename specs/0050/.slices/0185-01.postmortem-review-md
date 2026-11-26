@@ -1,0 +1,141 @@
+# Secondary review — slice 0185, postmortem 01
+
+This is the owning orchestrator's advisory review of the agent-written
+[primary postmortem](0185-01.postmortem-md), for event
+`b66b7530fd6b47ab8bb23069cf27802c`. Recommendations await operator agreement.
+Only this report was written; no repair, gate run, commit or restart was performed.
+
+## Cause
+
+The blocker is an omitted test-fixture migration in step 0185's authorized
+effects. Its selected UI tests include an accepted scene-save fact whose fixture
+sets both a refusing storage proxy and `ReadOnlyKitAccess`. That fact expects the
+storage failure prefix `Not saved to the kit — `.
+
+Step 0185 intentionally adds an earlier UI-model guard. With read-only access,
+`SceneSave` must return exactly `The kit is open read-only: nothing is saved.`
+without calling the proxy. Both messages cannot satisfy the existing fixture.
+The step explicitly adapts the analogous `InverseConstructorTests` fixture, but
+does not authorize adapting `SceneSaveLoadTests.fs`. The worker, judge and resolver
+correctly identified the conflict and preserved the unauthorized file.
+
+The smallest repair is to remove only `access = ReadOnlyKitAccess` from that
+scene-save fixture. Its inherited access is read-write, because `openSceneKit`
+opens it that way. Keeping `proxy = ordered.kit.proxy.readOnlyView` then makes
+the test exercise a storage refusal after the UI-model guard allows the request.
+Every assertion, test identity and case count remains unchanged. The newly
+declared tests separately exercise genuine read-only model refusal and disabled
+controls. This preserves the two distinct failure paths rather than deleting
+coverage to obtain a pass.
+
+This conclusion is established by source tracing, not a new test execution.
+The actual repaired behavior must still be measured before declaring it green.
+
+## Evidence checked independently
+
+- The ticket, launch and event agree on spec 0050, event ID above and actual
+  supervisor PID 213972. The terminal escalation was emitted at
+  `2026-11-09T01:19:41Z`; supervisor, entry process and watcher have exited.
+- HEAD is `7a0da2fc1f0fba621c5ede8c296e84b742dfeba1`, accepted step 0184.
+  State has 184 completed slices and is escalated at index 184 / step 0185.
+  Checkpoint 183 contains 1,195 constructor cases and 227 smoke cases;
+  checkpoint 184 is absent. One worker, one judge and one resolver ran, with
+  zero route-backs. The five declared product/test files are dirty; scene-test
+  source is unchanged. Their normal and CR-insensitive diff sizes agree.
+- `SceneSaveLoadTests.fs`: `openSceneKit` opens read-write; the fact's
+  `protectedModel` sets the proxy at line 125 and read-only access at line 126;
+  its refusal assertions are at lines 130–138.
+- `TableAndElementRotationView.fs`: `kitWrites` projects access, and
+  `guardKitWrite` at lines 1658–1665 returns the new status without invoking the
+  write callback. The `SceneSave` arm is wrapped by that guard.
+- `KitLibrary.fs:snapshotReferences` checks model access before IO. With the
+  proposed read-write fixture it reads snapshots through the view; `recordScene`
+  then calls `writeScene`, which reaches the refusing `writeKindFile`. Existing
+  snapshots are retained, and the scene error arm changes only `kitStatus`.
+- The two new `KitWindowModelTests` facts cover actual read-only access and
+  unchanged kit bytes. The new UI fact checks withheld controls. The already
+  authorized inverse fixture follows the same read-write/refusing-proxy pattern.
+- `.slices/0185.slice-md` and `.spec-jsonl` authorize five edit paths and four
+  test effects, excluding the scene fact despite selecting its class. No current
+  manual ruling extends this authority. Later 0187/0188 retain scene assertions;
+  0260 replaces scene saving with setup saving and renames this test class.
+- The frozen roster contains 19 gates. Build passed in 71.3 seconds at
+  `01:05:18Z`; verification gates did not run. Judge/resolver reports under
+  `.artifacts/code_judge/0185-01-code-judge.md` and
+  `.artifacts/resolver/0185-resolver-01.md` agree on the missing authority.
+- The current profile-1 receipt validates. ASG is clean at committed `ded70d15`.
+  The previous fix progressed through acceptance of 0160–0184; checkpoint 159
+  correctly records 1,136 cases. This is a new incident, with no evidence of a
+  regression in the live-input or arc-origin repairs.
+
+## Corrections to the primary analysis
+
+Its one-line fixture repair is sound, but calling the cause simply "the product"
+and blaming an unprescribed assertion overstates the evidence. The accepted
+assertion tested legitimate storage-failure behavior before the new guard.
+Adding meaningful assertions within an authorized fact is not inherently an
+agent defect. The present gap is that later behavior and the actual accepted
+test fixture need migration together, but the later step names only one of the
+affected fixtures. The current production implementation need not be weakened.
+
+The primary's instruction not to edit `.specrc` during execution is obsolete
+and contradicts the operator's explicit ruling. ASG 0090 manual 033 permits
+valid live configuration changes and all `.manual/` descendants. Its statement
+that a project-prompt edit caused 0160-03 is also wrong: that incident involved
+`.specrc.agent`. Prompt files remain a distinct publication input.
+
+Its pending-terminal-event statement was true while the report was being
+written; the terminal event now exists and the monitor handled it correctly.
+The pending gate table also does not erase the actual successful build evidence.
+
+No isolated two-file commit is required. The operator may commit all escalation
+work, as usual. I do not recommend the primary's accept-current alternative:
+normal review and measurement should publish checkpoint 184 before step 0186.
+
+## Recommended actions
+
+1. **Record a narrow operator amendment.** Add
+   `.manual/014-step-0185-read-only-scene-fixture.md` authorizing the scene fact's
+   fixture-only migration under S53-READ-ONLY, with a project-prompt pointer for
+   0185 and preservation through 0187, 0188 and 0260. Preserve all assertions,
+   identities, declared additions, production guard behavior and frozen gate
+   contracts. Make normal profile-1 resume an explicit recovery requirement.
+
+2. **Apply and verify the fixture repair.** Delete the one access assignment in
+   `SceneSaveLoadTests.fs`, keeping the refusing proxy and every assertion.
+   Preserve the worker's five-file implementation. Run the Release build and
+   the full selected UI classes, including the scene fact, both inverse refusal
+   paths and the new read-only controls fact. Resolve any measured defect within
+   the approved scope; the trace alone is not a passing result.
+
+3. **Run all 19 unchanged gates and validate the handoff.** Include actual
+   elevation coverage from immutable origin `f395597c…`, the complete constructor
+   suite (expected 1,197 cases), smoke (227), the four selected UI classes with
+   their exact census and one declared addition, and all fourteen s21 invariants.
+   Require zero failures/skips and no owned-code warnings. Validate all 494 steps
+   and refresh the receipt for the project-prompt amendment while preserving all
+   988 compiled artifacts. No new census row is needed for a fixture-only edit
+   to an unchanged identity. Preserve numeric checkpoints, budgets and test floors.
+
+4. **Record results and wait for the operator's commit.** Update the slice
+   handoff with measured outcomes, preserving its inherited YAML floors until
+   supervisor measurement. Put verification evidence under the arc's artifacts.
+   No ASG or STL source change is needed for this recovery. After the operator
+   commits and requests relaunch, resume normally with an operator reply and
+   `--executability-profile 1`, without `--accept-current-slice`; reattach the
+   monitor and require measured checkpoint 184 before 0186.
+
+## Recurrence and prevention
+
+The recurring class is an accepted fixture affected by later behavior but omitted
+from that later step's edit authority. A retry cannot add that authority. The
+existing bounded escalation correctly avoids silently changing tests.
+
+I recommend the specific amendment above. A general permission to change any
+fixture merely while retaining assertion text is too broad: fixture changes can
+remove the behavior an assertion actually exercises. If the operator wants a
+standing rule, it should require the same named obligation, preserved identities
+and assertions, explicit coverage of both the old failure path and the newly
+introduced guard, and judge review of the semantic effect. That would be a new
+operator policy, not authority supplied by this report or a reason to suppress
+the present gate. No backend-specific retry or budget increase is justified.

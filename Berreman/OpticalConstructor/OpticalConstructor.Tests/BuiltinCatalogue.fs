@@ -1,0 +1,291 @@
+namespace OpticalConstructor.Tests
+
+open System
+open System.Text
+open Berreman.Constants
+open Berreman.Media
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.LibraryDatabaseStore
+
+module BuiltinCatalogue =
+
+    let private loadedCatalogue : Lazy<CatalogueData> =
+        lazy
+            ((CatalogueProxy.createBuiltIn ()).readCatalogue ()
+             |> Result.defaultWith (fun error -> failwith error.describe))
+
+    /// Returns the shipped catalogue, loading once on first use and failing with the read error's description.
+    let catalogueData () : CatalogueData = loadedCatalogue.Force()
+
+    /// Returns a disposable in-memory database holding every Built-in version and latest (spec 0050 S2.2).
+    let freshLibraryDatabase () : LibraryDatabase =
+        let catalogue = catalogueData ()
+        let connectionString = ConnectionString "Data Source=:memory:"
+        let database =
+            LibraryDatabase.openOrCreate connectionString
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        let staged =
+            database.run (fun context ->
+                catalogue.envelopes
+                |> List.fold (fun result envelope ->
+                    result |> Result.bind (fun () ->
+                        let stored : StoredEntryVersion =
+                            {
+                                envelope = envelope
+                                state =
+                                    {
+                                        lifecycle = ActiveEntry
+                                        pin = VersionUnpinned
+                                    }
+                            }
+                        context.stageVersion stored
+                        |> Result.map (fun () -> context.stageLatest envelope.content.id envelope.content.version))) (Ok ())
+                |> Result.map (fun () -> context.SaveChanges() |> ignore))
+            |> Result.bind id
+        match staged with
+        | Ok () -> database
+        | Error error ->
+            (database :> IDisposable).Dispose()
+            failwith error.describe
+
+    /// Returns independent stores filled with the shipped catalogue, failing with the import error's description.
+    let freshStores () : InMemoryCatalogueStores =
+        let stores = CatalogueImportProxy.createInMemory ()
+        let context = CatalogueImportContext.create stores.proxy
+        let rows = context.importCatalogue (catalogueData ()) |> Result.defaultWith (fun error -> failwith error.describe)
+        match rows |> List.map _.byDefault |> context.apply with
+        | Ok _ -> stores
+        | Error error -> failwith error.describe
+
+    let private contentsOfKind (kind : LibraryEntryKind) : LibraryEntryContent list =
+        (catalogueData ()).envelopes
+        |> List.map (fun envelope -> envelope.content)
+        |> List.filter (fun content -> content.schema.kind = kind)
+
+    let private decode (result : Result<'Entry, LibraryEntryError>) : 'Entry =
+        result |> Result.defaultWith (fun error -> failwith error.describe)
+
+    /// Returns decoded materials in catalogue row order, failing with any decode error's description.
+    let materials () : MaterialEntry list =
+        contentsOfKind MaterialEntryKind
+        |> List.map (fun content -> content.toMaterialEntry |> decode)
+
+    /// Returns decoded categories in catalogue row order, failing with any decode error's description.
+    let categories () : MaterialCategory list =
+        contentsOfKind CategoryEntryKind
+        |> List.map (fun content -> content.toMaterialCategory |> decode)
+
+    /// Returns decoded samples in catalogue row order, failing with any decode error's description.
+    let samples () : Sample list =
+        contentsOfKind SampleEntryKind
+        |> List.map (fun content -> content.toSample |> decode)
+
+    /// Returns decoded source, polarizer and detector presets in row order, failing with any decode error's description.
+    let presets () : LibraryEntry list =
+        (catalogueData ()).envelopes
+        |> List.choose (fun envelope ->
+            let content = envelope.content
+            match content.schema.kind with
+            | SourceEntryKind -> content.toSourcePreset |> decode |> SourceItem |> Some
+            | PolarizerEntryKind -> content.toPolarizerPreset |> decode |> PolarizerItem |> Some
+            | DetectorEntryKind -> content.toDetectorPreset |> decode |> DetectorItem |> Some
+            | MaterialEntryKind | CategoryEntryKind | SampleEntryKind | ItemModelEntryKind -> None)
+
+    /// Returns the decoded item models at their versions in catalogue row order, failing with any decode error's description.
+    let itemModels () : ItemModelVersion list =
+        contentsOfKind ItemModelEntryKind
+        |> List.map (fun content ->
+            let itemModel : ItemModelVersion =
+                {
+                    version = content.version
+                    entry = content.toItemModel |> decode
+                }
+            itemModel)
+
+    /// Returns the item model with the given id, failing with that id when the catalogue holds none (spec 0050 S7.1).
+    let itemModel (id : ItemModelId) : ItemModelVersion =
+        match itemModels () |> List.tryFind (fun held -> held.entry.id = id) with
+        | Some held -> held
+        | None -> failwith $"The Built-in catalogue has no item model with id '{id.value}'."
+
+    /// Returns a fresh material store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
+    let materialStore (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =
+        let store = MaterialProxy.createInMemory samplesReferencing
+        for entry in materials () do
+            match store.saveMaterial entry with
+            | Ok () -> ()
+            | Error (UnknownMaterialIdErr reason)
+            | Error (DuplicateMaterialIdErr reason)
+            | Error (MaterialStillReferencedErr reason)
+            | Error (InvalidMaterialErr reason)
+            | Error (MaterialStoreUnavailableErr reason)
+            | Error (MaterialVersionPinnedErr reason) ->
+                failwith $"The Built-in material '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
+        store
+
+    /// Returns a fresh sample store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
+    let sampleStore () : SampleProxy =
+        let store = SampleProxy.createInMemory ()
+        for entry in samples () do
+            match store.saveSample entry with
+            | Ok () -> ()
+            | Error (UnknownSampleIdErr reason)
+            | Error (DuplicateSampleIdErr reason)
+            | Error (InvalidSampleErr reason)
+            | Error (SampleStoreUnavailableErr reason)
+            | Error (SampleVersionPinnedErr reason) ->
+                failwith $"The Built-in sample '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
+        store
+
+    /// Returns a fresh category store filled in catalogue order, failing with the refused entry and reason (spec 0050 S1.7).
+    let categoryStore (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
+        let store = CategoryProxy.createInMemory materialsReferencingCategory
+        for entry in categories () do
+            match store.addCategory entry with
+            | Ok () -> ()
+            | Error (UnknownCategoryIdErr reason)
+            | Error (DuplicateCategoryIdErr reason)
+            | Error (CategoryStillReferencedErr reason)
+            | Error (BuiltInNotRemovableErr reason)
+            | Error (CategoryStoreUnavailableErr reason)
+            | Error (InvalidCategoryErr reason) ->
+                failwith $"The Built-in category '{entry.name.value}' ('{entry.id.value}') was refused: {reason}"
+        store
+
+    /// Returns a fresh library holding samples then presets in row order, failing with any refused entry and reason (spec 0050 S1.7).
+    let library () : LibraryProxy =
+        let store = Library.createInMemory ()
+        let entries = (samples () |> List.map SampleItem) @ presets ()
+        for entry in entries do
+            match store.addEntry entry with
+            | Ok () -> ()
+            | Error (UnknownEntryIdErr reason | NoEntriesForKindErr reason | LibraryUnavailableErr reason | PresetRefusedErr reason) ->
+                failwith $"The Built-in library entry '{entry.entryName.value}' ('{entry.entryId.value}') was refused: {reason}"
+        store.proxy
+
+    /// Returns only source presets in catalogue row order (spec 0050 S1.7).
+    let sources () : SourcePreset list =
+        presets ()
+        |> List.choose (fun entry ->
+            match entry with
+            | SourceItem source -> Some source
+            | SampleItem _ | DetectorItem _ | PolarizerItem _ -> None)
+
+    /// Returns the source with the given id, failing with that id when it is absent (spec 0050 S1.7).
+    let source (id : ElementValueId) : SourcePreset =
+        match sources () |> List.tryFind (fun entry -> entry.id = id) with
+        | Some entry -> entry
+        | None -> failwith $"The Built-in catalogue has no source with id '{id.value}'."
+
+    /// Returns the material with the given id, failing with the id when it is absent.
+    let material (id : MaterialId) : MaterialEntry =
+        match materials () |> List.tryFind (fun entry -> entry.id = id) with
+        | Some entry -> entry
+        | None -> failwith $"The Built-in catalogue has no material with id '{id.value}'."
+
+    /// Returns the category with the given id, failing with the id when it is absent.
+    let category (id : CategoryId) : MaterialCategory =
+        match categories () |> List.tryFind (fun entry -> entry.id = id) with
+        | Some entry -> entry
+        | None -> failwith $"The Built-in catalogue has no category with id '{id.value}'."
+
+    /// Returns the sample with the given id, failing with the id when it is absent.
+    let sample (id : SampleId) : Sample =
+        match samples () |> List.tryFind (fun entry -> entry.id = id) with
+        | Some entry -> entry
+        | None -> failwith $"The Built-in catalogue has no sample with id '{id.value}'."
+
+    /// Returns the preset with the given id, failing with the id when it is absent.
+    let preset (id : ElementValueId) : LibraryEntry =
+        match presets () |> List.tryFind (fun entry -> entry.entryId = id) with
+        | Some entry -> entry
+        | None -> failwith $"The Built-in catalogue has no preset with id '{id.value}'."
+
+    let private materialContentWithProvenance (id : MaterialId) (name : EntryName) (provenance : EntryProvenance) : LibraryEntryContent =
+        let silicon = material MaterialIds.silicon
+        let entry =
+            {
+                silicon with
+                    id = id
+                    name = name
+            }
+        LibraryEntryContent.ofMaterialEntry VersionNumber.first provenance entry
+
+    /// Returns catalogue Silicon under the supplied identity and source licence (spec 0050 S3.3).
+    let licensedMaterialContent (id : MaterialId) (name : EntryName) (licence : EntryLicence) (citation : EntryCitation) : LibraryEntryContent =
+        let record = MaterialSourceRecordId $"test/{name.value}"
+        let provenance =
+            SourcePullProvenance
+                {
+                    source = MaterialSourceName "Test optical constants"
+                    record = record
+                    recordHash = Encoding.UTF8.GetBytes record.value |> FileByteContent |> ContentHash.ofBytes
+                    sourceVersion = MaterialSourceVersion "2026-11-01"
+                    licence = licence
+                    citation = citation
+                }
+        materialContentWithProvenance id name provenance
+
+    /// Returns catalogue Silicon under the supplied user identity (spec 0050 S3.3).
+    let userMaterialContent (id : MaterialId) (name : EntryName) : LibraryEntryContent =
+        materialContentWithProvenance id name UserProvenance
+
+    /// Returns the catalogue Glass category under the supplied user identity (spec 0050 S3.3).
+    let userCategoryContent (id : CategoryId) (name : CategoryName) : LibraryEntryContent =
+        let glass = category CategoryIds.glass
+        let entry =
+            {
+                glass with
+                    id = id
+                    name = name
+                    origin = UserCategory
+            }
+        LibraryEntryContent.ofMaterialCategory VersionNumber.first UserProvenance entry |> decode
+
+    /// Returns a user sample with one 100 nm film of the supplied material's first version (spec 0050 S3.3).
+    let sampleContentOver (id : SampleId) (material : MaterialId) (name : EntryName) : LibraryEntryContent =
+        let multilayer = sample SampleIds.multilayerQwId
+        let layer : SampleLayer =
+            {
+                materialId = MaterialVersionId.firstOf material
+                thickness = Thickness.nm 100.0<nm>
+                orientation = PrimaryAxes
+            }
+        let entry =
+            {
+                multilayer with
+                    id = id
+                    name = name
+                    structure =
+                        {
+                            multilayer.structure with
+                                films = [ SingleLayer layer ]
+                        }
+            }
+        LibraryEntryContent.ofSample VersionNumber.first UserProvenance entry
+
+    /// Seals and puts entries in order, moving latest and failing with any seam error's description (spec 0050 S3.3).
+    let putSealedEntries (context : CatalogueImportContext) (contents : LibraryEntryContent list) : unit =
+        for content in contents do
+            context.sealEntry content
+            |> Result.bind (fun envelope ->
+                let put : EntryVersionPut =
+                    {
+                        envelope = envelope
+                        latest = MoveLatestVersion
+                    }
+                context.proxy.putEntryVersion put)
+            |> Result.defaultWith (fun error -> failwith error.describe)

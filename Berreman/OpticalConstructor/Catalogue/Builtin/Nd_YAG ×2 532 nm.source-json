@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "765c905844e389669977712c06fe2381dc0f0cc4da4167384b0be8ad121d6a9c",
+  "descriptionOpt": null,
+  "id": "9fee5fb8-2789-484f-8cde-569095cb13ef",
+  "name": "Nd:YAG ×2 532 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            532
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

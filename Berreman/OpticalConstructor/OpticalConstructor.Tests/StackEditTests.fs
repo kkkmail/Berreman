@@ -8,7 +8,6 @@ open Berreman.Media
 open Berreman.Solvers
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
-open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Optimization.DesignParameters
 open OpticalConstructor.Ui
@@ -99,13 +98,17 @@ module StackEditTests =
 
     [<Fact>]
     let ``AC-B6 a medium resolves by material-library reference via the slice-004 seam`` () =
-        match StackEditor.mediumFromMaterial standard MaterialIds.silicon (WaveLength.nm 600.0<nm>) with
+        let library : MaterialLibrary =
+            {
+                entries = BuiltinCatalogue.materials ()
+            }
+        match StackEditor.mediumFromMaterial library MaterialIds.silicon (WaveLength.nm 600.0<nm>) with
         | Ok props ->
             let r = StackEditor.setIncidentMedium props baseSystem
             Assert.True(refEq r.upper props)
         | Error e -> failwith $"expected a resolved medium, got {e}"
         let unknown = MaterialId.create ()
-        match StackEditor.mediumFromMaterial standard unknown (WaveLength.nm 600.0<nm>) with
+        match StackEditor.mediumFromMaterial library unknown (WaveLength.nm 600.0<nm>) with
         | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
         | other -> failwith $"expected UnknownMaterialIdErr, got {other}"
 
@@ -149,11 +152,15 @@ module StackEditTests =
 
     [<Fact>]
     let ``AC-J4 a material dropped on a layer row replaces its properties via the slice-004 resolver`` () =
+        let library : MaterialLibrary =
+            {
+                entries = BuiltinCatalogue.materials ()
+            }
         let w = WaveLength.nm 600.0<nm>
         // The drop payload carries only the materialEntry id; resolution is the
         // slice-004 by-id seam producing the StackMsg the owning update applies.
-        let resolved = StackEditor.mediumFromMaterial standard MaterialIds.silicon w |> function Ok p -> p | Error e -> failwith $"{e}"
-        match StackEditor.layerMaterialDrop standard w (FilmIndex 1) MaterialIds.silicon with
+        let resolved = StackEditor.mediumFromMaterial library MaterialIds.silicon w |> function Ok p -> p | Error e -> failwith $"{e}"
+        match StackEditor.layerMaterialDrop library w (FilmIndex 1) MaterialIds.silicon with
         | Ok (StackEditor.SetLayerMaterial (idx, props)) ->
             Assert.Equal(FilmIndex 1, idx)
             // The message carries the resolveMaterial-resolved OpticalProperties (no re-resolution).
@@ -170,8 +177,12 @@ module StackEditTests =
 
     [<Fact>]
     let ``AC-J4 dropping an unknown material id is a no-op error, never throwing`` () =
+        let library : MaterialLibrary =
+            {
+                entries = BuiltinCatalogue.materials ()
+            }
         let unknown = MaterialId.create ()
-        match StackEditor.layerMaterialDrop standard (WaveLength.nm 600.0<nm>) (FilmIndex 0) unknown with
+        match StackEditor.layerMaterialDrop library (WaveLength.nm 600.0<nm>) (FilmIndex 0) unknown with
         | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
         | other -> failwith $"expected UnknownMaterialIdErr, got {other}"
         // setLayerMaterial on an out-of-range index leaves the system unchanged.

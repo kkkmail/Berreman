@@ -1,0 +1,7 @@
+# Implementation plan
+
+Wire AppContext to the existing database CatalogueImportContext and importOnStart on every composition. Replace the superseded catalogueImport/catalogueDecisions fields with catalogueImports/pendingImports, log aggregate and per-folder failures, and retain all pending rows without applying them. Update the startup documentation and AGENTS.md's live-library description; leave LibraryDatabase.origin intact outside AppContext.
+
+Move fixture confirmation to TestAppScope's explicit full-list settlement helper and use it for fresh contexts and file-backed fixtures. Extend AppContextTests with the two specified facts over isolated shipped-catalogue folders, asserting unchanged stores and logs before settlement, version retention after confirmation, and unchanged-manifest skipping. Preserve existing assertions and counts. LibraryWindowTests contains one caller of the superseded fixture fields; update that caller as the necessary file-backed fixture repair covered by the slice's explicit fixture obligation.
+
+Risks are silent writes before confirmation, omitted reuse rows, losing immutable version history, and incomplete fixture migration. Reuse CatalogueProxy.writeCatalogue, the existing sealed-envelope conversions and CatalogueImportContext.settle. No stored formats, product import behavior below the composition root, version numbers or acceptance baselines change. Required workspace validation will use the resolved build/elevation/UI selections and s12 invariants; supervisor acceptance remains external.

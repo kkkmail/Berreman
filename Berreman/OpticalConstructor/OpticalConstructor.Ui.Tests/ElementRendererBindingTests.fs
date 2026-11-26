@@ -12,6 +12,7 @@ open Avalonia.FuncUI.Types
 open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui
 
@@ -23,8 +24,8 @@ open OpticalConstructor.Ui
 module ElementRendererBindingTests =
 
     /// A drawable for `kind` bound to `valueId` (its binding state derived exactly as the host derives it).
-    let private drawableOf (kind : CatalogueKind) (valueId : string option) : ElementRenderer.Drawable =
-        let placement = { ElementPlacement.create kind TablePoint.origin with valueId = valueId |> Option.map ElementValueId }
+    let private drawableOf (kind : CatalogueKind) (valueId : ElementValueId option) : ElementRenderer.Drawable =
+        let placement = { ElementPlacement.create kind TablePoint.origin with valueId = valueId }
         { placement = placement
           centre = placement.placementPoint.toVector3
           zoom = BeamLayout.ElementZoom 3.5
@@ -61,19 +62,19 @@ module ElementRendererBindingTests =
 
     [<Fact>]
     let ``bindingState: valueId gates bindable kinds; lens and mirrors are never bindable`` () =
-        let stateOf (kind : CatalogueKind) (valueId : string option) : ElementRenderer.BindingState =
+        let stateOf (kind : CatalogueKind) (valueId : ElementValueId option) : ElementRenderer.BindingState =
             (drawableOf kind valueId).bindingState
         // Lens / flat / curved mirror are pure geometry — NotBindable regardless of any value id.
         Assert.Equal(ElementRenderer.NotBindableElement, stateOf Lens None)
-        Assert.Equal(ElementRenderer.NotBindableElement, stateOf FlatMirror (Some "ignored"))
+        Assert.Equal(ElementRenderer.NotBindableElement, stateOf FlatMirror (Some (ElementValueId "ignored")))
         Assert.Equal(ElementRenderer.NotBindableElement, stateOf CurvedMirror None)
         // Every other kind is Unbound while its value id is None and Bound once it is Some.
         Assert.Equal(ElementRenderer.UnboundElement, stateOf Sample None)
-        Assert.Equal(ElementRenderer.BoundElement, stateOf Sample (Some "lib:sample"))
+        Assert.Equal(ElementRenderer.BoundElement, stateOf Sample (Some (ElementValueId "lib:sample")))
         Assert.Equal(ElementRenderer.UnboundElement, stateOf LinearPolarizer None)
-        Assert.Equal(ElementRenderer.BoundElement, stateOf LinearPolarizer (Some "lib:lp"))
+        Assert.Equal(ElementRenderer.BoundElement, stateOf LinearPolarizer (Some (ElementValueId "lib:lp")))
         Assert.Equal(ElementRenderer.UnboundElement, stateOf Detector None)
-        Assert.Equal(ElementRenderer.BoundElement, stateOf LightSource (Some "lib:src"))
+        Assert.Equal(ElementRenderer.BoundElement, stateOf LightSource (Some (ElementValueId "lib:src")))
 
     // ============================ spec 0046: the normals never pass for a ray ============================
 
@@ -89,7 +90,7 @@ module ElementRendererBindingTests =
     let ``HideNormals drops the orientation markers and ShowNormals draws them, in both renderers`` () =
         HeadlessSession.run (fun () ->
             for kind in [ RendererControls.Wireframe; RendererControls.Shapes ] do
-                let shown = drawableOf LinearPolarizer (Some "pol-lp")
+                let shown = drawableOf LinearPolarizer (Some PresetIds.polarizerLp)
                 let hidden = { shown with normals = ElementRenderer.HideNormals }
                 Assert.Single(strokedIn ElementRenderer.normalAxisColor (renderShapes kind shown)) |> ignore
                 Assert.Empty(strokedIn ElementRenderer.normalAxisColor (renderShapes kind hidden)))
@@ -101,7 +102,7 @@ module ElementRendererBindingTests =
     let ``the shape renderer draws an unbound element dashed+ghosted, a bound one solid, a lens normally`` () =
         HeadlessSession.run (fun () ->
             let unboundSample = renderShapes RendererControls.Shapes (drawableOf Sample None)
-            let boundPolarizer = renderShapes RendererControls.Shapes (drawableOf LinearPolarizer (Some "lib:lp"))
+            let boundPolarizer = renderShapes RendererControls.Shapes (drawableOf LinearPolarizer (Some (ElementValueId "lib:lp")))
             let lens = renderShapes RendererControls.Shapes (drawableOf Lens None)
             // Unbound → a DASHED outline and a GHOSTED (fainter) fill than a solid element's.
             Assert.True(hasDashed unboundSample, "an unbound element draws a dashed outline")
@@ -120,7 +121,7 @@ module ElementRendererBindingTests =
     let ``the wireframe renderer dashes an unbound element's box edges and leaves a bound one solid`` () =
         HeadlessSession.run (fun () ->
             let unbound = renderShapes RendererControls.Wireframe (drawableOf Sample None)
-            let bound = renderShapes RendererControls.Wireframe (drawableOf Sample (Some "lib:sample"))
+            let bound = renderShapes RendererControls.Wireframe (drawableOf Sample (Some (ElementValueId "lib:sample")))
             Assert.True(hasDashed unbound, "an unbound element's wireframe box is dashed")
             Assert.False(hasDashed bound, "a bound element's wireframe box is solid")
             Assert.NotEmpty(unbound)

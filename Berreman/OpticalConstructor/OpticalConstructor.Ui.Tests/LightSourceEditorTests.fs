@@ -16,19 +16,20 @@ open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.LibraryBackup
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
+open OpticalConstructor.Tests
 
 /// Spec 0046 — the Library's light-source editor: its pure MVU (name, wavelength in a chosen unit, Save
 /// through the user-sources store, the dirty exit gate), the Library window's Add source / Edit / Remove
-/// verbs for user sources (a protected seeded source keeps no Edit and refuses Remove), a user or seeded
-/// source bound on the Main table resolving through the live Library, and the editor window driven
+/// verbs for user sources (BuiltinCatalogue.sources () refuse Edit/Remove), user or catalogue
+/// sources bound on the Main table resolving through the live Library, and the editor window driven
 /// headless.
 module LightSourceEditorTests =
 
@@ -121,13 +122,17 @@ module LightSourceEditorTests =
 
     let private libraryContext (sources : SourceProxy) : ResizeArray<string> * LW.LibraryWindowContext =
         let calls = ResizeArray<string>()
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         calls,
         {
-            library = Library.createInMemory ()
+            library = BuiltinCatalogue.library ()
             samples = samples
             materials = materials
+            categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+            libraryBackups = LibraryBackupProxy.createInMemory ()
+            catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
+            openImportDialog = ignore
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue
             openSampleEditor = fun _ -> calls.Add "sample-editor"
@@ -146,7 +151,13 @@ module LightSourceEditorTests =
         let calls, context = libraryContext (SourceProxy.createInMemory ())
         LW.updateLibraryWindow LW.AddSource (LW.initLibraryWindow context Browse) |> ignore
         Assert.Equal(1, calls.Count)
-        Assert.StartsWith("source-add:src-", calls.[0])
+        // Spec 0050 §3.3: the minted id is the canonical string of a GUID, as a sample's is.
+        let prefix = "source-add:"
+        Assert.StartsWith(prefix, calls.[0])
+        let minted = calls.[0].Substring(prefix.Length)
+        match System.Guid.TryParse minted with
+        | true, guid -> Assert.Equal(string guid, minted)
+        | false, _ -> Assert.Fail $"the minted source id '{minted}' is not the string of a GUID"
 
     [<Fact>]
     let ``a user source joins the Library, offers Edit, and is removed through the confirm gate`` () =
@@ -170,7 +181,7 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``a seeded source is protected: no Edit, and Remove refuses with the reason`` () =
         let calls, context = libraryContext (SourceProxy.createInMemory ())
-        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry (OpticalConstructor.Domain.Placement.ElementValueId "src-euv-13p5")) (LW.initLibraryWindow context Browse)
+        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.euv13p5) (LW.initLibraryWindow context Browse)
         Assert.Equal(None, selected.editableSource)
         LW.updateLibraryWindow LW.EditSelectedEntry selected |> ignore
         Assert.Empty(calls)
@@ -200,14 +211,14 @@ module LightSourceEditorTests =
     [<Trait("Category", "ui-smoke")>]
     let ``a user source and a seeded lithography source bind to the table's source and resolve`` () =
         HeadlessSession.run (fun () ->
-            let m0 = { Scene.initMain () with selection = Scene.ElementSelected (Scene.SceneElementIndex 0) }
+            let m0 = { SceneTestFixture.mainScene () with selection = Scene.ElementSelected (Scene.SceneElementIndex 0) }
             let mine : SourcePreset = { id = Placement.ElementValueId "src-mine"; name = EntryName "My 13.4 nm line"; waveLength = WaveLength.nm 13.4<nm>; tuning = FixedLine; protection = UserManaged }
             Assert.Equal(Ok (), m0.sources.saveSource mine)
             let sourceId = (List.item 0 m0.elements).id
             let boundMine = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, Placement.ElementValueId "src-mine")) m0
             Assert.Equal(Some (Placement.ElementValueId "src-mine"), (List.item 0 boundMine.elements).placement.valueId)
             Assert.Contains("bound: My 13.4 nm line", readoutOf boundMine)
-            let boundArf = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, Placement.ElementValueId "src-arf-193")) m0
+            let boundArf = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, PresetIds.arf193)) m0
             Assert.Contains("bound: ArF excimer 193 nm", readoutOf boundArf))
 
     // ------------------------------ the editor window (headless) ------------------------------

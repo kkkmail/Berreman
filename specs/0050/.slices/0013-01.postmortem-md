@@ -1,0 +1,90 @@
+# Post-mortem -- slice 0013, attempt 01
+
+## Summary
+
+Step 13 made `MaterialEntry.complexity` mandatory and deleted the one constructor fact it was told to delete. The engine measured 736/736 passing, with the identity census accepted, and still failed the gate with `constructor_unit_tests count 736 < baseline 737`.
+ASG gives an authorized delete no floor credit in a `"method"`-granularity suite, so no worker edit could satisfy both the slice and the gate. The judge escalated on cycle 2, and the resolver confirmed the escalation.
+
+## Root cause
+
+There is one owner: **the tool**, specifically ASG `src/ai_strategy_generator/executability/runtime_tests.py:authorized_count_credits`. Line 101 reads `if floor is None or facts.get("granularity") != "row" or not gate.result_capture: continue`. Berreman's `.repository-inventory-json` records all four suites as `"granularity": "method"`, so step 13's authorized `{"op": "delete", "suite": "constructor-unit-tests", …}` earns a credit of 0.
+
+Both consumers take their credit from this one function:
+- `evaluate_gate.py:408-412`, which lowers the gate's baseline;
+- `run_arc_runner.py:4826-4831`, which feeds `write_checkpoint_counts` (`checkpoint_record.py:132`).
+
+So the floor stays 737 in both places. The older escape is off whenever the arc has an executable profile:
+- `BASELINE-WAIVED`, `run_arc_runner.py:3896`, requires `not read_profile(...)`;
+- `allow_lower`, `:4830`, requires `not executable_profile`.
+
+That leaves the step's binding acceptance ("constructor-unit-tests MUST pass, one fact fewer for the deleted MaterialComplexityTests fact", i.e. 736) in direct conflict with the floor (≥ 737).
+
+The worker, the judge and the resolver all diagnosed this correctly (impl-log "Attempt 2", judge cycle 2, resolver MD). I re-traced it and it holds. Two of their side claims are wrong:
+- **Accepting the slice does not refuse a write; it writes nothing.** The worker and judge say an accept leaves the floor at 737 because `write_checkpoint_counts` refuses 736. In fact the accept never calls `write_checkpoint_counts`: it "never reaches the green path's ledger writes" (`run_arc_runner.py:1493`). The floor stays 737 anyway, because `resolve_baseline_counts` walks back to key `"10"`. The next whole-suite run is step 15, since step 14 does not run this suite, and it would fail at 736.
+- **The resolver's option (c), an operator test effect, cannot lower the floor.** `.operator-test-effects-jsonl` rows (`create`/`rename`/`retire`) only join `replay_effects`' census. The credit's `removed` set comes from the step's own `effects.tests`, and the granularity skip on line 101 still applies.
+
+A contributing tool gap: the compiler's executability check reported no finding for this spec (`.manual/003` "Gates"). Compile time therefore accepted steps whose acceptance needs a count drop that run time cannot credit.
+
+## Evidence
+
+- Trigger (log line 737, `ESCALATION-RECORDED`): "code-judge escalated on cycle 2: Authority conflict, not a code defect … constructor-unit-tests at 736/736 with its identity census".
+- Gate (log line 694): `"gate_id": "constructor-unit-tests", "passed": false, "exit_code": 0, "detail": "constructor_unit_tests count 736 < baseline 737"`. Lines 702–705 show `Test run summary: Passed!`, `total: 736`, `succeeded: 736`.
+- Baseline (log line 663): `BASELINE idx=12 … counts={'ui_smoke_tests': 208, 'constructor_unit_tests': 737}`. In `.checkpoints-json`, `"10": {"constructor_unit_tests": 737, …}`, and `"11"` holds only `ui_smoke_tests` (step 12 did not run the suite).
+- Granularity (`.repository-inventory-json`): `constructor-unit-tests`, `unit-tests`, `ui-smoke` and `ui-tests` are all `granularity: method`. Test entries carry only `id`, `class` and `path`.
+- Deleted fact: `MaterialComplexityTests.fs` at HEAD, lines 132–133, `[<Fact>] let ``every built-in carries Some complexity after the step-004 re-seed``` (a single TRX row), present in the inventory. A credit of 1 is therefore exact for this step.
+- Credit code: `runtime_tests.py:101` (the skip), `:108` (subset check), `:109` (`credits[floor.baseline_key] = len(removed)`). `grep authorized_count_credits` over ASG `tests/` finds no test.
+- Rule age: `git log -L` shows the `!= "row"` line was added in ASG `73670c1d` (2026-10-18, 0090-manual) and is unchanged through `e24cf19c`. The boot logged `asg_version=1.8.90.1`. No tool change since the last green slice.
+- Nearest green under the same rule: steps 2–12 passed the same floor only because their counts never fell (checkpoints 732 → 733 → 734 → 736 → 737). Step 13 is the arc's first step that lowers a whole-suite count.
+- Judge MD (`code_judge/0013-01-code-judge.md`): the cycle-2 diff is byte-identical to cycle 1's review-green tree `969e23357ffd`, and all clauses (1)–(7), the test ops and the contracts are met.
+- Resolver MD (`resolver/0013-resolver-01.md`): `confirm-escalation`, confidence high, options (a)–(c).
+- Gates the engine never reached on this tree: ui-smoke, ui-tests and the four s02 invariants. They appear only as the worker's local runs (SoW "Tests": 208/208, 93/93, invariants clean).
+- Out-of-list edit: `ExportImportTests.fs:159` (drop of `Some`), recorded as a forced deviation in the impl-log "Decisions" and accepted by the judge. Commits sweep the tree (ASG 0090 `.manual/012`), and the spec is `.locked`, so `read_inventory` skips the freshness checks (`inventory.py:52-53`). Neither blocks a resume.
+- History: this arc's only `ESCALATION-RECORDED` is this one. There are no `ESCALATE`, interrupt, accept or override events, and no earlier `.postmortem-md` in `specs/0050/.slices/`. `.manual/` holds README, 001 and 002 (2026-11-03) and 003 (2026-11-05); none concerns count floors. There is no matching cause in BRM 0022/0026 or STL 0239/096 (a different nested-class identity defect). This is not a repeat.
+- Tree: HEAD `f53174e` (step 12). `completed_slices` covers indexes 0–11. The current slice is index 12 (step 13), `status: escalated`, `phase: implement`, `ownership: {}`. Dirty: the 21 listed edits plus `ExportImportTests.fs`, `.expected-red-observed-json` and `.manifest.state.json`. Untracked: 0013 impl-log, plan and SoW. Step 13's first pending step is step 13 itself.
+- Spawns: every role on every slice 1–13 ran `anthropic` / `claude-opus-5-5[1m]` (`source: specrc_tool_agents`), and none differed in this arc.
+- Counters (from the log): 1 resolver run (`RESOLVER-SPAWN` and `RESOLVER_RESULT`, run=1), 0 route-backs (judge verdicts: c1 `review-green`, c2 `escalate-to-human`; attempt 2 was a gate-failure retry, `failures=1/2`). These agree with the scalars.
+- Forward, from the compiled descriptors of pending steps:
+  - steps whose deletes outnumber their creates in the whole-suite (`all_discovered`) constructor gate, which would each fail the same way: 57 (5 deleted, 1 created), 59 (4, 0), 151 (2, 0), 152 (5, 0), 157 (1, 0), 158 (2, 0), 159 (4, 0) and 160 (7, 1);
+  - steps 40, 50, 65, 148, 252, 260 and 261 create at least as many as they delete;
+  - `unit-tests` (331) and `ui-tests` (13, 152, 416) run filtered and record no floor;
+  - every deleted identity is in the prior census (the inventory, or an earlier create, rename or migrate), so line 108's subset check holds under the fix;
+  - after step 13, step 14 does not run the constructor suite and step 15 does (`all_discovered`).
+
+## Proposed solutions
+
+Decision: owner the tool (ASG `executability/runtime_tests.py:authorized_count_credits`); recommend 1; confidence high; operator decides whether to land the ASG credit fix now (ASG is read-only from this repository).
+
+1. **Fix the credit in ASG, then relaunch step 13 so the engine measures every gate.**
+   - **The ASG change.** In `authorized_count_credits`, credit a `"method"` suite exactly as a `"row"` suite is credited: one floor unit per exact deleted method identity, with the line-108 subset check kept. A `"class"` suite stays uncredited.
+     - One unit is exact for a `[<Fact>]`.
+     - A deleted `[<Theory>]` stays under-credited, so the gate fails closed and is never lowered past the authorized removal.
+     - Both consumers read this one function, so the gate and the checkpoint agree. Trace: `credited_counts` yields 737 − 1 = 736 and the gate passes; `write_checkpoint_counts` evaluates `736 < 737 - 1` as false and records 736.
+   - **Land it.** Add the test in item 3, record the defect in `ASG-ERRORS.md` as BRM-0050, commit in ASG, and restart the ASG web app (`.manual/003`, "Machine notes").
+   - **Do not commit the step-13 tree, and do not pass `--accept-current-slice`.** Ruling 3 covers committed green work, and this tree is neither. The engine never ran ui-smoke, ui-tests or the invariants on it, and an accept writes no checkpoint, so step 15 would fail at 736 < 737.
+   - **Before the relaunch, run these gates by hand on the current tree:**
+     - ASG: `tests/executability`, with the new test;
+     - Berreman: `build`, `elevation`, `constructor-unit-tests` (whole), `ui-smoke` (whole), `ui-tests` (the step's five-class filter), and `invariant-s02-elev-list-empty`, `invariant-s02-no-vstest`, `invariant-s02-no-kit-kit-json` and `invariant-s02-no-eps-axis-evaluated`.
+   - **Relaunch without `--accept-current-slice`,** with the operator note below. Expect the engine to run all nine gates of `0013.gates` and to record `"12": {"constructor_unit_tests": 736, "ui_smoke_tests": 208}`.
+   - **Steps covered:** 13, 57, 59, 151, 152, 157, 158, 159 and 160.
+
+2. **OR, without the ASG change, record step 13's floor by hand and accept it.** Run the nine Berreman gates listed in item 1 by hand. Add `"12": {"constructor_unit_tests": 736}` to `specs/0050/.checkpoints-json`. That is the count the engine itself measured on this tree at 14:50:12, and exactly what the authorized delete sets. Then resume with `--accept-current-slice`. This comes second for three reasons:
+   - it covers step 13 alone, so steps 57, 59, 151, 152 and 157–160 escalate the same way and each needs another hand record;
+   - ui-smoke, ui-tests and the invariants are measured by the operator, not the engine;
+   - it hand-writes a runner record.
+
+3. **asg-error** (`src/ai_strategy_generator/executability/runtime_tests.py:authorized_count_credits`, line 101).
+   - **Wrong behaviour.** An exact, step-authorized `delete` of a method identity in a `"granularity": "method"` suite earns no credit. As a result:
+     - the `count_at_least` floor never drops;
+     - the gate fails `count N < baseline N+1` on a tree whose census `check_observed_tests` has just accepted;
+     - `write_checkpoint_counts` refuses the lower count;
+     - under an executable profile no other path lowers the floor (`run_arc_runner.py:3896`, `:4830`).
+   - **Contributing gap.** The compile-time executability check passes such steps without a finding.
+   - **Reproducing test** (in `tests/executability/`):
+     - set up a profile-1 spec folder whose inventory suite `s` is `"method"`, with facts `C.a` and `C.b`;
+     - give it a gate with `count_at_least` `baseline_key: k` and a `result_capture`, and a step 2 that declares `{"op": "delete", "suite": "s", "id": "C.b"}`;
+     - assert that `authorized_count_credits(step2, [gate]) == {"k": 1}` (today `{}`);
+     - assert that `credited_counts({"k": 2}, …) == {"k": 1}`;
+     - assert that `write_checkpoint_counts(folder, "1", {"k": 1}, allowed_decreases=…)` returns no regression;
+     - add two negatives: a delete of an identity outside the prior census raises `ValidationError`, and a `"class"` suite earns no credit.
+
+Operator note for the relaunch (item 1): "Step 13's tree (fingerprint 969e23357ffd) is complete and was judged review-green. ASG now credits the slice's authorized delete of `every built-in carries Some complexity after the step-004 re-seed` against the constructor-unit-tests floor, so 736 passes against 737 − 1. Make no product or test edit. Confirm the tree against the slice, refresh the state-of-the-world and the impl-log, and hand the tree to the gates."

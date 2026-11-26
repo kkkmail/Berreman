@@ -161,8 +161,9 @@ the commit tool.
 - **`C:/Temp`** is writable and has no git. Fine for throwaway work.
 - **The repository's `Temp/`, `!Temp/`, `specs_copy/` and `legacy/` are TRACKED.**
   Anything written there is dirt and rides along in the next commit. Do not put
-  scratch there, and do not put product code there. `data/` is gitignored and is
-  not the product either.
+  scratch there, and do not put product code there.
+- **`data/` holds the committed reference experiment kits** (spec 0050 `.manual/001` §1).
+  It is tracked, apart from `data/chroma/` and each kit's `.oc/`. No scratch there.
 
 ---
 

@@ -4,84 +4,65 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 
-/// Spec 0038 Part H (step 021, AC-H2) — the real, stateful in-memory MATERIAL store behind the
-/// registered `MaterialProxy` write-seam (STORE_XDUO_0001), now VERSIONED. This is the type
-/// augmentation `MaterialProxy.createInMemory`, moved here from `ElementId.fs` because the store
-/// applies the step-20 shared `decideVersioning` rule (in `Lifecycle.fs`, which compiles AFTER
-/// `ElementId.fs`); the `MaterialProxy` record itself stays re-typed IN PLACE in `MaterialLibrary.fs`.
-/// Mutation stays INSIDE the closure (the IO boundary), so logic holding the proxy stays pure. A
-/// test substitutes a stub of the SAME `MaterialProxy` shape or a fresh `createInMemory` over a
-/// stubbed `VersionsInUse`.
+/// Versioned in-memory material storage with one-way per-version pins
+/// (spec 0038 step 021; spec 0050 §3.4, S2.2). Stores start empty and catalogue import supplies built-ins.
 module MaterialStore =
 
-    /// One stored version of a material: its version number, its live/retired lifecycle, and the
-    /// entry payload frozen at that version. The store keeps a per-`MaterialId` history of these,
-    /// ascending by version number and non-empty; the LATEST (highest-numbered) version is the one
-    /// the library edits and the offers surface, older versions are view-only resolution targets.
+    /// A stored material version; only the latest is editable, while older versions remain resolvable.
     type private VersionRecord =
         {
             versionNo : VersionNumber
             lifecycle : EntryLifecycle
+            pin : PinState
             entry : MaterialEntry
         }
 
-    /// The metadata half of a material payload (spec 0038 Part H): the display fields the rule
-    /// treats as never-versioning (a name / category / description edit mutates in place, never
-    /// mints). The physics half is `MaterialComplexity option` — the ONLY `(=)`-comparable view of
-    /// a material's optics (the engine `properties` carries function cases and cannot be compared),
-    /// and for an editable entry `properties` is `complexity.toProperties`, so equal complexity ⇒
-    /// equal physics. A coded preset (`complexity = None`) has physics that editing cannot change,
-    /// so its `None = None` never mints.
-    type private MaterialMetadata =
+    /// Material display fields whose edits never mint a version (spec 0038 Part H; spec 0050 S2.2).
+    type MaterialMetadata =
         {
             name : EntryName
             category : CategoryId
             description : EntryDescription option
         }
 
+    type MaterialEntry with
+
+        /// Comparable physics and display metadata for the shared versioning rule (spec 0050 S2.2).
+        member this.versionPayload : VersionPayload<MaterialPhysics, MaterialMetadata> =
+            {
+                physics = this.physics
+                metadata =
+                    {
+                        name = this.name
+                        category = this.category
+                        description = this.description
+                    }
+            }
+
     type MaterialProxy with
 
-        /// Build the versioned in-memory materials store. `samplesReferencing` is the
-        /// composition-root lookup naming the samples that bind a material (the existing
-        /// `MaterialStillReferenced` hard-block); `versionsInUse` is the step-20 seam answering
-        /// whether a specific version is currently bound by a live experiment — injected empty
-        /// until step 25 wires the real one. The store seeds `builtInEntries` as version 1 active.
-        /// The shared versioned in-memory material-store body (spec 0038 step 042 —
-        /// IMPLEMENT_CONTRACT STORE_XDUO_0008), parameterised by the INITIAL entries so the
-        /// SELF-SEEDING `createInMemory` and the EMPTY-store `createInMemoryEmpty` (which the
-        /// seeding pipeline fills) never drift — everything below the seed line is identical. Each
-        /// initial entry seeds as version 1 active.
         static member private createInMemoryStore
             (initialEntries : MaterialEntry list)
             (samplesReferencing : MaterialId -> Sample list)
-            (versionsInUse : VersionsInUse)
             : MaterialProxy =
 
-            let seeded =
+            let initialVersions =
                 initialEntries
                 |> List.map (fun e ->
-                    e.id, [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; entry = e } ])
+                    let version =
+                        {
+                            versionNo = VersionNumber.first
+                            lifecycle = ActiveEntry
+                            pin = VersionUnpinned
+                            entry = e
+                        }
+                    e.id, [ version ])
                 |> Map.ofList
-            let store = ref seeded
-
-            let unknown (id : MaterialId) : MaterialError =
-                UnknownMaterialIdErr $"unknown material id '%s{string id.value}'"
+            let store = ref initialVersions
 
             /// The latest (highest-numbered) version of a non-empty history.
             let latestOf (versions : VersionRecord list) : VersionRecord =
                 versions |> List.maxBy (fun v -> v.versionNo.value)
-
-            /// The payload the shared rule sees: physics = the complexity tree, metadata = the
-            /// display fields.
-            let payloadOf (e : MaterialEntry) : VersionPayload<MaterialComplexity option, MaterialMetadata> =
-                {
-                    physics = e.complexity
-                    metadata = { name = e.name; category = e.category; description = e.description }
-                }
-
-            /// Whether the versioned reference is bound by a live experiment, through the seam.
-            let usageAt (id : MaterialId) (versionNo : VersionNumber) : VersionUsage =
-                usageOf versionsInUse (MaterialVersionRef { materialId = id; version = versionNo })
 
             /// The LATEST version of each material, filtered by the show-inactive scope.
             let currentEntries (scope : InactiveVisibility) : MaterialEntry list =
@@ -105,7 +86,7 @@ module MaterialStore =
                         |> List.map (fun v -> if v.versionNo = latest.versionNo then { v with lifecycle = lifecycle } else v)
                     store.Value <- store.Value |> Map.add id updated
                     Ok ()
-                | None -> Error (unknown id)
+                | None -> Error (MaterialError.unknownMaterial id)
 
             {
                 listMaterials = fun scope -> Ok (currentEntries scope)
@@ -129,15 +110,18 @@ module MaterialStore =
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind entry.id with
                             | None ->
-                                // A brand-new material starts at version 1, active.
-                                store.Value <-
-                                    store.Value
-                                    |> Map.add entry.id [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; entry = entry } ]
+                                let first =
+                                    {
+                                        versionNo = VersionNumber.first
+                                        lifecycle = ActiveEntry
+                                        pin = VersionUnpinned
+                                        entry = entry
+                                    }
+                                store.Value <- store.Value |> Map.add entry.id [ first ]
                                 Ok ()
                             | Some versions ->
                                 let latest = latestOf versions
-                                let usage = usageAt entry.id latest.versionNo
-                                match decideVersioning (payloadOf latest.entry) (payloadOf entry) usage with
+                                match decideVersioning latest.entry.versionPayload entry.versionPayload latest.pin with
                                 | KeepCurrent -> Ok ()
                                 | MutateInPlace ->
                                     let updated =
@@ -146,7 +130,13 @@ module MaterialStore =
                                     store.Value <- store.Value |> Map.add entry.id updated
                                     Ok ()
                                 | MintNextVersion ->
-                                    let minted = { versionNo = latest.versionNo.next; lifecycle = ActiveEntry; entry = entry }
+                                    let minted =
+                                        {
+                                            versionNo = latest.versionNo.next
+                                            lifecycle = ActiveEntry
+                                            pin = VersionUnpinned
+                                            entry = entry
+                                        }
                                     store.Value <- store.Value |> Map.add entry.id (versions @ [ minted ])
                                     Ok ())
 
@@ -158,47 +148,47 @@ module MaterialStore =
                 // the UI's "Supersede" intent binds separately from the reversible "Mark inactive".
                 supersedeMaterial = fun id -> setLatestLifecycle id InactiveEntry
 
+                pinMaterialVersion =
+                    fun version ->
+                        match store.Value |> Map.tryFind version.materialId with
+                        | Some versions when versions |> List.exists (fun v -> v.versionNo = version.version) ->
+                            let updated =
+                                versions
+                                |> List.map (fun v ->
+                                    if v.versionNo = version.version then
+                                        {
+                                            v with pin = VersionPinned
+                                        }
+                                    else v)
+                            store.Value <- store.Value |> Map.add version.materialId updated
+                            Ok ()
+                        | _ -> Error (MaterialError.unknownMaterialVersion version)
+
                 removeMaterial =
                     fun id ->
                         match store.Value |> Map.tryFind id with
                         | Some versions ->
                             match samplesReferencing id with
                             | referencing when not (List.isEmpty referencing) ->
-                                let names =
-                                    referencing
-                                    |> List.map (fun s -> $"'%s{s.name.value}'")
-                                    |> List.sort
-                                    |> String.concat ", "
-                                Error (MaterialStillReferencedErr $"material '%s{(latestOf versions).entry.name.value}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
+                                let names = referencing |> List.map (fun s -> s.name)
+                                Error (MaterialError.stillReferenced (latestOf versions).entry names)
                             | _ ->
-                                let usedVersions =
+                                let pinnedVersions =
                                     versions
-                                    |> List.filter (fun v -> usageAt id v.versionNo = VersionUsed)
-                                    |> List.map (fun v -> v.versionNo.value)
-                                    |> List.sort
-                                match usedVersions with
+                                    |> List.filter (fun v -> v.pin = VersionPinned)
+                                    |> List.map (fun v -> v.versionNo)
+                                match pinnedVersions with
                                 | [] ->
                                     store.Value <- store.Value |> Map.remove id
                                     Ok ()
                                 | _ ->
-                                    let versionList = usedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
-                                    Error (MaterialVersionInUseErr $"material '%s{(latestOf versions).entry.name.value}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
-                        | None -> Error (unknown id)
+                                    Error (MaterialError.versionsPinned (latestOf versions).entry pinnedVersions)
+                        | None -> Error (MaterialError.unknownMaterial id)
             }
 
-        /// The SELF-SEEDING versioned in-memory material store (spec 0038 step 021; the app
-        /// composition root keeps calling this unchanged): seeds `builtInEntries` as version 1 active.
+        /// Empty material store using the shared versioning rule (spec 0038 step 042; spec 0050 §3.4).
+        /// Sample references and pinned versions block removal (spec 0050 S2.2).
         static member createInMemory
             (samplesReferencing : MaterialId -> Sample list)
-            (versionsInUse : VersionsInUse)
             : MaterialProxy =
-            MaterialProxy.createInMemoryStore builtInEntries samplesReferencing versionsInUse
-
-        /// The EMPTY versioned in-memory material store (spec 0038 step 042): a BLANK store the
-        /// seeding pipeline (`SeedingProxy`) fills through `saveMaterial`. Same versioning/remove
-        /// behaviour as the seeded store — only the initial entries differ.
-        static member createInMemoryEmpty
-            (samplesReferencing : MaterialId -> Sample list)
-            (versionsInUse : VersionsInUse)
-            : MaterialProxy =
-            MaterialProxy.createInMemoryStore [] samplesReferencing versionsInUse
+            MaterialProxy.createInMemoryStore [] samplesReferencing

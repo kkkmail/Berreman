@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "study": {
+    "experiments": [
+      "LP-(AIR#0)-LP-2",
+      "LP-(AIR#0)-LP-2R",
+      "LP-(LR#0)-LP-2",
+      "LP-(LR#45)-LP-2",
+      "LP-(LR#90)-LP-2",
+      "LP-(QZ#0)-LP-2",
+      "LP-(QZ#0-LR#0)-LP-2",
+      "LP-(QZ#45)-LP-2",
+      "LP-(QZ#45-LR#45)-LP-2",
+      "LP-(QZ#90)-LP-2",
+      "LP-(QZ#90-LR#90)-LP-2",
+      "LP-(AIR#0)-CPL-2",
+      "LP-(AIR#0)-CPL-2R",
+      "LP-(LR#0)-CPL-2",
+      "LP-(LR#45)-CPL-2",
+      "LP-(LR#90)-CPL-2",
+      "LP-(QZ#0)-CPL-2",
+      "LP-(QZ#0-LR#0)-CPL-2",
+      "LP-(QZ#45)-CPL-2",
+      "LP-(QZ#45-LR#45)-CPL-2",
+      "LP-(QZ#90)-CPL-2",
+      "LP-(QZ#90-LR#90)-CPL-2",
+      "CPL-(AIR#0)-LP-2",
+      "CPL-(AIR#0)-LP-2R",
+      "CPL-(LR#0)-LP-2",
+      "CPL-(LR#45)-LP-2",
+      "CPL-(LR#90)-LP-2",
+      "CPL-(QZ#0)-LP-2",
+      "CPL-(QZ#0-LR#0)-LP-2",
+      "CPL-(QZ#45)-LP-2",
+      "CPL-(QZ#45-LR#45)-LP-2",
+      "CPL-(QZ#90)-LP-2",
+      "CPL-(QZ#90-LR#90)-LP-2",
+      "CPL-(AIR#0)-CPL",
+      "CPL-(AIR#0)-CPL-BR",
+      "CPL-(LR#0)-CPL",
+      "CPL-(LR#90)-CPL",
+      "CPL-(QZ#0)-CPL",
+      "CPL-(QZ#0-LR#0)-CPL",
+      "CPL-(QZ#45)-CPL",
+      "CPL-(QZ#90)-CPL",
+      "CPL-(QZ#90-LR#90)-CPL",
+      "CPL-(AIR#0)-CPL-2",
+      "CPL-(LR#45)-CPL-2",
+      "CPL-(QZ#45-LR#45)-CPL-2",
+      "CPL-(Darkness)-LP-2",
+      "CPL-(Darkness)-LP-2R",
+      "Darkness",
+      "LP-(Darkness)-CPL2",
+      "LP-(Darkness)-LP-2",
+      "LP-(Darkness)-LP-2R",
+      "BullshitCheck",
+      "BullshitCheck-2"
+    ],
+    "links": [],
+    "materials": [],
+    "name": "QZ-LR",
+    "notes": "",
+    "scopes": [],
+    "sessionGains": [
+      {
+        "model": {
+          "Case": "AnchoredSessionGain",
+          "Fields": [
+            [
+              "LP-(AIR#0)-LP-2",
+              "LP-(AIR#0)-LP-2R"
+            ]
+          ]
+        },
+        "session": "LP-LP"
+      },
+      {
+        "model": {
+          "Case": "AnchoredSessionGain",
+          "Fields": [
+            [
+              "LP-(AIR#0)-CPL-2",
+              "LP-(AIR#0)-CPL-2R"
+            ]
+          ]
+        },
+        "session": "LP-CPL"
+      },
+      {
+        "model": {
+          "Case": "AnchoredSessionGain",
+          "Fields": [
+            [
+              "CPL-(AIR#0)-LP-2"
+            ]
+          ]
+        },
+        "session": "CPL-LP before the restart"
+      },
+      {
+        "model": {
+          "Case": "AnchoredSessionGain",
+          "Fields": [
+            [
+              "CPL-(AIR#0)-LP-2R"
+            ]
+          ]
+        },
+        "session": "CPL-LP after the restart"
+      },
+      {
+        "model": {
+          "Case": "InterpolatedSessionGain",
+          "Fields": [
+            {
+              "closing": "CPL-(AIR#0)-CPL-BR",
+              "opening": "CPL-(AIR#0)-CPL"
+            }
+          ]
+        },
+        "session": "CPL-CPL day 1"
+      },
+      {
+        "model": {
+          "Case": "AnchoredSessionGain",
+          "Fields": [
+            [
+              "CPL-(AIR#0)-CPL-2"
+            ]
+          ]
+        },
+        "session": "CPL-CPL day 2"
+      }
+    ],
+    "settings": {
+      "detectorWeights": [],
+      "disabled": [],
+      "experimentWeights": [],
+      "mode": 2,
+      "starts": 1,
+      "suspect": {
+        "correlation": 0.95,
+        "sigmaFraction": 0.1
+      }
+    }
+  }
+}

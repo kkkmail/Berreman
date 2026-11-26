@@ -1,20 +1,6 @@
-/// Spec 0038 Part C (steps 007/008, SVC_XDUO_0001 — IMPLEMENTED): the
-/// window-opening seam. Window policy lives behind ONE function record (the
-/// `*Proxy` convention), generalizing the `EditorLaunchers` precedent
-/// (`TableAndElementRotationView.fs`): Materials / Library / Solver-handoff /
-/// Category-editor windows are single-instance (a second open ACTIVATES the live
-/// window), editor windows are multi-instance keyed by the edited entity's id,
-/// and NEW entities mint their Guid at Add-window open (carrying
-/// `EntryFreshness = NewUnsaved`) so the registry keys uniformly by id from the
-/// first moment — the id-mint moved OFF the save path (step 008). `create` is
-/// the real launcher over the host-layer `WindowRegistry` (ONE module-level
-/// mutable `Map<WindowKey, Window>` OUTSIDE any Elmish model): activate =
-/// `Window.Activate` on the registered live window; create = the injected
-/// per-key factory → register → unregister on `Closed` → show (Browse always
-/// `Show`; a Select-state open follows the step-005 modality switch —
-/// `ShowDialog` owned by the requesting window / `Show`). Step 016: a
-/// Select-state open of a LIVE key RE-TARGETS the single instance through the
-/// baked `retargetWindow` closure and returns `RetargetedWindow`.
+/// Opens or activates registered windows, retargeting live selection sessions (spec 0038 Part C; spec 0050 S11.5).
+/// Materials, Library, Category, Data locations and Online sources are single-instance; editors key by entity and
+/// constructors by kit (spec 0050 S13.1).
 namespace OpticalConstructor.Ui
 
 open Avalonia.Controls
@@ -23,24 +9,23 @@ open OpticalConstructor.Domain.WorkbenchSettings
 
 module WindowLauncher =
 
-    /// The identity of every window the launcher manages (§5). The four
-    /// parameterless cases are the single-instance windows; the editor cases key
-    /// by the edited entity's elevated id, so two edits of the SAME entity meet
-    /// in one window while different entities each get their own. An Add-opened
-    /// editor mints its `MaterialId.create ()` / `SampleId.create ()` AT WINDOW
-    /// OPEN, so a brand-new entity is registry-addressable exactly like a
-    /// persisted one. Structural equality/comparison (Guid-backed ids) is what
-    /// lets the registry `Map` key on this DU.
+    /// Registry identity: singleton windows, editors by entity, constructors by kit (spec 0038 §5; spec 0050 S11.5).
+    /// New editors mint their entity's id when opened, so subsequent opens activate the same window.
     type WindowKey =
         | MaterialsWindowKey
         | LibraryWindowKey
-        | SolverHandoffWindowKey
         | CategoryEditorKey
+        /// The single-instance Data locations window (001 §G, spec 0050 S5.3).
+        | DataLocationsWindowKey
+        /// The single-instance Online sources window (spec 0050 S13.1).
+        | MaterialSourcesWindowKey
         | MaterialEditorKey of MaterialLibrary.MaterialId
         | SampleEditorKey of Library.SampleId
         /// Spec 0046: the Library's light-source editor, keyed by the source's entry id (a new
         /// source's id is minted at window open, like a sample's).
         | SourceEditorKey of sourceEntryId : Placement.ElementValueId
+        /// A constructor window, keyed by its kit's canonical folder (spec 0050 S5.3).
+        | KitWindowKey of Kit.KitFolder
 
     /// Whether an editor's entity already lives in its store (spec §0.1: the
     /// operator's "is-new flag" is a two-case DU, never a bool). `NewUnsaved` =

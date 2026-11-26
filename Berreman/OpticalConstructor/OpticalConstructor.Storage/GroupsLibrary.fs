@@ -10,19 +10,9 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.SchemaValidation
 
-/// The separate per-user groups + experiment-collections store (Spec 0026 Part G/H, slice
-/// 007 / R-3, R-4). Element groups (G.1) and experiment collections (H.1) are persisted in
-/// their OWN JSON file, kept apart from the per-project `.ocproj`, so reusable groups and
-/// sample-centred collections are available across projects (G.3.1). This module owns that
-/// file's load/save and validate-on-load. It REUSES the slice-003 shared `ProjectJson.options`
-/// `JsonSerializerOptions` (§I.1 — never a second JSON stack) and the schema-validate-on-load
-/// SEAM the spec names by line (R-4 / G.3.1, `SchemaValidation.fs:61`): `validate` shares
-/// `SchemaValidation.collectMessages` (exposed for this) for the `results.Details`-recursive
-/// message flattening, so nested groups-file errors keep their detail. Only the lazy `JsonSchema`
-/// itself is local — keyed by a distinct `$id`, because the project loader is hardwired to the
-/// `.ocproj` schema. No new serializer (G.4); no schema migration (a `schemaVersion` mismatch is a
-/// `SchemaValidationErr`, never a migration). The file lives at a fixed per-user app-data path
-/// outside the repository working tree (G.3.2), so it raises no `.gitignore` collision.
+/// The per-user groups + experiment-collections file (Spec 0026 Part G/H), read and written through
+/// the shared `CanonicalJson.options` and validated on load through `validateWith` (spec 0050 step 29);
+/// a `schemaVersion` mismatch is a `SchemaValidationErr`, never a migration.
 module GroupsLibrary =
 
     /// The single shipped groups-schema version, pinned with `const` in the schema. A differing
@@ -40,23 +30,10 @@ module GroupsLibrary =
     /// idempotent across calls.
     let private schema : Result<JsonSchema, StorageError> Lazy = lazy (groupsSchemaFile.tryLoadSchema ())
 
-    /// Validate a parsed document against the groups schema (G.3.1) via `JsonSchema.Net`. On any
-    /// evaluation failure returns `SchemaValidationErr` with the library's messages; the caller
-    /// MUST NOT bind on `Error`. The message flattening REUSES `SchemaValidation.collectMessages`
-    /// (R-4 / the validate-on-load seam the spec names by line) so a NESTED groups-file violation —
-    /// e.g. a malformed member placement deep in the document — keeps its `results.Details` instance
-    /// location instead of collapsing to a generic top-level message.
-    let validateGroupsLibrary (element : JsonElement) : Result<unit, StorageError> =
-        match schema.Value with
-        | Error e -> Error e
-        | Ok schema ->
-            let options = EvaluationOptions(OutputFormat = OutputFormat.List)
-            let results = schema.Evaluate(element, options)
-            if results.IsValid then Ok ()
-            else
-                let messages = SchemaValidation.collectMessages results
-                let messages = if List.isEmpty messages then [ "groups schema validation failed" ] else messages
-                Error (SchemaValidationErr messages)
+    /// Validate a parsed document against the groups schema (G.3.1), REUSING
+    /// `SchemaValidation.validateWith`, so a NESTED groups-file violation keeps its instance location.
+    /// The caller MUST NOT bind on `Error`.
+    let validateGroupsLibrary (element : JsonElement) : Result<unit, StorageError> = validateWith schema element
 
     /// The groups/collections library's canonical JSON text (G.4), as its file holds it.
     type GroupsLibraryJsonText =
@@ -79,18 +56,18 @@ module GroupsLibrary =
                 match validateGroupsLibrary doc.RootElement with
                 | Error e -> Error e
                 | Ok () ->
-                    try Ok(doc.RootElement.Deserialize<Groups.GroupsLibrary>(ProjectJson.options))
+                    try Ok(doc.RootElement.Deserialize<Groups.GroupsLibrary>(CanonicalJson.options))
                     with e -> Error(MalformedJsonErr e.Message)
 
     /// Serialize the groups/collections library to canonical JSON (G.4), injecting the envelope
-    /// `schemaVersion`, REUSING the slice-003 shared `ProjectJson.options` (§I.1) — never a second
+    /// `schemaVersion`, REUSING the slice-003 shared `CanonicalJson.options` (§I.1) — never a second
     /// JSON stack.
     let serialize (library : Groups.GroupsLibrary) : Result<GroupsLibraryJsonText, StorageError> =
         try
-            let node = JsonSerializer.SerializeToNode(library, ProjectJson.options)
+            let node = JsonSerializer.SerializeToNode(library, CanonicalJson.options)
             let envelope = node.AsObject()
             envelope.["schemaVersion"] <- JsonValue.Create(groupsLibrarySchemaVersion)
-            Ok(GroupsLibraryJsonText (envelope.ToJsonString(ProjectJson.options)))
+            Ok(GroupsLibraryJsonText (envelope.ToJsonString(CanonicalJson.options)))
         with e -> Error(MalformedJsonErr e.Message)
 
     /// The single fixed per-user groups path under the OS application-data folder (G.3.2 — outside

@@ -1,0 +1,54 @@
+{
+  "categoryOpt": null,
+  "contentHash": "99cc52c5a38311bfb280fcfb7a5ee72551f947f5648a9102835de176ffdf9091",
+  "descriptionOpt": "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k.",
+  "id": "8fa9867a-b1dd-4571-a83c-46a0acf16b4f",
+  "name": "Langasite film on silicon (10 µm, dispersive)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [
+            {
+              "Case": "SingleLayer",
+              "Fields": [
+                {
+                  "materialId": {
+                    "materialId": "e95f01fb-0442-42c4-ba69-74d82f52e544",
+                    "version": 1
+                  },
+                  "orientation": "PrimaryAxes",
+                  "thickness": {
+                    "Case": "Thickness",
+                    "Fields": [
+                      1E-05
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "lower": {
+            "materialId": "0f698851-dca1-412a-ad46-fac413496667",
+            "version": 1
+          },
+          "substrate": null
+        },
+        "substrate": "ThinFilm",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

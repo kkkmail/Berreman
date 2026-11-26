@@ -1,0 +1,21 @@
+# Step 0036 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: []
+depends_on: [35]
+required_gates: [build, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/Catalogue/export-builtin.fsx"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "selected", "suite": "constructor-unit-tests", "values": ["OpticalConstructor.Tests.BuiltInCatalogueParityTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/Catalogue/export-builtin.fsx"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: `OpticalConstructor.Tests.BuiltInCatalogueParityTests`
+
+**How to implement.** The export tool is thrown away now that the parity facts are green (001 §B: the code seeds are exported ONCE by a throw-away tool; .spec-md §3.6). Delete `Berreman/OpticalConstructor/Catalogue/export-builtin.fsx`, so `Berreman/OpticalConstructor/Catalogue/` holds only `Builtin/`. No project compiles or links the script and no gate runs it, so nothing else changes. The committed catalogue is what the migration produced (.spec-md §7 'Code seeds → catalogue files'): no second export path, script or seed-to-file code remains or is added. The parity facts (step 34) keep proving that the committed files equal the seeds until S1.7 deletes both.
+
+**Acceptance.** After the deletion, `git ls-files -- Berreman/OpticalConstructor/Catalogue` MUST list only files under `Berreman/OpticalConstructor/Catalogue/Builtin/`, and constructor-unit-tests (BuiltInCatalogueParityTests) MUST still pass; and build and the six s05 invariants MUST pass.

@@ -1,0 +1,146 @@
+{
+  "item": {
+    "dial": {
+      "Case": "DialMounted",
+      "Fields": [
+        "DialPositive"
+      ]
+    },
+    "history": [
+      {
+        "parameters": [
+          {
+            "name": "c1.extinctionRatio",
+            "state": {
+              "Case": "KnownParameter",
+              "Fields": [
+                0
+              ]
+            }
+          },
+          {
+            "name": "c1.axisOffset",
+            "state": {
+              "Case": "KnownParameter",
+              "Fields": [
+                0
+              ]
+            }
+          },
+          {
+            "name": "c2.retardance",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": 0,
+                    "upper": 3.141592653589793
+                  },
+                  "priorOpt": null,
+                  "start": 1.5707963267948966
+                }
+              ]
+            }
+          },
+          {
+            "name": "c2.fastAxisOffset",
+            "state": {
+              "Case": "KnownParameter",
+              "Fields": [
+                0
+              ]
+            }
+          },
+          {
+            "name": "dialZero",
+            "state": {
+              "Case": "UnknownParameter",
+              "Fields": [
+                {
+                  "bounds": {
+                    "lower": 0,
+                    "upper": 6.283185307179586
+                  },
+                  "priorOpt": null,
+                  "start": 1.3962634015954636
+                }
+              ]
+            }
+          }
+        ],
+        "revision": 1
+      }
+    ],
+    "id": "b9f73589-6cfe-46d2-a5eb-2b11d6d6cd5f",
+    "label": "CPL2",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "33486eec-836a-4cbf-ac79-e3f14439ad4b",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "c1.extinctionRatio",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "c1.axisOffset",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "c2.retardance",
+        "state": {
+          "Case": "CalibratedParameter",
+          "Fields": [
+            {
+              "fitRun": "QZ-LR@20260531T120100Z",
+              "sigma": 0.007521262507466436,
+              "value": 1.4602828621140413
+            }
+          ]
+        }
+      },
+      {
+        "name": "c2.fastAxisOffset",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "dialZero",
+        "state": {
+          "Case": "CalibratedParameter",
+          "Fields": [
+            {
+              "fitRun": "QZ-LR@20260531T120100Z",
+              "sigma": 0.033890071954830105,
+              "value": 1.6929018888915375
+            }
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 2
+  },
+  "schemaVersion": 1
+}

@@ -1,11 +1,14 @@
 namespace OpticalConstructor.Domain
 
-open System.Text.RegularExpressions
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.Library                // PolarizerKind / IdealLinear (step 007 source & analyzer models)
 open OpticalConstructor.Domain.MeasuredData           // MeasuredIntensity: a capture's averaged intensity (spec 0048 E020)
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.Setups
+open OpticalConstructor.Domain.NamingTemplates
 
 /// Spec 0042 (001) — the pure Mueller-reconstruction primitives. A *retarder* (wave plate) delays one
 /// linear eigen-polarization relative to the other by a phase `Retardance`; its Mueller matrix is the
@@ -181,6 +184,12 @@ module MuellerReconstruction =
         | SingularDesignErr of reason : string
         | RankDeficientErr of rank : MatrixRank
 
+        /// The failed condition and its payload (spec 0050 S11.3).
+        member this.describe : string =
+            match this with
+            | SingularDesignErr reason -> $"the design is singular: {reason}"
+            | RankDeficientErr rank -> $"the design is rank-deficient: rank {rank.value}"
+
     /// The over-determined system `A·x ≈ b` one least-squares solve resolves: the stacked design rows `A` and
     /// the measured right-hand side `b`, one entry per row.
     [<Softellect.Sys.NumericCarrier("the right-hand side of a least-squares solve (R3): the measured intensities the MathNet SVD consumes whole, beside the design rows")>]
@@ -189,6 +198,22 @@ module MuellerReconstruction =
             design : DesignRow[]
             rhs : float[]
         }
+
+        /// The residuals `A·x − b` of a solution over this system's rows, one per row (spec 0050 S11.4).
+        member this.residualsAt (solution : RealVector) : RealVector =
+            (RealMatrix.create (this.design |> Array.map (fun row -> row.value)) * solution) - RealVector.create this.rhs
+
+        /// The residual RMSE `‖A·x − b‖ / √m` of a solution over this system's rows, the one the solver reports and the
+        /// product check reuses (spec 0050 S10.3).
+        member this.residualRmseAt (solution : RealVector) : ResidualRmse =
+            (this.residualsAt solution).norm / sqrt (float this.design.Length) |> ResidualRmse
+
+        /// The systems' design rows and right-hand sides, stacked in list order (spec 0050 S11.3).
+        static member concat (systems : LeastSquaresSystem list) : LeastSquaresSystem =
+            {
+                design = systems |> List.map (fun system -> system.design) |> Array.concat
+                rhs = systems |> List.map (fun system -> system.rhs) |> Array.concat
+            }
 
     /// The elevated result of a linear least-squares solve. `solution` is the minimizing `x` (for a
     /// reconstruction, the Mueller vec its `columnMajorMueller` un-vecs); `rank` is the numerical rank the
@@ -282,49 +307,23 @@ module MuellerReconstruction =
                                 Error (RankDeficientErr (MatrixRank rank))
                             else
                                 let x = svd.Solve(b)
-                                let residual = (am * RealVector x) - bv
-                                let rows = a.RowCount
-                                let rmse = residual.norm / sqrt (float rows)
-                                Ok { solution = RealVector x; rank = MatrixRank rank; rmse = ResidualRmse rmse }
+                                Ok { solution = RealVector x; rank = MatrixRank rank; rmse = system.residualRmseAt (RealVector x) }
                         with
                         | e -> Error (SingularDesignErr $"the SVD least-squares solve failed: {e.Message}")
         }
 
-    // -----------------------------------------------------------------------------------------------------
-    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data LOAD seam. Declares, in the
-    // Domain, the `MuellerDataProxy`: the IO boundary that turns a `MuellerDataSet` — the IDENTITY of one
-    // measurement data set — into its parsed raw capture rows, or a typed `MuellerDataError`. It is the EDGE
-    // the least-squares reconstruction sits behind: each loaded `MuellerRawRow` carries one capture's analyzer
-    // azimuth (`description`, the engine `Angle`) and averaged intensity (`avgTotal`), the very
-    // (azimuth, intensity) pairs `kron4` / the `MuellerSolverProxy` consume. A real proxy's native/parse
-    // exceptions are caught AT this boundary and mapped to the typed `MuellerDataError` channel (never thrown
-    // across it).
-    //
-    // Spec 0044 (§8.3) RE-KEYED this seam from a LOCATION to an IDENTITY. It previously took an
-    // `Experiments.DataFilePath`, which forced every caller to know where the data physically lived — a file
-    // path, and (once the data moved into a committed archive) an entry name inside that archive. The key is
-    // now the `MuellerDataSet` DU below: pure identity, carrying NO path, NO entry name and NO archive
-    // knowledge. Everything about storage — the archive, its location on disk, and the data-set → entry
-    // mapping — lives behind the Storage-side factory, so a consumer (notably the test suite) states WHICH
-    // data set it wants and nothing at all about WHERE it is.
-    //
-    // Kept as pure DATA (the `ExperimentDataProxy` convention, ExperimentDataProxy.fs:43): a record of one
-    // camelCase `Result`-returning function, so logic that holds the proxy stays referentially transparent and
-    // a test substitutes a canned in-memory stub of the SAME shape. Its one field is function-valued and so
-    // has no structural equality, so the record is `[<ReferenceEquality>]` — a host context (Optimization /
-    // Elmish) that holds one keeps its required equality, comparing the proxy by identity.
-    //
-    // The real archive-backed construction is `MuellerDataStore.createArchiveBacked` (Storage); the mock that
-    // satisfies this surface (canned rows keyed by `MuellerDataSet`) lives with its test in `BerremanTests`,
-    // mirroring the `MuellerSolverProxy` mock.
-    // -----------------------------------------------------------------------------------------------------
+    // The capture rows of a Phone ROI CSV file, read through the Phone ROI CSV import profile (spec 0042; spec
+    // 0050 S9.4 deleted the archive-keyed seam).
 
-    /// The label of the experiment a Mueller capture belongs to, e.g. `CPL-(QZ#90-LR#90)-CPL`: the source, the
-    /// objects with their azimuths, the analyzer and an optional note (read by its `parsed` member).
+    /// The label of the experiment a Mueller capture belongs to, e.g. `CPL-(QZ#90-LR#90)-CPL`; it reads through
+    /// `NamingTemplate.standard` (spec 0050 S8.3).
     type MuellerExperimentLabel =
         | MuellerExperimentLabel of string
 
         member this.value = let (MuellerExperimentLabel l) = this in l
+
+        /// The label's text as a name (spec 0050 S8.3).
+        member this.nameText : NameText = let (MuellerExperimentLabel l) = this in NameText l
 
     /// A capture's ordinal within its data set.
     type CaptureIndex =
@@ -346,67 +345,16 @@ module MuellerReconstruction =
             avgTotal : MeasuredIntensity
         }
 
-    /// WHICH measured Mueller data set a load is asking for — the seam's key (spec 0044 §8.3). This is pure
-    /// IDENTITY: it names a data set by what it CONTAINS, never by where it is stored. There is deliberately
-    /// no file path, no archive name and no entry name here or on any member — resolving a case to physical
-    /// storage is the Storage-side factory's job alone (`MuellerDataStore.createArchiveBacked`), which is what
-    /// lets a consumer ask for `LpLpFamily` without knowing that an archive exists at all.
-    ///
-    /// The five science sets are the experiment sweeps; `DarknessChecks` supplies the dark level subtracted
-    /// from every capture, and `BullshitChecks` the diagnostic captures whose earliest timestamp is the
-    /// CPL-LP gain split time. Note this is NOT the `Family` DU below: `Family` names a (source, analyzer)
-    /// polarizer PAIR, whereas a `MuellerDataSet` names one recorded body of captures — CPL-CPL was recorded
-    /// across two days and is therefore one `Family` but two data sets, each with its own gain rule.
-    type MuellerDataSet =
-        | LpLpFamily
-        | LpCplFamily
-        | CplLpFamily
-        | CplCplDay1
-        | CplCplDay2
-        | DarknessChecks
-        | BullshitChecks
-
-    /// Where the measured-data archive lives on disk. Only the Storage factory resolves one; above it, an
-    /// archive is met solely in a load error naming the archive the load could not use (spec 0048 E020).
-    type MuellerArchivePath =
-        | MuellerArchivePath of string
-
-        /// The raw path (the IO seam — read only where the filesystem is actually touched).
-        member this.value = let (MuellerArchivePath p) = this in p
-
-    /// A typed failure of a Mueller data-set load — never a throw across the proxy boundary. `MalformedRowErr`
-    /// carries a human-readable `reason` (a row that fails to parse, or a bad field); `EmptyFileErr` carries a
-    /// `reason` for a source that yielded no capture rows. The two archive cases (spec 0044 §8.3) name the
-    /// two distinct, separately actionable storage failures — a container that cannot be opened at all versus
-    /// a container that opens but does not hold the requested data set — each carrying enough payload to
-    /// diagnose it from a log line alone.
+    /// A typed failure of parsing a Phone ROI CSV text, never a throw (spec 0050 S9.4 removed the archive cases).
     type MuellerDataError =
         | MalformedRowErr of reason : string
         | EmptyFileErr of reason : string
-        | ArchiveUnreadableErr of archive : MuellerArchivePath * reason : string
-        | DataSetMissingErr of dataSet : MuellerDataSet * archive : MuellerArchivePath
-
-    /// The Mueller measured-data LOAD seam (the functional-proxy convention): a record of one camelCase
-    /// `Result`-returning function that resolves a `MuellerDataSet` to its parsed capture rows.
-    ///
-    /// - `tryLoadDataSet dataSet` — read + parse the named data set into its ordered `MuellerRawRow` list, or
-    ///   a typed `MuellerDataError` (a malformed row, an empty source, an unreadable archive, or a data set
-    ///   the archive does not carry); never a throw.
-    ///
-    /// The caller states only WHICH data set it wants. Where that data physically lives, and how it is
-    /// packaged, is entirely the factory's business (spec 0044 §8.3) — which is why this signature mentions
-    /// no path type at all.
-    [<ReferenceEquality>]
-    type MuellerDataProxy =
-        {
-            tryLoadDataSet : MuellerDataSet -> Result<MuellerRawRow list, MuellerDataError>
-        }
 
     // -----------------------------------------------------------------------------------------------------
-    // Spec 0042 (007, IMPLEMENT) — the per-row GLUE (§2.2 / Part D): the experiment-label parser, the family /
-    // matrix-kind classification, the per-family source & analyzer MODELS, and the base → effective state
-    // builders. Every function is a tiny pure function with a concrete elevated signature, mirroring the
-    // reference `matrix_glue.py` / `cpl_cpl_analyzer.py` grammar 1:1. The effective states are built ONLY from
+    // Spec 0042 (007, IMPLEMENT) — the per-row GLUE (§2.2 / Part D): the family / matrix-kind classification, the
+    // per-family source & analyzer MODELS, and the base → effective state builders. Every function is a tiny pure
+    // function with a concrete elevated signature, mirroring the reference `matrix_glue.py` /
+    // `cpl_cpl_analyzer.py` grammar 1:1. The effective states are built ONLY from
     // the EXISTING Propagation.fs seams (`Angle.rotationMueller`, `Propagation.analyzerMueller IdealLinear`,
     // `MuellerMatrix.element`) plus the step-001 `retarderMueller` and the
     // step-002 `kron4` — no new 4×4 algebra is introduced. The Stage-1 AIR calibration constants that POPULATE a
@@ -424,6 +372,14 @@ module MuellerReconstruction =
         | CplLp
         | CplCpl
 
+        /// The family's (source, analyzer) key as the reference writes it (spec 0050 S11.3).
+        member this.text : string =
+            match this with
+            | LpLp -> "LP-LP"
+            | LpCpl -> "LP-CPL"
+            | CplLp -> "CPL-LP"
+            | CplCpl -> "CPL-CPL"
+
     /// Which sample (or the empty AIR calibration) a measurement row constrains — the reference
     /// `object_rotation_from_parsed` matrix-kind (matrix_glue.py:101). `Air` is a bare AIR#0 calibration row (no
     /// sample); `Qz` / `Lr` a single object at its labelled azimuth; `QzLrProduct` the combined QZ·LR stack
@@ -434,120 +390,63 @@ module MuellerReconstruction =
         | Lr
         | QzLrProduct
 
-    /// One piece of a Mueller experiment label: the source or analyzer polarizer token (`LP`, `CPL`), an object
-    /// name (`QZ`, `LR`, `AIR`) or the note suffix.
-    type MuellerLabelToken =
-        | MuellerLabelToken of string
+        /// The kind's name as the reference writes it (spec 0050 S11.3).
+        member this.text : string =
+            match this with
+            | Air -> "AIR"
+            | Qz -> "QZ"
+            | Lr -> "LR"
+            | QzLrProduct -> "QZ+LR"
 
-        member this.value = let (MuellerLabelToken t) = this in t
+    type NameReading with
 
-    /// One parsed object token inside an experiment label's parenthesised list — a `NAME#angle` entry such as
-    /// `QZ#90`. Its labelled rotation is the engine `Angle`, since the label rotation IS used as the object
-    /// frame φ directly (spec §0).
-    type ParsedObject =
-        {
-            name : MuellerLabelToken
-            labelAngle : Angle
-        }
-
-    /// An experiment label parsed into its grammar pieces — the F# port of the reference `parse_experiment_name`
-    /// (cpl_cpl_analyzer.py:31): a source token, a parenthesised dash-joined object list, an analyzer token, and
-    /// an optional note suffix (e.g. `CPL-(QZ#90-LR#90)-CPL`). A label that does not match the grammar parses to
-    /// the empty shape (`sourceToken = None`, `analyzerToken = None`, no objects) — never a throw.
-    type ParsedExperiment =
-        {
-            sourceToken : MuellerLabelToken option
-            analyzerToken : MuellerLabelToken option
-            note : MuellerLabelToken
-            objects : ParsedObject list
-        }
-
-        /// The experiment family — the reference `family_from_experiment` (matrix_glue.py:92): a token is the
-        /// circular family iff it contains `CPL` (the reference `canonical_polarizer`), otherwise the linear
-        /// family. Total over the four families.
+        /// The reference `family_from_experiment` (matrix_glue.py:92): the source (Prep 1) and analyzer parts are each
+        /// circular when their text contains `CPL`, an absent part being linear (spec 0050 S8.3).
         member this.family : Family =
-            let isCpl (tokenOpt : MuellerLabelToken option) : bool =
-                match tokenOpt with
-                | Some token -> token.value.Contains("CPL")
+            let isCircular (role : SlotRole) : bool =
+                match this.tryFindPart role with
+                | Some part -> part.value.Contains "CPL"
                 | None -> false
-            match isCpl this.sourceToken, isCpl this.analyzerToken with
+
+            match isCircular (PrepSlotRole (SlotPosition 1)), isCircular (AnalyzerSlotRole (SlotPosition 1)) with
             | false, false -> LpLp
             | false, true -> LpCpl
             | true, false -> CplLp
             | true, true -> CplCpl
 
-        /// The object frame rotation φ and the effective matrix kind — the reference
-        /// `object_rotation_from_parsed` (matrix_glue.py:101). No objects → an AIR calibration at φ = 0; one
-        /// object → its labelled azimuth and the object's kind (QZ / LR, else AIR); two objects → the QZ·LR
-        /// product at the first object's azimuth. The label rotation is used as φ directly (spec §0).
+        /// The reference `object_rotation_from_parsed` (matrix_glue.py:101) over the Obj parts that have an angle, in
+        /// position order: none is AIR at φ = 0, one its angle and kind, two or more the QZ·LR product at the first's
+        /// angle (spec 0050 S8.3).
         member this.objectRotation : Angle * MatrixKind =
-            match this.objects with
+            let objects =
+                this.parts
+                |> List.choose (fun slotPart ->
+                    match slotPart.role with
+                    | ObjectSlotRole position ->
+                        this.tryFindAngle position |> Option.map (fun angle -> position, slotPart.part, angle)
+                    | SourceSlotRole
+                    | PrepSlotRole _
+                    | AnalyzerSlotRole _
+                    | DetectorSlotRole _ -> None)
+                |> List.sortBy (fun (position, _, _) -> position)
+
+            match objects with
             | [] -> Angle.zero, Air
-            | [ o ] ->
+            | [ (_, part, angle) ] ->
                 let kind =
-                    match o.name.value.ToUpperInvariant() with
+                    match part.value.ToUpperInvariant() with
                     | "QZ" -> Qz
                     | "LR" -> Lr
                     | _ -> Air
-                o.labelAngle, kind
-            | first :: _ -> first.labelAngle, QzLrProduct
 
-        /// The effective matrix kind the label constrains (the kind half of `objectRotation`).
+                angle, kind
+            | (_, _, angle) :: _ -> angle, QzLrProduct
+
+        /// The kind half of `objectRotation` (spec 0050 S8.3).
         member this.matrixKind : MatrixKind = snd this.objectRotation
 
-        /// The object frame rotation φ the label carries (the angle half of `objectRotation`): the label
-        /// rotation used directly as φ (spec §0), or 0 for an AIR calibration row.
+        /// The angle half of `objectRotation`, the label's rotation used directly as φ (spec 0050 S8.3).
         member this.objectPhi : Angle = fst this.objectRotation
-
-    /// The experiment-label grammar, ported verbatim from the reference `EXPERIMENT_RE` (cpl_cpl_analyzer.py:18):
-    /// `source-(inside)-analyzer` with an optional `-note` suffix.
-    let private experimentRegex : Regex =
-        Regex(@"^(?<src>[^-]+)-\((?<inside>[^)]*)\)-(?<an>[^-]+)(?:-(?<note>.*))?$")
-
-    /// One `NAME#angle` object token, ported verbatim from the reference `OBJECT_RE` (cpl_cpl_analyzer.py:19).
-    let private objectRegex : Regex =
-        Regex(@"(?<obj>[A-Z]+)#(?<angle>-?\d+)")
-
-    type MuellerExperimentLabel with
-
-        /// This label parsed into its `ParsedExperiment` grammar pieces (the reference `parse_experiment_name`,
-        /// cpl_cpl_analyzer.py:31). The parenthesised inner list is split on `-` and each part matched as a
-        /// `NAME#angle` object; a non-matching label yields the empty parse. Total — never throws.
-        member this.parsed : ParsedExperiment =
-            let m = experimentRegex.Match(this.value)
-            if not m.Success then
-                { sourceToken = None; analyzerToken = None; note = MuellerLabelToken ""; objects = [] }
-            else
-                let inside = m.Groups.["inside"].Value
-                let parts = if inside = "" then [] else inside.Split('-') |> Array.toList
-                let objects =
-                    parts
-                    |> List.choose (fun part ->
-                        let om = objectRegex.Match(part)
-                        if om.Success then
-                            match System.Int32.TryParse(om.Groups.["angle"].Value) with
-                            | true, deg -> Some { name = MuellerLabelToken om.Groups.["obj"].Value; labelAngle = Angle.degree (float deg * 1.0<Berreman.Constants.deg>) }
-                            | _ -> None
-                        else
-                            None)
-                {
-                    sourceToken = Some (MuellerLabelToken m.Groups.["src"].Value)
-                    analyzerToken = Some (MuellerLabelToken m.Groups.["an"].Value)
-                    note = MuellerLabelToken m.Groups.["note"].Value
-                    objects = objects
-                }
-
-    /// A named two-case sign for the analyzer dial → physical-angle map — never a naked `int`. `.value` is the
-    /// multiplicative sign (`+1` / `−1`) the reference `AnalyzerModel.dial_sign` carries (matrix_glue.py:152).
-    type DialSign =
-        | DialPositive
-        | DialNegative
-
-        /// The multiplicative sign (+1 / −1) — read at the arithmetic seam.
-        member this.value : float =
-            match this with
-            | DialPositive -> 1.0
-            | DialNegative -> -1.0
 
     /// The per-family SOURCE model — how the input Stokes state is synthesized (the reference `SourceModel`,
     /// matrix_glue.py:128). `LpSource` is the ideal linear source `[1;1;0;0]`; `CplSource` prepends a retarder
@@ -577,10 +476,31 @@ module MuellerReconstruction =
             retardanceOpt : Retardance option
         }
 
+        /// An ideal linear analyzer, no retarder, read on `sign` from `zero` (spec 0050 S11.3).
+        static member linearAt (zero : Angle) (sign : DialSign) : AnalyzerModel =
+            {
+                kind = IdealLinear
+                zeroDial = zero
+                dialSign = sign
+                thetaRelOpt = None
+                retardanceOpt = None
+            }
+
+        /// An LP behind a retarder at +45°, its phase the negative of `retardance`: only the relative sign to the source is
+        /// constrained (`matrix_glue.py:211`; spec 0050 S11.3).
+        static member circularAt (zero : Angle) (sign : DialSign) (retardance : Retardance) : AnalyzerModel =
+            {
+                kind = IdealCircularLeft
+                zeroDial = zero
+                dialSign = sign
+                thetaRelOpt = Some (Angle.degree 45.0<Berreman.Constants.deg>)
+                retardanceOpt = Some (Retardance.degree (- retardance.degrees * 1.0<Berreman.Constants.deg>))
+            }
+
     /// The analyzer's physical azimuth for a raw dial reading — the reference `AnalyzerModel.physical_angle_deg`
-    /// (matrix_glue.py:152): `dialSign · (dial − zeroDial)`.
+    /// (matrix_glue.py:152): `dialSign · (dial − zeroDial)`, the rule `DialSign.physicalAngleOf` holds (spec 0050 S8.2).
     let physicalAngle (analyzer : AnalyzerModel) (dial : Angle) : Angle =
-        Angle (analyzer.dialSign.value * (dial.value - analyzer.zeroDial.value))
+        analyzer.dialSign.physicalAngleOf analyzer.zeroDial dial
 
     /// Row 0 of the analyzer's Mueller matrix at a raw dial reading — the reference `AnalyzerModel.base_row`
     /// (matrix_glue.py:155). The physical azimuth β = `physicalAngle`; a linear analyzer is
@@ -621,6 +541,15 @@ module MuellerReconstruction =
     /// (matrix_glue.py:268): the 16-element Kronecker row `kron4 s a` (entry `4·i + j = s[i]·a[j]`), the same
     /// column-major row `MuellerMatrix.vecColumnMajor` and the `MuellerSolverProxy` consume.
     let designRow (s : StokesVector) (a : RealVector4) : DesignRow = kron4 s a
+
+    type LeastSquaresSystem with
+
+        /// One `designRow s a` and its signal per projection, in order (spec 0050 S11.3).
+        static member ofProjections (projections : (StokesVector * RealVector4 * DetectorIntensity) list) : LeastSquaresSystem =
+            {
+                design = projections |> List.map (fun (s, a, _) -> designRow s a) |> List.toArray
+                rhs = projections |> List.map (fun (_, _, signal) -> signal.value) |> List.toArray
+            }
 
     // -----------------------------------------------------------------------------------------------------
     // Spec 0042 (008, IMPLEMENT) — Stage-1 AIR calibration (the reference `matrix_step1_air_fit.py`) as three
@@ -742,8 +671,8 @@ module MuellerReconstruction =
     // Spec 0042 (009, IMPLEMENT) — Stage-3 signal reduction (the reference `matrix_fit_linear.py`
     // `assign_gain_model`). Turns each science row's raw averaged intensity into the `signal_corrected`
     // target the least-squares reconstruction fits, in three composable steps: dark-subtract the CCD floor,
-    // fit the per-family AIR SCALAR gain, and divide it out. Only dot products, a mean, and a linear time
-    // interpolation — no optimizer. The per-family AIR gain is fit against the `airIdentityPred` model
+    // fit the AIR SCALAR gain, and divide out the session's gain rule (`SessionGainRule.gainAt`, spec 0050 S11.1).
+    // Only dot products and a mean — no optimizer. The AIR gain is fit against the `airIdentityPred` model
     // (`a·s`, the effective-analyzer row dotted with the effective source Stokes state — the ideal AIR#0
     // prediction from step 007's `effectiveSource` / `effectiveAnalyzer`) via `scalarGain`. The
     // procedure-level constants (dark mean ≈ 869.666, the first-BullshitCheck split timestamp, the excluded
@@ -795,87 +724,10 @@ module MuellerReconstruction =
         let modelValues = model |> Array.map (fun m -> m.value)
         AirGain ((dot signalValues modelValues) / (dot modelValues modelValues))
 
-    /// The AIR gain of a "mean of two repeats" family (the stable `lp_lp` / `lp_cpl` families,
-    /// matrix_fit_linear.py:123/:132): the two valid AIR#0 repeat gains, whose mean `familyGain` applies to
-    /// every row of the family.
-    type RepeatPairGain =
-        {
-            gainA : AirGain
-            gainB : AirGain
-        }
-
-    /// A gain interpolated in time between two AIR blocks: `gainStart` at the opening block's mean capture time
-    /// `timeStart`, `gainEnd` at the closing block's `timeEnd`.
-    type InterpolatedGain =
-        {
-            gainStart : AirGain
-            timeStart : System.DateTimeOffset
-            gainEnd : AirGain
-            timeEnd : System.DateTimeOffset
-        }
-
-    /// The CPL-CPL family's AIR gain, whose two acquisition days need different rules (matrix_fit_linear.py:92/
-    /// :116). `Day1Interp` time-INTERPOLATES between the family's opening and closing AIR blocks; `Day2Single`
-    /// is the one AIR block's gain (a stable session). The caller picks the case matching the row's acquisition
-    /// session (the reference dispatches on `source_glue_file`).
-    type CplCplGain =
-        | Day1Interp of interpolation : InterpolatedGain
-        | Day2Single of gain : AirGain
-
-    /// The CPL-LP family's AIR gain, SPLIT at the first BullshitCheck timestamp (matrix_fit_linear.py:141): rows
-    /// captured strictly before `splitTime` take `gainPre` (the pre-check AIR block); rows at or after it take
-    /// `gainPost` (the post-check AIR block). `splitTime` is the caller-supplied split constant (the reference
-    /// reads it from `bullshit_checks_comparison.json[0]`), never embedded here.
-    type SplitGain =
-        {
-            gainPre : AirGain
-            gainPost : AirGain
-            splitTime : System.DateTimeOffset
-        }
-
-    /// The per-family AIR gain calibration bundle — one entry per family's gain rule (matrix_fit_linear.py's
-    /// `assign_gain_model` branches). `familyGain` selects the entry by `Family` and applies its rule at a
-    /// capture time. `Family` is 4-case but the reference has five gain rules (CPL-CPL splits into day1/day2), so
-    /// `cplCpl` carries a `CplCplGain` DU the caller resolves per acquisition session — using both mandated
-    /// `familyGain` parameters (`family` as the dispatch key, `cal` as the data) meaningfully.
-    type GainCalibration =
-        {
-            lpLp : RepeatPairGain
-            lpCpl : RepeatPairGain
-            cplLp : SplitGain
-            cplCpl : CplCplGain
-        }
-
-    /// The per-family scalar AIR gain to divide out of a science row captured at time `t` — the reference
-    /// `assign_gain_model` per-`source_glue_file` dispatch (matrix_fit_linear.py:73) collapsed to a pure
-    /// function keyed by `Family`:
-    ///   - `LpLp` / `LpCpl` — the mean of the family's two AIR repeat gains (time-independent, a stable family);
-    ///   - `CplLp` — split at the first BullshitCheck timestamp: `gainPre` when `t < splitTime`, else `gainPost`;
-    ///   - `CplCpl` `Day2Single` — the one AIR block's gain; `Day1Interp` — the time-interpolated gain
-    ///     `(1−w)·gainStart + w·gainEnd`, `w = clamp₀₁((t − timeStart)/(timeEnd − timeStart))` (the reference's
-    ///     clipped linear weight, matrix_fit_linear.py:108).
-    /// Stays TOTAL: where the reference RAISES on a non-positive `Day1Interp` interval, the F# uses weight 0
-    /// (a degenerate interval never arises on real AIR data; CLAUDE.md forbids throwing across this boundary).
-    let familyGain (family : Family) (cal : GainCalibration) (t : System.DateTimeOffset) : AirGain =
-        let meanPair (p : RepeatPairGain) : AirGain = AirGain (0.5 * (p.gainA.value + p.gainB.value))
-        match family with
-        | LpLp -> meanPair cal.lpLp
-        | LpCpl -> meanPair cal.lpCpl
-        | CplLp -> if t < cal.cplLp.splitTime then cal.cplLp.gainPre else cal.cplLp.gainPost
-        | CplCpl ->
-            match cal.cplCpl with
-            | Day2Single gain -> gain
-            | Day1Interp interpolation ->
-                let span = (interpolation.timeEnd - interpolation.timeStart).TotalSeconds
-                let weight =
-                    if span <= 0.0 then 0.0
-                    else max 0.0 (min 1.0 ((t - interpolation.timeStart).TotalSeconds / span))
-                AirGain ((1.0 - weight) * interpolation.gainStart.value + weight * interpolation.gainEnd.value)
-
     /// The corrected science-row signal the reconstruction fits — the reference `signal_corrected =
     /// signal_dark_sub / gain_est` (matrix_fit_linear.py:160): dark-subtract the raw `avgTotal`, then divide by
-    /// the per-family AIR `gain` (from `familyGain`). Composes `darkSubtract` with the gain divide, so a single
-    /// dark-mean seam governs both readouts.
+    /// the AIR `gain` of the row's session (its `SessionGainRule.gainAt`, spec 0050 S11.1). Composes `darkSubtract`
+    /// with the gain divide, so a single dark-mean seam governs both readouts.
     let correctSignal (darkMean : DarkMean) (avgTotal : MeasuredIntensity) (gain : AirGain) : DetectorIntensity =
         DetectorIntensity ((darkSubtract darkMean avgTotal).value / gain.value)
 
@@ -917,16 +769,17 @@ module MuellerReconstruction =
         }
 
     /// Assemble the n×16 design and its corrected-signal target for one `matrix_kind` — the reference
-    /// `solve_single_object` row selection (matrix_fit_linear.py:169). A science row is kept iff its parsed
-    /// `matrixKind` equals `kind`, it is not an AIR#0 calibration row, and it is not one of the `excluded`
-    /// contaminated points (matched on experiment + capture index + analyzer dial). Each kept row is projected
-    /// through `prepareRow` to its effective source Stokes state `s`, effective analyzer row `a`, and corrected
-    /// signal (the caller — slice 011 — closes `prepareRow` over the calibrated per-family models + gain
-    /// calibration + dark mean, i.e. the reference glue `s_eff` / `a_eff` / `signal_corrected` columns); the
+    /// `solve_single_object` row selection (matrix_fit_linear.py:169). A science row is kept iff its label reads
+    /// through `NamingTemplate.standard` with a `matrixKind` equal to `kind` (a label the template does not read is
+    /// never kept, spec 0050 S8.3), it is not an AIR#0 calibration row, and it is not one of the `excluded`
+    /// contaminated points (matched on experiment + capture index + analyzer dial). Each label is read once: a kept
+    /// row is projected by `prepareRow row reading` with the reading that kept it, so no projection reads a label
+    /// again (spec 0050 S10.3). The projection gives the row's effective source Stokes state `s`, effective
+    /// analyzer row `a` and corrected signal (the reference glue's `s_eff` / `a_eff` / `signal_corrected`); the
     /// design row is `designRow s a` (the `lincoef = kron(s_eff, a_eff)` column), the target is the corrected
     /// signal. Returns the system: `design` the stacked `designRow`s `A`, `rhs` the matching targets `b`.
     let buildDesign
-        (prepareRow : MuellerRawRow -> StokesVector * RealVector4 * DetectorIntensity)
+        (prepareRow : MuellerRawRow -> NameReading -> StokesVector * RealVector4 * DetectorIntensity)
         (excluded : ExcludedPoint list)
         (rows : MuellerRawRow list)
         (kind : MatrixKind)
@@ -937,17 +790,18 @@ module MuellerReconstruction =
                 r.experiment = e.experiment
                 && r.captureIndex = e.captureIndex
                 && abs (r.description.value - e.description.value) < 1e-9)
-        let kept =
+        let prepared =
             rows
-            |> List.filter (fun r ->
-                r.experiment.parsed.matrixKind = kind
-                && not (r.experiment.value.Contains("(AIR#0)"))
-                && not (isExcluded r))
-        let prepared = kept |> List.map prepareRow
-        {
-            design = prepared |> List.map (fun (s, a, _) -> designRow s a) |> List.toArray
-            rhs = prepared |> List.map (fun (_, _, signal) -> signal.value) |> List.toArray
-        }
+            |> List.choose (fun r ->
+                match NamingTemplate.standard.readName r.experiment.nameText with
+                | Ok reading when
+                    reading.matrixKind = kind
+                    && not (r.experiment.value.Contains("(AIR#0)"))
+                    && not (isExcluded r) ->
+                    Some (prepareRow r reading)
+                | Ok _
+                | Error _ -> None)
+        LeastSquaresSystem.ofProjections prepared
 
     /// Solve the over-determined design system `A·x ≈ b` through the injected `MuellerSolverProxy` and lift the
     /// result into Mueller space — the reference `solve_single_object` least-squares + `matrix_from_vector`

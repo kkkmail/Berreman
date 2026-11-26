@@ -1,0 +1,9 @@
+# Implementation plan
+
+Implement S32-HELD-ENVELOPE by adding the documented, elevated `tryHeldEnvelope` function field to `CatalogueImportProxy`. The in-memory store reads its existing entry/version map; the SQLite store calls `tryStoredVersion` inside the existing `runImport` boundary and maps storage diagnostics through `ImportStoreUnavailableErr`. Update the recording proxy with `Ok None`. No new query, cache, persisted shape or migration is needed.
+
+First add the exact shared contract fact to `CatalogueImportContract`, inherited by both concrete stores. Import and apply the built-in catalogue, put a sealed Silicon version 2 with a changed description and `KeepLatestVersion`, then compare full envelopes at versions 1 and 2 and verify missing version/id reads. Repeat reads after retirement to cover the lifecycle-independent contract. Extend the existing disposed-database fact to exercise the new field.
+
+Modify only the four source files authorized by slice 0105 and its three supplied handoff paths. Preserve the supervisor's pre-existing manifest edit. Reuse `nextImportEnvelope`, the existing built-in fixture, shared contract inheritance and storage error mapper. The main risks are accidentally reading only the latest/active version, omitting a record constructor, or flattening a storage error into absence.
+
+The session's higher-priority verification instructions require local checks despite the worker protocol's act-only wording. Run the Release build, elevation, complete constructor suite and eleven resolved s13 invariants; retain evidence only in the supplied artifacts folder. Confirm the two new inherited acceptance IDs and measured case-count increase without editing baselines or checkpoints. Write the required state-of-the-world and structured handoff; formal acceptance and commit remain the supervisor's responsibility.

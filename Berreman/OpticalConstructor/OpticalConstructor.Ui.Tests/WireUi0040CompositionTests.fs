@@ -4,7 +4,7 @@
 /// the sample R/T emission checkboxes + film-less-Plate substrate-via-Materials-Select of steps
 /// 010/011). This step is STRUCTURAL COMPOSITION — no new behaviour, no new wiring — it finalises
 /// the composition and drives the WHOLE changed surface headless over ONE app scope composed
-/// exactly like `Startup.context` (`AppContext.create WorkbenchSettings.defaults`).
+/// through `TestAppScope` with test-owned locations (spec 0050 .spec-md §3.9).
 ///
 /// The WIRE_UI family mandate is a headless wiring assertion that drives REAL input on the REAL
 /// wired views and asserts the resulting semantic-tree projection: render one frame each — without
@@ -20,6 +20,8 @@
 /// sort are proven by the per-window suites; this file proves they COMPOSE at the App root.
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -27,14 +29,17 @@ open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 module WireUi0040CompositionTests =
+
+    let private owner = FolderName "WireUi0040CompositionTests"
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView
     module LW = OpticalConstructor.Ui.LibraryWindowView
@@ -168,11 +173,11 @@ module WireUi0040CompositionTests =
                 | _ -> ())
         opened, sub
 
-    /// Mount the REAL composition root headless over a FRESH app scope (test isolation — the stores
-    /// are mutable): the SAME `MainConstructorWindow(AppContext.create …)` the launcher's Main
-    /// button builds with `Startup.context` (spec 0038 step 006 / 045).
+    /// Mounts the real window over an isolated app scope and kit (spec 0038 steps 006/045; spec 0050 S4.3).
     let private mountRoot () : Window =
-        let window = OpticalConstructor.App.MainConstructorWindow(AppContext.create WorkbenchSettings.defaults)
+        let context = TestAppScope.freshAppContext owner
+        let opened = TestAppScope.openedKitIn owner context.catalogueImports
+        let window = OpticalConstructor.App.MainConstructorWindow(context, opened)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window
@@ -250,15 +255,15 @@ module WireUi0040CompositionTests =
             let libraryWindow = openLibraryWindow root
             Assert.True(isPresent libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value,
                         "the Library tree's entries group must carry a disclosure chevron")
-            Assert.False(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "src-600")).value),
+            Assert.False(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value),
                          "a collapsed Library tree must hide its entry leaves on first open")
             expandNode libraryWindow "entries"
             commitFilter libraryWindow "polarizer"
-            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.polarizerLp).value),
                         "the expanded Library tree lists the seeded polarizer preset from the root-wired proxy")
-            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value)
-            let lSelected = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-lp")).value)
-            let lSibling = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "pol-cp-left")).value)
+            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.polarizerLp).value)
+            let lSelected = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.polarizerLp).value)
+            let lSibling = labelBorderOf libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.polarizerCpLeft).value)
             Assert.Equal(Some chosenFill, backgroundColorOf lSelected)
             Assert.Equal(Some idleFill, backgroundColorOf lSibling)
             Assert.True(lSelected.BorderThickness.Top > lSibling.BorderThickness.Top,
@@ -271,7 +276,7 @@ module WireUi0040CompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``composition acceptance (013): the Material editor composes over the app scope with a wrapping description and restricted gyration/mu tabs`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             // The Add-open shape the Materials window's launcher builds: NewMaterial over the
             // app-scope materials + category proxies (spec 0038 step 013 / 023).
             let window =
@@ -301,10 +306,10 @@ module WireUi0040CompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``composition acceptance (013): a Plate Sample editor over the app scope renders R/T checkboxes and sets its substrate through the Materials Select window`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
+            let ctx = TestAppScope.freshAppContext owner
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
-                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample (filmlessPlate ()))
+                    ctx.materials, ctx.samples, ctx.categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, SampleEditorView.EditSample (filmlessPlate ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // R/T checkboxes for a Plate (step 010): both render, both checked (EmitBoth), T enabled.
@@ -328,8 +333,8 @@ module WireUi0040CompositionTests =
             Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the substrate Set… verb must open the Materials window")
             Assert.True(isPresent materialsWindow ConstructorUiId.materialsSelectButton.value, "the Materials window must be in Select state")
             Assert.Contains("substrate", textOf materialsWindow ConstructorUiId.materialsSelectConstraint.value)
-            // Pick the seeded 1.75 glass: filter → expand → select. The targeted return sets the
-            // substrate plate and closes the window.
+            // Pick BuiltinCatalogue.material's 1.75 glass: filter → expand → select.
+            // The targeted return sets the substrate plate and closes the window.
             commitFilter materialsWindow "1.75"
             expandNode materialsWindow "entries"
             clickOn materialsWindow ((ConstructorUiId.materialsEntryNode MaterialIds.glass175).value)
@@ -345,12 +350,12 @@ module WireUi0040CompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``composition acceptance (013): a Mirror Sample editor over the app scope pins R on and shows no T control`` () =
         HeadlessSession.run (fun () ->
-            let ctx = AppContext.create WorkbenchSettings.defaults
-            // The seeded MIRROR sample (the EUV Mo/Si multilayer) opened over the app scope — R fixed on, no
-            // T (spec 0046: a mirror is the only geometry observed in reflection alone).
+            let ctx = TestAppScope.freshAppContext owner
+            // BuiltinCatalogue.sample's EUV Mo/Si MIRROR opens over the app scope — R fixed on, no T
+            // (spec 0046: only mirrors are observed in reflection alone).
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
-                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample SeedSamples.euvMoSi)
+                    ctx.materials, ctx.samples, ctx.categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, SampleEditorView.EditSample (BuiltinCatalogue.sample SampleIds.euvMoSiId))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window ConstructorUiId.sampleEmitReflectedCheck.value, "the R checkbox must render for a Mirror")

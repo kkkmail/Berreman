@@ -1,0 +1,279 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "69c2edf9-3a4d-4b23-bea2-94ba305ca507",
+    "label": "LR",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "852cbb95-e9f8-4963-8098-866303071e67",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "m00",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "m01",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m02",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m03",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m10",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m11",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "m12",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m13",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m20",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m21",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m22",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 1
+            }
+          ]
+        }
+      },
+      {
+        "name": "m23",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m30",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m31",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m32",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 0
+            }
+          ]
+        }
+      },
+      {
+        "name": "m33",
+        "state": {
+          "Case": "UnknownParameter",
+          "Fields": [
+            {
+              "bounds": {
+                "lower": -2,
+                "upper": 2
+              },
+              "priorOpt": null,
+              "start": 1
+            }
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

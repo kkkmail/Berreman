@@ -1,10 +1,25 @@
 namespace OpticalConstructor.Ui.Tests
 
+open System
+open System.IO
+open System.Collections.Generic
+open System.Threading.Tasks
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.MaterialSources
+open OpticalConstructor.Domain.MaterialSourcePulls
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.EntryFileJson
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Platform
 open Avalonia.Headless
 open Avalonia.Input
 open Avalonia.Media
+open Avalonia.Platform.Storage
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI.Hosts
@@ -16,14 +31,12 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 
 /// Spec 0038 Part E (step 013) — the Materials window (UICOMP_XDUO_0009): the single-instance
@@ -37,6 +50,7 @@ open OpticalConstructor.Ui
 /// the category facet. Step 016 adds the Select-state suite: the Select/Close pair, the
 /// structural (non-removable) kind constraint banner, the targeted `onSelected` dispatch into
 /// the sample editor's layer, close-on-table-selection-change, and the vanished-row no-op.
+[<Collection("Library picker isolation")>]
 module MaterialsWindowTests =
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView
@@ -166,13 +180,12 @@ module MaterialsWindowTests =
             | _ -> false)
         |> Seq.length
 
-    /// Fresh, isolated in-memory stores per test — the SAME composition the App performs
-    /// (samples first, then materials whose remove-block consults the LIVE samples, then
-    /// categories whose remove-block consults the LIVE materials).
+    /// BuiltinCatalogue.sampleStore, BuiltinCatalogue.materialStore and BuiltinCatalogue.categoryStore
+    /// stay isolated per test; removal consults the live sample and material references.
     let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories
 
     /// A recording stub context (the functional-proxy seam): the launchers append tags, so a
@@ -183,6 +196,7 @@ module MaterialsWindowTests =
             {
                 materials = materials
                 categories = categories
+                catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 openMaterialEditor =
                     fun intent ->
@@ -191,6 +205,8 @@ module MaterialsWindowTests =
                             | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}"
                             | MaterialEditorView.EditMaterial entry -> "material-edit:" + entry.name.value)
                 openCategoryEditor = fun () -> calls.Add "categories-open"
+                openOnlineSources = fun () -> calls.Add "online-sources-open"
+                openImportDialog = fun _ -> calls.Add "import-open"
                 requestClose = fun () -> calls.Add "close-requested"
             }
         calls, context
@@ -199,6 +215,27 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         let calls, context = stubContext materials categories
         calls, MW.initMaterialsWindow context Browse
+
+    let private freshDropFolder () : FolderName =
+        let folder = FolderName (Path.Combine(System.AppContext.BaseDirectory, "MaterialsWindowTests", Guid.NewGuid().ToString("N")))
+        Directory.CreateDirectory folder.value |> ignore
+        folder
+
+    let private writeDroppedMaterial () : FileName * MaterialEntry =
+        let material =
+            {
+                BuiltinCatalogue.material MaterialIds.silicon with
+                    id = newMaterialId ()
+                    name = EntryName "Dropped Materials-window material"
+            }
+        let content = LibraryEntryContent.ofMaterialEntry VersionNumber.first UserProvenance material
+        let envelope = content.``sealed`` |> Result.defaultWith (fun error -> failwith error.describe)
+        let text = envelope.fileText |> Result.defaultWith (fun error -> failwith error.describe)
+        let folder = freshDropFolder ()
+        let leaf = FileName "dropped.material-json"
+        let file = leaf.combine folder
+        File.WriteAllText(file.value, text.value)
+        file, material
 
     /// A recording Select-session context (spec 0038 step 016): `onSelected` tags the chosen
     /// material id, `onCancelled` tags the cancel — the window guarantees exactly one fires.
@@ -224,6 +261,120 @@ module MaterialsWindowTests =
     let private filteredIds (m : MW.MaterialsWindowModel) : MaterialId list =
         m.filteredEntries |> List.map (fun e -> e.id)
 
+    let private freshExportContext () : InMemoryCatalogueStores * MW.MaterialsWindowContext =
+        let stores = CatalogueImportProxy.createInMemory ()
+        let imports = CatalogueImportContext.create stores.proxy
+        imports.importFrom (CatalogueProxy.createBuiltIn ())
+        |> Result.bind (fun decisions -> imports.apply (decisions |> List.map _.byDefault))
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> ignore
+        let _, context = stubContext stores.materials stores.categories
+        let configured =
+            {
+                context with
+                    catalogueImports = imports
+            }
+        stores, configured
+
+    type private MaterialsExportTestWindow(provider : IStorageProvider) =
+        inherit HostWindow(Width = 1150.0, Height = 800.0)
+
+        member _.exportStorageProvider : IStorageProvider = provider
+
+    type private MaterialsExportTestAppBuilder() =
+        static member BuildAvaloniaApp () : AppBuilder =
+            let factory =
+                {
+                    new IStorageProviderFactory with
+                        member _.CreateProvider topLevel =
+                            match topLevel with
+                            | :? MaterialsExportTestWindow as window -> window.exportStorageProvider
+                            | _ -> null
+                }
+            TestAppBuilder.BuildAvaloniaApp().With<IStorageProviderFactory>(factory)
+
+        static member run (action : unit -> unit) : unit =
+            use session = HeadlessUnitTestSession.StartNew(typeof<MaterialsExportTestAppBuilder>)
+            session.Dispatch(Action(action), System.Threading.CancellationToken.None).GetAwaiter().GetResult()
+
+    let private exportPickerFolder (folder : FolderName) : IStorageFolder =
+        LibraryPickerStorageTestProxy.create<IStorageFolder> (fun methodInfo _ ->
+            match methodInfo.Name with
+            | "get_Path" -> box (Uri folder.value)
+            | "get_Name" -> box (Path.GetFileName folder.value)
+            | "Dispose" -> null
+            | _ -> invalidOp $"Unexpected export folder operation: {methodInfo.Name}")
+
+    let private mountExportView (window : HostWindow) (model : MW.MaterialsWindowModel)
+        (observe : MW.MaterialsWindowMsg -> MW.MaterialsWindowModel -> unit) : unit =
+        Program.mkSimple
+            (fun () -> model)
+            (fun message current ->
+                let updated = MW.updateMaterialsWindow message current
+                observe message updated
+                updated)
+            MW.materialsWindowView
+        |> Program.withHost window
+        |> Program.run
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+
+    let private siliconRecordId : MaterialSourceRecordId = MaterialSourceRecordId "main/Si/nk/Aspnes.yml"
+
+    /// Step 443's double holding Silicon's record at 2026-11-01, its snapshot installed (spec 0050 S13.1). It mirrors
+    /// `MaterialSourcesWindowFixture`, which compiles after this file, outside this step's edits.
+    let private siliconSource () : MaterialSourceProxy =
+        let record : InMemorySourceRecord =
+            {
+                hit =
+                    {
+                        record = siliconRecordId
+                        name = EntryName "Si (Silicon), Aspnes"
+                    }
+                recordHash = "abc" |> System.Text.Encoding.UTF8.GetBytes |> FileByteContent |> ContentHash.ofBytes
+                citation = EntryCitation "D. E. Aspnes and A. A. Studna, Phys. Rev. B 27, 985 (1983)"
+                material = BuiltinCatalogue.material MaterialIds.silicon
+            }
+        let source = InMemoryMaterialSource.create (MaterialSourceName "Test source") (EntryLicence "CC0-1.0")
+        source.publish (MaterialSourceVersion "2026-11-01") [ record ]
+        let proxy = MaterialSourceProxy.createInMemory source
+        match proxy.updateSnapshot SourceSnapshotObserver.unobserved with
+        | Ok (SourceSnapshotUpdated _) -> proxy
+        | other -> failwith $"the test source must install its snapshot, got %A{other}"
+
+    /// The context's import seam offering `sources`.
+    let private offeringSources (sources : MaterialSourceProxy list) (context : MW.MaterialsWindowContext) : MW.MaterialsWindowContext =
+        {
+            context with
+                catalogueImports =
+                    {
+                        context.catalogueImports with
+                            materialSources = sources
+                    }
+        }
+
+    let private labGlassCatalogueName : FileName = FileName "lab-glasses.agf"
+    let private labGlassNames : EntryName list = [ EntryName "LAB-A"; EntryName "LAB-B" ]
+
+    /// A test-local two-glass Zemax catalogue in ASCII, LAB-A (formula 2) and LAB-B (formula 1), in a fresh GUID folder
+    /// (spec 0050 S13.2). Both glasses reference the built-in Glass category.
+    let private writeGlassCatalogue () : FileName * FileByteContent =
+        let text =
+            String.concat "\n" [
+                "CC Test-local glasses for the Materials window's import verb"
+                "NM LAB-A 2 516640 1.516 64.0 0 1"
+                "CD 1.04 0.006 0.23 0.02 1.01 103.6"
+                "LD 0.3 2.5"
+                "NM LAB-B 1 606400 1.606 40.0 0 1"
+                "CD 2.56 -0.0106 0.0283 0.0011 -4.5E-05 4.0E-06"
+                "LD 0.36 1.5"
+                ""
+            ]
+        let bytes = FileByteContent (System.Text.Encoding.ASCII.GetBytes text)
+        let file = labGlassCatalogueName.combine (freshDropFolder ())
+        File.WriteAllBytes(file.value, bytes.value)
+        file, bytes
+
     // ============================ pure: ids contract ============================
 
     [<Fact>]
@@ -245,6 +396,582 @@ module MaterialsWindowTests =
             (ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
         // The constructor-side entry point: the ribbon strip's right-aligned button.
         Assert.Equal("OpenMaterialsWindowButton", ConstructorUiId.openMaterialsWindowButton.value)
+
+    [<Fact>]
+    let ``the export and attribution UiIds of the Materials window are the stable intent-named ids`` () : unit =
+        Assert.Equal("MaterialsExportButton", ConstructorUiId.materialsExportButton.value)
+        Assert.Equal("MaterialsExportShownButton", ConstructorUiId.materialsExportShownButton.value)
+        Assert.Equal("MaterialsExportStatusText", ConstructorUiId.materialsExportStatusText.value)
+        Assert.Equal("MaterialsAttributionPanel", ConstructorUiId.materialsAttributionPanel.value)
+
+    [<Fact>]
+    let ``ExportSelectedMaterial writes the selected material's entry file and pins its version`` () : unit =
+        MaterialsExportTestAppBuilder.run (fun () ->
+            let stores, context = freshExportContext ()
+            let labId = newMaterialId ()
+            let otherId = newMaterialId ()
+            let labName = EntryName "Lab glass"
+            let otherName = EntryName "Lab quartz"
+            let lab = BuiltinCatalogue.userMaterialContent labId labName
+            let other = BuiltinCatalogue.userMaterialContent otherId otherName
+            BuiltinCatalogue.putSealedEntries context.catalogueImports [ lab; other ]
+            let held =
+                stores.proxy.tryLatestEnvelope lab.id
+                |> Result.defaultWith (fun error -> failwith error.describe)
+                |> Option.defaultWith (fun () -> failwith "Lab glass must be held.")
+            let folder = freshDropFolder ()
+            let fileLeaf = FileName "Lab glass.material-json"
+            let file = fileLeaf.combine folder
+            let suggested = exportPickerFolder folder
+            let pickedFile =
+                LibraryPickerStorageTestProxy.create<IStorageFile> (fun methodInfo _ ->
+                    match methodInfo.Name with
+                    | "get_Path" -> box (Uri file.value)
+                    | "Dispose" -> null
+                    | _ -> invalidOp $"Unexpected export file operation: {methodInfo.Name}")
+            let paths = ResizeArray<Uri>()
+            let options = ResizeArray<FilePickerSaveOptions>()
+            let mutable cancelPick = false
+            let provider =
+                LibraryPickerStorageTestProxy.create<IStorageProvider> (fun methodInfo arguments ->
+                    match methodInfo.Name with
+                    | "get_CanSave" -> box true
+                    | "TryGetFolderFromPathAsync" ->
+                        paths.Add(unbox<Uri> arguments.[0])
+                        box (Task.FromResult<IStorageFolder> suggested)
+                    | "SaveFilePickerAsync" ->
+                        options.Add(unbox<FilePickerSaveOptions> arguments.[0])
+                        box (Task.FromResult<IStorageFile>(if cancelPick then null else pickedFile))
+                    | _ -> invalidOp $"Unexpected material save operation: {methodInfo.Name}")
+            let configured =
+                {
+                    context with
+                        catalogueImports =
+                            {
+                                context.catalogueImports with
+                                    exportFolderOpt = Some folder
+                            }
+                }
+            let initial = MW.initMaterialsWindow configured Browse
+            Assert.Equal<ControlCaption option>(None, initial.entryExportStatus)
+            Assert.Equal<LibraryExportError option>(None, initial.entryExportError)
+            Assert.Same(initial, MW.updateMaterialsWindow (MW.ExportSelectedMaterial file) initial)
+            Assert.False(File.Exists file.value)
+            let selected =
+                initial
+                |> MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "Lab"))
+                |> MW.updateMaterialsWindow (MW.SelectEntry otherId)
+            let mutable current = selected
+            let exportedMessages = ResizeArray<MW.MaterialsWindowMsg>()
+            let window = MaterialsExportTestWindow(provider)
+            try
+                mountExportView window selected (fun message updated ->
+                    current <- updated
+                    match message with
+                    | MW.ExportSelectedMaterial _ ->
+                        Assert.True(Dispatcher.UIThread.CheckAccess())
+                        exportedMessages.Add message
+                    | _ -> ())
+                expandEntries window
+                clickOn window (ConstructorUiId.materialsEntryNode labId).value
+                clickOn window ConstructorUiId.materialsRemoveButton.value
+                let before = current
+                clickOn window ConstructorUiId.materialsExportButton.value
+                Assert.Equal(MW.ExportSelectedMaterial file, Assert.Single exportedMessages)
+                let save = Assert.Single options
+                Assert.Equal("Export library entry", save.Title)
+                Assert.Equal("Lab glass.material-json", save.SuggestedFileName)
+                Assert.Equal("material-json", save.DefaultExtension)
+                Assert.Equal(Nullable true, save.ShowOverwritePrompt)
+                Assert.Same(suggested, save.SuggestedStartLocation)
+                Assert.Equal("*.material-json", Assert.Single((Assert.Single save.FileTypeChoices).Patterns))
+                Assert.Equal(folder.value, (Assert.Single paths).LocalPath.TrimEnd(Path.DirectorySeparatorChar))
+                Assert.True(File.Exists file.value)
+                let read = context.catalogueImports.readEntryFile MaterialEntryKind file |> Result.defaultWith (fun error -> failwith error.describe)
+                Assert.Equal(held, read)
+                let expected = ControlCaption $"Exported Lab glass version 1 to {file.value}; that version is now pinned."
+                Assert.Equal<ControlCaption option>(Some expected, current.entryExportStatus)
+                Assert.Equal<LibraryExportError option>(None, current.entryExportError)
+                Assert.Equal(expected.value, textOf window ConstructorUiId.materialsExportStatusText.value)
+                Assert.Equal(before.removeGate, current.removeGate)
+                Assert.Equal(before.lifecycleGate, current.lifecycleGate)
+                Assert.Equal(before.selectedId, current.selectedId)
+                match current.mode with
+                | Browse -> ()
+                | Select _ -> Assert.Fail("Export must preserve Browse mode.")
+                cancelPick <- true
+                clickOn window ConstructorUiId.materialsExportButton.value
+                Assert.Equal(2, options.Count)
+                Assert.Single exportedMessages |> ignore
+                Assert.Equal<ControlCaption option>(Some expected, current.entryExportStatus)
+                let material = lab.toMaterialEntry |> Result.defaultWith (fun error -> failwith error.describe)
+                let langasite = BuiltinCatalogue.material MaterialIds.langasite
+                let edited =
+                    {
+                        material with
+                            physics = langasite.physics
+                    }
+                Assert.Equal<Result<unit, MaterialError>>(Ok (), stores.materials.saveMaterial edited)
+                let first = MaterialVersionId.firstOf labId
+                let second =
+                    {
+                        first with
+                            version = first.version.next
+                    }
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), stores.materials.resolveVersion first)
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some edited), stores.materials.resolveVersion second)
+            finally window.Close())
+
+    [<Fact>]
+    let ``ExportShownMaterials writes the shown materials, a category facet's included, with their user category`` () : unit =
+        MaterialsExportTestAppBuilder.run (fun () ->
+            let stores, context = freshExportContext ()
+            let categoryId = CategoryId (Guid.NewGuid())
+            let categoryName = CategoryName "Lab category"
+            let category = BuiltinCatalogue.userCategoryContent categoryId categoryName
+            let glassId = newMaterialId ()
+            let quartzId = newMaterialId ()
+            let otherId = newMaterialId ()
+            let glassName = EntryName "Lab glass"
+            let quartzName = EntryName "Lab quartz"
+            let otherName = EntryName "Other glass"
+            let glass =
+                {
+                    BuiltinCatalogue.userMaterialContent glassId glassName with
+                        categoryOpt = Some categoryId
+                }
+            let quartz =
+                {
+                    BuiltinCatalogue.userMaterialContent quartzId quartzName with
+                        categoryOpt = Some categoryId
+                }
+            let other = BuiltinCatalogue.userMaterialContent otherId otherName
+            BuiltinCatalogue.putSealedEntries context.catalogueImports [ category; glass; quartz; other ]
+            let start = freshDropFolder ()
+            let targetFolder = FolderName (Path.Combine(start.value, "Lab catalogue"))
+            let target = CatalogueExportTarget.ofFolder targetFolder
+            let suggested = exportPickerFolder start
+            let chosen = exportPickerFolder targetFolder
+            let paths = ResizeArray<Uri>()
+            let options = ResizeArray<FolderPickerOpenOptions>()
+            let provider =
+                LibraryPickerStorageTestProxy.create<IStorageProvider> (fun methodInfo arguments ->
+                    match methodInfo.Name with
+                    | "get_CanPickFolder" -> box true
+                    | "TryGetFolderFromPathAsync" ->
+                        paths.Add(unbox<Uri> arguments.[0])
+                        box (Task.FromResult<IStorageFolder> suggested)
+                    | "OpenFolderPickerAsync" ->
+                        options.Add(unbox<FolderPickerOpenOptions> arguments.[0])
+                        box (Task.FromResult<IReadOnlyList<IStorageFolder>> [| chosen |])
+                    | _ -> invalidOp $"Unexpected catalogue picker operation: {methodInfo.Name}")
+            let configured =
+                {
+                    context with
+                        catalogueImports =
+                            {
+                                context.catalogueImports with
+                                    exportFolderOpt = Some start
+                            }
+                }
+            let initial = MW.initMaterialsWindow configured Browse
+            let mutable current = initial
+            let exportedMessages = ResizeArray<MW.MaterialsWindowMsg>()
+            let window = MaterialsExportTestWindow(provider)
+            try
+                mountExportView window initial (fun message updated ->
+                    current <- updated
+                    match message with
+                    | MW.ExportShownMaterials _ -> exportedMessages.Add message
+                    | _ -> ())
+                let categoryKey = categoryName.facetKey.uiKey
+                clickOn window (ConstructorUiId.facetOfferedValue materialCategoryKey.uiKey categoryKey).value
+                Assert.Equal<Set<MaterialId>>(Set.ofList [ glassId; quartzId ], current.filteredEntries |> List.map _.id |> Set.ofList)
+                let before = current
+                clickOn window ConstructorUiId.materialsExportShownButton.value
+                Assert.Equal(MW.ExportShownMaterials target, Assert.Single exportedMessages)
+                let picker = Assert.Single options
+                Assert.Equal("Export to catalogue folder", picker.Title)
+                Assert.False(picker.AllowMultiple)
+                Assert.Same(suggested, picker.SuggestedStartLocation)
+                Assert.Equal(start.value, (Assert.Single paths).LocalPath.TrimEnd(Path.DirectorySeparatorChar))
+                let catalogue = (context.catalogueImports.openCatalogue targetFolder).readCatalogue () |> Result.defaultWith (fun error -> failwith error.describe)
+                Assert.Equal<Set<LibraryEntryId>>(Set.ofList [ glass.id; quartz.id; category.id ], catalogue.envelopes |> List.map _.content.id |> Set.ofList)
+                for envelope in catalogue.envelopes do
+                    Assert.Equal<Result<LibraryEntryEnvelope option, CatalogueImportError>>(Ok (Some envelope), stores.proxy.tryLatestEnvelope envelope.content.id)
+                let expected = ControlCaption $"Exported 3 entries to the catalogue folder {targetFolder.value}; their versions are now pinned."
+                Assert.Equal<ControlCaption option>(Some expected, current.entryExportStatus)
+                Assert.Equal<LibraryExportError option>(None, current.entryExportError)
+                Assert.Equal(expected.value, textOf window ConstructorUiId.materialsExportStatusText.value)
+                Assert.Equal<AppliedConstraint list>(before.appliedFacets, current.appliedFacets)
+                Assert.Equal(before.selectedId, current.selectedId)
+                Assert.Equal(before.removeGate, current.removeGate)
+                Assert.Equal(before.lifecycleGate, current.lifecycleGate)
+            finally window.Close())
+
+    [<Fact>]
+    let ``a refused Materials export shows its reason and writes nothing`` () : unit =
+        HeadlessSession.run (fun () ->
+            let _, context = freshExportContext ()
+            let firstId = newMaterialId ()
+            let secondId = newMaterialId ()
+            let name = EntryName "Lab glass"
+            let first = BuiltinCatalogue.userMaterialContent firstId name
+            let second = BuiltinCatalogue.userMaterialContent secondId name
+            BuiltinCatalogue.putSealedEntries context.catalogueImports [ first; second ]
+            let folder = freshDropFolder ()
+            let targetFolder = FolderName (Path.Combine(folder.value, "Refused catalogue"))
+            let target = CatalogueExportTarget.ofFolder targetFolder
+            let selected =
+                MW.initMaterialsWindow context Browse
+                |> MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "Lab glass"))
+                |> MW.updateMaterialsWindow (MW.SelectEntry firstId)
+                |> MW.updateMaterialsWindow MW.RequestMarkInactive
+            let before =
+                {
+                    selected with
+                        entryExportStatus = Some (ControlCaption "Previous export")
+                }
+            Assert.Equal<Set<MaterialId>>(Set.ofList [ firstId; secondId ], before.filteredEntries |> List.map _.id |> Set.ofList)
+            let refused = MW.updateMaterialsWindow (MW.ExportShownMaterials target) before
+            let error =
+                match refused.entryExportError with
+                | Some (ExportCatalogueRefusedErr _ as error) -> error
+                | _ -> failwith "Duplicate material filenames must refuse the catalogue export."
+            Assert.Contains("Lab glass", error.describe)
+            Assert.Equal<ControlCaption option>(None, refused.entryExportStatus)
+            Assert.False(Directory.Exists targetFolder.value)
+            Assert.Equal(before.removeGate, refused.removeGate)
+            Assert.Equal(before.lifecycleGate, refused.lifecycleGate)
+            Assert.Equal(before.selectedId, refused.selectedId)
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView window refused (fun _ _ -> ())
+                Assert.Equal(error.describe, textOf window ConstructorUiId.materialsExportStatusText.value)
+                match tryFindControl window ConstructorUiId.materialsExportStatusText.value with
+                | Some (:? TextBlock as status) ->
+                    Assert.Equal(TextWrapping.Wrap, status.TextWrapping)
+                    match status.Foreground with
+                    | :? SolidColorBrush as color -> Assert.Equal(MW.messageColor, color.Color)
+                    | _ -> Assert.Fail("The export refusal must use the message colour.")
+                | _ -> Assert.Fail("The export refusal must be rendered.")
+            finally window.Close()
+            let fileLeaf = FileName "Lab glass.material-json"
+            let file = fileLeaf.combine folder
+            let recovered = MW.updateMaterialsWindow (MW.ExportSelectedMaterial file) refused
+            Assert.True(File.Exists file.value)
+            Assert.Equal<LibraryExportError option>(None, recovered.entryExportError)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Exported Lab glass version 1 to {file.value}; that version is now pinned."), recovered.entryExportStatus)
+            Assert.Equal(refused.lifecycleGate, recovered.lifecycleGate)
+            Assert.Equal(refused.selectedId, recovered.selectedId)
+            Assert.False(Directory.Exists targetFolder.value))
+
+    [<Fact>]
+    let ``a material the library holds is exportable, in Browse mode only`` () : unit =
+        HeadlessSession.run (fun () ->
+            let _, context = freshExportContext ()
+            let labId = newMaterialId ()
+            let labName = EntryName "Lab glass"
+            let lab = BuiltinCatalogue.userMaterialContent labId labName
+            BuiltinCatalogue.putSealedEntries context.catalogueImports [ lab ]
+            let held =
+                context.catalogueImports.proxy.tryLatestEnvelope lab.id
+                |> Result.defaultWith (fun error -> failwith error.describe)
+                |> Option.defaultWith (fun () -> failwith "Lab glass must be held.")
+            let initial = MW.initMaterialsWindow context Browse
+            let selected = MW.updateMaterialsWindow (MW.SelectEntry labId) initial
+            let _, selection = selectContext Sample SampleSubstrateTarget
+            let selecting = MW.initMaterialsWindow context (Select selection) |> MW.updateMaterialsWindow (MW.SelectEntry labId)
+            let missingId = newMaterialId ()
+            let missing = MW.updateMaterialsWindow (MW.SelectEntry missingId) initial
+            let failingProxy =
+                {
+                    context.catalogueImports.proxy with
+                        tryHeldEnvelope = fun _ _ -> Error (ImportStoreUnavailableErr "Read refused")
+                }
+            let failed =
+                {
+                    selected with
+                        context =
+                            {
+                                context with
+                                    catalogueImports =
+                                        {
+                                            context.catalogueImports with
+                                                proxy = failingProxy
+                                        }
+                            }
+                }
+            Assert.Equal<LibraryEntryEnvelope option>(Some held, selected.exportableSelection)
+            Assert.Equal<LibraryEntryEnvelope option>(None, initial.exportableSelection)
+            Assert.Equal<LibraryEntryEnvelope option>(None, selecting.exportableSelection)
+            Assert.Equal<LibraryEntryEnvelope option>(None, missing.exportableSelection)
+            Assert.Equal<LibraryEntryEnvelope option>(None, failed.exportableSelection)
+            let empty = MW.updateMaterialsWindow (MW.CommitTextFilter (TextQuery "no material has this name")) initial
+            for model in [ initial; selected; selecting; missing; failed; empty ] do
+                let window = HostWindow(Width = 1150.0, Height = 800.0)
+                try
+                    mountExportView window model (fun _ _ -> ())
+                    match model.exportableSelection with
+                    | Some _ ->
+                        Assert.True(isPresent window ConstructorUiId.materialsExportButton.value)
+                        Assert.Equal("Export…", textOf window ConstructorUiId.materialsExportButton.value)
+                    | None -> Assert.False(isPresent window ConstructorUiId.materialsExportButton.value)
+                    match model.mode, model.filteredEntries with
+                    | Browse, _ :: _ ->
+                        Assert.True(isPresent window ConstructorUiId.materialsExportShownButton.value)
+                        Assert.Equal("Export shown to catalogue…", textOf window ConstructorUiId.materialsExportShownButton.value)
+                    | _ -> Assert.False(isPresent window ConstructorUiId.materialsExportShownButton.value)
+                finally window.Close())
+
+    [<Fact>]
+    let ``the Materials window shows a CC-BY material's citation and a CC0 material's licence name alone`` () : unit =
+        HeadlessSession.run (fun () ->
+            let _, context = freshExportContext ()
+            let ptbId = newMaterialId ()
+            let riiId = newMaterialId ()
+            let labId = newMaterialId ()
+            let ptbName = EntryName "PTB glass"
+            let riiName = EntryName "RII glass"
+            let labName = EntryName "Lab glass"
+            let ccBy = EntryLicence "CC-BY-4.0"
+            let cc0 = EntryLicence "CC0-1.0"
+            let citation = EntryCitation "A. Author, Test optical constants (2026), doi:10.0000/test"
+            let ptb = BuiltinCatalogue.licensedMaterialContent ptbId ptbName ccBy citation
+            let rii = BuiltinCatalogue.licensedMaterialContent riiId riiName cc0 citation
+            let lab = BuiltinCatalogue.userMaterialContent labId labName
+            BuiltinCatalogue.putSealedEntries context.catalogueImports [ ptb; rii; lab ]
+            let initial = MW.initMaterialsWindow context Browse
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView window initial (fun _ _ -> ())
+                commitFilter window "glass"
+                expandEntries window
+                clickOn window (ConstructorUiId.materialsEntryNode ptbId).value
+                Assert.Equal("PTB glass: Licence CC-BY-4.0 — cite: A. Author, Test optical constants (2026), doi:10.0000/test",
+                             textOf window ConstructorUiId.materialsAttributionPanel.value)
+                match tryFindControl window ConstructorUiId.materialsAttributionPanel.value with
+                | Some (:? StackPanel as panel) ->
+                    Assert.Equal(Avalonia.Layout.Orientation.Vertical, panel.Orientation)
+                    let line = Assert.IsType<TextBlock>(Assert.Single panel.Children)
+                    Assert.Equal(TextWrapping.Wrap, line.TextWrapping)
+                    Assert.Equal(380.0, line.MaxWidth)
+                | _ -> Assert.Fail("Licensed materials must have an attribution panel.")
+                clickOn window (ConstructorUiId.materialsEntryNode riiId).value
+                let publicDomainText = textOf window ConstructorUiId.materialsAttributionPanel.value
+                Assert.Equal("RII glass: Licence CC0-1.0", publicDomainText)
+                Assert.DoesNotContain("cite:", publicDomainText)
+                clickOn window (ConstructorUiId.materialsEntryNode labId).value
+                Assert.False(isPresent window ConstructorUiId.materialsAttributionPanel.value)
+            finally window.Close()
+            let failedProxy =
+                {
+                    context.catalogueImports.proxy with
+                        tryHeldEntry = fun _ -> Error (ImportStoreUnavailableErr "Attribution read refused")
+                }
+            let failedContext =
+                {
+                    context with
+                        catalogueImports =
+                            {
+                                context.catalogueImports with
+                                    proxy = failedProxy
+                            }
+                }
+            let failed = MW.initMaterialsWindow failedContext Browse |> MW.updateMaterialsWindow (MW.SelectEntry ptbId)
+            let failedWindow = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView failedWindow failed (fun _ _ -> ())
+                Assert.True(isPresent failedWindow ConstructorUiId.materialsViewPanel.value)
+                Assert.False(isPresent failedWindow ConstructorUiId.materialsAttributionPanel.value)
+            finally failedWindow.Close())
+
+    // ============================ Online sources (spec 0050 S13.1) ============================
+
+    [<Fact>]
+    let ``the Online sources UiId of the Materials window is the stable intent-named id`` () : unit =
+        Assert.Equal("MaterialsOnlineSourcesButton", ConstructorUiId.materialsOnlineSourcesButton.value)
+
+    [<Fact>]
+    let ``Online sources… is offered in Browse mode while the import seam carries a source`` () : unit =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let calls, unsourced = stubContext materials categories
+            let sourced = offeringSources [ siliconSource () ] unsourced
+            let browse = MW.initMaterialsWindow sourced Browse
+            let _, selection = selectContext Sample SampleSubstrateTarget
+            let selecting = MW.initMaterialsWindow sourced (Select selection)
+            let withoutSource = MW.initMaterialsWindow unsourced Browse
+            let id = ConstructorUiId.materialsOnlineSourcesButton.value
+
+            for model in [ selecting; withoutSource ] do
+                let window = HostWindow(Width = 1150.0, Height = 800.0)
+                try
+                    mountExportView window model (fun _ _ -> ())
+                    Assert.False(isPresent window id, "Online sources… is offered only in Browse mode over a source.")
+                finally window.Close()
+
+            let messages = ResizeArray<MW.MaterialsWindowMsg>()
+            let answers = ResizeArray<MW.MaterialsWindowModel>()
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView window browse (fun message updated ->
+                    messages.Add message
+                    answers.Add updated)
+                Assert.Equal("Online sources…", textOf window id)
+                Assert.Empty calls
+                clickOn window id
+                match List.ofSeq messages with
+                | [ MW.OpenOnlineSources ] -> ()
+                | other -> Assert.Fail $"the button must send OpenOnlineSources alone, got %A{other}"
+                Assert.Equal<MW.MaterialsWindowModel>(browse, Assert.Single answers)
+                Assert.Equal<string list>([ "online-sources-open" ], List.ofSeq calls)
+            finally window.Close())
+
+    [<Fact>]
+    let ``a pull's caption is the Materials window's status and the pulled material is listed`` () : unit =
+        HeadlessSession.run (fun () ->
+            let source = siliconSource ()
+            let _, exporting = freshExportContext ()
+            let context = offeringSources [ source ] exporting
+            let initial = MW.initMaterialsWindow context Browse
+            let pulledName = EntryName "Si (Silicon), Aspnes"
+            Assert.DoesNotContain(pulledName, initial.filteredEntries |> List.map _.name)
+
+            let results =
+                context.catalogueImports.pullRecord source siliconRecordId
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let pulled = Assert.Single results
+            Assert.Equal<ControlCaption>(ControlCaption "Pulled Si (Silicon), Aspnes as version 1.", pulled.caption)
+
+            let applied = MW.updateMaterialsWindow (MW.MaterialsImportApplied pulled.caption) initial
+            Assert.Equal<ControlCaption option>(Some pulled.caption, applied.importStatus)
+            let listed = applied.filteredEntries |> List.filter (fun entry -> entry.id.toLibraryEntryId = pulled.version.entryId)
+            Assert.Equal<EntryName>(pulledName, (Assert.Single listed).name)
+
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView window applied (fun _ _ -> ())
+                Assert.Equal(pulled.caption.value, textOf window ConstructorUiId.materialsImportStatusText.value)
+            finally window.Close())
+
+    // ============================ Import glass catalogue (spec 0050 S13.2) ============================
+
+    [<Fact>]
+    let ``the glass-catalogue UiId of the Materials window is the stable intent-named id`` () : unit =
+        Assert.Equal("MaterialsImportGlassCatalogueButton", ConstructorUiId.materialsImportGlassCatalogueButton.value)
+
+    [<Fact>]
+    let ``ImportGlassCatalogue decides the catalogue's glasses and opens the import dialog, applying nothing`` () : unit =
+        let file, bytes = writeGlassCatalogue ()
+        let materials, _, categories = freshStores ()
+        let calls, context = stubContext materials categories
+        context.catalogueImports.importFrom (CatalogueProxy.createBuiltIn ())
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> List.map _.byDefault
+        |> context.catalogueImports.apply
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> ignore
+        let opened = ResizeArray<ImportDecision list>()
+        let context =
+            {
+                context with
+                    openImportDialog = opened.Add
+            }
+        let initial = MW.initMaterialsWindow context Browse
+        let before =
+            {
+                initial with
+                    removeGate = MW.PendingRemove MaterialIds.glass200
+                    importStatus = Some (ControlCaption "Previous import")
+                    importError = Some (DroppedFileRefusedErr "Previous refusal")
+            }
+
+        let decided = MW.updateMaterialsWindow (MW.ImportGlassCatalogue file) before
+        let rows = Assert.Single opened
+        Assert.Equal<EntryName list>(labGlassNames, rows |> List.map _.rowName)
+        Assert.Equal<ImportOrigin list>(List.replicate 2 (DroppedFileOrigin labGlassCatalogueName), rows |> List.map _.origin)
+        let importedFrom : EntryFileImportInfo =
+            {
+                file = labGlassCatalogueName
+                fileHash = ContentHash.ofBytes bytes
+            }
+        for row in rows do
+            match row.status with
+            | EntryIdNotHeld incoming -> Assert.Equal<EntryProvenance>(FileImportProvenance importedFrom, incoming.content.provenance)
+            | _ -> Assert.Fail($"The glass '{row.rowName.value}' must be offered as an unheld entry.")
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.catalogueImports.proxy.tryHeldEntry row.entryId)
+        Assert.Equal<ControlCaption option>(None, decided.importStatus)
+        Assert.Equal<CatalogueImportError option>(None, decided.importError)
+        Assert.Equal(before.removeGate, decided.removeGate)
+        match decided.mode with
+        | Browse -> ()
+        | Select _ -> Assert.Fail("Importing a glass catalogue must preserve Browse mode.")
+
+        // A drop of the same file decides the same rows (step 110).
+        MW.updateMaterialsWindow (MW.DropMaterialEntryFiles [ file ]) before |> ignore
+        Assert.Equal(2, opened.Count)
+        Assert.Equal<EntryName list>(labGlassNames, opened.[1] |> List.map _.rowName)
+
+        let missing = (FileName "missing-glasses.agf").combine (freshDropFolder ())
+        let refused = MW.updateMaterialsWindow (MW.ImportGlassCatalogue missing) before
+        match refused.importError with
+        | Some (DroppedFileRefusedErr reason) -> Assert.Contains(missing.value, reason)
+        | other -> Assert.Fail($"A missing glass catalogue must set DroppedFileRefusedErr, got %A{other}")
+        Assert.Equal<ControlCaption option>(None, refused.importStatus)
+        Assert.Equal(2, opened.Count)
+        Assert.Empty calls
+
+    [<Fact>]
+    let ``Import glass catalogue… is offered in Browse mode only`` () : unit =
+        MaterialsExportTestAppBuilder.run (fun () ->
+            let file, _ = writeGlassCatalogue ()
+            let _, exporting = freshExportContext ()
+            let opened = ResizeArray<ImportDecision list>()
+            let context =
+                {
+                    exporting with
+                        openImportDialog = opened.Add
+                }
+            let id = ConstructorUiId.materialsImportGlassCatalogueButton.value
+            let _, selection = selectContext Sample SampleSubstrateTarget
+            let selectWindow = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                mountExportView selectWindow (MW.initMaterialsWindow context (Select selection)) (fun _ _ -> ())
+                Assert.False(isPresent selectWindow id, "Import glass catalogue… is never offered in Select mode.")
+            finally selectWindow.Close()
+
+            let pickedFile =
+                LibraryPickerStorageTestProxy.create<IStorageFile> (fun methodInfo _ ->
+                    match methodInfo.Name with
+                    | "get_Path" -> box (Uri file.value)
+                    | "Dispose" -> null
+                    | _ -> invalidOp $"Unexpected glass catalogue file operation: {methodInfo.Name}")
+            let options = ResizeArray<FilePickerOpenOptions>()
+            let provider =
+                LibraryPickerStorageTestProxy.create<IStorageProvider> (fun methodInfo arguments ->
+                    match methodInfo.Name with
+                    | "OpenFilePickerAsync" ->
+                        options.Add(unbox<FilePickerOpenOptions> arguments.[0])
+                        box (Task.FromResult<IReadOnlyList<IStorageFile>> [| pickedFile |])
+                    | _ -> invalidOp $"Unexpected glass catalogue pick operation: {methodInfo.Name}")
+            let messages = ResizeArray<MW.MaterialsWindowMsg>()
+            let window = MaterialsExportTestWindow(provider)
+            try
+                mountExportView window (MW.initMaterialsWindow context Browse) (fun message _ -> messages.Add message)
+                Assert.Equal("Import glass catalogue…", textOf window id)
+                clickOn window id
+                match List.ofSeq messages with
+                | [ MW.ImportGlassCatalogue picked ] -> Assert.Equal(file, picked)
+                | other -> Assert.Fail $"the button must send ImportGlassCatalogue of the picked file alone, got %A{other}"
+                let pick = Assert.Single options
+                Assert.Equal("Import glass catalogue", pick.Title)
+                Assert.False(pick.AllowMultiple)
+                let fileType = Assert.Single pick.FileTypeFilter
+                Assert.Equal("Zemax glass catalogue", fileType.Name)
+                Assert.Equal("*.agf", Assert.Single fileType.Patterns)
+                Assert.Equal<EntryName list>(labGlassNames, Assert.Single opened |> List.map _.rowName)
+            finally window.Close())
 
     // ============================ pure: projection ============================
 
@@ -456,7 +1183,7 @@ module MaterialsWindowTests =
         m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) |> MW.updateMaterialsWindow MW.EditSelected |> ignore
         Assert.Equal<string list>([ "material-edit:Transparent glass (n = 1.52)" ], List.ofSeq calls)
         calls.Clear()
-        // A view-only engine preset (complexity = None) offers no Edit — the dispatch is inert.
+        // Silicon is view-only (its physics is not editable term data), so Edit is inert.
         m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) |> MW.updateMaterialsWindow MW.EditSelected |> ignore
         // No selection is inert too.
         MW.updateMaterialsWindow MW.EditSelected m |> ignore
@@ -477,7 +1204,7 @@ module MaterialsWindowTests =
         match glass.editableSelection with
         | Some _ -> ()
         | None -> Assert.Fail "glass152 carries the edit model and must offer Edit"
-        // Silicon is a coded engine preset: selectable (the panel shows it) but NOT editable.
+        // Silicon is selectable (the panel shows it) but view-only: its physics is not editable term data.
         let silicon = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) m
         match silicon.selectedEntry, silicon.editableSelection with
         | Some _, None -> ()
@@ -524,7 +1251,7 @@ module MaterialsWindowTests =
         let caseInsensitive (a : string) (b : string) : int =
             System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
         let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
-        // Level 1 — the entry leaves under the entries group (the seeded corpus is NOT alphabetical).
+        // BuiltinCatalogue.materials row order must not determine the tree's alphabetical order (010/Q1).
         let entries = List.head state.tree
         let leafLabels = entries.children |> List.map (fun n -> n.label.value)
         Assert.Equal(12, List.length leafLabels)
@@ -689,7 +1416,7 @@ module MaterialsWindowTests =
     /// Mount the REAL Main workbench MVU loop headless (the MainConstructorWindow shape with
     /// injectable stores), for the strip-button acceptance.
     let private mountMain (materials : MaterialProxy) (samples : SampleProxy) (categories : CategoryProxy) : HostWindow =
-        let model0 = Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
+        let model0 = SceneTestFixture.mainSceneWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let window = HostWindow(Width = 980.0, Height = 1050.0)
         Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
         |> Program.withHost window
@@ -699,7 +1426,7 @@ module MaterialsWindowTests =
         window
 
     let private mountMaterialsWindow (materials : MaterialProxy) (categories : CategoryProxy) : MaterialsWindow =
-        let window = MaterialsWindow(materials, categories)
+        let window = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
@@ -804,7 +1531,7 @@ module MaterialsWindowTests =
             // matching filter narrows the tree to the just-saved entry.
             commitFilter window "Faceted window"
             Assert.Equal("1 results", textOf window ConstructorUiId.facetResultCount.value)
-            // The referenced remove: narrow to the seeded glass, select its leaf, Remove →
+            // The referenced remove: narrow to BuiltinCatalogue.material glass, select its leaf, Remove →
             // Confirm → the typed refusal NAMES the referencing sample and the store keeps it.
             commitFilter window "1.52"
             clickOn window ((ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
@@ -1041,7 +1768,7 @@ module MaterialsWindowTests =
     // ============================ step 016 — Select mode (headless) ============================
 
     let private mountSelectMaterialsWindow (materials : MaterialProxy) (categories : CategoryProxy) (selectCtx : SelectionContext<MaterialEntry>) : MaterialsWindow =
-        let window = MaterialsWindow(materials, categories, mode = Select selectCtx)
+        let window = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
@@ -1113,8 +1840,8 @@ module MaterialsWindowTests =
     let ``acceptance (016): Select returns the material through the TARGETED dispatch into the sample editor's layer and closes`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshStores ()
-            // The editor over a seeded one-layer sample — the Select session targets ITS row 0.
-            let editor, dispatch = mountEditorWithDispatch materials samples (SampleEditorView.EditSample SeedSamples.glassFilm600)
+            // BuiltinCatalogue.sample supplies one layer — the Select session targets ITS row 0.
+            let editor, dispatch = mountEditorWithDispatch materials samples (SampleEditorView.EditSample (BuiltinCatalogue.sample SampleIds.glassFilm600Id))
             let cancels = ResizeArray<string>()
             let selectCtx : SelectionContext<MaterialEntry> =
                 {
@@ -1146,11 +1873,11 @@ module MaterialsWindowTests =
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             // The workbench staleness machinery is window-agnostic: the session handle closes
             // whichever Select-state window it points at.
-            let sceneSamples = SampleProxy.createInMemory VersionsInUse.empty
-            let sceneMaterials = MaterialProxy.createInMemory (samplesReferencing sceneSamples) VersionsInUse.empty
-            let sceneCategories = CategoryProxy.createInMemory (materialsReferencingCategory sceneMaterials)
+            let sceneSamples = BuiltinCatalogue.sampleStore ()
+            let sceneMaterials = BuiltinCatalogue.materialStore (samplesReferencing sceneSamples)
+            let sceneCategories = BuiltinCatalogue.categoryStore (materialsReferencingCategory sceneMaterials)
             let model0 =
-                Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
+                SceneTestFixture.mainSceneWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
             let session : Scene.SelectSession =
                 {
                     target = ElementId "det"
@@ -1216,7 +1943,7 @@ module MaterialsWindowTests =
     /// the multi-version history the live store never grows until step 25, proven here through a
     /// stub proxy: `resolveVersion` serves v1 and v2, `tryGetMaterial` / `listMaterials` the latest.
     let private twoVersionMaterials () : MaterialId * MaterialEntry * MaterialEntry * MaterialProxy =
-        let template = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
+        let template = BuiltinCatalogue.material MaterialIds.glass152
         let id = newMaterialId ()
         let v1 = { template with id = id; name = EntryName "Versioned material v1" }
         let v2 = { template with id = id; name = EntryName "Versioned material v2" }
@@ -1237,6 +1964,7 @@ module MaterialsWindowTests =
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
+                pinMaterialVersion = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
         id, v1, v2, proxy
@@ -1357,7 +2085,7 @@ module MaterialsWindowTests =
     [<Fact>]
     let ``the view panel enumerates versions and an older version is view-only while Edit targets the latest`` () =
         let id, _, v2, materials = twoVersionMaterials ()
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let _, context = stubContext materials categories
         let selected = MW.initMaterialsWindow context Browse |> MW.updateMaterialsWindow (MW.SelectEntry id)
         // Both versions are enumerated (ascending), and the default view is the LATEST.
@@ -1406,7 +2134,7 @@ module MaterialsWindowTests =
     let ``acceptance (023): an older material version opens VIEW-ONLY inline while the latest stays editable`` () =
         HeadlessSession.run (fun () ->
             let id, _, _, materials = twoVersionMaterials ()
-            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+            let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
             let _, context = stubContext materials categories
             // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree
             // mounting precedent) so the version-row clicks drive the pure update.
@@ -1432,3 +2160,244 @@ module MaterialsWindowTests =
             // The library still edits the LATEST — the Edit verb is unchanged by viewing an older version.
             Assert.True(isPresent window ConstructorUiId.materialsEditButton.value, "the Edit verb still targets the latest version")
             window.Close())
+
+    [<Fact>]
+    let ``dropping entry files on the Materials window decides them and opens the import dialog, applying nothing`` () : unit =
+        let file, material = writeDroppedMaterial ()
+        let materials, _, categories = freshStores ()
+        let calls, context = stubContext materials categories
+        context.catalogueImports.importFrom (CatalogueProxy.createBuiltIn ())
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> List.map _.byDefault
+        |> context.catalogueImports.apply
+        |> Result.defaultWith (fun error -> failwith error.describe)
+        |> ignore
+        let opened = ResizeArray<ImportDecision list>()
+        let context =
+            {
+                context with
+                    openImportDialog = opened.Add
+            }
+        let initial = MW.initMaterialsWindow context Browse
+        Assert.Equal<ControlCaption option>(None, initial.importStatus)
+        Assert.Equal<CatalogueImportError option>(None, initial.importError)
+        let before =
+            {
+                initial with
+                    removeGate = MW.PendingRemove MaterialIds.glass200
+                    importStatus = Some (ControlCaption "Previous import")
+                    importError = Some (DroppedFileRefusedErr "Previous refusal")
+            }
+        Assert.Same(before, MW.updateMaterialsWindow (MW.DropMaterialEntryFiles []) before)
+        Assert.Empty opened
+        let dropped = MW.updateMaterialsWindow (MW.DropMaterialEntryFiles [ file ]) before
+        let row = Assert.Single(Assert.Single opened)
+        Assert.Equal(material.id.toLibraryEntryId, row.entryId)
+        Assert.Equal(DroppedFileOrigin file.leafName, row.origin)
+        match row.status with
+        | EntryIdNotHeld incoming -> Assert.Equal(material.id.toLibraryEntryId, incoming.content.id)
+        | _ -> Assert.Fail("A new material must be offered as an unheld entry.")
+        Assert.Equal<ControlCaption option>(None, dropped.importStatus)
+        Assert.Equal<CatalogueImportError option>(None, dropped.importError)
+        Assert.Equal(before.removeGate, dropped.removeGate)
+        Assert.Equal(before.lifecycleGate, dropped.lifecycleGate)
+        match dropped.mode with
+        | Browse -> ()
+        | Select _ -> Assert.Fail("Dropping files must preserve Browse mode.")
+        Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(Ok None, context.catalogueImports.proxy.tryHeldEntry material.id.toLibraryEntryId)
+        Assert.Empty calls
+
+    [<Fact>]
+    let ``a refused drop on the Materials window shows its reason and opens no dialog`` () : unit =
+        let folder = freshDropFolder ()
+        let leaf = FileName "notes.txt"
+        let file = leaf.combine folder
+        File.WriteAllText(file.value, "Not a library entry")
+        let calls, initial = freshModel ()
+        let before =
+            {
+                initial with
+                    lifecycleGate = MW.PendingLifecycle (MaterialIds.glass200, MW.MarkInactiveAction)
+                    importStatus = Some (ControlCaption "Previous import")
+            }
+        let refused = MW.updateMaterialsWindow (MW.DropMaterialEntryFiles [ file ]) before
+        let error =
+            match refused.importError with
+            | Some (DroppedFileRefusedErr reason as error) ->
+                Assert.Contains("notes.txt", reason)
+                error
+            | _ -> failwith "The unsupported file must produce DroppedFileRefusedErr."
+        Assert.Equal<ControlCaption option>(None, refused.importStatus)
+        Assert.Equal(before.removeGate, refused.removeGate)
+        Assert.Equal(before.lifecycleGate, refused.lifecycleGate)
+        Assert.Empty calls
+        HeadlessSession.run (fun () ->
+            let window = HostWindow(Width = 1150.0, Height = 800.0)
+            try
+                Program.mkSimple (fun () -> refused) MW.updateMaterialsWindow MW.materialsWindowView
+                |> Program.withHost window
+                |> Program.run
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Equal(error.caption.value, textOf window ConstructorUiId.materialsImportStatusText.value)
+                match tryFindControl window ConstructorUiId.materialsImportStatusText.value with
+                | Some (:? TextBlock as status) -> Assert.Equal(TextWrapping.Wrap, status.TextWrapping)
+                | _ -> Assert.Fail("The refusal must render in a wrapping status TextBlock.")
+            finally window.Close())
+
+    [<Fact>]
+    let ``an applied import of dropped files is the Materials window status`` () : unit =
+        let calls, initial = freshModel ()
+        let events, selection = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 0)))
+        let before =
+            {
+                initial with
+                    mode = Select selection
+                    selectedId = Some MaterialIds.glass200
+                    lifecycleGate = MW.PendingLifecycle (MaterialIds.glass200, MW.MarkInactiveAction)
+                    importError = Some (DroppedFileRefusedErr "Previous refusal")
+            }
+        let summary = ControlCaption "Imported the dropped material."
+        let applied = MW.updateMaterialsWindow (MW.MaterialsImportApplied summary) before
+        Assert.Equal<ControlCaption option>(Some summary, applied.importStatus)
+        Assert.Equal<CatalogueImportError option>(None, applied.importError)
+        Assert.Equal(before.removeGate, applied.removeGate)
+        Assert.Equal(before.lifecycleGate, applied.lifecycleGate)
+        Assert.Equal(before.selectedId, applied.selectedId)
+        match applied.mode with
+        | Select actual -> Assert.Same(selection, actual)
+        | Browse -> Assert.Fail("Import completion must preserve the Select session.")
+        Assert.Empty calls
+        Assert.Empty events
+
+    [<Fact>]
+    let ``the Materials window accepts dropped files`` () : unit =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            try Assert.True(DragDrop.GetAllowDrop window)
+            finally window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a material file dropped on the Materials window opens the import dialog, and Apply adds it to the app library`` () : unit =
+        HeadlessSession.run (fun () ->
+            let owner = FolderName "MaterialsWindowTests"
+            let context =
+                AppContext.create (TestAppScope.fileLocations owner) WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            TestAppScope.settlePendingImports context
+            let file, material = writeDroppedMaterial ()
+            let window = MaterialsWindow(context.materials, context.categories, context.catalogueImports)
+            let opened = ResizeArray<ImportDialogWindow>()
+            use _subscription =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _)) ->
+                    match sender with
+                    | :? ImportDialogWindow as dialog -> opened.Add dialog
+                    | _ -> ())
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                commitFilter window material.name.value
+                Assert.False(isPresent window ConstructorUiId.materialsImportStatusText.value)
+                window.DropEntryFiles [ file ]
+                Dispatcher.UIThread.RunJobs()
+                let dialog = Assert.Single opened
+                Assert.True(dialog.IsVisible)
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok None, context.materials.tryGetMaterial material.id)
+                Assert.False(isPresent window ConstructorUiId.materialsImportStatusText.value)
+                clickOn dialog ConstructorUiId.importApplyButton.value
+                Assert.False(dialog.IsVisible)
+                Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some material), context.materials.tryGetMaterial material.id)
+                Assert.Equal("Imported the dropped entry files (decisions applied: 1).", textOf window ConstructorUiId.materialsImportStatusText.value)
+                expandEntries window
+                Assert.True(isPresent window (ConstructorUiId.materialsEntryNode material.id).value,
+                            "Apply must refresh the Materials tree without reopening the window.")
+            finally
+                for dialog in opened do dialog.Close()
+                window.Close()
+                Dispatcher.UIThread.RunJobs())
+
+    // Spec 0050 S13.1: nothing presses Update snapshot, so nothing is downloaded.
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Online sources… opens one Online sources window over the app's refractiveindex.info source`` () : unit =
+        HeadlessSession.run (fun () ->
+            let context =
+                AppContext.create (TestAppScope.fileLocations (FolderName "MaterialsWindowTests")) WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            let window = MaterialsWindow(context.materials, context.categories, context.catalogueImports)
+            let opened = ResizeArray<Window>()
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                use _subscription =
+                    Window.WindowOpenedEvent.Raised
+                    |> Observable.subscribe (fun (struct (sender, _)) ->
+                        match sender with
+                        | :? Window as opener when not (obj.ReferenceEquals(opener, window)) -> opened.Add opener
+                        | _ -> ())
+                clickOn window ConstructorUiId.materialsOnlineSourcesButton.value
+                let sources = Assert.IsType<MaterialSourcesWindow>(Assert.Single opened)
+                Assert.True(sources.IsVisible)
+                Assert.True(isPresent sources (ConstructorUiId.materialSourceChoice (MaterialSourceName "refractiveindex.info")).value,
+                            "the Online sources window must offer the app's refractiveindex.info source")
+                Assert.Equal("No snapshot yet; Update snapshot downloads the database.", textOf sources ConstructorUiId.materialSourceSnapshotText.value)
+
+                clickOn window ConstructorUiId.materialsOnlineSourcesButton.value
+                Assert.Same(sources, Assert.Single opened)
+                Assert.True(sources.IsVisible, "a second press must leave the one live Online sources window")
+            finally
+                for openedWindow in opened do openedWindow.Close()
+                window.Close()
+                Dispatcher.UIThread.RunJobs())
+
+    // Spec 0050 S13.2: the glasses reference the built-in Glass category, so the start-up imports are settled first, as
+    // the drop's acceptance settles them.
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a glass catalogue imported in the Materials window adds its glasses to the app library`` () : unit =
+        HeadlessSession.run (fun () ->
+            let context =
+                AppContext.create (TestAppScope.fileLocations (FolderName "MaterialsWindowTests")) WorkbenchSettings.defaults
+                |> Result.defaultWith (fun error -> failwith error.describe)
+            TestAppScope.settlePendingImports context
+            let file, _ = writeGlassCatalogue ()
+            let window = MaterialsWindow(context.materials, context.categories, context.catalogueImports)
+            let heldGlasses () : MaterialEntry list =
+                match context.materials.listMaterials IncludeInactive with
+                | Ok materials -> materials |> List.filter (fun material -> List.contains material.name labGlassNames)
+                | Error error -> failwith $"the app library must list its materials, got %A{error}"
+            let opened = ResizeArray<ImportDialogWindow>()
+            use _subscription =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _)) ->
+                    match sender with
+                    | :? ImportDialogWindow as dialog -> opened.Add dialog
+                    | _ -> ())
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                Assert.Empty(heldGlasses ())
+                window.ImportGlassCatalogue file
+                Dispatcher.UIThread.RunJobs()
+                let dialog = Assert.Single opened
+                Assert.True(dialog.IsVisible)
+                Assert.Empty(heldGlasses ())
+                Assert.False(isPresent window ConstructorUiId.materialsImportStatusText.value)
+                clickOn dialog ConstructorUiId.importApplyButton.value
+                Assert.False(dialog.IsVisible)
+                let added = heldGlasses ()
+                Assert.Equal<EntryName list>(labGlassNames, added |> List.map _.name |> List.sort)
+                for glass in added do
+                    match context.materials.tryGetMaterial glass.id with
+                    | Ok (Some resolved) ->
+                        Assert.Equal(glass.name, resolved.name)
+                        Assert.Equal(CategoryIds.glass, resolved.category)
+                    | other -> Assert.Fail($"The imported glass '{glass.name.value}' must resolve, got %A{other}")
+                Assert.Equal("Imported the dropped entry files (decisions applied: 2).", textOf window ConstructorUiId.materialsImportStatusText.value)
+            finally
+                for dialog in opened do dialog.Close()
+                window.Close()
+                Dispatcher.UIThread.RunJobs())

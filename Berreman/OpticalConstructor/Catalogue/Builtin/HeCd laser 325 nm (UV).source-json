@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "8fea410a361dbea308afe365fcfba7947b855309ba3b7b0dcaf1c6493f41df9b",
+  "descriptionOpt": null,
+  "id": "f92c2370-a8e6-4cac-ad1f-42e6fa7a0f5e",
+  "name": "HeCd laser 325 nm (UV)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            325
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

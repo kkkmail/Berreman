@@ -1,0 +1,22 @@
+# Step 0347 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui.Tests]
+depends_on: [346]
+required_gates: [build, elevation, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.FsxAcceptanceTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.FsxAcceptanceTests`
+
+**How to implement.** `OpticalConstructor.Ui.Tests` references the shared test-support project, so one compiled copy of the ground truth, the designs and the kit locator serves both test suites (001 §Q AT-2 'Both `BerremanTests` and `OpticalConstructor.Ui.Tests` reference it, so one compiled copy serves both test suites'; 001 §S10 'referenced by `BerremanTests` and `OpticalConstructor.Ui.Tests`'; the S10.2 brief). `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj` gains the project reference to `..\..\BerremanTestSupport\BerremanTestSupport.fsproj` after its last `ProjectReference`, the `OpticalConstructor.TestWindows.App` one (`OpticalConstructor.Ui.Tests.fsproj:268`), with no comment (AGENTS.md 'No new comments in `.fsproj`'). This step adds the reference 001 §Q AT-2 requires and changes no source file of the suite, so no `ui-tests` class holds a changed fact and that gate is not selected; what the reference can affect, the suite's build and load, is what `build` and `ui-smoke` prove. The reference brings no assembly besides `BerremanTestSupport` itself, because `OpticalConstructor.Domain` and `OpticalConstructor.Optimization` already reach the suite through `OpticalConstructor.Ui` (`OpticalConstructor.Ui.fsproj:176-178`). The test projects stay outside the elevation gate's scope (`Elevation/Run-ElevationGate.ps1:151`), so the gate analyzes nothing new here. No test and no package is added. `ui-smoke` runs whole (`whole_suite: light`, about 27 s) and shows that the headless host still loads, discovers and runs the suite with the new reference.
+
+**Acceptance.** After the reference is added, `OpticalConstructor.Ui.Tests.fsproj` MUST reference `Berreman/BerremanTestSupport/BerremanTestSupport.fsproj`, so that `BerremanTests` and `OpticalConstructor.Ui.Tests` build against one `BerremanTestSupport` assembly. ui-smoke MUST pass, its count unchanged; and build, elevation and the twenty s34 invariants MUST pass.

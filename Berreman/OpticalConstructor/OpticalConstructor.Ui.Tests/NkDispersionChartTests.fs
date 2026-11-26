@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls.ExperimentChart
 open OpticalConstructor.Controls.ChartStyle
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.NkDispersionChart
 
@@ -24,13 +25,13 @@ open OpticalConstructor.Ui.NkDispersionChart
 /// display unit rescales only the x-axis (AC-D7).
 module NkDispersionChartTests =
 
-    /// Silicon — a DISPERSIVE built-in (engine preset, dispersion coded, `complexity = None`).
+    /// BuiltinCatalogue.material supplies silicon's published dispersion law.
     let private siliconEntry : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
+        BuiltinCatalogue.material MaterialIds.silicon
 
-    /// Vacuum — a NON-dispersive built-in (n = 1, k = 0 at every wavelength).
+    /// BuiltinCatalogue.material supplies vacuum (n = 1, k = 0 at every wavelength).
     let private vacuumEntry : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = MaterialIds.vacuumMaterial)
+        BuiltinCatalogue.material MaterialIds.vacuumMaterial
 
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
         match applyMaterialComplexityMsg msg s with
@@ -192,10 +193,10 @@ module NkDispersionChartTests =
         Assert.Equal(ActivityOn, NkDispersionChart.assembledActivity active)
 
     [<Fact>]
-    let ``spec 0040 006: the gyration builder draws all six components for a coded preset with no stored class`` () =
+    let ``spec 0040 006: the gyration builder draws all six components when every component is requested`` () =
         let active = propsOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
         let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
-        // The fallback set — every component, the pre-restriction rendering a coded preset keeps.
+        // The full set — what a complexity that names no gyration class draws.
         let chart = NkDispersionChart.gyrationChart NkDispersionChart.allGyrationComponents active Nanometer range
         Assert.Equal<string list>([ "g₁₁"; "g₂₂"; "g₃₃"; "g₁₂"; "g₁₃"; "g₂₃" ], chart.series |> List.map (fun s -> s.name.value))
 
@@ -286,3 +287,24 @@ module NkDispersionChartTests =
         | Some (MuWithDispValue _) -> ()
         | other -> Assert.Fail($"expected a stored dispersive Polder μ tree, got %A{other}")
         Assert.Equal(GyromagneticMuKind, dispersive.muKind)
+
+    [<Fact>]
+    let ``a published gyration law draws every gyration component`` () =
+        // Spec 0050 step 10: a published gyration law stores no class to restrict the components to.
+        let complexity =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = Some (PublishedLawRho LangasiteGyrationLaw)
+            }
+        Assert.Equal<GyrationComponent list>(allGyrationComponents, gyrationComponentsOfComplexity complexity)
+
+    [<Fact>]
+    let ``a complexity physics charts the gyration components and the mu kind of its complexity`` () =
+        // Spec 0050 S11.1: a complexity physics answers the chart's readers as its complexity does.
+        let complexity = complexityOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn; SetMagnetic MagneticOn ]
+        let physics = ComplexityPhysics complexity
+        Assert.Equal<GyrationComponent list>([ G11; G33 ], gyrationComponentsOfComplexity complexity)
+        Assert.Equal<GyrationComponent list>(gyrationComponentsOfComplexity complexity, physics.gyrationComponents)
+        Assert.Equal(ScalarMuKind, complexity.muKind)
+        Assert.Equal(complexity.muKind, physics.muKind)

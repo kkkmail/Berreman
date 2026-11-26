@@ -7,6 +7,7 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.DispersionModels
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialComplexityEditor
 
 /// Spec 0038 Part D (step 011): the two CONCRETE facet catalogues as data —
@@ -52,6 +53,10 @@ module LibraryFacets =
     // Discrete-value vocabularies (each key doubles as the branch label).
     // =======================================================================
 
+    type CategoryName with
+
+        member this.facetKey : DiscreteKey = DiscreteKey this.value
+
     type Anisotropy with
 
         /// The branch key of an anisotropy (the editor's `Anisotropy` DU).
@@ -83,16 +88,24 @@ module LibraryFacets =
         /// NOT carry the ten `DispersionModel` kinds: the editor lowers every
         /// model through `toEpsAxis` at save (spec 0033), so the segments hold
         /// `EpsAxisDispersion` term data and the analytic kind is not recoverable
-        /// (Sellmeier lowers to complex-ε terms, the transcendental four to an
-        /// opaque closure); recognizing term shapes back into model kinds would
-        /// re-derive physics (§D.0 forbids it). The facet therefore classifies
-        /// the three storable shapes; `DispersionModel.facetKey` (below) pins how
-        /// each `DispersionModel` case maps onto this vocabulary.
+        /// (Sellmeier lowers to complex-ε terms, the transcendental four to their
+        /// laws); recognizing term shapes back into model kinds would re-derive
+        /// physics (§D.0 forbids it). The facet therefore classifies the storable
+        /// shapes: the two term-data shapes, a tabulated n,k table (`TabulatedNK`,
+        /// spec 0050 step 2), and one "Evaluated (transcendental)" key shared by the
+        /// four transcendental laws (steps 5 and 7) and the coded presets' published
+        /// laws (step 8); `DispersionModel.facetKey` (below) pins how each
+        /// `DispersionModel` case maps onto this vocabulary.
         member this.facetKey : DiscreteKey =
             match this with
             | RealNK _ -> DiscreteKey "Real n/k terms"
             | ComplexEps _ -> DiscreteKey "Complex ε terms"
-            | EpsAxisEvaluated _ -> DiscreteKey "Evaluated (transcendental)"
+            | TabulatedNK _ -> DiscreteKey "Tabulated n/k"
+            | TaucLorentzAxis _
+            | GaussianOscillatorAxis _
+            | ForouhiBloomerAxis _
+            | BrendelBormannAxis _
+            | PublishedLawAxis _ -> DiscreteKey "Evaluated (transcendental)"
 
     type DispersionModel with
 
@@ -101,7 +114,7 @@ module LibraryFacets =
         /// `ConstantNK`/`Cauchy`/raw real-n/k `SumOfTerms` → real n/k terms;
         /// `Sellmeier`/`Lorentz`/`Drude`/raw complex-ε `SumOfTerms` → complex ε
         /// terms; the transcendental four (`TaucLorentz`/`GaussianOscillator`/
-        /// `ForouhiBloomer`/`BrendelBormann`) → evaluated.
+        /// `ForouhiBloomer`/`BrendelBormann`) → their laws' "Evaluated (transcendental)" key.
         member this.facetKey : DiscreteKey = this.toEpsAxis.facetKey
 
     type Handedness with
@@ -143,11 +156,8 @@ module LibraryFacets =
 
     type MaterialComplexity with
 
-        /// The anisotropy the eps VALUE TREE denotes — the shape is data
-        /// (`ConstantEpsValue` / `EpsDispersiveValue` cases), no physics is
-        /// re-derived. Note the classification is of the ENCODING: the seeded
-        /// "Uniaxial crystal" built-in is stored as per-axis `BiaxialTransparent`
-        /// values (`MaterialLibrary.fs` seed comment) and so classifies Biaxial.
+        /// Classifies the eps encoding: the Built-in catalogue's "Uniaxial crystal" uses
+        /// per-axis BiaxialTransparent values and therefore classifies Biaxial (spec 0050 §3.3).
         member this.anisotropy : Anisotropy =
             match this.eps with
             | EpsWithoutDispValue constant ->
@@ -161,6 +171,30 @@ module LibraryFacets =
                 | UniaxialDispersive _ -> Uniaxial
                 | BiaxialDispersive _ -> Biaxial
 
+    type CrystalParameters with
+
+        /// The crystal's anisotropy: a triclinic crystal, absorbing or not, is biaxial (spec 0050 S11.1).
+        member this.anisotropy : Anisotropy =
+            match this with
+            | UniaxialCrystal _ -> Uniaxial
+            | TriclinicCrystal _
+            | AbsorbingTriclinicCrystal _ -> Biaxial
+
+        /// The crystal's transparency: only the absorbing triclinic record carries an ε″ (spec 0050 S11.1).
+        member this.transparency : Transparency =
+            match this with
+            | UniaxialCrystal _
+            | TriclinicCrystal _ -> Transparent
+            | AbsorbingTriclinicCrystal _ -> Absorbing
+
+    type MaterialPhysics with
+
+        /// The anisotropy the physics denotes (spec 0050 S11.1).
+        member this.anisotropy : Anisotropy =
+            match this with
+            | ComplexityPhysics complexity -> complexity.anisotropy
+            | CrystalParameterPhysics crystal -> crystal.anisotropy
+
     type ConstantEpsValue with
 
         /// The transparency the CONSTANT eps value denotes (the editor's
@@ -170,70 +204,64 @@ module LibraryFacets =
             | IsotropicTransparent _ | UniaxialTransparent _ | BiaxialTransparent _ -> Transparent
             | IsotropicAbsorbing _ | UniaxialAbsorbing _ | BiaxialAbsorbing _ -> Absorbing
 
+    /// A crystal's physics is parameters, not the ladder's value trees, so every reader below answers
+    /// `None` for it (spec 0050 S11.1).
     type MaterialEntry with
 
         /// The constant eps value tree of the entry, when it carries one.
         member private entry.constantEpsOpt : ConstantEpsValue option =
-            match entry.complexity with
-            | Some complexity ->
+            match entry.physics with
+            | ComplexityPhysics complexity ->
                 match complexity.eps with
                 | EpsWithoutDispValue constant -> Some constant
                 | EpsWithDispValue _ -> None
-            | None -> None
+            | CrystalParameterPhysics _ -> None
 
         /// The dispersive eps segment tree of the entry, when it carries one.
         member private entry.dispersiveEpsOpt : EpsDispersiveValue option =
-            match entry.complexity with
-            | Some complexity ->
+            match entry.physics with
+            | ComplexityPhysics complexity ->
                 match complexity.eps with
                 | EpsWithDispValue dispersive -> Some dispersive
                 | EpsWithoutDispValue _ -> None
-            | None -> None
+            | CrystalParameterPhysics _ -> None
 
         /// The optical-activity value tree of the entry, when it carries one.
         member private entry.activeOpt : RhoWithDispValue option =
-            match entry.complexity with
-            | Some complexity -> complexity.active
-            | None -> None
+            match entry.physics with
+            | ComplexityPhysics complexity -> complexity.active
+            | CrystalParameterPhysics _ -> None
 
         /// The magnetic (Polder μ) value tree of the entry, when it carries one.
         member private entry.magneticOpt : MuWithDispValue option =
-            match entry.complexity with
-            | Some complexity -> complexity.magnetic
-            | None -> None
+            match entry.physics with
+            | ComplexityPhysics complexity -> complexity.magnetic
+            | CrystalParameterPhysics _ -> None
 
     // =======================================================================
     // The MATERIAL facet catalogue (over MaterialEntry).
     // =======================================================================
 
-    /// Category — applies to every entry; the value set is corpus-derived
-    /// (branches come from the filtered population), names resolved through
-    /// the seeded catalogue (`standardCategories` via `CategoryId.categoryName`).
-    let private materialCategoryDef : AttributeDef<MaterialEntry> =
+    /// Category applies to every entry; names resolve through the categories given (spec 0050 S1.7).
+    let private materialCategoryDef (categories : MaterialCategory list) : AttributeDef<MaterialEntry> =
         {
             key = materialCategoryKey
             name = (FacetCaption "Category")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue (DiscreteKey entry.category.categoryName) ]
+            extract = fun entry -> [ DiscreteValue (entry.category.categoryName categories).facetKey ]
         }
 
-    /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree. TOTAL
-    /// (spec 0040 Part B / operator 010/Q2): every entry carries a `complexity`
-    /// value tree after step 004, so the facet applies to ALL of them and
-    /// `extract` reads `complexity.anisotropy` for each; the defensive `None`
-    /// (no value tree) yields `[]` but never fires over the seed corpus.
+    /// Anisotropy — Isotropic/Uniaxial/Biaxial from the physics. TOTAL
+    /// (spec 0040 Part B / operator 010/Q2): every entry carries a physics, so the facet
+    /// applies to ALL of them and `extract` reads `physics.anisotropy` for each (spec 0050 S11.1).
     let private materialAnisotropyDef : AttributeDef<MaterialEntry> =
         {
             key = materialAnisotropyKey
             name = (FacetCaption "Anisotropy")
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract =
-                fun entry ->
-                    match entry.complexity with
-                    | Some complexity -> [ DiscreteValue complexity.anisotropy.facetKey ]
-                    | None -> []
+            extract = fun entry -> [ DiscreteValue entry.physics.anisotropy.facetKey ]
         }
 
     /// Constant vs dispersive — from the engine `properties`
@@ -256,7 +284,8 @@ module LibraryFacets =
     /// material lands under Absorbing (its wavelength-dependent eps is a segment
     /// tree, not a single value, so it cannot be a constant transparent). The
     /// defensive constant-without-value-tree case also folds to Absorbing, so
-    /// the facet yields exactly one branch value for every entry.
+    /// the facet yields exactly one branch value for every entry. A crystal reads
+    /// its own transparency (spec 0050 S11.1).
     let private materialTransparencyDef : AttributeDef<MaterialEntry> =
         {
             key = materialTransparencyKey
@@ -265,17 +294,20 @@ module LibraryFacets =
             appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun entry ->
-                    match entry.dispersion, entry.constantEpsOpt with
-                    | ConstantMaterial, Some constant -> [ DiscreteValue constant.transparency.facetKey ]
-                    | ConstantMaterial, None
-                    | DispersiveMaterial, _ -> [ DiscreteValue Absorbing.facetKey ]
+                    match entry.physics with
+                    | ComplexityPhysics _ ->
+                        match entry.dispersion, entry.constantEpsOpt with
+                        | ConstantMaterial, Some constant -> [ DiscreteValue constant.transparency.facetKey ]
+                        | ConstantMaterial, None
+                        | DispersiveMaterial, _ -> [ DiscreteValue Absorbing.facetKey ]
+                    | CrystalParameterPhysics crystal -> [ DiscreteValue crystal.transparency.facetKey ]
         }
 
     /// Dispersion model — MULTI-VALUED per axis/segment (a dispersive
     /// biaxial entry carries one classification per axis per segment, so
     /// counts need not sum to the total); offered only when the entry
     /// carries a dispersive eps segment tree. See `EpsAxisDispersion.facetKey` for
-    /// why the vocabulary is the three storable `EpsAxisDispersion` shapes
+    /// why the vocabulary is the four storable `EpsAxisDispersion` shapes
     /// rather than the ten analytic kinds.
     let private materialDispersionModelDef : AttributeDef<MaterialEntry> =
         {
@@ -297,7 +329,8 @@ module LibraryFacets =
     /// vocabulary is `offeredGyrationClassKeys` (via
     /// `availableGyrationClasses` — never re-derived). `GyrationClass.facetKey` is
     /// generic over the component, so the constant and dispersive gyration
-    /// facets classify identically.
+    /// facets classify identically. A published gyration law (spec 0050 step 10)
+    /// is active but has no editor class, so it extracts no value.
     let private materialGyrationClassDef : AttributeDef<MaterialEntry> =
         {
             key = materialGyrationClassKey
@@ -309,11 +342,13 @@ module LibraryFacets =
                     match entry.activeOpt with
                     | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue gyrotropic.gyration.facetKey ]
                     | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue gyrotropic.gyration.facetKey ]
+                    | Some (PublishedLawRho _)
                     | None -> []
         }
 
     /// Handedness — offered only when active (the enantiomorph sign of the
-    /// gyration tensor).
+    /// gyration tensor). A published gyration law (spec 0050 step 10) carries no
+    /// handedness field, so it extracts no value.
     let private materialHandednessDef : AttributeDef<MaterialEntry> =
         {
             key = materialHandednessKey
@@ -325,6 +360,7 @@ module LibraryFacets =
                     match entry.activeOpt with
                     | Some (RhoWithoutDispValue gyrotropic) -> [ DiscreteValue gyrotropic.hand.facetKey ]
                     | Some (RhoWithDispValue gyrotropic) -> [ DiscreteValue gyrotropic.hand.facetKey ]
+                    | Some (PublishedLawRho _)
                     | None -> []
         }
 
@@ -347,10 +383,10 @@ module LibraryFacets =
                     | None -> []
         }
 
-    /// The MATERIAL facet catalogue, in default representation order.
-    let materialFacets : AttributeDef<MaterialEntry> list =
+    /// The material facets in default order, with category names resolved through the categories given.
+    let materialFacets (categories : MaterialCategory list) : AttributeDef<MaterialEntry> list =
         [
-            materialCategoryDef
+            materialCategoryDef categories
             materialAnisotropyDef
             materialDispersionDef
             materialTransparencyDef
@@ -598,15 +634,12 @@ module LibraryFacets =
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
         }
 
-    /// The LIBRARY-ENTRY facet catalogue over a material corpus (the corpus
-    /// resolves constituent ids to entries and display names), in default
-    /// representation order: the kind facet, the polarizer-category facet
-    /// (spec 0038 Part F — the non-sample facet, right after kind), every
-    /// material facet lifted to samples as the distinct union over
-    /// constituent materials, then the sample-structural facets.
-    let libraryFacets (materials : MaterialEntry list) : AttributeDef<LibraryEntry> list =
+    /// Library facets in default order: kind, polarizer category, lifted material facets, then sample structure
+    /// (spec 0038 Part F). Constituent entries resolve through materials; category names through categories
+    /// (spec 0050 S1.7).
+    let libraryFacets (categories : MaterialCategory list) (materials : MaterialEntry list) : AttributeDef<LibraryEntry> list =
         [ entryKindDef; polarizerCategoryDef ]
-        @ (materialFacets |> List.map (liftToSamples materials))
+        @ (materialFacets categories |> List.map (liftToSamples materials))
         @ [
             substrateMaterialDef materials
             hasThinFilmsDef

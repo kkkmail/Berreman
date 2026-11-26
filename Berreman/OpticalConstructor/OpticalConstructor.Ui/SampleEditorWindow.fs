@@ -6,6 +6,7 @@ open Avalonia.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
+open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.WindowMode
@@ -27,7 +28,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// through its step-016 `Retarget` seam, a missing one opens fresh in Select state, shown per
 /// the step-005 modality switch (the Domain default unless the caller threads the
 /// app-configured value — step 47 owns the composition acceptance).
-type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, categories : CategoryProxy, intent : SampleEditorView.SampleEditorIntent, ?selectWindowModality : SelectWindowModality) as this =
+type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, categories : CategoryProxy, catalogueImports : CatalogueImportContext, intent : SampleEditorView.SampleEditorIntent, ?selectWindowModality : SelectWindowModality) as this =
     inherit HostWindow()
 
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
@@ -66,7 +67,7 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
                 | _ -> ()
             let launcher =
                 WindowLauncher.WindowLauncher.create
-                    (fun (_ : WindowLauncher.WindowKey) -> MaterialsWindow(materials, categories, mode = Select selectContext) :> Window |> Ok)
+                    (fun (_ : WindowLauncher.WindowKey) -> MaterialsWindow(materials, categories, catalogueImports, mode = Select selectContext) :> Window |> Ok)
                     (defaultArg selectWindowModality SelectWindowModality.defaultValue)
                     (WindowLauncher.SelectOpen (owner, retargetWindow))
             // The typed open error is deliberately dropped at this unit seam — a failed open

@@ -17,10 +17,10 @@
   <Project Path="BerremanTests/BerremanTests.fsproj">
     <Platform Project="x64" />
   </Project>
-  <Project Path="OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj">
+  <Project Path="BerremanTestSupport/BerremanTestSupport.fsproj">
     <Platform Project="x64" />
   </Project>
-  <Project Path="OpticalConstructor/OpticalConstructor.Seeding/OpticalConstructor.Seeding.fsproj">
+  <Project Path="OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj">
     <Platform Project="x64" />
   </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.Database/OpticalConstructor.Database.csproj">

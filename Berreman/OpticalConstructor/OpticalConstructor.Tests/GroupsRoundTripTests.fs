@@ -17,8 +17,8 @@ open Xunit
 ///   * AC-G1 — the two member modes (mutually exclusive / multi-select) and a LOSSLESS swap that
 ///             preserves every member's stored configuration (only `inBeam` flips).
 ///   * AC-G3 — the groups + collections library round-trips through the separate, schema-validated
-///             JSON, independent of any `.ocproj`; a wrong `schemaVersion` is rejected on load; the
-///             file lives at the per-user app-data path and missing-file load is total.
+///             JSON; a wrong `schemaVersion` is rejected on load; the file lives at the per-user
+///             app-data path and missing-file load is total.
 ///   * AC-H1 — an experiment collection's shared samples and on/off toggles round-trip; `setToggle`
 ///             flips just the named one.
 module GroupsRoundTripTests =

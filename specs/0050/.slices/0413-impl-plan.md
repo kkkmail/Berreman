@@ -1,0 +1,7 @@
+# Step 0413 implementation plan
+
+Wire `PublishCalibration` and `PromoteToLibrary` into the constructor's existing semantic update function. Both commands first use `guardKitWrite`, then find the named run and its study. Reuse `Study.calibratedItemsWith`, `KitLibraryContext.recordItem`, `promoteMaterial`, `promoteBlackBox`, and the window's stored-version model resolver. Publishing updates each successfully written item immediately and stops at the first error; promotion changes only the status in the window model.
+
+Modify only `TableAndElementRotationView.fs` and `StudyWindowModelTests.fs`, plus this slice's three required worker documents. Add exactly the four authorized facts, retaining all current test identities and assertions. Reuse the existing kit fixture and shipped model versions, write fit runs through `writeFitRun`, and use one database for the material store and catalogue imports. Cover linked calibrations, repeated/missing/refused runs, partial writes, material and black-box promotion, resolution failures, and read-only refusal within those facts.
+
+Preserve the immutable gate roster, test census, deadlines, numeric checkpoints and existing dirty supervisor state. Principal risks are losing successful item writes on a later error, looking up a selected rather than named study, resolving a model from a fabricated version, and promoting into a different database from the material store. No format, migration, undo operation, extra message, or version change is needed.

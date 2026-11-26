@@ -1,0 +1,9 @@
+# Slice 0099 implementation plan
+
+Implement S31-REGISTRATION in the existing CatalogueImport seam. Registration reads the manifest, refuses the reserved Built-in identity and already logged identities, and delegates to importFolder so every row remains pending. Settlement validates the complete choice set by entry id before calling apply, uses the pending decisions as the authoritative rows, and logs only after successful application with the injected current time. registeredFolders filters the existing log; unregistering continues to use forgetImport.
+
+Add the four specified facts to CatalogueImportContract so both in-memory and SQLite stores inherit them. Reuse the existing real-folder fixtures and observation tapes, extract the changed Lab catalogue setup for reuse, replace confirmImportDefaults' apply-and-log sequence with settle, and extend the import-error rendering fact. Cover missing, collision-only, duplicate and foreign choices, read-only registration, retained entries after unregistering, and unchanged startup after settlement.
+
+Modify only CatalogueImport.fs, CatalogueImportInMemoryTests.fs and CatalogueImportProxyTests.fs plus the prescribed worker outputs. No durable schema, package, baseline or version changes are needed. The acceptance text's older CatalogueImported registration wording is superseded by its explicit all-row confirmation requirement: registration returns CatalogueAwaitsChoices and fixtures settle it before asserting registration effects.
+
+Validation follows the resolved 0099.gates roster: Release build, affected-project elevation, the full constructor suite and eleven s12 invariants. Higher-priority workspace instructions require appropriate tests and required checks; local evidence does not replace supervisor acceptance. All captured artifacts stay in specs/0050/.artifacts.

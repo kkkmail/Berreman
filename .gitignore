@@ -328,16 +328,15 @@ ASALocalRun/
 
 # MFractors (Xamarin productivity tool) working folder 
 .mfractor/
-/data
+# data/ holds the committed reference experiment kits (spec 0050 .manual/001 §1). Only the web app's
+# knowledge-base store and each kit's app cache and lock (.oc/) are machine-local.
+/data/chroma/
+/data/*/.oc/
 
 # Optical Constructor (Spec 0022, Part I §I.4): derived/bulk .binz sidecars
 # (sweep tables, field maps, fit histories) are regenerable and excluded from
-# version control. Canonical `.ocproj` project files remain committable.
+# version control.
 *.binz
-
-# Optical Constructor (Spec 0022, Part I §I.5): autosave sidewrite files are
-# transient recovery copies kept distinct from the committed `.ocproj` document.
-*.autosave
 
 # ASG arc-runner v7 (spec 0075 F.2/D.3): per-attempt console streams and
 # finalize-commit diagnostics are bulky per-run scratch -- keep them out of
@@ -346,3 +345,6 @@ ASALocalRun/
 /specs/*/.artifacts/*console*.log
 /specs/*/.artifacts/finalize-commit.log
 /specs/*/.artifacts/
+
+# The repository root's .artifacts/ is tool scratch, like /specs/*/.artifacts/ (ASG 0090 .manual/022 B20).
+/.artifacts/

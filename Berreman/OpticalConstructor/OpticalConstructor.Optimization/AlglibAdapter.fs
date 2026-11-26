@@ -26,12 +26,13 @@ module AlglibAdapter =
     type CompletionCode with
 
         /// ALGLIB's reading of its completion code. Positive codes are successful stops; code 5 is the
-        /// iteration cap, code 7 is "further improvement impossible" (a too-small step); negative codes are
-        /// failures.
+        /// iteration cap, code 7 is "further improvement impossible" (a too-small step), code 8 is a stop on a
+        /// termination request (spec 0050 S11.3); negative codes are failures.
         member this.terminationReason : TerminationReason =
             match this with
             | CompletionCode 5 -> MaxIterationsReached
             | CompletionCode 7 -> StepTooSmall
+            | CompletionCode 8 -> SearchCancelled
             | CompletionCode c when c > 0 -> Converged
             | code -> BackendFailed code
 
@@ -58,8 +59,9 @@ module AlglibAdapter =
         /// penalty row each (a one-sided penalty on the achieved residual L2 norm);
         /// box bounds go through `minlmsetbc`. An analytic Jacobian (when supplied
         /// and no penalty rows are present) selects `minlmcreatevj`; otherwise
-        /// `minlmcreatev` with numerical differentiation.
-        member private this.runLm () : OptimizationResult =
+        /// `minlmcreatev` with numerical differentiation. A watched solve numbers ALGLIB's report calls and requests
+        /// termination once its token is cancelled; an unwatched one sets no report (spec 0050 S11.3).
+        member private this.runLm (watch : IterationWatch) : OptimizationResult =
             let (DesignVector initial) = this.initial
             let (DesignVector lower) = this.bounds.lower
             let (DesignVector upper) = this.bounds.upper
@@ -99,6 +101,19 @@ module AlglibAdapter =
 
             let fvec = alglib.ndimensional_fvec(fun (arg : float[]) (fi : float[]) (_ : obj) -> fillResiduals arg fi)
 
+            // A closure cannot capture the `mutable` binding, so the report reads the state through this one.
+            let lmState = state
+            let report =
+                match watch with
+                | UnwatchedIterations -> (null : alglib.ndimensional_rep)
+                | WatchedIterations observer ->
+                    alglib.minlmsetxrep(lmState, true)
+                    let reported = ref 0
+                    alglib.ndimensional_rep(fun (_ : float[]) (_ : float) (_ : obj) ->
+                        reported.Value <- reported.Value + 1
+                        observer.reportIteration (IterationCount reported.Value)
+                        if observer.cancellation.IsCancellationRequested then alglib.minlmrequesttermination lmState)
+
             match this.jacobian with
             | Some j when useAnalyticJac ->
                 let jac =
@@ -108,9 +123,9 @@ module AlglibAdapter =
                         for i in 0 .. m0 - 1 do
                             for p in 0 .. n - 1 do
                                 jacM.[i, p] <- rows.[i].[p])
-                alglib.minlmoptimize(state, fvec, jac, (null : alglib.ndimensional_rep), null)
+                alglib.minlmoptimize(state, fvec, jac, report, null)
             | _ ->
-                alglib.minlmoptimize(state, fvec, (null : alglib.ndimensional_rep), null)
+                alglib.minlmoptimize(state, fvec, report, null)
 
             let mutable xr = Array.empty<float>
             let mutable rep = Unchecked.defaultof<alglib.minlmreport>
@@ -234,12 +249,13 @@ module AlglibAdapter =
 
         // ------------------------------------------------------ entry point
 
-        /// The single G.1 entry point. Dispatches to the ALGLIB routine for the
+        /// The G.1 entry point under a watch. Dispatches to the ALGLIB routine for the
         /// chosen method; `NelderMead` is the deferred simplex decision and is
         /// surfaced as `SimplexBackendUnresolved`. Any exception (ALGLIB or
         /// otherwise) is trapped and returned as `OptimizationRunExn`, so no ALGLIB
-        /// type or exception crosses this boundary.
-        member this.optimize () : Result<OptimizationResult, OptimizationError> =
+        /// type or exception crosses this boundary. Only the Levenberg–Marquardt solve is watched; every other
+        /// method runs unwatched, as the study fit needs the LM solve alone (spec 0050 S11.3).
+        member this.optimizeWatched (watch : IterationWatch) : Result<OptimizationResult, OptimizationError> =
             try
                 match this.method with
                 | NelderMead ->
@@ -250,9 +266,12 @@ module AlglibAdapter =
                             iterations = IterationCount 0
                             terminationReason = SimplexBackendUnresolved
                         }
-                | LevenbergMarquardt -> this.runLm () |> Ok
+                | LevenbergMarquardt -> this.runLm watch |> Ok
                 | QuasiNewtonLbfgs -> this.runLbfgs () |> Ok
                 | BoundedLinearConstrained -> this.runBleic () |> Ok
                 | NonlinearConstrained -> this.runNlc () |> Ok
             with
             | e -> Error (OptimizationRunExn e.Message)
+
+        /// The single G.1 entry point: the run unwatched.
+        member this.optimize () : Result<OptimizationResult, OptimizationError> = this.optimizeWatched UnwatchedIterations

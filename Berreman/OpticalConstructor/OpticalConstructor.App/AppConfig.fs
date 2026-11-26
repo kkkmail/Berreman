@@ -1,23 +1,18 @@
-/// Spec 0038 Part C (step 005): the appsettings.json seam of the product app.
-/// `ConfigKey` is the single key inventory; `AppConfig.loadWorkbenchSettings` is the
-/// ONE place the solution touches `Softellect.Sys.AppSettings.AppSettingsProvider`
-/// for the app configuration — created once at the composition root, values flowing
-/// inward only as the elevated `WorkbenchSettings` Domain record. User preferences
-/// stay in `environment.json` (`Ui/UserEnvironment.fs`); the two stores never merge.
+/// App configuration flows inward as elevated settings and data locations through this seam
+/// (spec 0038 Part C; spec 0050 S2.4). User preferences remain in environment.json.
 namespace OpticalConstructor.App
 
+open System
+open System.IO
 open Softellect.Sys
+open Softellect.Sys.AppSettings
 open Softellect.Sys.Logging
+open Softellect.Sys.Primitives
 
 open OpticalConstructor.Domain.WorkbenchSettings
 
-/// The single appsettings.json key inventory (§6): every key the app — and the
-/// Part M storage proof (step 040) — reads is a `[<Literal>]` HERE, never a string
-/// scattered at a call site. The literal values are the wire key names inside the
-/// file's `appSettings` / `connectionStrings` sections. (Softellect's `ConfigKey`
-/// single-case DU wraps these at the provider call; `Softellect.Sys.AppSettings` is
-/// deliberately NOT opened in this file so the unqualified `ConfigKey` name can only
-/// mean this module.)
+/// The appsettings.json key inventory for appSettings and connectionStrings.
+/// Provider calls wrap these wire names in AppSettings.ConfigKey.
 [<RequireQualifiedAccess>]
 module ConfigKey =
 
@@ -41,21 +36,41 @@ module ConfigKey =
     [<Literal>]
     let thicknessBucketCap = "ThicknessBucketCap"
 
-    /// appSettings string (Part M, consumed by step 040's EFC proof): the database
-    /// provider choice, "MSSQL" | "SQLite" — parsed to a DU on the F# side of the
-    /// step-040 test, never a naked string beyond that boundary.
+    /// appSettings int (001 §F): the most kits the history keeps. Default 100 — `KitHistoryLimit.defaultValue`.
     [<Literal>]
-    let databaseProvider = "DatabaseProvider"
+    let kitHistoryLimit = "KitHistoryLimit"
 
-    /// connectionStrings entry (Part M, step 040): the MSSQL connection string,
-    /// read via `AppSettingsProvider.tryGetConnectionString`.
-    [<Literal>]
-    let mssqlConnectionString = "OpticalConstructorMssql"
-
-    /// connectionStrings entry (Part M, step 040): the SQLite connection string,
-    /// read via `AppSettingsProvider.tryGetConnectionString`.
+    /// The library database's SQLite connection string, read through `AppSettingsProvider.tryGetConnectionString` (spec 0050 §3.18).
     [<Literal>]
     let sqliteConnectionString = "OpticalConstructorSqlite"
+
+    /// appSettings folder for DataLocations.backupsFolder.
+    [<Literal>]
+    let libraryBackupsFolder = "LibraryBackupsFolder"
+
+    /// appSettings folder for DataLocations.preferencesFolder.
+    [<Literal>]
+    let preferencesFolder = "PreferencesFolder"
+
+    /// appSettings folder for DataLocations.kitsFolder.
+    [<Literal>]
+    let kitsFolder = "KitsFolder"
+
+    /// appSettings folder for DataLocations.exportsFolder.
+    [<Literal>]
+    let exportsFolder = "ExportsFolder"
+
+    /// appSettings folder for DataLocations.cataloguesFolder.
+    [<Literal>]
+    let cataloguesFolder = "CataloguesFolder"
+
+    /// appSettings folder for DataLocations.shippedCatalogueFolder.
+    [<Literal>]
+    let shippedCatalogueFolder = "ShippedCatalogueFolder"
+
+    /// appSettings folder for DataLocations.materialSourcesFolder (spec 0050 S13.1).
+    [<Literal>]
+    let materialSourcesFolder = "MaterialSourcesFolder"
 
 /// The settings doors of the workbench settings (spec 0048 E042, the shape of STL's
 /// `BmbDesktopAppSettingsDoors`): a parse from the file's `ConfigValue` that hands back the
@@ -75,41 +90,34 @@ module WorkbenchSettingsDoors =
             | ModalSelectWindows -> AppSettings.ConfigValue "true"
             | ModelessSelectWindows -> AppSettings.ConfigValue "false"
 
-    type QuickPickThreshold with
-        static member tryCreate (v : AppSettings.ConfigValue) : Result<QuickPickThreshold, string> =
-            match System.Int32.TryParse(v.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
+    type AppSettings.ConfigValue with
+        /// The one body of the count doors (spec 0050 step 163): an invariant-culture whole number the type's own `tryCreate` accepts.
+        /// Generic in the refusal it discards, so its int and string sit beside none of our types (ELEV010P).
+        member private this.tryPositiveCount (create : int -> Result<'Setting, 'Refusal>) : Result<'Setting, string> =
+            match System.Int32.TryParse(this.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
             | true, count ->
-                match QuickPickThreshold.tryCreate count with
-                | Ok threshold -> Ok threshold
-                | Error _ -> Error $"not a positive count: '{v.value}'"
-            | false, _ -> Error $"not a whole number: '{v.value}'"
+                match create count with
+                | Ok setting -> Ok setting
+                | Error _ -> Error $"not a positive count: '{this.value}'"
+            | false, _ -> Error $"not a whole number: '{this.value}'"
 
+    type QuickPickThreshold with
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<QuickPickThreshold, string> = v.tryPositiveCount QuickPickThreshold.tryCreate
         member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
     type TreeAutoBuildThreshold with
-        static member tryCreate (v : AppSettings.ConfigValue) : Result<TreeAutoBuildThreshold, string> =
-            match System.Int32.TryParse(v.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
-            | true, count ->
-                match TreeAutoBuildThreshold.tryCreate count with
-                | Ok threshold -> Ok threshold
-                | Error _ -> Error $"not a positive count: '{v.value}'"
-            | false, _ -> Error $"not a whole number: '{v.value}'"
-
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<TreeAutoBuildThreshold, string> = v.tryPositiveCount TreeAutoBuildThreshold.tryCreate
         member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
     type ThicknessBucketCap with
-        static member tryCreate (v : AppSettings.ConfigValue) : Result<ThicknessBucketCap, string> =
-            match System.Int32.TryParse(v.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
-            | true, count ->
-                match ThicknessBucketCap.tryCreate count with
-                | Ok cap -> Ok cap
-                | Error _ -> Error $"not a positive count: '{v.value}'"
-            | false, _ -> Error $"not a whole number: '{v.value}'"
-
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<ThicknessBucketCap, string> = v.tryPositiveCount ThicknessBucketCap.tryCreate
         member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
-/// The one `AppSettingsProvider` read seam. `loadWorkbenchSettings` is called once,
-/// from `Program.Startup`, and everything downstream sees only the returned record.
+    type KitHistoryLimit with
+        static member tryCreate (v : AppSettings.ConfigValue) : Result<KitHistoryLimit, string> = v.tryPositiveCount KitHistoryLimit.tryCreate
+        member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
+
+/// Read workbench settings and data locations once for Startup; downstream consumers receive elevated values.
 module AppConfig =
 
     /// One key through its type's door: a value the door refuses is named in the log before the
@@ -127,14 +135,64 @@ module AppConfig =
 
         provider.getOrDefault key defaultValue tryParse render
 
-    /// Create the provider ONCE via `AppSettingsProvider.tryCreate ()` (it opens the
-    /// build-copied appsettings.json beside the assembly), read the four workbench
-    /// keys — the provider's `WriteDefaultOnMissing` writes each missing or refused key's default back,
-    /// so the first run self-documents — persist the write-backs, and return the
-    /// elevated Domain record. Total: a missing/unreadable file logs a typed error and
-    /// falls back to `WorkbenchSettings.defaults`.
-    let loadWorkbenchSettings () : WorkbenchSettings =
+    [<ElevationBoundary(nameof IoBoundary, "Resolve configured data locations through the process environment at the composition root.")>]
+    let private resolveLocations (install : FolderName) (configured : DataLocations) : DataLocations =
+        let resolveFolder (folder : FolderName) : FolderName =
+            let expanded = FolderName (Environment.ExpandEnvironmentVariables folder.value)
+            if Path.IsPathRooted expanded.value then expanded
+            else install.combine expanded
+
+        {
+            libraryConnection = ConnectionString (Environment.ExpandEnvironmentVariables configured.libraryConnection.value)
+            backupsFolder = resolveFolder configured.backupsFolder
+            preferencesFolder = resolveFolder configured.preferencesFolder
+            kitsFolder = resolveFolder configured.kitsFolder
+            exportsFolder = resolveFolder configured.exportsFolder
+            cataloguesFolder = resolveFolder configured.cataloguesFolder
+            shippedCatalogueFolder = resolveFolder configured.shippedCatalogueFolder
+            materialSourcesFolder = resolveFolder configured.materialSourcesFolder
+        }
+
+    /// Read each location, writing missing or refused values back as configured defaults (spec 0050 S2.4).
+    /// Returned locations expand environment variables and root relative folders at install.
+    /// The caller saves the provider after all settings have been read.
+    let readDataLocations (provider : AppSettings.AppSettingsProvider) (install : FolderName) (documents : FolderName) : DataLocations =
+        let defaults = DataLocations.defaultsUnder documents
+        let connectionKey = AppSettings.ConfigKey ConfigKey.sqliteConnectionString
+        let libraryConnection =
+            match provider.tryGetConnectionString connectionKey with
+            | Ok (Some connection) -> connection
+            | missingOrRefused ->
+                match missingOrRefused with
+                | Error error -> Logger.logWarn $"readDataLocations: '{connectionKey.value}' is not usable ({error.Message}); using the built-in default."
+                | Ok _ -> ()
+
+                match provider.trySetConnectionString connectionKey defaults.libraryConnection with
+                | Error error -> Logger.logWarn $"readDataLocations: could not write the default for '{connectionKey.value}' back ({error.Message})."
+                | Ok () -> ()
+
+                defaults.libraryConnection
+
+        let configured =
+            {
+                libraryConnection = libraryConnection
+                backupsFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.libraryBackupsFolder) defaults.backupsFolder FolderName.tryCreate _.configValue
+                preferencesFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.preferencesFolder) defaults.preferencesFolder FolderName.tryCreate _.configValue
+                kitsFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.kitsFolder) defaults.kitsFolder FolderName.tryCreate _.configValue
+                exportsFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.exportsFolder) defaults.exportsFolder FolderName.tryCreate _.configValue
+                cataloguesFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.cataloguesFolder) defaults.cataloguesFolder FolderName.tryCreate _.configValue
+                shippedCatalogueFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.shippedCatalogueFolder) defaults.shippedCatalogueFolder FolderName.tryCreate _.configValue
+                materialSourcesFolder = readSetting provider (AppSettings.ConfigKey ConfigKey.materialSourcesFolder) defaults.materialSourcesFolder FolderName.tryCreate _.configValue
+            }
+
+        resolveLocations install configured
+
+    /// Read workbench settings and resolved data locations through one provider, then save defaults once.
+    /// An unreadable file logs its error and returns built-in settings and resolved default locations.
+    let loadWorkbenchSettings () : WorkbenchSettings * DataLocations =
         let defaults = WorkbenchSettings.defaults
+        let install = FolderName System.AppContext.BaseDirectory
+        let documents = FolderName (Environment.GetFolderPath Environment.SpecialFolder.MyDocuments)
 
         match AppSettings.AppSettingsProvider.tryCreate () with
         | Ok provider ->
@@ -144,13 +202,15 @@ module AppConfig =
                     quickPickThreshold = readSetting provider (AppSettings.ConfigKey ConfigKey.quickPickThreshold) defaults.quickPickThreshold QuickPickThreshold.tryCreate _.configValue
                     treeAutoBuildThreshold = readSetting provider (AppSettings.ConfigKey ConfigKey.treeAutoBuildThreshold) defaults.treeAutoBuildThreshold TreeAutoBuildThreshold.tryCreate _.configValue
                     thicknessBucketCap = readSetting provider (AppSettings.ConfigKey ConfigKey.thicknessBucketCap) defaults.thicknessBucketCap ThicknessBucketCap.tryCreate _.configValue
+                    kitHistoryLimit = readSetting provider (AppSettings.ConfigKey ConfigKey.kitHistoryLimit) defaults.kitHistoryLimit KitHistoryLimit.tryCreate _.configValue
                 }
+            let locations = readDataLocations provider install documents
 
             match provider.trySave () with
             | Ok () -> ()
             | Error e -> Logger.logWarn $"loadWorkbenchSettings: could not write appsettings.json defaults back - %A{e}."
 
-            settings
+            settings, locations
         | Error e ->
             Logger.logError $"loadWorkbenchSettings: cannot open appsettings.json - %A{e}; using built-in defaults."
-            defaults
+            defaults, resolveLocations install (DataLocations.defaultsUnder documents)

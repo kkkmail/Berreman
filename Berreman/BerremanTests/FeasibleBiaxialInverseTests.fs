@@ -7,11 +7,13 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MuellerReconstruction   // Retardance — reused, not re-declared
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.MuellerFitting
 open Xunit
 open BerremanTests.InverseFitHarness
-open BerremanTests.BiaxialSample                       // the SAME crystal BiaxialInverseTests measures
+open BerremanTestSupport.BiaxialSample                       // the SAME crystal BiaxialInverseTests measures
 
 /// Spec 0044, manual task 016 part 1 — the same triclinic gyrotropic crystal as `BiaxialInverseTests`,
 /// measured with an experiment a real laboratory could actually perform.
@@ -115,7 +117,7 @@ type FeasibleBiaxialInverseTests() =
     let otherOpticAxisCut = TiltedCut -opticAxis
 
     let configuration (cut : SampleCut) (thickness : Thickness) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) (waveLength : WaveLength) : MeasurementConfiguration =
-        configurationOf cut thickness incidenceDeg azimuthDeg observable waveLength
+        configurationOf cut thickness (incidenceDeg * 1.0<deg>) (azimuthDeg * 1.0<deg>) observable waveLength
 
     /// F1 — THE ANCHOR. Both optic-axis cuts at normal incidence, four azimuths.
     /// No linear retardance at all, so the 100 µm plate is spent entirely on optical activity: 2.45 deg of
@@ -151,7 +153,7 @@ type FeasibleBiaxialInverseTests() =
     let fullConfigurations = f1 @ f2 @ f3
 
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        observeWith forward triclinic configurations
+        observeWith forward triclinic configurations |> expectOk
 
     /// The start guess, identical in spirit to `BiaxialInverseTests`: every gyration component 25-35 %
     /// wrong in alternating directions, the three indices off by +0.20 %, +0.10 % and +0.15 %.
@@ -409,7 +411,7 @@ type FeasibleBiaxialInverseTests() =
         // practice in this exact field.
         let observations = observe fullConfigurations
         let scaling = scalingAround perturbedStart
-        let fit = fitObservations forward box observations scaling
+        let fit = fitObservations forward box observations scaling |> expectOk
 
         Assert.True(fit.solution.iterations.value > 0, "the fit should have taken at least one step")
 

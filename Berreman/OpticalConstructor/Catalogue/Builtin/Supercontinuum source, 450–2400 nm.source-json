@@ -1,0 +1,50 @@
+{
+  "categoryOpt": null,
+  "contentHash": "f7f8ebbc210de83d38a4634c47375eb457a1e400ee2e1916123757d2db06d4cc",
+  "descriptionOpt": null,
+  "id": "090b09f6-99f4-403b-b25f-e085383215e1",
+  "name": "Supercontinuum source, 450–2400 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": {
+          "Case": "TunableBetween",
+          "Fields": [
+            {
+              "lower": {
+                "Case": "Nm",
+                "Fields": [
+                  450
+                ]
+              },
+              "upper": {
+                "Case": "Nm",
+                "Fields": [
+                  2400
+                ]
+              }
+            }
+          ]
+        },
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            600
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

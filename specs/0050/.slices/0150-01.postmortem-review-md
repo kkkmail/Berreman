@@ -1,0 +1,184 @@
+# Secondary review: 0150-01 — inherited warnings and kit-picker coverage
+
+This is the owning orchestrator's advisory review of the agent-written
+[primary postmortem](0150-01.postmortem-md). It is not a mechanical fallback or
+an operator decision. Repairs await agreement.
+
+Incident: arc-watch `68fde2986ae64919ac6cc3bc34949c97`, supervisor PID `123500`,
+terminal escalation `2026-11-08T04:20:08Z` (November 7, 23:20:08 Toronto).
+The [event](../.artifacts/arc-watch/68fde2986ae64919ac6cc3bc34949c97/event.json)
+matches the launch's spec/PID, and the supervisor has exited. This is the first
+secondary review of this event.
+
+## Conclusion
+
+Two issues need bounded repair:
+
+1. Eight nested JSON-index expressions in `KitContentFileJsonTests.fs` emit
+   ten FS3369 warnings. They were introduced in accepted slices 0146–0147 and
+   remain unchanged. Step 0150's file list excludes their repair despite the
+   repository's zero-owned-warning policy.
+2. The new `KitFolderPicker.ofWindow` has no exercising test. The selected
+   existing picker facts call `MaterialsWindowView.pickLibraryFolder`, a
+   different implementation. The useful existing fixture is in
+   `Ui.Tests/AppContextTests.fs`, also outside 0150's edit list.
+
+The immediate cause is a repair-authority conflict over real implementation
+warnings and a coverage omission. There is also an enforcement gap: the build
+gate accepts compiler warnings, and later incremental builds can print zero
+warnings without recompiling the offending source. Earlier acceptance therefore
+did not establish warning-free compilation. The current judge and resolver
+correctly identified the unresolved conflict; another unchanged worker retry
+cannot supply the missing authority.
+
+This is independent of the 0145 construction repair. Slices 0145–0149 completed
+normally, checkpoint 144 records 1,137 constructor cases, and 0150 correctly uses
+manual 010's Result-returning scratch constructor. Preserve that contract.
+
+## Evidence checked independently
+
+- HEAD is accepted 0149, `aa5ff97313161b5f83e4e5476f3c16eaa8d663df`. State has
+  149 completed slices and 0150/index 149 escalated; checkpoint 149 is absent.
+  The inherited floors are 1,151 constructor cases and 215 smoke cases.
+- Current product work consists of new `Ui/KitOpening.fs` and
+  `Tests/KitOpeningTests.fs`, plus one compile entry in each project file.
+  Supervisor state and the worker reports are also present. Preserve all of
+  these changes. The two proposed repair files currently match accepted HEAD.
+- The successful feedback build at `04:07:37Z` still reports the ten warnings.
+  Its [console log](../.artifacts/0150-03-console-20261108T024033Z.log) identifies
+  positions `175:48`, `176:48`, `177:48`, `190:48`, `191:48`, `191:57`, `194:48`,
+  `368:43`, `369:43`, `369:55` in `KitContentFileJsonTests.fs`. These are eight
+  expressions, with two ambiguous continuations at each of lines 191 and 369.
+  This is current measured output, not stale evidence from a failed attempt.
+- Read-only blame assigns lines 175–194 to `adf8b76d` (0146) and 368–369 to
+  `48045503` (0147). The associated malformed JSON values still feed the original
+  schema/parser rejection assertions. Explicit dotted indexing can preserve
+  those values and assertions while removing the ambiguous syntax.
+- Console histories independently confirm the misleading incremental pattern:
+  0146 attempt 02 reports seven warnings then zero; 0147 reports twelve total
+  warnings then zero, including all ten FS3369 sites; 0149 attempt 02 reports
+  ten then zero. The earlier code judges returned review-green with pending
+  gate snapshots. The build descriptor checks exit zero and absence of lowercase
+  `error`; it does not enforce the project's warning rule. The Tests project
+  promotes warning 25, not all F# warnings, to errors.
+- `Ui/KitOpening.fs:108–133` implements the new adapter. Its six new constructor
+  facts do not call it. Existing UI facts call the library picker at
+  `AppContextTests.fs:244,270,297`. The fixture at lines 38–119 supplies reusable
+  runtime storage doubles, provider injection and isolated headless sessions;
+  there is no need to repeat the 0118 fixture work or invent another harness.
+- The [judge](../.artifacts/code_judge/0150-01-code-judge.md) and
+  [resolver](../.artifacts/resolver/0150-resolver-01.md) identify the same two
+  boundaries. The judge's public-surface coverage rule requires an exercising
+  test; merely selecting the class does not establish coverage or edit authority.
+  Manual 008 authorizes the existing identities, not unrestricted future edits.
+- The earlier parser/equality build errors in `KitOpeningTests.fs` were repaired
+  before the successful build. The path to escalation is not an exhausted review
+  budget, a quota wait or another scratch-construction conflict.
+- Read-only contract replay finds six declared constructor additions: the target
+  is **1,157**. The UI selection has **14 non-smoke AppContextTests identities**;
+  the source's fifteenth fact has the `ui-smoke` trait and belongs in the
+  **215-case smoke** run. All sixteen gate descriptors are present, and the
+  existing profile-1 receipt validates. None of these counts is a new test result.
+
+Only the feedback build has run for 0150. Full constructor, smoke, selected UI,
+elevation and invariant verification remains outstanding. This review ran no
+build, test or gate.
+
+## Recommended actions — approval required
+
+1. **Record narrow repair authority.** Create the next manual, expected to be
+   `011-step-0150-warning-and-picker-recovery.md`, with a project-prompt pointer.
+   Authorize `OpticalConstructor.Tests/KitContentFileJsonTests.fs` and
+   `OpticalConstructor.Ui.Tests/AppContextTests.fs` alongside the four original
+   0150 files. Preserve all acceptance obligations, original assertions, test
+   identities and the six declared additions. Keep manuals 008–010 binding.
+   Record that an incremental zero-warning summary does not clear an observed
+   diagnostic: the corresponding source fix and recompilation must do so.
+   Include an explicit normal-resume exception for checkpoint 149.
+
+2. **Repair the expressions and exercise the actual adapter.** Use explicit
+   `.[]` indexing at the eight flagged expressions without changing which nodes
+   or malformed values they mutate. Extend the three existing picker facts in
+   `AppContextTests` using their current headless/storage fixture. Keep all
+   original library-picker assertions and use separate fixture instances for
+   kit-picker observations so their call counts do not interfere. Invoke
+   `KitFolderPicker.ofWindow(...).pickKitFolder()` itself and cover resolved and
+   unresolved suggestions, title `Choose a kit folder`, single selection, the
+   first selected local folder, cancellation, a non-local first selection, and
+   failures obtaining/resolving/using the provider. A non-local first selection
+   must not silently fall through to a later local folder. Observe options,
+   results and captured calls outside production's exception handler so failed
+   assertions cannot be swallowed as `None`. Assert no folder creation. Add no
+   test identity or census row; preserve the six constructor facts and existing
+   public contracts. Correct any measured defect within this authorized behavior
+   if the new adapter tests reveal one.
+
+3. **Verify actual recompilation and all sixteen gates.** Run a supplemental
+   Release solution rebuild (`dotnet build Berreman.slnx -c Release -t:Rebuild`
+   from `Berreman/`) and inspect the diagnostics for zero owned-code warnings.
+   Keep any third-party/vendored diagnostics distinct; do not suppress warnings
+   or treat an incremental summary as the proof. Run the focused JSON and picker
+   tests and the unchanged complete 0150 roster: build, elevation,
+   constructor-unit-tests, ui-smoke, selected ui-tests and all eleven s17
+   invariants. Require 1,157 constructor cases, 215 smoke cases, the exact
+   fourteen-identity non-smoke AppContextTests selection, and zero failures/skips.
+   Do not write that selected UI count as a whole-suite baseline. Include every
+   affected product project/dependent in elevation against accepted `aa5ff97`
+   if the partial implementation has already been committed. Validate all 494
+   steps and refresh the profile-1 receipt for the prompt change while retaining
+   all 988 compiled artifacts. Keep published contracts, oracle, gate snapshots,
+   test effects, state, counters, checkpoints and expected-red records unchanged.
+
+4. **Prepare the verified handoff and wait for the operator's commit.** Save
+   evidence under `.artifacts/0150-operator-repair/`, update the manual and 0150
+   implementation/state-of-world reports, and prepare the operator reply. Retain
+   inherited YAML floors until supervisor acceptance. Stop before committing or
+   relaunching. No ASG runtime/source change is required for this bounded recovery.
+
+After the operator commits and requests relaunch, resume normally with
+`--operator-reply <recovery-note> --executability-profile 1`, without
+`--accept-current-slice`. The supervisor must review the repaired slice and run
+the complete roster to publish checkpoint **149**, measured case evidence and
+expected-red bookkeeping before advancing.
+
+## Difference from the primary proposal
+
+I agree with the two-file repair and forced-recompilation requirement. I do not
+recommend its preparatory-commit/uncommitted-implementation procedure. This
+conversation consistently leaves the complete verified repair for the operator
+to commit. Manuals 009 and 010 already establish the appropriate pattern: an
+explicit exception to the standing committed-green acceptance rule, followed by
+normal profile-1 verification. Apply that pattern to 0150 rather than prescribe
+two differently scoped commits. The agent must not commit either part.
+
+## Recurrence and prevention
+
+This repeats 0132's inherited-defect versus slice-scope conflict and 0118's native
+picker coverage issue, but neither earlier repair promised coverage of this new
+adapter or future compiler warnings. Reuse and extend the earlier fixture, and
+do not reopen the resolved scratch-construction diagnosis.
+
+The warning acceptance pattern is a real process weakness. A warning-bearing
+compilation followed by an up-to-date build is not a warning fix. Immediate
+recovery can preserve the frozen gate contracts while requiring source repair
+and forced recompilation. Longer-term prevention belongs in deterministic
+project warning enforcement and retention of earlier build diagnostics for
+review, rather than repeated model retries. This review does not claim ASG
+mis-evaluated its configured pass condition, nor authorize a broader build-policy
+or ASG change. The aggregate arc analysis should distinguish that enforcement
+gap from the current product repairs.
+
+Later steps editing the corrected JSON test file are 0217, 0221, 0260, 0261,
+0288, 0290, 0291, 0313, 0359, 0382, 0384, 0395, 0404 and 0460. Preserve the
+disambiguated indexing there. Pending AppContextTests selections are 0150–0154,
+0163, 0169, 0172, 0175–0177, 0184, 0189, 0210, 0220, 0233, 0243, 0260,
+0280, 0283, 0419, 0446, 0449, 0459 and 0494. Preserve the extended original
+facts and fixture isolation when those steps change them; future native adapters
+still need their own exercising coverage.
+
+## Boundaries
+
+Only this matching secondary report was written. The original postmortem,
+implementation, worker records, supervisor state, Git index and HEAD were
+preserved. No repair, rebuild, test, gate, commit, acceptance or restart was
+performed. The proposed actions await the operator's decision.

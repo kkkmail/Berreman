@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "f936cdc30541fd8d780f6fba2c13e75e2ce12d83d27c0281e3d8be4fa29b0331",
+  "descriptionOpt": null,
+  "id": "eba5ec72-b129-416f-93bd-858b92116fe3",
+  "name": "EUV 13.5 nm (Sn plasma)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            13.5
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

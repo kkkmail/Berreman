@@ -1,0 +1,50 @@
+{
+  "categoryOpt": null,
+  "contentHash": "93a01fa6eae134c88ec3b611867dfa230ef94fc6482d90c390960fd9b297c5eb",
+  "descriptionOpt": null,
+  "id": "cb376458-dc3c-41f9-8a5f-54f0f575978b",
+  "name": "Ti:sapphire laser, tunable 700–1000 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": {
+          "Case": "TunableBetween",
+          "Fields": [
+            {
+              "lower": {
+                "Case": "Nm",
+                "Fields": [
+                  700
+                ]
+              },
+              "upper": {
+                "Case": "Nm",
+                "Fields": [
+                  1000
+                ]
+              }
+            }
+          ]
+        },
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            800
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

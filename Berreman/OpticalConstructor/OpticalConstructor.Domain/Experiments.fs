@@ -1,34 +1,14 @@
 namespace OpticalConstructor.Domain
 
-open Berreman.Geometry                              // Angle (the placement/orientation summary)
+open OpticalConstructor.Domain.Kit
 open Berreman.Fields                                // WaveLength (a tunable source's set wavelength, spec 0046)
-open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission / ElementPlacement / TablePoint
-open OpticalConstructor.Domain.Library              // ElementId / DetectorKind / SampleVersionId / SampleId
-open OpticalConstructor.Domain.Lifecycle           // VersionRef / VersionsInUse (step 020)
+open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission
+open OpticalConstructor.Domain.Library              // ElementId
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Propagation         // SweptValue / CurvePointCount (a range's ends and points)
 
-/// Spec 0027 (028) / spec 0038 Part I (step 025) — the Experiments domain, redesigned around a
-/// multi-step, EDITABLE experiment built from the live setup:
-///   1. the SETUP is the scene itself — captured on commit as an ordered `ElementDescriptor` list
-///      (each descriptor: the catalogue kind, a placement/orientation summary, and the bound entry
-///      reference BY VERSION where versioned) with the varied element identified WITHIN the list;
-///   2. the user picks WHICH element to vary — and the element's CATALOGUE KIND determines what may
-///      be varied. This is DATA (`VariableParameter.allowedFor`), attached to the element through its kind, NOT
-///      hard-coded at the bay: a light source varies only its wavelength, a polarizer only its R1, a
-///      sample its R1 and R2 (for now), and other kinds nothing yet;
-///   3. the user picks what to CAPTURE (transmitted / reflected / both), sets the numeric range, and
-///      CONFIRMS, which ADDS the experiment to a collection that persists. Experiments can be EDITED
-///      (re-confirm updates in place — never duplicates) and REMOVED.
-/// Sample and light source are OPTIONAL (spec 0038 Part I): `E1 = LS+LP+S+LP(rotate)`,
-/// `E2 = LS+LP+LP(rotate)` (no sample), `E3 =` an empty dark line are all first-class. The detector
-/// kind is part of the chain and determines the expected data-file shape (consumed by step 34). Every
-/// primitive is elevated (the variable, the measurement, the id, the range, the bound-entry version
-/// reference and the data-file path are DUs / records, not bare strings / floats), and an experiment
-/// references its elements by serializable `ElementId` / `VersionRef`, so it survives save-load.
-///
-/// Moved out of `ElementId.fs` at step 025: the descriptor binding reuses the step-020 `VersionRef`
-/// (`Lifecycle.fs`, which compiles AFTER `ElementId.fs`), so the module compiles after `Lifecycle.fs`.
-/// The fully-qualified module name is unchanged, so every `open …Experiments` consumer is untouched.
+/// The editable experiments, each a run recorded over one revision of a kit setup: the scan, the role, the session and
+/// the notes are the experiment's, the slots the setup's (spec 0028; spec 0038 Part I; spec 0050 S8.2, S9.1).
 module Experiments =
 
     /// A quantity an experiment can vary on an element (spec 028). An elevated DU — not an enum / string.
@@ -36,6 +16,8 @@ module Experiments =
         | VaryWaveLength
         | VaryR1
         | VaryR2
+        /// A dial-mounted item's raw dial reading, the angle its slot records (spec 0050 S9.1; 001 §I).
+        | VaryDialReading
 
         /// A short, stable code (the automation ids and the Controls-layer mirror map back through this).
         member this.code : string =
@@ -43,6 +25,7 @@ module Experiments =
             | VaryWaveLength -> "wavelength"
             | VaryR1 -> "r1"
             | VaryR2 -> "r2"
+            | VaryDialReading -> "dial"
 
         /// A human-readable name for the varied quantity.
         member this.label : string =
@@ -50,12 +33,13 @@ module Experiments =
             | VaryWaveLength -> "Wavelength"
             | VaryR1 -> "Rotation R1"
             | VaryR2 -> "Incidence R2"
+            | VaryDialReading -> "Dial reading"
 
         /// The display unit of the varied quantity.
         member this.unitLabel : string =
             match this with
             | VaryWaveLength -> "nm"
-            | VaryR1 | VaryR2 -> "°"
+            | VaryR1 | VaryR2 | VaryDialReading -> "°"
 
         /// What each catalogue kind permits varying (spec 028) — declared HERE as DATA (attached to the element
         /// through its kind) so the Experiments bay READS the allowed set rather than hard-coding it. A light
@@ -121,12 +105,21 @@ module Experiments =
 
         /// The default range for a variable (spec 028): R1 0…360° (73 pts); R2 0…89° incidence (91 pts —
         /// 90° itself is not computable, so the top is 89, drawn to 90 by the chart); wavelength 200…800 nm
-        /// (91 pts).
+        /// (91 pts); a dial reading 0…360° in steps of 20 (19 pts; spec 0050 S9.1, 001 §K).
         static member forVariable (v : VariableParameter) : VariableRange =
             match v with
             | VaryR1 -> { min = SweptValue 0.0; max = SweptValue 360.0; points = CurvePointCount 73 }
             | VaryR2 -> { min = SweptValue 0.0; max = SweptValue 89.0; points = CurvePointCount 91 }
+            | VaryDialReading -> { min = SweptValue 0.0; max = SweptValue 360.0; points = CurvePointCount 19 }
             | VaryWaveLength -> { min = SweptValue 200.0; max = SweptValue 800.0; points = CurvePointCount 91 }
+
+        /// `max 2 points` values evenly spaced from `min` to `max`, both ends included: the grid `chartForRun` draws, in its
+        /// arithmetic order so every number is kept (spec 0050 S9.1).
+        member this.sweptValues : SweptValue list =
+            let n = max 2 this.points.value
+            let lo = this.min.value
+            let hi = this.max.value
+            [ for k in 0 .. n - 1 -> SweptValue (lo + (hi - lo) * float k / float (n - 1)) ]
 
     /// A stable identity for an experiment in the collection (a monotonic int — deterministic, so add /
     /// edit / remove are unit-testable without a Guid clock).
@@ -138,50 +131,125 @@ module Experiments =
 
         member this.next : ExperimentId = ExperimentId (this.value + 1)
 
-    /// An elevated filesystem path to an experiment's measured data file (spec 0038 Part I, step 025) —
-    /// a single-case DU, never a bare `string` in the `Experiment` record or the serialized contract.
-    /// `.value` is the raw path, reached ONLY at the IO boundary (the future `ExperimentDataProxy` file
-    /// adapter, §15.4). Mirrors the sibling `Library.ElementId` (a `create` + `.value`, no `tryCreate`):
-    /// parse-time validation of a picked path lands with the data-file parsers (Part L).
-    type DataFilePath =
-        | DataFilePath of string
+    /// What a recorded run is for; its disk tag is an int, 1 to 7 in case order (spec 0050 S9.1, 001 §K).
+    type ExperimentRole =
+        | ScienceRun
+        | CalibrationRun
+        | DarkRun
+        | DriftCheckRun
+        | DiagnosticRun
+        | IgnoredRun
+        | PlannedRun
 
-        member this.value = let (DataFilePath p) = this in p
-        static member create (path : string) : DataFilePath = DataFilePath path
-
-    /// How an experiment descriptor references its bound Library entry (spec 0038 Part I / §13.1). A
-    /// versioned entry pins the EXACT version it was built against (a sample by `SampleVersionRef`, a
-    /// material-backed binding by `MaterialVersionRef`) so a later mint of the entry's `.next` version
-    /// never rewrites the experiment's physics; a protected preset (source / detector / polarizer — never
-    /// versioned) binds by its stable entry id; an element the user has not bound yet is `Unbound`. Reuses
-    /// the step-020 `VersionRef` (`Lifecycle.fs`) rather than a parallel version-ref DU — the same
-    /// reference the `VersionsInUse` seam collects.
-    type ElementBinding =
-        | BoundByVersion of VersionRef
-        | BoundByEntryId of entryId : ElementValueId
-        | Unbound
-
-        /// The versioned reference this binding pins, if any — the projection `boundVersions` folds over
-        /// the whole setup (preset / unbound descriptors contribute none).
-        member this.versionRefOpt : VersionRef option =
+        member this.value : int =
             match this with
-            | BoundByVersion versionRef -> Some versionRef
-            | BoundByEntryId _ | Unbound -> None
+            | ScienceRun -> 1
+            | CalibrationRun -> 2
+            | DarkRun -> 3
+            | DriftCheckRun -> 4
+            | DiagnosticRun -> 5
+            | IgnoredRun -> 6
+            | PlannedRun -> 7
 
-    /// A serializable snapshot of an element's placement / orientation captured on commit (spec 0038
-    /// Part I): the table position and the three rotation angles. Elevated fields only (`TablePoint`,
-    /// engine `Angle`), so the descriptor survives the live element's removal and a save-load without
-    /// holding an in-memory element reference. Built from the live `ElementPlacement` via `ofPlacement`.
-    type PlacementSummary =
+        /// The role a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S9.1).
+        static member tryOfWire (tag : int) : ExperimentRole option =
+            match tag with
+            | 1 -> Some ScienceRun
+            | 2 -> Some CalibrationRun
+            | 3 -> Some DarkRun
+            | 4 -> Some DriftCheckRun
+            | 5 -> Some DiagnosticRun
+            | 6 -> Some IgnoredRun
+            | 7 -> Some PlannedRun
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | ScienceRun -> "Science"
+            | CalibrationRun -> "Calibration"
+            | DarkRun -> "Dark"
+            | DriftCheckRun -> "Drift check"
+            | DiagnosticRun -> "Diagnostic"
+            | IgnoredRun -> "Ignored"
+            | PlannedRun -> "Planned"
+
+        /// Every role in tag order (spec 0050 S9.1).
+        static member all : ExperimentRole list =
+            [ ScienceRun; CalibrationRun; DarkRun; DriftCheckRun; DiagnosticRun; IgnoredRun; PlannedRun ]
+
+    /// The measurement session a run belongs to when the user sets it by hand; S11.1's study splits the rest at
+    /// its Diagnostic runs (spec 0050 S9.1).
+    type SessionName =
+        | SessionName of string
+
+        member this.value : string = let (SessionName text) = this in text
+
+        /// The text as given; an empty or white-space text names no session (spec 0050 S9.1).
+        static member tryCreate (text : string) : SessionName option =
+            if System.String.IsNullOrWhiteSpace text then None else Some (SessionName text)
+
+    /// A reviewer's free-text notes on a recorded run; they live in its file (spec 0050 S9.1, 001 §E).
+    type ExperimentNotes =
+        | ExperimentNotes of string
+
+        member this.value : string = let (ExperimentNotes text) = this in text
+
+        static member none : ExperimentNotes = ExperimentNotes ""
+
+    /// The mandatory audit note on why an experiment's setup was re-pointed after the fact (spec 0050 S9.3; 001 §K).
+    type CorrectionNote =
+        | CorrectionNote of string
+
+        member this.value : string = let (CorrectionNote text) = this in text
+
+        /// The text as given; an empty or white-space text is no note (spec 0050 S9.3).
+        static member tryCreate (text : string) : CorrectionNote option =
+            if System.String.IsNullOrWhiteSpace text then None else Some (CorrectionNote text)
+
+    /// One re-pointing of an experiment's setup ("LR was at −45") and why it was made (spec 0050 S9.3; 001 §K).
+    type SetupCorrection =
         {
-            position : TablePoint
-            r1 : Angle
-            r2 : Angle
-            r3 : Angle
+            previous : SetupReference
+            corrected : SetupReference
+            note : CorrectionNote
         }
 
-        static member ofPlacement (p : ElementPlacement) : PlacementSummary =
-            { position = p.placementPoint; r1 = p.r1; r2 = p.r2; r3 = p.r3 }
+    /// The Experiments error channel: errors as values, each case carrying a `reason` (spec 0050 S9.1).
+    type ExperimentError =
+        | UnknownExperimentErr of reason : string
+        | ExperimentUnavailableErr of reason : string
+        /// A blank experiment name (spec 0050 S9.1).
+        | InvalidExperimentNameErr of reason : string
+
+        member this.describe : string =
+            match this with
+            | UnknownExperimentErr reason -> $"the experiment is unknown: {reason}"
+            | ExperimentUnavailableErr reason -> $"the experiment is unavailable: {reason}"
+            | InvalidExperimentNameErr reason -> $"the experiment name is not valid: {reason}"
+
+    /// The name an experiment is stored under, kept as given; its `<name>.experiment-json` stem follows the shared name
+    /// rule (spec 0050 S9.1; 001 §A; .spec-md §3.11).
+    type ExperimentName =
+        | ExperimentName of string
+
+        member this.value : string = let (ExperimentName text) = this in text
+
+        static member tryCreate (text : string) : Result<ExperimentName, ExperimentError> =
+            if System.String.IsNullOrWhiteSpace text then
+                Error (InvalidExperimentNameErr $"'{text}': an experiment name must not be blank")
+            else
+                Ok (ExperimentName text)
+
+        member this.fileStem : FileStem = FileStem.ofText this.value
+
+        /// The first free name by `FileStem.firstFreeText`, the suffix sequence items and setups share (spec 0050 S9.1).
+        member this.nextFreeAmong (taken : ExperimentName list) : ExperimentName =
+            ExperimentName (FileStem.firstFreeText this.value (taken |> List.map (fun held -> held.value)))
+
+    type ExperimentId with
+
+        /// `E<n>`: the name an experiment takes when the template cannot name its setup (spec 0050 S9.1).
+        member this.defaultName : ExperimentName = ExperimentName $"E{this.value}"
 
     /// An element's human label as an experiment captures it ("<kind> #<n>"), so a row outlives the element.
     type ElementLabel =
@@ -192,98 +260,210 @@ module Experiments =
         /// No element chosen yet (a fresh draft, a dark line).
         static member blank : ElementLabel = ElementLabel ""
 
-    /// One element of an experiment's captured setup (spec 0038 Part I): its stable serializable id and a
-    /// human label (captured at commit-time so the row survives the element's later removal), its
-    /// catalogue kind, a placement/orientation summary, and the bound entry reference (by version where
-    /// versioned). The ordered list of these on an `Experiment` IS the setup — the light-traversal chain
-    /// including the detector, whose kind determines the expected data-file shape (§15.3, consumed by
-    /// step 34).
-    type ElementDescriptor =
+    /// One quantity of one slot over its range, the slot's label as the experiment captured it (spec 0050 S9.1).
+    type ScanAxis =
         {
             elementId : ElementId
             label : ElementLabel
-            kind : CatalogueKind
-            placement : PlacementSummary
-            binding : ElementBinding
+            variable : VariableParameter
+            range : VariableRange
         }
 
-    /// The element an experiment varies, identified WITHIN the setup (spec 0038 Part I): its serializable
-    /// id (resolvable to a descriptor in `setup`) and the swept quantity. An experiment with NO varied
-    /// element (`Experiment.varied = None`) is a dark-line / calibration measurement (E3).
-    type VariedElement =
+        /// `<label>: vary <variable> over <min>…<max> <unit> (<points> pts)`: an experiment description's varied text
+        /// (spec 0050 S9.1).
+        member this.describe : string =
+            $"%s{this.label.value}: vary %s{this.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{this.variable.unitLabel} (%d{this.range.points.value} pts)"
+
+    /// One axis of a scan at one of its values (spec 0050 S9.1).
+    type ScanSetting =
         {
             elementId : ElementId
             variable : VariableParameter
+            value : SweptValue
         }
 
-    /// A fully-specified, editable experiment (spec 028 / spec 0038 Part I): the ordered `setup` captured
-    /// from the live scene (kind + placement/orientation summary + versioned binding per element, the
-    /// detector included), the varied element identified within that setup (`None` for a dark line), the
-    /// capture mode, the numeric range, and an optional attached measured-data file. The single
-    /// `elementId`/`elementLabel` pair of the old shape is GONE — the varied element is one entry of the
-    /// setup list.
-    type Experiment =
+    /// One configuration: each axis of its block at one value, read on the block's capture (spec 0050 S9.1).
+    type ScanPoint =
         {
-            id : ExperimentId
-            setup : ElementDescriptor list
-            varied : VariedElement option
-            measurement : MeasurementMode
-            range : VariableRange
-            dataFileOpt : DataFilePath option
-            /// Spec 0046: the wavelength a TUNABLE source is set to while the experiment varies something
-            /// else; `None` = the source's own setting (always the case for a fixed line).
+            settings : ScanSetting list
+            capture : MeasurementMode
+        }
+
+    /// A product of axes read on one capture; a block of no axis is a dark line (spec 0050 S9.1, 001 §K).
+    type ScanBlock =
+        {
+            axes : ScanAxis list
+            capture : MeasurementMode
+        }
+
+        /// The product of the axes' swept values, the first axis outermost, each point on the block's capture: a capture
+        /// of both branches is the innermost observable, as A2 reads T then R (spec 0050 S9.1, 001 §Q AT-2).
+        member this.points : ScanPoint list =
+            List.foldBack
+                (fun (axis : ScanAxis) (inner : ScanSetting list list) ->
+                    [
+                        for value in axis.range.sweptValues do
+                            let setting : ScanSetting =
+                                {
+                                    elementId = axis.elementId
+                                    variable = axis.variable
+                                    value = value
+                                }
+                            for rest in inner -> setting :: rest
+                    ])
+                this.axes
+                [ [] ]
+            |> List.map (fun (settings : ScanSetting list) ->
+                {
+                    settings = settings
+                    capture = this.capture
+                })
+
+    /// What an experiment varies, block after block, and the wavelength a tunable source is set to while no axis varies
+    /// it, spec 0046's `sourceWaveLengthOpt` (spec 0050 S9.1).
+    type ExperimentScan =
+        {
+            blocks : ScanBlock list
             sourceWaveLengthOpt : WaveLength option
         }
 
-        /// The descriptor of the varied element within the setup (`None` for a dark line, or if the
-        /// varied id is somehow absent from the captured setup). The setup is a frozen snapshot including
-        /// the varied element, so for a well-formed experiment this always resolves.
-        member this.variedDescriptor : ElementDescriptor option =
-            match this.varied with
-            | Some v -> this.setup |> List.tryFind (fun d -> d.elementId = v.elementId)
-            | None -> None
+        /// The blocks' points, block after block (spec 0050 S9.1).
+        member this.points : ScanPoint list = this.blocks |> List.collect (fun block -> block.points)
 
-        /// The human label of the varied element (from its captured descriptor), or blank for a dark line.
-        member this.variedLabel : ElementLabel =
-            this.variedDescriptor |> Option.map (fun d -> d.label) |> Option.defaultValue ElementLabel.blank
+        /// The blocks' axes, block after block (spec 0050 S9.1).
+        member this.axes : ScanAxis list = this.blocks |> List.collect (fun block -> block.axes)
 
-        /// The detector element of the chain, if the setup captured one — the descriptor whose kind is
-        /// `Detector`. Its binding (a protected-preset entry id) resolves through the Library to the
-        /// `DetectorKind` (Intensity vs Ellipsometer) that fixes the expected data-file shape (step 34).
-        member this.detectorDescriptorOpt : ElementDescriptor option =
-            this.setup |> List.tryFind (fun d -> d.kind = Detector)
+        /// One block of that one axis: a single-variable experiment (spec 0050 S9.1).
+        static member oneAxis (axis : ScanAxis) (capture : MeasurementMode) (sourceWaveLengthOpt : WaveLength option) : ExperimentScan =
+            {
+                blocks = [ { axes = [ axis ]; capture = capture } ]
+                sourceWaveLengthOpt = sourceWaveLengthOpt
+            }
 
-        /// A short, human-readable description (the collection row + readout use this). A varied
-        /// experiment names the swept element / quantity / range / capture; a dark line names its element
-        /// count and capture.
+        /// One block of no axis, at the source's own wavelength: a dark line (spec 0050 S9.1).
+        static member darkLine (capture : MeasurementMode) : ExperimentScan =
+            {
+                blocks = [ { axes = []; capture = capture } ]
+                sourceWaveLengthOpt = None
+            }
+
+    /// One recorded run over a setup revision, whose slots stay as they were (editing a referenced setup mints its next
+    /// revision): its scan, its role, its session, its notes and an optional measured-data attachment (spec 0038 Part I;
+    /// spec 0050 S8.2, S9.1, 001 §K).
+    type Experiment =
+        {
+            id : ExperimentId
+            /// The stem of its `<name>.experiment-json`; an edit never renames it (spec 0050 S9.1).
+            name : ExperimentName
+            setup : SetupReference
+            scan : ExperimentScan
+            role : ExperimentRole
+            sessionOpt : SessionName option
+            notes : ExperimentNotes
+            /// The measured data: a kit file read through an import profile, and the rows that are this run's (spec 0050
+            /// S4.2, S9.1).
+            dataOpt : MappedAttachment option
+            /// Its setup's re-pointings, oldest first; an edit never loses them (spec 0050 S9.3).
+            corrections : SetupCorrection list
+        }
+
+        /// The collection row's and readout's text: one block of no axis is a dark line on its setup revision; otherwise
+        /// the blocks' texts joined by `; `, each its axes' `describe`s joined by ` × ` and its capture (spec 0050 S8.2,
+        /// S9.1).
         member this.description : string =
-            match this.varied with
-            | Some v ->
-                $"%s{this.variedLabel.value}: vary %s{v.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{v.variable.unitLabel} (%d{this.range.points.value} pts), capture %s{this.measurement.label}"
-            | None ->
-                $"Dark line (%d{List.length this.setup} element(s)), capture %s{this.measurement.label}"
+            let blockText (block : ScanBlock) : string =
+                match block.axes with
+                | [] -> $"Dark line, capture %s{block.capture.label}"
+                | axes ->
+                    let varied = axes |> List.map (fun (axis : ScanAxis) -> axis.describe) |> String.concat " × "
+                    $"%s{varied}, capture %s{block.capture.label}"
 
-        /// Every versioned reference the experiment's setup binds (spec 0038 Part I): each descriptor
-        /// binding projected to its `VersionRef` (preset / unbound descriptors contribute none).
-        member this.versionRefs : VersionRef list =
-            this.setup |> List.choose (fun d -> d.binding.versionRefOpt)
+            match this.scan.blocks with
+            | [ block ] when List.isEmpty block.axes -> $"Dark line on setup %s{this.setup.describe}, capture %s{block.capture.label}"
+            | blocks -> blocks |> List.map blockText |> String.concat "; "
 
-    /// The set of versioned references currently bound across a live experiment collection (spec 0038
-    /// Part I / §13.1). This is the step-020 "versions in use" set — a version in it is IMMUTABLE (its
-    /// physics change mints the next version) and un-deletable. Pure and unit-testable.
-    let boundVersions (experiments : Experiment list) : Set<VersionRef> =
-        experiments |> List.collect (fun e -> e.versionRefs) |> Set.ofList
+        /// Copies into a kit holding `taken`, in order: a free id is kept, a clash takes the next of the highest id
+        /// taken, incoming or given so far; only `id` changes (spec 0050 S6).
+        static member renumberedFor (taken : ExperimentId list) (incoming : Experiment list) : Experiment list =
+            let incomingIds = incoming |> List.map (fun experiment -> experiment.id)
+            incoming
+            |> List.fold (fun (given : ExperimentId list, renumbered : Experiment list) experiment ->
+                let id =
+                    if List.contains experiment.id taken || List.contains experiment.id given then
+                        (List.max (taken @ incomingIds @ given)).next
+                    else
+                        experiment.id
+                let copied =
+                    {
+                        experiment with id = id
+                    }
+                id :: given, copied :: renumbered) ([], [])
+            |> snd
+            |> List.rev
 
-    /// Build the step-020 `VersionsInUse` seam over a live source of experiments (spec 0038 Part I): the
-    /// composition root injects `fun () -> currentExperiments` so the material / sample stores' saves
-    /// (steps 21/22) see the live collection each time they consult it. Replaces the `VersionsInUse.empty`
-    /// the stores took while nothing bound a version.
-    let versionsInUseSeam (currentExperiments : unit -> Experiment list) : VersionsInUse =
-        { versionsInUse = fun () -> boundVersions (currentExperiments ()) }
+        /// Copies into a kit holding `taken`, in order: a name free of `taken` and of those given so far, by file stem
+        /// ignoring case, is kept, a clash takes its next free suffix; only `name` changes (spec 0050 S9.1, S6).
+        static member renamedFor (taken : ExperimentName list) (incoming : Experiment list) : Experiment list =
+            incoming
+            |> List.fold (fun (given : ExperimentName list, renamed : Experiment list) experiment ->
+                let name = experiment.name.nextFreeAmong (taken @ given)
+                let copied =
+                    {
+                        experiment with name = name
+                    }
+                given @ [ name ], copied :: renamed) ([], [])
+            |> snd
+            |> List.rev
 
-    /// The in-progress experiment being built or edited (spec 028, the multi-step editor). `elementId` /
-    /// `variable` are `None` until chosen; the interactive add needs both. When `editingId` is `Some` the
-    /// next `commit` UPDATES that stored experiment (never duplicates); otherwise it APPENDS a new one.
+    type Experiment with
+
+        /// The experiment with that role, its scan, setup, name and data kept (spec 0050 S9.1).
+        member this.withRole (role : ExperimentRole) : Experiment = { this with role = role }
+
+        /// The experiment in that session, or in none, its scan, setup, name and data kept (spec 0050 S9.1).
+        member this.withSessionOpt (sessionOpt : SessionName option) : Experiment = { this with sessionOpt = sessionOpt }
+
+        /// The experiment with those notes, its scan, setup, name and data kept (spec 0050 S9.1).
+        member this.withNotes (notes : ExperimentNotes) : Experiment = { this with notes = notes }
+
+        /// The experiment over `setup`, the re-pointing from its current setup and why appended to its corrections; its
+        /// name, scan, role, session, notes and data are kept, so a lab file keyed by its name still matches it
+        /// (spec 0050 S9.3).
+        member this.correctedTo (setup : SetupReference) (note : CorrectionNote) : Experiment =
+            let correction : SetupCorrection =
+                {
+                    previous = this.setup
+                    corrected = setup
+                    note = note
+                }
+            {
+                this with
+                    setup = setup
+                    corrections = this.corrections @ [ correction ]
+            }
+
+    /// One experiment's versioned .experiment-json content (spec 0050 S4.3).
+    type ExperimentFile =
+        {
+            schemaVersion : FileSchemaVersion
+            experiment : Experiment
+        }
+
+        /// The only supported experiment file schema version (spec 0050 S4.3).
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+
+    type Experiment with
+
+        /// Wraps the experiment in the current file schema (spec 0050 S4.3).
+        member this.experimentFile : ExperimentFile =
+            {
+                schemaVersion = ExperimentFile.currentSchemaVersion
+                experiment = this
+            }
+
+    /// The in-progress experiment being built or edited (spec 028): the edited axis is `elementId`, `elementLabel`,
+    /// `variable` and `range`, unset until chosen. With `editingId` the next `commit` UPDATES that experiment, otherwise
+    /// it APPENDS one (spec 0050 S9.1).
     type ExperimentDraft =
         {
             elementId : ElementId option
@@ -292,8 +472,12 @@ module Experiments =
             measurement : MeasurementMode
             range : VariableRange
             editingId : ExperimentId option
-            /// Spec 0046: the wavelength a tunable source is set to for this run (see `Experiment`).
+            /// Spec 0046: the wavelength a tunable source is set to for this run (see `ExperimentScan`).
             sourceWaveLengthOpt : WaveLength option
+            /// The current block's axes before the edited one, outermost first (spec 0050 S9.1).
+            outerAxes : ScanAxis list
+            /// The blocks before the current one (spec 0050 S9.1).
+            closedBlocks : ScanBlock list
         }
 
         static member empty : ExperimentDraft =
@@ -305,7 +489,40 @@ module Experiments =
                 range = VariableRange.forVariable VaryR1
                 editingId = None
                 sourceWaveLengthOpt = None
+                outerAxes = []
+                closedBlocks = []
             }
+
+        /// The edited axis, once an element and a variable are chosen (spec 0050 S9.1).
+        member this.axisOpt : ScanAxis option =
+            match this.elementId, this.variable with
+            | Some elementId, Some variable ->
+                let axis : ScanAxis =
+                    {
+                        elementId = elementId
+                        label = this.elementLabel
+                        variable = variable
+                        range = this.range
+                    }
+                Some axis
+            | _ -> None
+
+        /// With the edited axis: `closedBlocks`, then the block of `outerAxes` and the edited axis read on `measurement`
+        /// (spec 0050 S9.1).
+        member this.scanOpt : ExperimentScan option =
+            this.axisOpt
+            |> Option.map (fun axis ->
+                let current : ScanBlock =
+                    {
+                        axes = this.outerAxes @ [ axis ]
+                        capture = this.measurement
+                    }
+                let scan : ExperimentScan =
+                    {
+                        blocks = this.closedBlocks @ [ current ]
+                        sourceWaveLengthOpt = this.sourceWaveLengthOpt
+                    }
+                scan)
 
     /// The editable collection of experiments plus the id counter and the live draft (spec 028). Pure —
     /// choose / commit / edit / remove are unit-tested without any UI.
@@ -328,22 +545,70 @@ module Experiments =
                 draft = ExperimentDraft.empty
             }
 
-        /// Whether the draft is complete enough for the interactive add (an element AND a variable are
-        /// chosen). Dark-line experiments (no varied element) are constructed directly, not through the bay's
+        /// Whether the draft is complete enough for the interactive add: it has an edited axis (spec 0050 S9.1).
+        /// Dark-line experiments (no varied element) are constructed directly, not through the bay's
         /// gated add — the bay disables Add when this is false.
         member this.canCommit : bool =
-            match this.draft.elementId, this.draft.variable with
-            | Some _, Some _ -> true
-            | _ -> false
+            match this.draft.axisOpt with
+            | Some _ -> true
+            | None -> false
 
         /// Start a brand-new draft (clears the editor and the editing cursor).
         member this.newDraft : ExperimentCollection =
             { this with draft = ExperimentDraft.empty }
 
+        /// The collection with `experiment` in place of its id's, unchanged when it holds none; the draft is untouched
+        /// (spec 0050 S9.1).
+        member this.withStoredExperiment (experiment : Experiment) : ExperimentCollection =
+            {
+                this with experiments = this.experiments |> List.map (fun held -> if held.id = experiment.id then experiment else held)
+            }
+
+        /// Moves the edited axis into the current block's outer axes and clears it, its range back to R1's default; a draft
+        /// with no edited axis is unchanged. A member, not a free function of the collection (ELEV013; spec 0050 S9.1).
+        member this.addScanAxis : ExperimentCollection =
+            match this.draft.axisOpt with
+            | Some axis ->
+                {
+                    this with
+                        draft =
+                            {
+                                this.draft with
+                                    outerAxes = this.draft.outerAxes @ [ axis ]
+                                    elementId = None
+                                    elementLabel = ElementLabel.blank
+                                    variable = None
+                                    range = VariableRange.forVariable VaryR1
+                            }
+                }
+            | None -> this
+
+        /// Closes the current block, its outer axes and the edited axis read on the draft's capture, and starts an empty one
+        /// with the edited axis cleared; a draft with no edited axis is unchanged (spec 0050 S9.1).
+        member this.addScanBlock : ExperimentCollection =
+            match this.draft.axisOpt with
+            | Some _ ->
+                let added = this.addScanAxis
+                let closed : ScanBlock =
+                    {
+                        axes = added.draft.outerAxes
+                        capture = added.draft.measurement
+                    }
+                {
+                    added with
+                        draft =
+                            {
+                                added.draft with
+                                    closedBlocks = added.draft.closedBlocks @ [ closed ]
+                                    outerAxes = []
+                            }
+                }
+            | None -> this
+
     /// Choose the element to vary (spec 028 step 2). The allowed variables (`variablesFor kind`) and the
     /// default measurement (from the element's emission) are supplied by the host; the draft's variable
     /// defaults to the first allowed one (`None` when the element exposes nothing to vary), and its range
-    /// to that variable's default.
+    /// to that variable's default. The draft's earlier axes and blocks stay (spec 0050 S9.1).
     let chooseElement
         (id : ElementId)
         (label : ElementLabel)
@@ -388,78 +653,115 @@ module Experiments =
     let setRange (range : VariableRange) (c : ExperimentCollection) : ExperimentCollection =
         { c with draft = { c.draft with range = range } }
 
-    /// Confirm the draft (spec 028 step 3 / spec 0038 Part I), capturing the ordered `setup` the bay built
-    /// from the live scene (kind + placement/orientation summary + versioned binding per element, the
-    /// detector included). The varied element (`draft.elementId` + `draft.variable`) is identified within
-    /// that setup. When editing an existing experiment (`editingId = Some`) this UPDATES it in place,
-    /// preserving its attached data file; otherwise it APPENDS a new experiment — but only when the draft
-    /// identifies an element AND a variable (the bay gates this via `canCommit`; a dark-line experiment is
-    /// constructed directly, not through the interactive draft). Leaves the draft EDITING the appended
-    /// experiment so a follow-up confirm updates rather than duplicates.
-    let commit (setup : ElementDescriptor list) (c : ExperimentCollection) : ExperimentCollection =
-        // Qualify the first field so the {elementId; variable} literal resolves to `VariedElement` and not
-        // the also-in-scope `ExperimentDraft` (which shares both labels).
-        let variedOpt =
-            Option.map2 (fun id variable -> { VariedElement.elementId = id; variable = variable }) c.draft.elementId c.draft.variable
-        match c.draft.editingId with
-        | Some existing ->
-            let experiments =
-                c.experiments
-                |> List.map (fun e ->
-                    if e.id = existing then
-                        { e with
-                            setup = setup
-                            varied = variedOpt
-                            measurement = c.draft.measurement
-                            range = c.draft.range
-                            sourceWaveLengthOpt = c.draft.sourceWaveLengthOpt }
-                    else e)
-            { c with experiments = experiments }
-        | None ->
-            match variedOpt with
-            | Some _ ->
-                let exp =
+    /// One experiment to append: the setup revision it is recorded over and the name it is stored under (spec 0050 S9.1).
+    type ExperimentTarget =
+        {
+            setup : SetupReference
+            name : ExperimentName
+        }
+
+    /// Confirms the draft's scan over the target's setup revision (spec 028 step 3; spec 0050 S8.2, S9.1): an edited
+    /// experiment takes the setup and scan and keeps the rest, its name and corrections included; otherwise a new
+    /// `ScienceRun` of the target's name, with no session, notes, data file or correction, is appended and edited next. A
+    /// draft with no edited axis commits nothing (the bay's `canCommit`; spec 0050 S9.3).
+    let commit (target : ExperimentTarget) (c : ExperimentCollection) : ExperimentCollection =
+        match c.draft.scanOpt with
+        | Some scan ->
+            match c.draft.editingId with
+            | Some existing ->
+                let experiments =
+                    c.experiments
+                    |> List.map (fun e ->
+                        if e.id = existing then
+                            {
+                                e with
+                                    setup = target.setup
+                                    scan = scan
+                            }
+                        else e)
+                { c with experiments = experiments }
+            | None ->
+                let exp : Experiment =
                     {
                         id = c.nextId
-                        setup = setup
-                        varied = variedOpt
-                        measurement = c.draft.measurement
-                        range = c.draft.range
-                        dataFileOpt = None
-                        sourceWaveLengthOpt = c.draft.sourceWaveLengthOpt
+                        name = target.name
+                        setup = target.setup
+                        scan = scan
+                        role = ScienceRun
+                        sessionOpt = None
+                        notes = ExperimentNotes.none
+                        dataOpt = None
+                        corrections = []
                     }
                 { c with
                     experiments = c.experiments @ [ exp ]
                     nextId = c.nextId.next
                     draft = { c.draft with editingId = Some exp.id } }
-            | None -> c
+        | None -> c
 
-    /// Attach (or replace) the measured-data file of a stored experiment (spec 0038 Part I): the inverse
-    /// flow gives each experiment one data file. A no-op for an unknown id. Pure — the picker IO that
-    /// yields the `DataFilePath` lives at the edge (Part L).
-    let attachDataFile (id : ExperimentId) (path : DataFilePath) (c : ExperimentCollection) : ExperimentCollection =
+    /// Commits the draft, editing nothing, once over each target in order, each experiment taking the next id and its
+    /// target's name; the answer's draft edits nothing, and an incomplete draft appends nothing (spec 0050 S8.3, S9.1).
+    let commitOverSetups (targets : ExperimentTarget list) (c : ExperimentCollection) : ExperimentCollection =
+        if c.canCommit then
+            let fresh = { c.draft with editingId = None }
+            let committed =
+                targets
+                |> List.fold (fun (collection : ExperimentCollection) (target : ExperimentTarget) ->
+                    commit target { collection with draft = fresh }) c
+            { committed with draft = fresh }
+        else
+            c
+
+    /// Binds one mapped data attachment, replacing any; an unknown id is unchanged (spec 0038 Part I; spec 0050 S4.2,
+    /// S9.1).
+    let attachDataFile (id : ExperimentId) (data : MappedAttachment) (c : ExperimentCollection) : ExperimentCollection =
         let experiments =
             c.experiments
-            |> List.map (fun e -> if e.id = id then { e with dataFileOpt = Some path } else e)
-        { c with experiments = experiments }
+            |> List.map (fun e ->
+                if e.id = id then
+                    {
+                        e with dataOpt = Some data
+                    }
+                else
+                    e)
+        {
+            c with experiments = experiments
+        }
 
-    /// Load an existing experiment into the draft for editing (spec 028: "if the user chooses an experiment
-    /// then the user can change anything in the experiment"). A later `commit` updates it in place. A
-    /// dark-line experiment loads with no varied element (`elementId` / `variable` unset).
+    /// Loads an experiment into the draft (spec 028), splitting its scan back: the blocks but the last are closed, the last
+    /// block's capture is the draft's, its axes but the last are outer and its last is the edited one, so a later
+    /// `commit` gives the experiment back (spec 0050 S9.1).
     let edit (id : ExperimentId) (c : ExperimentCollection) : ExperimentCollection =
         match c.experiments |> List.tryFind (fun e -> e.id = id) with
         | Some e ->
-            { c with
-                draft =
-                    {
-                        elementId = e.varied |> Option.map (fun v -> v.elementId)
-                        elementLabel = e.variedLabel
-                        variable = e.varied |> Option.map (fun v -> v.variable)
-                        measurement = e.measurement
-                        range = e.range
+            let opened : ExperimentDraft =
+                {
+                    ExperimentDraft.empty with
                         editingId = Some e.id
-                        sourceWaveLengthOpt = e.sourceWaveLengthOpt
-                    } }
+                        sourceWaveLengthOpt = e.scan.sourceWaveLengthOpt
+                }
+            let draft =
+                match List.rev e.scan.blocks with
+                | [] -> opened
+                | last :: earlier ->
+                    let current =
+                        {
+                            opened with
+                                closedBlocks = List.rev earlier
+                                measurement = last.capture
+                        }
+                    match List.rev last.axes with
+                    | [] -> current
+                    | edited :: outer ->
+                        {
+                            current with
+                                outerAxes = List.rev outer
+                                elementId = Some edited.elementId
+                                elementLabel = edited.label
+                                variable = Some edited.variable
+                                range = edited.range
+                        }
+            { c with draft = draft }
         | None -> c
 
     /// Remove an experiment from the collection (spec 028). If it was the one being edited the draft resets.
@@ -467,11 +769,6 @@ module Experiments =
         let experiments = c.experiments |> List.filter (fun e -> e.id <> id)
         let draft = if c.draft.editingId = Some id then ExperimentDraft.empty else c.draft
         { c with experiments = experiments; draft = draft }
-
-    /// The Experiments error channel (errors as values; each case carries a `reason`).
-    type ExperimentError =
-        | UnknownExperimentErr of reason : string
-        | ExperimentUnavailableErr of reason : string
 
     /// The mock Experiments IO seam (the functional-proxy convention): a record of camelCase
     /// `Result`-returning functions. A test substitutes a stub of the SAME shape. Function-valued
@@ -484,28 +781,9 @@ module Experiments =
             tryGetExperiment : ExperimentId -> Result<Experiment option, ExperimentError>
         }
 
-    /// A dark-line seed template (spec 0038 Part I): an EMPTY setup with nothing varied — the "how much
-    /// ambient light reaches the detector with no source" calibration (operator, 001). Listable; the live
-    /// bay builds real experiments against the present scene.
-    let seedExperiments : Experiment list =
-        [
-            {
-                id = ExperimentId 1
-                setup = []
-                varied = None
-                measurement = CaptureTransmitted
-                range = VariableRange.forVariable VaryR1
-                dataFileOpt = None
-                sourceWaveLengthOpt = None
-            }
-        ]
-
-    /// The in-memory mock proxy (spec §3 / Q7): closes over the seed templates, no IO, deterministic for
-    /// tests. A real disk-backed `create` would live in `OpticalConstructor.Storage`, leaving the
-    /// bay / logic unchanged.
+    /// An in-memory proxy holding no experiment (spec 0050 S1.7).
     let createInMemoryExperiments () : ExperimentProxy =
-        let seeds = seedExperiments
         {
-            listExperiments = fun () -> Ok seeds
-            tryGetExperiment = fun id -> Ok (seeds |> List.tryFind (fun e -> e.id = id))
+            listExperiments = fun () -> Ok []
+            tryGetExperiment = fun _ -> Ok None
         }

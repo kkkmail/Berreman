@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/library-common.json",
+  "title": "LibraryCommon",
+  "description": "The definitions every library-entry file and the catalogue manifest share, held once (spec 0050 001 §B). The per-kind entry schemas reference them by this $id.",
+  "$defs": {
+    "guid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "A frozen GUID in its canonical lower-case form, as System.Text.Json writes it."
+    },
+    "positiveVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "A version number: an entry version or a schema version, starting at 1."
+    },
+    "contentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The lowercase hex SHA-256 of the entry's compact canonical JSON (sorted keys, invariant-culture numbers)."
+    },
+    "builtInProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "BuiltInProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/guid" }],
+          "minItems": 1,
+          "items": false,
+          "description": "The id of the catalogue that ships the entry."
+        }
+      }
+    },
+    "userProvenance": {
+      "const": "UserProvenance",
+      "description": "An entry a user created."
+    },
+    "kitImportProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "KitImportProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [{ "$ref": "#/$defs/guid" }],
+          "minItems": 1,
+          "items": false,
+          "description": "The id of the kit the entry was imported from."
+        }
+      }
+    },
+    "sourcePullProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "SourcePullProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": ["source", "record", "recordHash", "sourceVersion", "licence", "citation"],
+              "additionalProperties": false,
+              "properties": {
+                "source": { "type": "string" },
+                "record": { "type": "string" },
+                "recordHash": { "$ref": "#/$defs/contentHash" },
+                "sourceVersion": { "type": "string" },
+                "licence": { "type": "string", "description": "An SPDX identifier, e.g. CC0-1.0 or CC-BY-4.0." },
+                "citation": { "type": "string" }
+              }
+            }
+          ],
+          "minItems": 1,
+          "items": false,
+          "description": "The online source, its record and the SHA-256 of the record's text when pulled (spec 0050 S13.1), the source's version of it, and the record's licence and citation."
+        }
+      }
+    },
+    "forkProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "ForkProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": ["originalId", "originalVersion", "originalProvenance"],
+              "additionalProperties": false,
+              "properties": {
+                "originalId": { "$ref": "#/$defs/guid" },
+                "originalVersion": { "$ref": "#/$defs/positiveVersion" },
+                "originalProvenance": { "$ref": "#/$defs/provenance" }
+              }
+            }
+          ],
+          "minItems": 1,
+          "items": false,
+          "description": "The original entry, version and provenance of a user-managed fork (spec 0050 S3.1)."
+        }
+      }
+    },
+    "fitProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "FitProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": ["kit", "studyStem", "fitRunStem"],
+              "additionalProperties": false,
+              "properties": {
+                "kit": { "$ref": "#/$defs/guid" },
+                "studyStem": { "type": "string", "minLength": 1 },
+                "fitRunStem": { "type": "string", "minLength": 1 }
+              }
+            }
+          ],
+          "minItems": 1,
+          "items": false,
+          "description": "The kit a promoted entry was fitted in, and the file stems of its study and fit run (spec 0050 S11.5)."
+        }
+      }
+    },
+    "fileImportProvenance": {
+      "type": "object",
+      "required": ["Case", "Fields"],
+      "additionalProperties": false,
+      "properties": {
+        "Case": { "const": "FileImportProvenance" },
+        "Fields": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "required": ["file", "fileHash"],
+              "additionalProperties": false,
+              "properties": {
+                "file": { "type": "string", "minLength": 1 },
+                "fileHash": { "$ref": "#/$defs/contentHash" }
+              }
+            }
+          ],
+          "minItems": 1,
+          "items": false,
+          "description": "The leaf name of the user's catalogue file an imported entry came from, and the SHA-256 of its bytes (spec 0050 S13.2)."
+        }
+      }
+    },
+    "provenance": {
+      "oneOf": [
+        { "$ref": "#/$defs/builtInProvenance" },
+        { "$ref": "#/$defs/userProvenance" },
+        { "$ref": "#/$defs/kitImportProvenance" },
+        { "$ref": "#/$defs/sourcePullProvenance" },
+        { "$ref": "#/$defs/forkProvenance" },
+        { "$ref": "#/$defs/fitProvenance" },
+        { "$ref": "#/$defs/fileImportProvenance" }
+      ],
+      "description": "Where the entry comes from: built-in, user, imported from a kit, pulled from an online source, forked from another entry, fitted in a kit, or imported from a user's catalogue file."
+    }
+  }
+}

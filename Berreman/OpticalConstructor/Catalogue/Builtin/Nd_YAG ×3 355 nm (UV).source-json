@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "58b712eb07487e1afe8b03b9f872e24815288c19635ac48ce76a37f642269edc",
+  "descriptionOpt": null,
+  "id": "b1838994-8787-47f4-889a-dca3a4978d3e",
+  "name": "Nd:YAG ×3 355 nm (UV)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            355
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

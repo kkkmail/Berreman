@@ -1,0 +1,88 @@
+name: build
+description: dotnet build Berreman.slnx Release (F# numerical optics solver)
+kind: command
+phase: build
+command: "dotnet build Berreman.slnx -c Release -nologo -v:m"
+cwd: Berreman
+pass_when:
+  exit_code: 0
+  stdout_match: (?s)^(?!.*error).*$
+runtime_estimate_seconds: 600
+runtime_actual_seconds: 65
+tags: [build]
+applies_to:
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Directory.Build.props", "Directory.Build.targets", "Berreman/Berreman/BuildInfo.ps1", "Berreman/PreBuild/**"]
+qualifier: build
+builds: [Berreman/Berreman.slnx]
+---
+name: constructor-unit-tests
+description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate — on Microsoft.Testing.Platform, over the Release x64 output the build gate produced
+kind: command
+phase: verify
+command: "dotnet test --no-build -c Release -p:Platform=x64 --no-ansi --results-directory TestResults --report-trx --report-trx-filename constructor-unit-tests.trx {selector}"
+cwd: Berreman/OpticalConstructor/OpticalConstructor.Tests
+pass_when:
+  exit_code: 0
+  stdout_match: "(?m)^Test run summary: Passed!"
+  count_at_least:
+    capture: "succeeded:\\s*(\\d+)"
+    baseline_key: constructor_unit_tests
+  failure_capture: "(?m)^failed (.+) \\((?:\\d+(?:ms|s|m|h) ?)+\\)\\r?$"
+result_capture: {"format": "trx", "path": "TestResults/constructor-unit-tests.trx", "skip_policy": "fail"}
+runtime_estimate_seconds: 180
+tags: [test]
+applies_to:
+  - paths: ["Berreman/OpticalConstructor/**"]
+selector:
+  unit: class
+  template: --filter-method "{value}.*" --filter-method "{value}"
+  joiner: " "
+  arg: "{rendered}"
+  required: false
+qualifier: unit
+requires_gates: [build]
+whole_suite: light
+runtime_actual_whole_seconds: 13
+step_select: [OpticalConstructor.Tests.BuiltInCatalogueParityTests]
+---
+name: invariant-s05-elev-list-empty
+description: "ASSERT_INVARIANT s05-elev-list-empty (must-find-nothing) of section 'S1.5 -- The built-in catalogue generated once from the code seeds': git grep -n -F \"ELEV0\" -- Elevation/elevation-known-findings.json"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVMRVYwIiAtLSBFbGV2YXRpb24vZWxldmF0aW9uLWtub3duLWZpbmRpbmdzLmpzb24="
+tags: [section-invariant]
+---
+name: invariant-s05-no-vstest
+description: "ASSERT_INVARIANT s05-no-vstest (must-find-nothing) of section 'S1.5 -- The built-in catalogue generated once from the code seeds': git grep -n -E \"Microsoft.NET.Test.Sdk|xunit.runner.visualstudio|Xunit.SkippableFact|IsTestingPlatformApplication\" -- \"*.fsproj\" \"*.props\" \"*.targets\""
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIk1pY3Jvc29mdC5ORVQuVGVzdC5TZGt8eHVuaXQucnVubmVyLnZpc3VhbHN0dWRpb3xYdW5pdC5Ta2lwcGFibGVGYWN0fElzVGVzdGluZ1BsYXRmb3JtQXBwbGljYXRpb24iIC0tICIqLmZzcHJvaiIgIioucHJvcHMiICIqLnRhcmdldHMi"
+tags: [section-invariant]
+---
+name: invariant-s05-no-kit-kit-json
+description: "ASSERT_INVARIANT s05-no-kit-kit-json (must-find-nothing) of section 'S1.5 -- The built-in catalogue generated once from the code seeds': git grep -n -F \"kit.kit-json\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgImtpdC5raXQtanNvbiIgLS0gQmVycmVtYW4v"
+tags: [section-invariant]
+---
+name: invariant-s05-no-eps-axis-evaluated
+description: "ASSERT_INVARIANT s05-no-eps-axis-evaluated (must-find-nothing) of section 'S1.5 -- The built-in catalogue generated once from the code seeds': git grep -n -F \"EpsAxisEvaluated\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUYgIkVwc0F4aXNFdmFsdWF0ZWQiIC0tIEJlcnJlbWFuLw=="
+tags: [section-invariant]
+---
+name: invariant-s05-complexity-mandatory
+description: "ASSERT_INVARIANT s05-complexity-mandatory (must-find-nothing) of section 'S1.5 -- The built-in catalogue generated once from the code seeds': git grep -n -E \"complexity = (None|Some)\" -- Berreman/"
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgImNvbXBsZXhpdHkgPSAoTm9uZXxTb21lKSIgLS0gQmVycmVtYW4v"
+tags: [section-invariant]
+---
+name: invariant-s05-no-seeded-string-preset-ids
+description: "ASSERT_INVARIANT s05-no-seeded-string-preset-ids (must-find-nothing) of section 'S1.5 -- The built-in catalogue generated once from the code seeds': git grep -n -E \"(src-(600|hene-|ar-4|ar-5|hecd-|diode-|ruby-|tisa-|ndyag-|er-1550|co2-|hg-|krf-|arf-|f2-1|euv-|beuv-|xe-mono|supercontinuum)|det-(intensity|ellipsometer)|pol-(lp|cp-left|cp-right))\" -- \"Berreman/*.fs\""
+kind: command
+phase: verify
+command: "\"C:/Python314/python.exe\" -m ai_strategy_generator.step_compiler.section_invariants --find-nothing Z2l0IGdyZXAgLW4gLUUgIihzcmMtKDYwMHxoZW5lLXxhci00fGFyLTV8aGVjZC18ZGlvZGUtfHJ1YnktfHRpc2EtfG5keWFnLXxlci0xNTUwfGNvMi18aGctfGtyZi18YXJmLXxmMi0xfGV1di18YmV1di18eGUtbW9ub3xzdXBlcmNvbnRpbnV1bSl8ZGV0LShpbnRlbnNpdHl8ZWxsaXBzb21ldGVyKXxwb2wtKGxwfGNwLWxlZnR8Y3AtcmlnaHQpKSIgLS0gIkJlcnJlbWFuLyouZnMi"
+tags: [section-invariant]

@@ -1,5 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -10,13 +12,11 @@ open Berreman.Dispersion
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 
 /// Spec 0035 (016) — the shared dual-axis ScottPlot chart (`OpticalConstructor.Controls.EmbeddedChart`)
@@ -106,7 +106,7 @@ module EmbeddedChartTests =
         NkDispersionChart.nkDispersionChart MaterialComplexityEditor.Biaxial props Nanometer MaterialEditorView.previewRange
 
     let private builtInProps (id : MaterialId) : OpticalPropertiesWithDisp =
-        (builtInEntries |> List.find (fun e -> e.id = id)).properties
+        (BuiltinCatalogue.material id).properties
 
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
         match applyMaterialComplexityMsg msg s with
@@ -131,17 +131,17 @@ module EmbeddedChartTests =
         Dispatcher.UIThread.RunJobs()
         window
 
-    /// A fresh in-memory MaterialProxy for the Material editor window (the App composition).
+    /// BuiltinCatalogue.materialStore over an isolated BuiltinCatalogue.sampleStore preserves live reference checks.
     let private freshMaterialProxy () : MaterialProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        BuiltinCatalogue.materialStore (samplesReferencing samples)
 
     // -- the Materials window (the step-013 view-panel host site) ----------------------------------
 
     let private freshStores () : MaterialProxy * CategoryProxy =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, categories
 
     /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box
@@ -204,7 +204,7 @@ module EmbeddedChartTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Material editor preview embeds the shared AvaPlot for a non-dispersive default and a transcendental model`` () =
         HeadlessSession.run (fun () ->
-            let window = MaterialEditorWindow(freshMaterialProxy (), MaterialEditorView.NewMaterial (newMaterialId ()))
+            let window = MaterialEditorWindow(freshMaterialProxy (), MaterialEditorView.NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The default (isotropic, non-dispersive) editor derives a preview: the embedded AvaPlot renders.
@@ -227,7 +227,7 @@ module EmbeddedChartTests =
     /// embedded n/k chart host renders its AvaPlot.
     let private assertViewPanelChart (search : string) (entryId : MaterialId) (label : string) : unit =
         let materials, categories = freshStores ()
-        let window = MaterialsWindow(materials, categories)
+        let window = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         commitFilter window search

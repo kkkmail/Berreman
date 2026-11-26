@@ -1,0 +1,36 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "1a62e3fd-a168-4c03-a653-1ed3ae71789b",
+    "label": "ZCut",
+    "model": {
+      "Case": "SampleInstance",
+      "Fields": [
+        {
+          "itemModelId": "4d13ecb1-2006-576f-99e7-e8bc266e8624",
+          "version": 1
+        },
+        {
+          "sampleId": "af711361-2854-4b61-ade4-bdb47a184d9f",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "substrate.thickness",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            9.999999999999999E-05
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

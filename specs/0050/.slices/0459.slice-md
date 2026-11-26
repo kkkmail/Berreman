@@ -1,0 +1,23 @@
+# Step 0459 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [458]
+required_gates: [build, elevation, constructor-unit-tests, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "change_expectation", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "obligations": ["S132-APP-SOURCES"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}, "ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.AppContextTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "change_expectation", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "obligations": ["S132-APP-SOURCES"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.AppContextTests`
+
+**How to implement.** The app offers the three online sources over its configured sources folder, so the Online sources window lists PTB OCDB and CXRO Henke beside refractiveindex.info with no change to the window (.spec-md §0.1: `AppContext.create` composes the library proxies over the configured locations; .spec-md §3.9; the S13.1 mapper's note: PTB OCDB and the Henke calculator are appended to the composition's `materialSources`). Each doc is one to three lines citing spec 0050 S13.2. (1) `OpticalConstructor.Ui/AppContext.fs`: the `compose` that `create` and `recreateLibrary` share (step 449) sets `materialSources = [ MaterialSourceProxy.createRefractiveIndexInfo …; MaterialSourceProxy.createPtbOcdb locations.materialSourcesFolder SourceArchiveDownloader.http ClockProvider.system; MaterialSourceProxy.createHenkeCompounds locations.materialSourcesFolder SourceArchiveDownloader.http ClockProvider.system ]` (steps 455, 457), in that order. Composing them reads and writes nothing. Every other composition keeps `[]`. `initMaterialSources` shows the first source (step 450), so the window opens on refractiveindex.info as before, and its choice row lists the three. (2) Tests: `AppContextTests`' `the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot` (step 449) widens its assertion, keeping its name: `catalogueImports.materialSources` names `refractiveindex.info`, `PTB OCDB` and `CXRO Henke` in that order, each `snapshotVersion ()` answers `Ok None`, and nothing exists under the sources folder of `TestAppScope.testLocations (FolderName "AppContextTests")`. No test runs these sources' `updateSnapshot`, so no test reaches the network (.spec-md §8); S13.1's `MaterialsWindowTests` acceptance (step 452), which reads the shown source's choice and snapshot text, keeps its assertions.
+
+**Acceptance.** After the composition, `AppContext.create` MUST offer refractiveindex.info, PTB OCDB and CXRO Henke over `locations.materialSourcesFolder` with the HTTP seam, in that order, and every other composition none; constructor-unit-tests MUST pass; ui-smoke MUST pass; ui-tests MUST pass over the selected class, including the widened `the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot`, the count unchanged; and build, elevation and the twenty-one s44 invariants MUST pass.

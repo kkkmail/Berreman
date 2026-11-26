@@ -1,0 +1,7 @@
+# Implementation plan — slice 0159
+
+Retire the unused `.ocproj` file IO and autosave sidewrite under `S44-PROJECT-FILE`. Delete `ProjectFile.fs` and its compile entry; remove `Autosave` and its unused imports from `RecentFiles.fs` while preserving all recent-list implementation bodies. Trim the affected existing Storage project comments and remove the autosave ignore block. `ExperimentDataStore.fs` already has the required kit-only documentation, so it needs no edit.
+
+Delete `RoundTripTests.fs` and its compile entry, relying on the existing `KitContentFileJsonTests` facts for canonical round trips, schema refusal and version refusal as the slice explicitly directs. Remove only AC-I6 and its exclusive fixtures/imports from `HistoryTests.fs`; preserve the R-1 identity and all its assertions, changing its paths to kit folders. No new test identities, duplicated facts or changes to the successor tests are required.
+
+The authorized source edits are `.gitignore`, Storage's `ProjectFile.fs`, `RecentFiles.fs` and project file, and Tests' `RoundTripTests.fs`, `HistoryTests.fs` and project file. Inspect their source diff and LF formatting. Build, elevation, all discovered constructor tests, the retirement search and the twelve s18 invariants belong to the supervisor under the IMPLEMENT worker's Invariant 6; do not execute them. Record the four-fact retirement against inherited checkpoint 157 (1146 cases), with 1142 expected but unmeasured. Preserve the pre-existing supervisor state change and all gate/oracle/census/checkpoint files.

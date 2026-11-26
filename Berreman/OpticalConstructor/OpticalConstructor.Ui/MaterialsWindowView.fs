@@ -21,12 +21,18 @@
 module OpticalConstructor.Ui.MaterialsWindowView
 
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
@@ -36,6 +42,7 @@ open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Ui.NkDispersionChart
 
 // ---------------------------------------------------------------------------
@@ -146,7 +153,7 @@ let offeredRepresentations : MaterialsRepresentation list =
 // The window's IO seam (the functional-proxy Context convention).
 // ---------------------------------------------------------------------------
 
-/// The window's context: the app-scope material + category stores, the Domain tree-gating
+/// The window's context: app-scope stores, import seam, Domain tree-gating
 /// threshold, and the editor launchers (the composition root — `MaterialsWindow` — bakes the
 /// step-008 `WindowLauncher` editor keys into these; tests substitute recording stubs).
 /// Function-valued fields have no structural equality, so the record compares by reference.
@@ -155,23 +162,26 @@ type MaterialsWindowContext =
     {
         materials : MaterialProxy
         categories : CategoryProxy
+        /// The import seam through which dropped entry files are decided and applied.
+        catalogueImports : CatalogueImportContext
+        /// Open the import dialog over dropped-entry rows; the host supplies the window, tests record calls.
+        openImportDialog : ImportDecision list -> unit
         treeAutoBuildThreshold : TreeAutoBuildThreshold
         /// Open the Material editor by intent: `NewMaterial mintedId` (the Add verb mints the
         /// id AT dispatch — spec 0038 step 008) or `EditMaterial entry`.
         openMaterialEditor : MaterialEditorView.MaterialEditorIntent -> unit
         /// Open the single-instance Category editor.
         openCategoryEditor : unit -> unit
+        /// Open the single-instance Online sources window over `catalogueImports`; the host bakes it, tests record (spec 0050 S13.1).
+        openOnlineSources : unit -> unit
         /// Close THIS window (the host passes `this.Close`; tests substitute a recording stub —
         /// the `SampleEditorContext` precedent). The Select-state verbs reach it: 'Select'
         /// closes after `onSelected`, 'Close' after `onCancelled` (spec 0038 step 016).
         requestClose : unit -> unit
     }
 
-/// The stored versions of a material, ascending (latest last), enumerated by probing the proxy's
-/// by-version `resolveVersion` from version 1 upward until it resolves nothing (spec 0038 step 023
-/// — the store exposes no list-versions field). In the live in-memory store this is a single
-/// version until step 25 (mints need a used version, and `VersionsInUse` is empty); a stub proxy
-/// returns a longer history. The `1000` cap is an unreachable runaway guard, never hit in practice.
+/// Enumerates stored versions in ascending order by resolving each version until absent;
+/// stops at 1000 to bound a malformed proxy (spec 0038 step 023; spec 0050 S2.2).
 let private selectedVersionsOf (materials : MaterialProxy) (id : MaterialId) : (VersionNumber * MaterialEntry) list =
     let rec loop (version : VersionNumber) (acc : (VersionNumber * MaterialEntry) list) : (VersionNumber * MaterialEntry) list =
         if version.value > 1000 then List.rev acc
@@ -229,6 +239,14 @@ type MaterialsWindowModel =
         /// The last store refusal, surfaced as the inline message — `MaterialStillReferenced`
         /// NAMES the referencing samples; never a cascade, never a dialog.
         lastError : MaterialError option
+        /// The last applied import's completion summary.
+        importStatus : ControlCaption option
+        /// The last refusal while deciding dropped entry files.
+        importError : CatalogueImportError option
+        /// The last export's completion summary and pinned-version confirmation.
+        entryExportStatus : ControlCaption option
+        /// The last refusal while exporting a material or the shown catalogue.
+        entryExportError : LibraryExportError option
     }
 
     /// The scope the corpus projection lists at (spec 0038 step 023): `ActiveOnly` in Select mode (a
@@ -250,17 +268,25 @@ type MaterialsWindowModel =
             | Ok None | Error _ -> None
         | None -> None
 
-    /// The selected entry when it carries a LOSSLESSLY EDITABLE edit model — the Edit verb's
-    /// target. A view-only engine preset offers NO Edit affordance (removed, not greyed — the
-    /// `MaterialsControls` discipline). Since spec 0040 step 004 every entry carries
-    /// `complexity = Some`, so the gate is `MaterialComplexity.isEditable` (MaterialComplexityEditor): a
-    /// coded preset whose eps is an opaque evaluated closure (Silicon / Langasite) stays view-only.
+    /// The selected material's latest held envelope, offered for export only in Browse mode.
+    member this.exportableSelection : LibraryEntryEnvelope option =
+        match this.mode, this.selectedId with
+        | Browse, Some id ->
+            match this.context.catalogueImports.proxy.tryLatestEnvelope id.toLibraryEntryId with
+            | Ok envelopeOpt -> envelopeOpt
+            | Error _ -> None
+        | Select _, _ | Browse, None -> None
+
+    /// The selected entry when its physics is LOSSLESSLY EDITABLE — the Edit verb's target. A
+    /// view-only entry offers NO Edit affordance (removed, not greyed). The gate is
+    /// `MaterialPhysics.editableComplexityOpt` (MaterialComplexityEditor, spec 0050 S11.1): a physics
+    /// that is not editable term data (Silicon / Langasite carry published laws) stays view-only.
     member this.editableSelection : MaterialEntry option =
         match this.selectedEntry with
         | Some entry ->
-            match entry.complexity with
-            | Some complexity when complexity.isEditable -> Some entry
-            | Some _ | None -> None
+            match entry.physics.editableComplexityOpt with
+            | Some _ -> Some entry
+            | None -> None
         | None -> None
 
     /// The ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass). A
@@ -335,9 +361,23 @@ let initMaterialsWindow (context : MaterialsWindowContext) (mode : LibraryWindow
         lifecycleGate = NoPendingLifecycle
         viewedVersion = None
         lastError = None
+        importStatus = None
+        importError = None
+        entryExportStatus = None
+        entryExportError = None
     }
 
 type MaterialsWindowMsg =
+    /// Decide dropped entry files and open their pending import choices.
+    | DropMaterialEntryFiles of FileName list
+    /// Decide a picked glass catalogue and open its import choices, as a drop of the file does (spec 0050 S13.2).
+    | ImportGlassCatalogue of FileName
+    /// Publish the import dialog's completion summary and refresh live projections.
+    | MaterialsImportApplied of summary : ControlCaption
+    /// Export the selected material's latest version to the file chosen in the save dialog.
+    | ExportSelectedMaterial of FileName
+    /// Export the materials shown by the text filter and facets to a catalogue folder.
+    | ExportShownMaterials of CatalogueExportTarget
     /// Apply the offered value as this facet's (single-key) constraint — an offered-value
     /// click; re-applying a constrained facet REPLACES its selection.
     | ApplyFacetValue of AttributeKey * DiscreteKey
@@ -367,6 +407,8 @@ type MaterialsWindowMsg =
     | ConfirmRemove
     | CancelRemove
     | OpenCategories
+    /// Open the Online sources window, whose pulls come back as `MaterialsImportApplied` (spec 0050 S13.1).
+    | OpenOnlineSources
     /// The show-inactive/superseded toggle (spec 0038 step 023): flip the corpus scope between
     /// `ActiveOnly` and `IncludeInactive`.
     | ToggleShowInactive
@@ -398,40 +440,23 @@ type MaterialsWindowMsg =
 // Live projections (each pass re-queries the proxies).
 // ---------------------------------------------------------------------------
 
-/// Resolve a category's display NAME through the LIVE catalogue: the store's `listCategories`
-/// is the source of truth, so a renamed category reads its new name here (the retired bay's
-/// `liveCategoryName` discipline). An id the store no longer holds falls back to the seeded
-/// `CategoryId.categoryName` (a diagnostic, never a throw).
+/// Resolve through the live category list, or an empty list when listing fails (spec 0050 S1.7).
 let liveCategoryName (categories : CategoryProxy) (id : CategoryId) : ControlCaption =
-    match categories.listCategories () with
-    | Ok cats ->
-        match cats |> List.tryFind (fun c -> c.id = id) with
-        | Some c -> c.name.caption
-        | None -> ControlCaption id.categoryName
-    | Error _ -> ControlCaption id.categoryName
+    let liveCategories =
+        match categories.listCategories () with
+        | Ok cats -> cats
+        | Error _ -> []
+    (id.categoryName liveCategories).caption
 
 type CategoryProxy with
 
-    /// The step-011 material facet catalogue with the category def's extractor re-pointed at the
-    /// LIVE category store: `materialFacets`' own category def resolves names through the STATIC
-    /// seeded catalogue (`CategoryId.categoryName`), so a category renamed through `CategoryProxy` would keep
-    /// its stale branch label there. The facet KEY is unchanged — only name resolution goes live —
-    /// and the catalogue is read ONCE per projection (the discrete value key doubles as the branch
-    /// label, step 009, so a rename re-labels branch, offer, and chip alike).
+    /// Shared material facets over the live category list, or an empty list when listing fails (spec 0050 S1.7).
     member this.liveMaterialFacets : AttributeDef<MaterialEntry> list =
-        let liveNames : Map<CategoryId, string> =
+        let liveCategories =
             match this.listCategories () with
-            | Ok cats -> cats |> List.map (fun c -> c.id, c.name.value) |> Map.ofList
-            | Error _ -> Map.empty
-        let liveName (id : CategoryId) : string =
-            match Map.tryFind id liveNames with
-            | Some name -> name
-            | None -> id.categoryName
-        materialFacets
-        |> List.map (fun def ->
-            if def.key = materialCategoryKey
-            then { def with extract = fun entry -> [ DiscreteValue (DiscreteKey (liveName entry.category)) ] }
-            else def)
+            | Ok cats -> cats
+            | Error _ -> []
+        materialFacets liveCategories
 
 /// The text filter's facet key (the filter is an ORDINARY engine constraint — spec 0038 §D.0 —
 /// over the entry's display name; its UI surface stays the filter box, not a chip).
@@ -492,8 +517,66 @@ let private requestLifecycle (action : LifecycleAction) (m : MaterialsWindowMode
     | Some id -> { m with lifecycleGate = PendingLifecycle (id, action); removeGate = NoPendingRemove; lastError = None }
     | None -> m
 
+/// Dropped files and a picked glass catalogue decide alike: their rows open the import dialog, a refusal shows (spec 0050 S3.2, S13.2).
+let private openImportChoices (files : FileName list) (m : MaterialsWindowModel) : MaterialsWindowModel =
+    match m.context.catalogueImports.decideDroppedFiles files with
+    | Ok [] -> m
+    | Ok decisions ->
+        m.context.openImportDialog decisions
+        {
+            m with
+                importStatus = None
+                importError = None
+        }
+    | Error error ->
+        {
+            m with
+                importStatus = None
+                importError = Some error
+        }
+
 let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) : MaterialsWindowModel =
     match msg with
+    | ExportSelectedMaterial file ->
+        match m.selectedId with
+        | None -> m
+        | Some id ->
+            match m.context.catalogueImports.exportEntry id.toLibraryEntryId file with
+            | Ok envelope ->
+                {
+                    m with
+                        entryExportStatus = Some (envelope.exportedCaption file)
+                        entryExportError = None
+                }
+            | Error error ->
+                {
+                    m with
+                        entryExportStatus = None
+                        entryExportError = Some error
+                }
+    | ExportShownMaterials target ->
+        let ids = m.filteredEntries |> List.map (fun entry -> entry.id.toLibraryEntryId)
+        match m.context.catalogueImports.exportEntries ids target with
+        | Ok catalogue ->
+            {
+                m with
+                    entryExportStatus = Some (catalogue.exportedCaption target.folder)
+                    entryExportError = None
+            }
+        | Error error ->
+            {
+                m with
+                    entryExportStatus = None
+                    entryExportError = Some error
+            }
+    | DropMaterialEntryFiles files -> openImportChoices files m
+    | ImportGlassCatalogue file -> openImportChoices [ file ] m
+    | MaterialsImportApplied summary ->
+        {
+            m with
+                importStatus = Some summary
+                importError = None
+        }
     | ApplyFacetValue (key, value) ->
         // Single-key selection per facet: re-applying a constrained facet REPLACES its chip
         // (removed from its old breadcrumb position, re-applied at the end).
@@ -564,6 +647,9 @@ let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) 
         // re-queries `listCategories` on its next render, so a rename there re-labels the
         // category facet in the same render pass.
         m.context.openCategoryEditor ()
+        m
+    | OpenOnlineSources ->
+        m.context.openOnlineSources ()
         m
     | ToggleShowInactive ->
         let flipped =
@@ -874,22 +960,24 @@ let facetedHandlers (dispatch : MaterialsWindowMsg -> unit) : FacetedTreeControl
 // The view: the faceted tree beside the verbs + view panel.
 // ---------------------------------------------------------------------------
 
-let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
+/// The Materials and import-dialog brush adapter (spec 0050 S3.2).
+let brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
 let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
 let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-let private messageColor = Color.FromRgb(178uy, 34uy, 34uy)
-// The positive/negative action pair backgrounds (the Save/Cancel precedent, SampleEditorView).
-let private positiveBackground = Color.FromRgb(186uy, 224uy, 186uy)
-let private negativeBackground = Color.FromRgb(236uy, 202uy, 202uy)
+/// The Materials and import-dialog refusal colour (spec 0050 S3.2).
+let messageColor : Color = Color.FromRgb(178uy, 34uy, 34uy)
+/// The Materials and import-dialog positive action fill (spec 0050 S3.2).
+let positiveBackground : Color = Color.FromRgb(186uy, 224uy, 186uy)
+/// The Materials and import-dialog negative action fill (spec 0050 S3.2).
+let negativeBackground : Color = Color.FromRgb(236uy, 202uy, 202uy)
 
-/// A clickable verb box (the shared workbench button look), KEYED by its id so membership
-/// changes recreate a shifted box; `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
-/// pass. The verbs, confirm row, message and panel all have variable membership, so every id is
-/// an AutomationId, never `StyledElement.Name` (the `FacetedTreeControls` discipline).
-let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+/// A keyed verb box shared by both library windows and the import dialog (spec 0050 S3.2; S3.3).
+/// Refreshes captured selection data and supplies the handled press for owner-window lookup.
+let verbButtonOn (id : ConstructorUiId) (label : ControlCaption) (onPressed : PointerPressedEventArgs -> unit) : IView =
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()
+            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
             Border.background (brush idleBackground)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
@@ -898,15 +986,121 @@ let private verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick 
             Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onPressed e), SubPatchOptions.Always)
         ]
         |> Avalonia.FuncUI.DSL.View.withKey id.value
     keyedBox :> IView
 
-/// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
-/// `verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
-/// membership: the pair exists only in Select state).
-let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
+/// A shared verb box whose action needs no pointer event (spec 0050 S3.3).
+let verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+    verbButtonOn id label (fun _ -> onClick ())
+
+/// Picks one library folder with an optional starting location, posting a confirmed pick on the UI thread (spec 0050 S3.3).
+/// Cancellation or an unavailable storage provider leaves the caller unchanged.
+let pickLibraryFolder (owner : Window) (title : ControlCaption) (startOpt : FolderName option) (onPicked : FolderName -> unit) : unit =
+    let pick =
+        async {
+            try
+                let options = Avalonia.Platform.Storage.FolderPickerOpenOptions(Title = title.value, AllowMultiple = false)
+                match startOpt with
+                | Some folder ->
+                    let! suggested =
+                        Avalonia.Platform.Storage.StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, folder.value)
+                        |> Async.AwaitTask
+                    options.SuggestedStartLocation <- suggested
+                | None -> ()
+                let! folders = owner.StorageProvider.OpenFolderPickerAsync options |> Async.AwaitTask
+                match List.ofSeq folders with
+                | folder :: _ ->
+                    let picked = FolderName folder.Path.LocalPath
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
+                | [] -> ()
+            with _ -> ()
+        }
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
+
+/// Saves one library entry with its kind's extension and an optional starting folder (spec 0050 S3.3).
+let pickEntryExportFile (owner : Window) (startOpt : FolderName option) (envelope : LibraryEntryEnvelope) (onPicked : FileName -> unit) : unit =
+    let pick =
+        async {
+            try
+                let extension = envelope.content.schema.kind.extension
+                let fileType =
+                    Avalonia.Platform.Storage.FilePickerFileType(envelope.content.schema.kind.caption.value,
+                        Patterns = [ "*" + extension.value ])
+                let options =
+                    Avalonia.Platform.Storage.FilePickerSaveOptions(
+                        Title = "Export library entry",
+                        SuggestedFileName = envelope.content.fileName.value,
+                        DefaultExtension = extension.value.TrimStart('.'),
+                        FileTypeChoices = [ fileType ],
+                        ShowOverwritePrompt = System.Nullable true)
+                match startOpt with
+                | Some folder ->
+                    let! suggested =
+                        Avalonia.Platform.Storage.StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, folder.value)
+                        |> Async.AwaitTask
+                    options.SuggestedStartLocation <- suggested
+                | None -> ()
+                let! file = owner.StorageProvider.SaveFilePickerAsync options |> Async.AwaitTask
+                if not (isNull file) then
+                    let picked = FileName file.Path.LocalPath
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
+            with _ -> ()
+        }
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
+
+/// Opens one Zemax `.agf` glass catalogue, posting a confirmed pick on the UI thread (spec 0050 S13.2).
+/// Cancellation or an unavailable storage provider leaves the caller unchanged.
+let pickGlassCatalogueFile (owner : Window) (onPicked : FileName -> unit) : unit =
+    let pick =
+        async {
+            try
+                let fileType = Avalonia.Platform.Storage.FilePickerFileType("Zemax glass catalogue", Patterns = [ "*.agf" ])
+                let options =
+                    Avalonia.Platform.Storage.FilePickerOpenOptions(
+                        Title = "Import glass catalogue",
+                        AllowMultiple = false,
+                        FileTypeFilter = [ fileType ])
+                let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
+                match List.ofSeq files with
+                | file :: _ ->
+                    let picked = FileName file.Path.LocalPath
+                    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> onPicked picked)
+                | [] -> ()
+            with _ -> ()
+        }
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
+
+/// Hands a verb press's window to `onOwner`; a press outside a window does nothing (spec 0050 S3.3, S13.2).
+let private onOwnerWindow (onOwner : Window -> unit) (e : PointerPressedEventArgs) : unit =
+    match e.Source with
+    | :? Visual as source ->
+        match TopLevel.GetTopLevel source with
+        | :? Window as owner -> onOwner owner
+        | _ -> ()
+    | _ -> ()
+
+/// Shows each entry's attribution as wrapping text, omitting the panel when there is none (spec 0050 S3.3).
+let attributionPanel (id : ConstructorUiId) (lines : EntryAttributionLine list) : IView list =
+    match lines with
+    | [] -> []
+    | _ ->
+        [ StackPanel.create [
+              id.automationAttribute<StackPanel> ()
+              AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Licence attribution", ValueNone)
+              StackPanel.orientation Orientation.Vertical
+              StackPanel.children (
+                  lines |> List.map (fun line ->
+                      TextBlock.create [
+                          TextBlock.text line.text
+                          TextBlock.textWrapping TextWrapping.Wrap
+                          TextBlock.maxWidth 380.0
+                      ] :> IView))
+          ] :> IView ]
+
+/// A keyed, colour-coded action box shared by Materials and the import dialog (spec 0050 S3.2).
+let actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
     let keyedBox =
         Border.create [
             id.automationAttribute<Border> ()
@@ -965,9 +1159,11 @@ let private lifecycleButton (dispatch : MaterialsWindowMsg -> unit) (action : Li
     | SupersedeAction -> verbButton ConstructorUiId.materialsSupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersede)
 
 /// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
-/// engine preset loses the verb — removed, not greyed); Remove only while an entry is selected; the
+/// entry loses the verb — removed, not greyed); Remove only while an entry is selected; the
 /// lifecycle verbs from `offeredLifecycleActions` (Mark inactive + Supersede… for an active
-/// selection, Mark active for a retired one — spec 0038 step 023).
+/// selection, Mark active for a retired one — spec 0038 step 023). Online sources… is Browse-only, offered while the
+/// import seam carries a source: a pick session imports nothing (spec 0050 S13.1). Import glass catalogue… is
+/// Browse-only for the same reason (S13.2).
 let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
@@ -980,7 +1176,29 @@ let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -
                | Some _ -> [ verbButton ConstructorUiId.materialsRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelected) ]
                | None -> [])
             @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch))
-            @ [ verbButton ConstructorUiId.materialsCategoriesButton (ControlCaption "Categories…") (fun () -> dispatch OpenCategories) ])
+            @ [ verbButton ConstructorUiId.materialsCategoriesButton (ControlCaption "Categories…") (fun () -> dispatch OpenCategories) ]
+            @ (match m.mode with
+               | Select _ -> []
+               | Browse ->
+                   (match m.exportableSelection with
+                    | None -> []
+                    | Some envelope ->
+                        [ verbButtonOn ConstructorUiId.materialsExportButton (ControlCaption "Export…") (onOwnerWindow (fun owner ->
+                              pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
+                                  (fun file -> dispatch (ExportSelectedMaterial file)))) ])
+                   @ (match m.filteredEntries with
+                      | [] -> []
+                      | _ ->
+                          [ verbButtonOn ConstructorUiId.materialsExportShownButton (ControlCaption "Export shown to catalogue…") (onOwnerWindow (fun owner ->
+                                pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
+                                    (fun folder -> dispatch (ExportShownMaterials (CatalogueExportTarget.ofFolder folder))))) ])
+                   @ (match m.context.catalogueImports.materialSources with
+                      | [] -> []
+                      | _ ->
+                          [ verbButton ConstructorUiId.materialsOnlineSourcesButton (ControlCaption "Online sources…") (fun () ->
+                                dispatch OpenOnlineSources) ])
+                   @ [ verbButtonOn ConstructorUiId.materialsImportGlassCatalogueButton (ControlCaption "Import glass catalogue…") (onOwnerWindow (fun owner ->
+                           pickGlassCatalogueFile owner (fun file -> dispatch (ImportGlassCatalogue file)))) ]))
     ] :> IView
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
@@ -1062,6 +1280,44 @@ let private messageRow (m : MaterialsWindowModel) : IView list =
               TextBlock.text err.caption.value
           ] :> IView ]
 
+type MaterialsWindowModel with
+
+    member internal this.materialsExportStatusRow : IView list =
+        let captionOpt =
+            match this.entryExportError with
+            | Some error -> Some error.caption
+            | None -> this.entryExportStatus
+        match captionOpt with
+        | None -> []
+        | Some caption ->
+            [ TextBlock.create [
+                  ConstructorUiId.materialsExportStatusText.automationAttribute<TextBlock> ()
+                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
+                  TextBlock.text caption.value
+                  TextBlock.textWrapping TextWrapping.Wrap
+                  match this.entryExportError with
+                  | Some _ -> TextBlock.foreground (brush messageColor)
+                  | None -> ()
+              ] :> IView ]
+
+    member internal this.materialsImportStatusRow : IView list =
+        let captionOpt =
+            match this.importError with
+            | Some error -> Some error.caption
+            | None -> this.importStatus
+        match captionOpt with
+        | None -> []
+        | Some caption ->
+            [ TextBlock.create [
+                  ConstructorUiId.materialsImportStatusText.automationAttribute<TextBlock> ()
+                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
+                  TextBlock.text caption.value
+                  TextBlock.textWrapping TextWrapping.Wrap
+                  match this.importError with
+                  | Some _ -> TextBlock.foreground (brush messageColor)
+                  | None -> ()
+              ] :> IView ]
+
 /// The version list (spec 0038 step 023): one clickable row per stored version, the latest marked
 /// `(latest)` and the currently-viewed one marked `▸`. Clicking a row shows THAT version in the
 /// panel — the latest editable through the Edit verb, an older one view-only. Absent when the
@@ -1111,13 +1367,14 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             |> List.tryPick (fun (vn, e) -> if vn = shownVersion then Some e else None)
             |> Option.defaultValue latestEntry
         let viewingOlder = shownVersion <> latestVersion
-        let chart = NkDispersionChart.nkDispersionChart shownEntry.previewAnisotropy shownEntry.properties Nanometer MaterialEditorView.previewRange
+        let anisotropy = shownEntry.physics.anisotropy
+        let chart = NkDispersionChart.nkDispersionChart anisotropy shownEntry.properties Nanometer MaterialEditorView.previewRange
         let editability =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
             else
-                match shownEntry.complexity with
-                | Some complexity when complexity.isEditable -> ""
-                | Some _ | None -> " (view-only engine preset)"
+                match shownEntry.physics.editableComplexityOpt with
+                | Some _ -> ""
+                | None -> " (view-only)"
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [
@@ -1146,9 +1403,12 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
                                 TextBlock.maxWidth 380.0
                                 TextBlock.text (shownEntry.description |> Option.map (fun d -> d.value) |> Option.defaultValue "")
                             ] :> IView ]
+                          @ (match m.context.catalogueImports.proxy.attributionLinesOf [ shownEntry.id.toLibraryEntryId ] with
+                             | Ok lines -> attributionPanel ConstructorUiId.materialsAttributionPanel lines
+                             | Error _ -> [])
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch
-                          @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle shownEntry.previewAnisotropy chart) ])
+                          @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle anisotropy chart) ])
                   ])
           ] :> IView ]
 
@@ -1175,6 +1435,8 @@ let materialsWindowView (m : MaterialsWindowModel) (dispatch : MaterialsWindowMs
                                     @ confirmRow m dispatch
                                     @ lifecycleConfirmRow m dispatch
                                     @ messageRow m
+                                    @ m.materialsImportStatusRow
+                                    @ m.materialsExportStatusRow
                                     @ viewPanel m dispatch)
                             ])
                     ])

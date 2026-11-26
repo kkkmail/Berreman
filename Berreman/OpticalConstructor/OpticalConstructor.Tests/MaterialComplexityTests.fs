@@ -9,18 +9,19 @@ open Berreman.Dispersion
 open OpticalProperties.Standard
 open OpticalProperties.Active
 open OpticalProperties.Dispersive
+open OpticalConstructor.Domain.CrystalPhysics
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 open Xunit
 
 /// Spec 0033 step 013 (AC-B7) — the `MaterialComplexity` edit-model option tree.
 /// `toProperties` MUST default absent magnetic/active options to the vacuum μ/ρ and
 /// assemble present options through `toMuWithDisp` / `toRhoWithDisp`; every
-/// re-expressed built-in's `complexity.toProperties` MUST reproduce the original
-/// engine preset's tensors at reference wavelengths; silicon / langasite (dispersion
-/// coded in `OpticalProperties/Dispersive.fs:98-99`) and the vacuum spacer stay
-/// `None` (engine-preset, view-only).
+/// re-expressed built-in's physics `toProperties` MUST reproduce the original
+/// engine preset's tensors at reference wavelengths.
 module MaterialComplexityTests =
 
     let private closeC (tol : float) (a : Complex) (b : Complex) =
@@ -47,7 +48,7 @@ module MaterialComplexityTests =
         [ 10.0<nm>; 13.5<nm> ] |> List.map WaveLength.nm
 
     let private entryOf (id : MaterialId) : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = id)
+        BuiltinCatalogue.material id
 
     [<Fact>]
     let ``AC-B7 toProperties defaults absent magnetic and active options to vacuum mu and rho`` () =
@@ -118,42 +119,21 @@ module MaterialComplexityTests =
             ]
         for (label, id, original, grid) in cases do
             let entry = entryOf id
-            match entry.complexity with
-            | None -> Assert.Fail($"{label}: a re-expressed built-in must carry Some complexity")
-            | Some c ->
-                let rebuilt = c.toProperties
-                for w in grid do
-                    let expected = original.getProperties w
-                    Assert.True(propertiesClose 1e-12 (rebuilt.getProperties w) expected, $"{label}: toProperties must reproduce the preset at λ={w}")
-                    // The seeded entry's properties ARE the complexity's composition
-                    // (source-of-truth invariant, held by construction at seed time).
-                    Assert.True(propertiesClose 1e-12 (entry.properties.getProperties w) expected, $"{label}: seeded properties must equal the preset at λ={w}")
-
-    [<Fact>]
-    let ``every built-in carries Some complexity after the step-004 re-seed`` () =
-        // Spec 0040 step 004: the three former coded presets (silicon, langasite, the
-        // vacuum spacer) are re-seeded so every built-in carries its single-valued
-        // class as DATA — no entry is left with `complexity = None`.
-        for e in builtInEntries do
-            match e.complexity with
-            | Some _ -> ()
-            | None -> Assert.Fail($"{e.name}: every built-in must carry Some complexity after the re-seed")
-        let someCount =
-            builtInEntries
-            |> List.filter (fun e ->
-                match e.complexity with
-                | Some _ -> true
-                | None -> false)
-            |> List.length
-        Assert.Equal(builtInEntries |> List.length, someCount)
+            let rebuilt =
+                match entry.physics with
+                | ComplexityPhysics complexity -> complexity.toProperties
+                | CrystalParameterPhysics crystal -> failwith $"{label}: expected a complexity physics, got %A{crystal}"
+            for w in grid do
+                let expected = original.getProperties w
+                Assert.True(propertiesClose 1e-12 (rebuilt.getProperties w) expected, $"{label}: toProperties must reproduce the preset at λ={w}")
+                // BuiltinCatalogue.material properties must match the independent preset.
+                Assert.True(propertiesClose 1e-12 (entry.properties.getProperties w) expected, $"{label}: seeded properties must equal the preset at λ={w}")
 
     [<Fact>]
     let ``the re-seeded silicon and langasite eps reproduce the engine presets`` () =
-        // Spec 0040 step 004: silicon / langasite dispersion is re-stated through the
-        // ladder's evaluated rung. Guard the copied indices against the engine closures
-        // (`OpticalProperties/Dispersive.fs`) so a transcription slip fails here, not
-        // silently. Langasite's dispersive gyration ρ has no value-tree closure escape,
-        // so only its ε is reproduced; the ε compare uses the two engine closures.
+        // BuiltinCatalogue.material preserves the silicon / langasite ε laws (spec 0040 step 004;
+        // spec 0050 steps 10, 51). Langasite keeps constant ρ unlike the engine's published law,
+        // so only ε is compared with the engine presets.
         for w in visibleGrid do
             let siliconEps = (entryOf MaterialIds.silicon).properties.epsWithDisp.getEps w
             Assert.True(epsClose 1e-12 siliconEps (siliconOpticalProperties.epsWithDisp.getEps w), $"silicon eps at λ={w}")
@@ -321,19 +301,106 @@ module MaterialComplexityTests =
     [<Fact>]
     let ``step 015: a transcendental dispersive segment derives and evaluates without rejection`` () =
         // A dispersive segment whose model is transcendental (ForouhiBloomer, taken
-        // from the segment picker's default choices) now LOWERS to the evaluated
-        // case — toComplexity DERIVES it (no SegmentNotLowerable), and the derived
-        // eps reproduces `evaluate` across the grid.
+        // from the segment picker's default choices) LOWERS to its law (spec 0050
+        // step 7) — toComplexity DERIVES it (no SegmentNotLowerable), the derived eps
+        // reproduces `evaluate` across the grid, and the entry stays view-only.
         let model = defaultModelChoices |> List.find (fun m -> m.kindCode = "ForouhiBloomer")
         let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, model) ]
         let c = derived st
         match c.eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
             match seg.dispersion with
-            | EpsAxisEvaluated _ -> ()
-            | other -> Assert.Fail($"the transcendental segment must lower to the evaluated case, got %A{other}")
+            | ForouhiBloomerAxis _ -> ()
+            | other -> Assert.Fail($"the transcendental segment must lower to its law, got %A{other}")
         | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
+        Assert.False(c.isEditable)
         let f = model.evaluate
         for w in visibleGrid do
             let expected = Eps.fromComplexRefractionIndex (f w)
             Assert.True(epsClose 1e-12 (c.toProperties.epsWithDisp.getEps w) expected, $"derived eps at λ={w}")
+
+    [<Fact>]
+    let ``a published gyration law keeps a complexity view-only and refuses to seed the editor`` () =
+        // Spec 0050 step 10: a published gyration law has no class or components the ladder can seed.
+        let c =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = Some (PublishedLawRho LangasiteGyrationLaw)
+            }
+        Assert.False(c.isEditable)
+        match ofComplexity c with
+        | Error (PublishedGyrationNotEditableErr _) -> ()
+        | other -> Assert.Fail($"a published gyration law must refuse to seed the editor, got %A{other}")
+
+    [<Fact>]
+    let ``each crystal record's builder composes its permittivity from its own fields`` () =
+        // Spec 0050 S11.1: the records ahead of the material library keep steps 332-334's builders.
+        let uniaxial = uniaxialParameters
+        let triclinic = triclinicParameters
+        let absorbing = absorbingTriclinicParameters
+        let squared (n : RefractionIndex) : float = n.value * n.value
+        let assertDiagonal (label : string) (eps : Eps) (diagonal : float list) : unit =
+            for i in 0..2 do
+                for j in 0..2 do
+                    let actual = eps.[i, j]
+                    let expected = if i = j then Complex(diagonal.[i], 0.0) else Complex.Zero
+                    Assert.True(closeC 1e-15 actual expected, $"{label}: eps[{i},{j}] = {actual}, expected {expected}")
+        assertDiagonal "uniaxial" uniaxial.opticalProperties.eps [ squared uniaxial.ordinaryIndex; squared uniaxial.ordinaryIndex; squared uniaxial.extraordinaryIndex ]
+        assertDiagonal "triclinic" triclinic.opticalProperties.eps [ squared triclinic.index1; squared triclinic.index2; squared triclinic.index3 ]
+        let absorbingEps = absorbing.opticalProperties.eps
+        let actual11 = absorbingEps.[0, 0]
+        let actual12 = absorbingEps.[0, 1]
+        let expected11 = Complex(squared absorbing.index1, absorbing.epsIm11.value)
+        let expected12 = Complex(0.0, absorbing.epsIm12.value)
+        Assert.True(closeC 1e-15 actual11 expected11, $"absorbing: eps[0,0] = {actual11}, expected n1² + i·e11 = {expected11}")
+        Assert.True(closeC 1e-15 actual12 expected12, $"absorbing: eps[0,1] = {actual12}, expected i·e12 = {expected12}")
+
+    [<Fact>]
+    let ``a complexity physics composes, classifies and offers its complexity as the complexity does`` () =
+        // Spec 0050 S11.1: each shared member of a complexity physics answers what its complexity answers.
+        let constantIsotropic =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = None
+            }
+        let uniaxialDispersive = derived (applied [ ChooseAnisotropy Uniaxial; SetDispersion DispersiveSegments ])
+        match uniaxialDispersive.eps with
+        | EpsWithDispValue (UniaxialDispersive _) -> ()
+        | other -> Assert.Fail($"expected a uniaxial dispersive eps, got %A{other}")
+        let w = WaveLength.nm 600.0<nm>
+        for complexity, anisotropy in [ constantIsotropic, Isotropic; uniaxialDispersive, Uniaxial ] do
+            let physics = ComplexityPhysics complexity
+            Assert.True(
+                propertiesClose 0.0 (complexity.toProperties.getProperties w) (physics.toProperties.getProperties w),
+                $"the physics must compose its complexity's properties at λ={w}")
+            Assert.Equal(anisotropy, complexity.anisotropy)
+            Assert.Equal(complexity.anisotropy, physics.anisotropy)
+            Assert.Equal<MaterialComplexity option>(Some complexity, physics.editableComplexityOpt)
+        let publishedGyration = { constantIsotropic with active = Some (PublishedLawRho LangasiteGyrationLaw) }
+        Assert.Equal<MaterialComplexity option>(None, (ComplexityPhysics publishedGyration).editableComplexityOpt)
+
+    [<Fact>]
+    let ``a crystal-parameter material composes its record's engine properties at every wavelength`` () =
+        // Spec 0050 S11.1: a crystal physics is its record's builder, the same tensors at every wavelength.
+        for crystal in crystals do
+            let entry = { entryOf MaterialIds.glass152 with physics = CrystalParameterPhysics crystal }
+            for w in visibleGrid do
+                Assert.True(
+                    propertiesClose 1e-15 crystal.opticalProperties (entry.properties.getProperties w),
+                    $"%A{crystal}: the entry must compose its record's properties at λ={w}")
+            Assert.Equal(ConstantMaterial, entry.dispersion)
+
+    [<Fact>]
+    let ``a crystal-parameter physics offers no editable complexity, so its entry opens view-only`` () =
+        // Spec 0050 S11.1: the ladder edits complexity trees, so a crystal offers it nothing to seed.
+        for crystal in crystals do
+            Assert.Equal<MaterialComplexity option>(None, (CrystalParameterPhysics crystal).editableComplexityOpt)
+        let constantIsotropic =
+            {
+                eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.4))
+                magnetic = None
+                active = None
+            }
+        Assert.Equal<MaterialComplexity option>(Some constantIsotropic, (ComplexityPhysics constantIsotropic).editableComplexityOpt)

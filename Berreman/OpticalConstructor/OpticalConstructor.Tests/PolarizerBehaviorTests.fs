@@ -7,20 +7,14 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Propagation
 open OpticalConstructor.Domain.Facets
-open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.LibraryFacets
 
-/// Spec 0038 Part F (step 014) — ideal elements become ordinary protected entries and polarizer
-/// behaviour becomes data. Pins: `ComputedIdeal` parity with the EXISTING `analyzerMueller` /
-/// `inputStokes` synthesis across orientations; the `R(−θ)·M·R(θ)` component rotation; the ORDERED
-/// rotated product of a `ConstantMueller` compound (list in light-traversal order — first component
-/// applied first); whole-compound rotation ≡ per-component offset shift; `ProtectedBuiltIn` on every
-/// seeded preset with every seeded sample `UserManaged`; and the polarizer-category facet.
+/// Spec 0038 Part F step 014; spec 0050 S1.7: ideal parity, ordered compound rotation,
+/// and polarizer facets. `BuiltinCatalogue.presets` are protected;
+/// `BuiltinCatalogue.samples` are user-managed.
 module PolarizerBehaviorTests =
 
     let private deg (d : float) : Angle = Angle.degree (d * 1.0<Berreman.Constants.deg>)
-
-    let private stokesComponents (sv : StokesVector) : float * float * float * float = sv.s0, sv.s1, sv.s2, sv.s3
 
     /// The reference-orientation ideal LP (θ = 0) every compound test builds components from.
     let private lp0 : MuellerMatrix = analyzerMueller IdealLinear (deg 0.0)
@@ -43,15 +37,6 @@ module PolarizerBehaviorTests =
         for kind in [ IdealLinear; IdealCircularLeft; IdealCircularRight ] do
             for d in sampledDegrees do
                 assertMuellerEqual (analyzerMueller kind (deg d)) (behaviorMueller (ComputedIdeal kind) (deg d))
-
-    [<Fact>]
-    let ``behaviorInputStokes of a ComputedIdeal equals inputStokes across kinds and orientations`` () =
-        for kind in [ IdealLinear; IdealCircularLeft; IdealCircularRight ] do
-            for d in sampledDegrees do
-                let e0, e1, e2, e3 = stokesComponents (inputStokes kind (deg d))
-                let a0, a1, a2, a3 = stokesComponents (behaviorInputStokes (ComputedIdeal kind) (deg d))
-                Assert.True(abs (e0 - a0) <= 1.0e-9 && abs (e1 - a1) <= 1.0e-9 && abs (e2 - a2) <= 1.0e-9 && abs (e3 - a3) <= 1.0e-9,
-                            $"%A{kind} at %g{d}°: expected (%g{e0}, %g{e1}, %g{e2}, %g{e3}), got (%g{a0}, %g{a1}, %g{a2}, %g{a3})")
 
     // ============================ the component rotation R(−θ)·M·R(θ) ============================
 
@@ -111,22 +96,12 @@ module PolarizerBehaviorTests =
         let expected = analyzerMueller IdealLinear (deg 95.0) * analyzerMueller IdealLinear (deg 50.0)
         assertMuellerEqual expected (behaviorMueller compound (deg 30.0))
 
-    [<Fact>]
-    let ``behaviorInputStokes applies a constant compound to unpolarized light un-normalized`` () =
-        // One LP component at reference, element rotated to 30°: ½·[1; cos60°; sin60°; 0].
-        let behavior = ConstantMueller [ { matrix = lp0; offset = deg 0.0 } ]
-        let a0, a1, a2, a3 = stokesComponents (behaviorInputStokes behavior (deg 30.0))
-        Assert.True(abs (a0 - 0.5) <= 1.0e-9)
-        Assert.True(abs (a1 - 0.5 * cos (60.0 * System.Math.PI / 180.0)) <= 1.0e-9)
-        Assert.True(abs (a2 - 0.5 * sin (60.0 * System.Math.PI / 180.0)) <= 1.0e-9)
-        Assert.True(abs a3 <= 1.0e-9)
-
     // ============================ EntryProtection (acceptance 3) ============================
 
     [<Fact>]
     let ``every seeded preset is ProtectedBuiltIn and every seeded sample UserManaged`` () =
         let samples, presets =
-            seedEntries
+            ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
             |> List.partition (fun e ->
                 match e with
                 | SampleItem _ -> true
@@ -135,46 +110,48 @@ module PolarizerBehaviorTests =
         Assert.NotEmpty presets
         Assert.All(presets, fun e -> Assert.Equal<EntryProtection>(ProtectedBuiltIn, e.protection))
         Assert.All(samples, fun e -> Assert.Equal<EntryProtection>(UserManaged, e.protection))
-        // The protected built-ins are exactly the seeded presets the spec names (F.0) plus, since spec
-        // 0046, every seeded light source (the lasers and the UV / EUV lithography sources).
+        // Spec 0038 F.0; spec 0046; spec 0050 S1.7: BuiltinCatalogue.presets protects
+        // the ideal elements and every BuiltinCatalogue.sources entry.
         Assert.Equal<string list>(
-            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp" ] @ (SeedSources.allSeedSources |> List.map (fun s -> s.id.value))
+            [ PresetIds.detectorEllipsometer; PresetIds.detectorIntensity; PresetIds.polarizerCpLeft; PresetIds.polarizerCpRight; PresetIds.polarizerLp ]
+            @ (BuiltinCatalogue.sources () |> List.map (fun s -> s.id))
+            |> List.map (fun i -> i.value)
             |> List.sort,
             presets |> List.map (fun e -> e.entryId.value) |> List.sort)
 
     [<Fact>]
     let ``the three seeded ideals are ComputedIdeal entries with their Lp and Cp categories`` () =
-        let polarizer (id : string) : PolarizerPreset =
-            seedEntries
+        let polarizer (id : Placement.ElementValueId) : PolarizerPreset =
+            ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
             |> List.pick (fun e ->
                 match e with
-                | PolarizerItem p when p.id.value = id -> Some p
+                | PolarizerItem p when p.id = id -> Some p
                 | _ -> None)
-        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealLinear, (polarizer "pol-lp").behavior)
-        Assert.Equal<PolarizerCategory>(LpCategory, (polarizer "pol-lp").category)
-        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularLeft, (polarizer "pol-cp-left").behavior)
-        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer "pol-cp-left").category)
-        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularRight, (polarizer "pol-cp-right").behavior)
-        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer "pol-cp-right").category)
+        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealLinear, (polarizer PresetIds.polarizerLp).behavior)
+        Assert.Equal<PolarizerCategory>(LpCategory, (polarizer PresetIds.polarizerLp).category)
+        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularLeft, (polarizer PresetIds.polarizerCpLeft).behavior)
+        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer PresetIds.polarizerCpLeft).category)
+        Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealCircularRight, (polarizer PresetIds.polarizerCpRight).behavior)
+        Assert.Equal<PolarizerCategory>(CpCategory, (polarizer PresetIds.polarizerCpRight).category)
 
     // ============================ the polarizer-category facet ============================
 
     [<Fact>]
     let ``the polarizer-category facet applies only to polarizers and classifies the seeded ideals`` () =
         let def =
-            libraryFacets builtInEntries
+            libraryFacets (BuiltinCatalogue.categories ()) (BuiltinCatalogue.materials ())
             |> List.find (fun d -> d.key = polarizerCategoryFacetKey)
-        for entry in seedEntries do
+        for entry in ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()) do
             let expected =
                 match entry with
                 | PolarizerItem _ -> ApplicableAttribute
                 | SampleItem _ | SourceItem _ | DetectorItem _ -> InapplicableAttribute
             Assert.Equal<Applicability>(expected, def.appliesTo entry)
-        let extractedLabels (id : string) : string list =
-            seedEntries
-            |> List.find (fun e -> e.entryId.value = id)
+        let extractedLabels (id : Placement.ElementValueId) : string list =
+            ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
+            |> List.find (fun e -> e.entryId = id)
             |> def.extract
             |> List.map (fun v -> v.label)
-        Assert.Equal<string list>([ "Linear" ], extractedLabels "pol-lp")
-        Assert.Equal<string list>([ "Circular" ], extractedLabels "pol-cp-left")
-        Assert.Equal<string list>([ "Circular" ], extractedLabels "pol-cp-right")
+        Assert.Equal<string list>([ "Linear" ], extractedLabels PresetIds.polarizerLp)
+        Assert.Equal<string list>([ "Circular" ], extractedLabels PresetIds.polarizerCpLeft)
+        Assert.Equal<string list>([ "Circular" ], extractedLabels PresetIds.polarizerCpRight)

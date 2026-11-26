@@ -1,0 +1,158 @@
+# Secondary review — slice 0118, attempt 01
+
+Reviewed 2026-11-07 by the owning orchestrator following the automatic monitor
+callback. Recommendations only; implementation, commits and restart await
+operator agreement. The primary report is agent-written, not mechanical.
+
+Primary: [0118-01.postmortem-md](0118-01.postmortem-md).
+Event: [event.json](../.artifacts/arc-watch/33831867b43d4616891b27d19c6e1b92/event.json),
+id `33831867b43d4616891b27d19c6e1b92`, supervisor PID 76368.
+
+## Findings
+
+The primary diagnosis is substantially correct. The immediate failure belongs
+to the worker's test implementation. The proposed repair also needs explicit
+test-census authority. This review additionally confirms an ASG authentication
+classification defect and identifies a recurring ambiguity in coverage repair
+instructions. Neither is evidence that the provider ran out of tokens.
+
+The arc completed 0069–0117: 49 slices since the last restart. HEAD is accepted
+0117, `32c7211233d8eb921f56c2b591777d6e0686a3a5`, with 117 completed slices.
+0118/index 117 is the first pending slice and its implementation is uncommitted.
+Supervisor 76368 has exited. The receipt still validates. The prior inherited
+registry repair worked, including the later inherited seams; checkpoint 68
+records 835 constructor cases and 208 smoke cases. The repaired terminal event
+and monitor callback also worked for this stop.
+
+### Immediate cause: three different fixture compilation failures
+
+The initial 0118 implementation built successfully. The judge then correctly
+identified missing behavioral coverage: the configured-folder fact did not
+exercise `MaterialsWindowView.pickLibraryFolder` with a suggested start folder.
+The judge's requested behavior is appropriate, but putting tests in a selected
+class does not grant authority to add discovered identities.
+
+The subsequent attempts failed as follows:
+
+| Attempt | Feedback build | Evidence |
+|---|---|---|
+| 01 | Passed | 09:36:15 UTC; before the fixture additions |
+| 02 | FS0039 | Unavailable AvaloniaLocator API members |
+| 03 | FS0366 | Direct implementations of storage interfaces with reference-contract restrictions |
+| 04 | FS0905 | Local binding and member both named `storageProvider` |
+
+The current collision is visible at `AppContextTests.fs:81` and `:96` inside
+`LibraryPickerTestProvider`. Renaming the local binding to `providerInstance`
+and returning it from the existing member removes that demonstrated collision
+without changing the member or its callers. It does not prove that the new
+DispatchProxy/headless-session fixture will run correctly; that must be measured.
+
+State records four gate attempts, one review correction and three implementation
+repair charges. `run_arc_runner.py`'s pre-review feedback path charges
+`implementation_repairs` with `max(3, max_failures)` and stops on the third
+failure here. This is not the earlier shared review-budget defect: the review
+correction has its own counter. Increasing the budget would not resolve the
+additional census problem. No quota wait or provider switch caused this stop.
+
+### Confirmed accounting gap, not an observed test-run failure
+
+The published step declares exactly one created UI-test identity. The current
+source adds that fact plus three separate picker facts. Independent read-only
+replay of the accepted inventory, ledger and operator effects through step 118
+confirms that all three extra identities are absent from its expected census:
+
+- `the library folder picker resolves its start folder and delivers only the first selected folder on the UI thread`
+- `cancelling the library folder picker leaves the selection unchanged`
+- `an unavailable storage provider leaves the library folder selection unchanged`
+
+Their class is `OpticalConstructor.Ui.Tests.AppContextTests`. The existing
+operator-effects file contains only the step-52 rename. `check_observed_tests`
+compares identities, not just class membership or counts. Once the fixture
+compiles, discovery of these facts would therefore introduce a further blocker
+unless their authority is recorded. No 0118 UI test run has yet observed that
+failure; this is a confirmed discrepancy in the declared expected set.
+
+This misunderstanding recurs from 0046 and 0108. At 0108, extra behavioral
+checks were eventually composed into an authorized acceptance test while their
+assertions were preserved. That repair does not authorize extra identities at
+0118. Here the operator can retain the clearer separate facts and record three
+step-118 `create` effects, without amending the published ledger or weakening
+identity checks. The actual behavioral coverage should be preserved either way.
+
+### Additional ASG defect: documentation classified as provider authentication failure
+
+The log records `QUOTA_HIT kind=auth_failure` for implementation attempt 02
+at 09:43:10 UTC and for the successful postmortem at 09:58:38 UTC. Both runs
+exited 0. Their reported matching text is Avalonia XML documentation containing
+`T:System.UnauthorizedAccessException`.
+
+A read-only reproduction passed exactly
+`<exception cref="T:System.UnauthorizedAccessException" />` to each of the
+OpenAI, Anthropic and Kimi providers' `parse_events` functions. All three returned
+`auth_failure`. Each authentication regex contains an unqualified `unauthorized`
+alternative and scans transcript content. This is a shared tool defect, not an
+authentication problem in the account. It did not terminate this run, but it
+pollutes diagnostics and can mislead other callers or subsequent analyses.
+
+The primary report's statement that ASG source changes are unnecessary is true
+for removing the immediate compiler error; it does not cover this independently
+verified defect. A provider change, token purchase or reauthentication is not a
+remedy supported by this incident.
+
+## Recommended plan
+
+1. **Repair the fixture and preserve the coverage.** Rename the private binding
+   and its returned expression, retaining all four facts, every assertion and
+   the production implementation. Verify the fixture against the consumed
+   reference APIs and run the real helper tests. Resolve any measured runtime
+   failure before declaring the repair green; runtime reflection alone is not
+   proof that an API is available to F# compilation.
+2. **Record the operator's census decision.** Write the next numbered manual
+   ruling retaining the three separate picker facts and changing the step's
+   expected UI-test increase from one to four. Append their exact step-118
+   `create` rows to `.operator-test-effects-jsonl`, preserving the step-52 row.
+   Use owner/discovery_gate `ui-tests`, the class above, the existing
+   `AppContextTests.fs` path and the ruling citation. Validate through 0494 and
+   refresh the receipt with all 988 compiled artifacts and published requirements
+   preserved. Do not adjust numeric baselines or supervisor state.
+3. **Apply narrow ASG prevention fixes.** Make authentication detection use
+   provider error evidence rather than incidental words in source, documentation
+   or successful tool output; cover all three affected providers. Retain positive
+   controls for real authentication errors and genuine quota/rate-limit events.
+   Add an explicit census-authority instruction to the judge/shared worker
+   protocols: a selected class and a coverage retry do not authorize new test
+   identities; extend authorized coverage without removing assertions, or report
+   the precise authority conflict when new identities are necessary. Keep the
+   existing bounded repair budgets and test-coverage requirement. This reduces
+   the observed recurring mistake without inventing a source-text compiler check
+   or another retry loop.
+4. **Verify, document and pause for commit.** Run the relevant ASG regressions,
+   then all 15 unchanged 0118 gates in their exact selection/census context:
+   build, elevation, ui-smoke, selected ui-tests and eleven s14 invariants.
+   Require 215 smoke passes, all four new facts and existing selected tests
+   passing, exact identities, zero failures/skips and zero warnings from owned
+   code. Check the helper removals and configured folder directly. Reassess the
+   completed diff because the old judge reviewed attempt 01 only. Save evidence
+   under this arc's `.artifacts/`, update the handoff and implementation log,
+   record ASG changes in the next 0090 manual log/error tracker, and wait for the
+   operator to commit.
+
+After fresh verification and the operator's commit/relaunch instruction, use
+`--accept-current-slice --executability-profile 1`, following the standing
+committed-green ruling, and attach a new monitor ticket. This differs from the
+0069 recovery: 0118 adds identities to a selected UI run, which must never be
+written as a whole-suite floor; the full smoke baseline remains 215. Prior
+expected-red record 116 is empty, and no new red is declared. Accept only the
+fully reviewed and verified repair; if verification instead reveals a required
+changed whole-suite checkpoint, revise the resume choice explicitly before
+launch. Do not accept the present tree, reset counters or fabricate checkpoint
+117. No completion stat tools are due while the arc is escalated.
+
+## Review boundary
+
+Evidence includes the event, current state and working diff, the primary report,
+the 0118 judge/worker records, 0108's impl-log, the published ledger and operator
+effects, and the relevant ASG source. Only read-only parser/receipt/census checks
+were performed; no build, gate or test process was run. No repair, source/state
+change, commit or restart was made. This matching secondary review is the only
+new persistent output. The plan above is a proposal, not an operator decision.

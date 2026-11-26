@@ -98,18 +98,6 @@ type Anisotropy with
               { axis = SecondAxis; nName = ControlCaption "n₂"; kName = ControlCaption "k₂" }
               { axis = ThirdAxis; nName = ControlCaption "n₃"; kName = ControlCaption "k₃" } ]
 
-type OpticalConstructor.Domain.MaterialLibrary.MaterialEntry with
-
-    /// The anisotropy to draw a VIEW-ONLY material entry with (the Materials window's preview panel, which
-    /// has no editor ladder to read): read from the entry's stored complexity value tree
-    /// (`MaterialComplexity.anisotropy`, LibraryFacets — data, no physics re-derived) when it has one, else — a coded engine
-    /// preset whose physics is a closure, not data — fall back to all three principal axes (Biaxial), which
-    /// is safe: coincident axes simply draw coincident curves, as before.
-    member this.previewAnisotropy : Anisotropy =
-        match this.complexity with
-        | Some complexity -> complexity.anisotropy
-        | None -> Biaxial
-
 /// The per-axis n/k dispersion chart, restricted to the axes the anisotropy distinguishes
 /// (spec 0038 comment 007): for each axis, nᵢ = Re[√εᵢᵢ] and kᵢ = Im[√εᵢᵢ] through the engine `getEps`
 /// seam. The n series come first (LEFT axis), then the k series (RIGHT). An isotropic medium draws one
@@ -153,18 +141,20 @@ type GyrationComponent with
         | G13 -> { row = FirstAxis; column = ThirdAxis }
         | G23 -> { row = SecondAxis; column = ThirdAxis }
 
-/// Every gyration component in the six-slot display order — the fallback set drawn for a coded
-/// engine preset with NO stored gyration class to read (preserving the pre-restriction rendering).
+/// Every gyration component in the six-slot display order — the set drawn when a complexity names
+/// no gyration class.
 let allGyrationComponents : GyrationComponent list = [ G11; G22; G33; G12; G13; G23 ]
 
 /// The gyration components a VIEW-ONLY entry's stored optical-activity value tree admits: the ones
 /// its `active` gyration CLASS carries (`GyrationClass.components`, generic over the constant `RhoValue`
-/// vs the dispersive `DispersionFormula` payload) — data, no physics re-derived, mirroring
-/// `MaterialEntry.previewAnisotropy`. A tree with no activity falls back to every component.
+/// vs the dispersive `DispersionFormula` payload) — data, no physics re-derived. A tree with no
+/// activity, or with a published gyration law (no stored class, spec 0050 step 10), names no
+/// gyration class, so every component is drawn.
 let gyrationComponentsOfComplexity (complexity : MaterialComplexity) : GyrationComponent list =
     match complexity.active with
     | Some (RhoWithoutDispValue g) -> g.gyration.components |> List.map fst
     | Some (RhoWithDispValue g) -> g.gyration.components |> List.map fst
+    | Some (PublishedLawRho _)
     | None -> allGyrationComponents
 
 /// The gyration chart (shown only when the entry is optically active), restricted to the components
@@ -172,7 +162,7 @@ let gyrationComponentsOfComplexity (complexity : MaterialComplexity) : GyrationC
 /// named by `GyrationComponent.label` and read as g₍ᵢⱼ₎ = Im[ρᵢⱼ] at its `tensorSlot`. ρ is
 /// sampled through the engine `rhoWithDisp.getRho` seam that `RhoWithDispValue.toRhoWithDisp` built.
 /// All components share ONE (left) axis — they are the same physical scale (~10⁻⁵). A uniaxial-active
-/// entry draws only g₁₁ and g₃₃; a coded preset with no stored class draws all six.
+/// entry draws only g₁₁ and g₃₃; a complexity that names no gyration class draws all six.
 let gyrationChart (components : GyrationComponent list) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     let rhos = ws |> List.map (fun w -> o.rhoWithDisp.getRho w)
@@ -206,7 +196,7 @@ let private muGyrationSeriesName : ControlCaption = ControlCaption "g"
 type MaterialComplexity with
 
     /// The Polder-μ kind a VIEW-ONLY entry's stored magnetic value tree denotes: a scalar μ vs the
-    /// gyromagnetic tensor (mirroring `MaterialEntry.previewAnisotropy`; data, no physics re-derived). The
+    /// gyromagnetic tensor (data, no physics re-derived). The
     /// dispersive Polder case is always the full tensor — the engine's `MuWithDispValue` carries no scalar
     /// dispersive case. A tree with no magnetic facet falls back to the full gyromagnetic rendering.
     member this.muKind : MuKind =
@@ -215,6 +205,22 @@ type MaterialComplexity with
         | Some (MuWithoutDispValue (GyromagneticMu _)) -> GyromagneticMuKind
         | Some (MuWithDispValue _) -> GyromagneticMuKind
         | None -> GyromagneticMuKind
+
+type MaterialPhysics with
+
+    /// The gyration components a VIEW-ONLY entry's physics admits; a crystal names no gyration class, so
+    /// every component is drawn (spec 0050 S11.1).
+    member this.gyrationComponents : GyrationComponent list =
+        match this with
+        | ComplexityPhysics complexity -> gyrationComponentsOfComplexity complexity
+        | CrystalParameterPhysics _ -> allGyrationComponents
+
+    /// The Polder-μ kind a VIEW-ONLY entry's physics denotes; every crystal builder keeps the vacuum's
+    /// scalar μ (spec 0050 S11.1).
+    member this.muKind : MuKind =
+        match this with
+        | ComplexityPhysics complexity -> complexity.muKind
+        | CrystalParameterPhysics _ -> ScalarMuKind
 
 /// The Polder-μ chart (shown only when the entry is magnetic), restricted to the components the
 /// entry's `MuKind` distinguishes (spec 0040 step 006): a SINGLE scalar μ series for `ScalarMuKind`

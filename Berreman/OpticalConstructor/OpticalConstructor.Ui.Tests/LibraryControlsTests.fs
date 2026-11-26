@@ -10,6 +10,8 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Tests
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (024) Phase 1 — the Select bay (labelled "Library" until spec 0033 step 014): the pure
@@ -18,14 +20,13 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// element's `valueId`. The control stays `LibraryControls` — only the bay label changed.
 module LibraryControlsTests =
 
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
 
-    /// The Guid-string entry ids of the seeded samples these tests bind (the Selector valueId seam
-    /// carries the Guid string form since spec 0033 step 002 — referenced programmatically, never as
-    /// a repeated literal).
-    let private glass1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
-    let private glass2mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate2mm).entryId.value
-    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId.value
+    /// Bind BuiltinCatalogue.sample entries through their Guid strings at the Selector valueId seam
+    /// (spec 0033 step 002; 0050 §3.3), using Library.SampleIds rather than repeated literals.
+    let private glass1mmId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId)).entryId.value
+    let private glass2mmId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.glassPlate2mmId)).entryId.value
+    let private multilayerQwId : string = (Library.SampleItem (BuiltinCatalogue.sample Library.SampleIds.multilayerQwId)).entryId.value
 
     // ============================ pure control contract ============================
 
@@ -38,8 +39,8 @@ module LibraryControlsTests =
 
     [<Fact>]
     let ``the Library UiIds prefix leaf ids and are stable`` () =
-        // `entry` is a pure prefix over ANY entry id string (a seeded sample's id is its Guid
-        // string form since spec 0033 step 002).
+        // `entry` prefixes ANY id string; BuiltinCatalogue.sample uses its Guid string
+        // (spec 0033 step 002).
         Assert.Equal("LibraryEntry_abc", (ConstructorUiId.libraryEntry (ConstructorUiKey "abc")).value)
         Assert.Equal("LibraryEntry_" + glass1mmId, (ConstructorUiId.libraryEntry (ConstructorUiKey glass1mmId)).value)
         Assert.Equal("LibraryTree", ConstructorUiId.libraryTree.value)
@@ -49,11 +50,10 @@ module LibraryControlsTests =
 
     /// Build the model with a single Sample element selected (so the Select bay shows samples).
     let private withSampleSelected () : TableAndElementRotationModel =
-        initMain () |> updateTableAndElementRotation (AddElement Sample)   // appends a Sample at index 2, selects it
+        SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Sample)   // appends a Sample at index 2, selects it
 
-    /// Spec 0038 (017): the quick-pick strip is threshold-gated now, and the 11 seeded sample
-    /// entries sit AT/ABOVE the default threshold 5 (Choose… alone). These tests pin the STRIP
-    /// mechanics — unchanged below the threshold — so their fixtures open the gate wide.
+    /// Spec 0038 (017): the 11 BuiltinCatalogue.samples () entries exceed the default quick-pick
+    /// threshold 5 (Choose… alone). These tests raise it to exercise the STRIP mechanics.
     let private withWideQuickPick (m : TableAndElementRotationModel) : TableAndElementRotationModel =
         { m with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 100 }
 
@@ -78,15 +78,71 @@ module LibraryControlsTests =
             | other -> Assert.Fail($"%s{id.value} is not a Sample: %A{other}"))
 
     [<Fact>]
+    let ``the Select bay lists a sample created in the samples store under its geometry`` () : unit =
+        HeadlessSession.run (fun () ->
+            let model =
+                withSampleSelected ()
+                |> withWideQuickPick
+                |> updateTableAndElementRotation (SelectBay BayNames.selector)
+            let sample : Library.Sample =
+                {
+                    BuiltinCatalogue.sample Library.SampleIds.euvMoSiId with
+                        id = Library.newSampleId ()
+                        name = MaterialLibrary.EntryName "Select bay user mirror"
+                }
+            Assert.Equal<Library.SubstrateKind>(Library.Mirror, sample.substrate)
+            Assert.Equal<Result<unit, Library.SampleError>>(Ok (), model.samples.saveSample sample)
+            let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 320.0)
+            try
+                window.Content <- Component(fun _ -> mainView model ignore)
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                // Spec 0050 S1.7: exercise the internal libraryState through its public rendered consumer.
+                let tree =
+                    window.GetVisualDescendants()
+                    |> Seq.choose (function
+                        | :? StackPanel as panel when panel.Name = ConstructorUiId.libraryTree.value -> Some panel
+                        | _ -> None)
+                    |> Assert.Single<StackPanel>
+                let rows = tree.Children |> Seq.toList
+                let mirrorHeader =
+                    rows
+                    |> List.choose (function
+                        | :? TextBlock as label when label.Text = "Mirrors" -> Some label
+                        | _ -> None)
+                    |> Assert.Single<TextBlock>
+                let groupDepth = LibraryControls.LibraryRowDepth 2
+                Assert.Equal(groupDepth.indent, mirrorHeader.Margin.Left)
+                let mirrorRows =
+                    rows
+                    |> List.skipWhile (fun row -> not (System.Object.ReferenceEquals(row, mirrorHeader)))
+                    |> List.tail
+                    |> List.takeWhile (fun row -> row.Margin.Left > mirrorHeader.Margin.Left)
+                let leafId = ConstructorUiId.libraryEntry sample.id.toElementValueId.uiKey
+                let leaf =
+                    mirrorRows
+                    |> List.choose (function
+                        | :? Border as border when Avalonia.Automation.AutomationProperties.GetAutomationId(border) = leafId.value -> Some border
+                        | _ -> None)
+                    |> Assert.Single<Border>
+                let leafDepth = LibraryControls.LibraryRowDepth 3
+                Assert.Equal(leafDepth.indent, leaf.Margin.Left)
+                Assert.Equal(sample.name.value, Assert.IsType<TextBlock>(leaf.Child).Text)
+                Assert.Equal(None, (elem 2 model).placement.valueId)
+                Assert.True(leaf.IsEnabled)
+            finally
+                window.Close())
+
+    [<Fact>]
     let ``BindValueId (ElementValueId sets) the selected element's valueId; inert for table or nothing`` () =
         let m = withSampleSelected ()                      // element 2 (a Sample) selected
         let bound = updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) m
         Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 bound).placement.valueId)
         // Inert when the table is selected.
-        let tableSel = { (initMain ()) with selection = TableSelected }
+        let tableSel = { (SceneTestFixture.mainScene ()) with selection = TableSelected }
         Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) tableSel)
         // Inert when nothing is selected.
-        let nothingSel = { (initMain ()) with selection = NothingSelected }
+        let nothingSel = { (SceneTestFixture.mainScene ()) with selection = NothingSelected }
         Assert.Equal<TableAndElementRotationModel>(nothingSel, updateTableAndElementRotation (BindValueId (ElementValueId glass1mmId)) nothingSel)
 
     [<Fact>]
@@ -113,7 +169,7 @@ module LibraryControlsTests =
         Assert.Equal<Ribbon.BayName list>(
             [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector ],
             BayNames.allBayNames |> List.truncate 5)
-        let m = initMain ()
+        let m = SceneTestFixture.mainScene ()
         let bays = mainBays m ignore
         Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
 
@@ -233,6 +289,8 @@ module LibraryControlsTests =
     let private clickIn (window : Window) (id : string) : unit =
         match borderWithId window id with
         | Some b ->
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)

@@ -1,0 +1,154 @@
+# Secondary review — slice 0160, postmortem 02
+
+Reviewed 2026-11-08 after the automatic terminal callback. Recommendations below
+await operator agreement; they are not an implementation decision.
+
+Incident: `3f85a4245f8443d7a0ecbf2eb2fcdfb5`, supervisor PID `12832`,
+action `review_escalation`. The event, launch record and ticket agree on the
+spec, PID and identifier. The supervisor has exited. HEAD remains
+`416037810a962bef5bb78dce87a8d8e416c46656`; 0159 is the last accepted slice.
+
+- [Agent-written primary postmortem](0160-02.postmortem-md).
+- [Terminal event](../.artifacts/arc-watch/3f85a4245f8443d7a0ecbf2eb2fcdfb5/event.json).
+- [Current judge report](../.artifacts/code_judge/0160-01-code-judge.md).
+- [Approved product recovery](../.manual/012-step-0160-material-schema-recovery.md).
+
+## Finding
+
+The material-schema repair is correct and remains committed. The current judge
+accepts the implementation and declared test effects under manual 012. This
+escalation concerns **missing elevation coverage after the operator's commit**,
+not a category constraint, F# enum, failed analyzer finding or regression test.
+
+The consumer gate invokes `Elevation/Run-ElevationGate.ps1` without `-Base`.
+The driver examines working-tree changes; it includes committed changes only
+when given a comparison base. The resumed worker changes handoff documents, and
+the supervisor changes bookkeeping. That nonempty, non-product change set
+selects zero projects. The driver's clean-tree fallback does not apply, and it
+prints `ELEV-GATE: OK - no in-scope project was touched`. The gate accepts that
+line. A mixed tree has the same underlying defect: a dirty edit in one project
+does not expose committed edits in another.
+
+Ownership is **Berreman's gate/driver integration**. ASG already supports
+`{step_base}` substitution and an `empty_scope_match` refusal, but this frozen
+descriptor declares neither. `scope: working_tree` is planning metadata and
+does not inject a base. No ASG runtime defect or backend-specific failure was
+established. Replacing the agent or adding retries cannot repair this coverage.
+
+I agree with the primary diagnosis and its conservative driver repair. My
+previous recovery plan was incomplete: it required coverage against accepted
+0159 in prose but left the supervisor command unable to obtain that coverage
+after commit. The pre-commit seven-project measurement remains valid evidence
+for the product repair; it does not make the resumed command analyze those
+projects. The relaunch preflight should have checked this post-commit scope.
+
+## Independent checks
+
+Read-only scope inspection, with Git optional locks disabled, reproduced the
+problem. These commands used `-ScopeOnly`; **no analyzer or gate suite was run
+for this review**.
+
+| Invocation of the existing driver | Observed selection |
+|---|---|
+| `-ExcludeRules ELEV004 -ScopeOnly` | 0 projects; nevertheless prints `ELEV-GATE: OK` |
+| Same, with `-Base 8d82da6e42c50a356e3261809ecfc59bcf69478a` | 7 of 12 projects, including Domain, Storage and their dependents |
+| Same, with `-All` | All 12 product projects |
+
+The first result also exposes a related reporting defect: the zero-target return
+precedes the `ScopeOnly` branch. Scope inspection must never emit a successful
+analysis verdict, including when an explicit base selects nothing.
+
+Source anchors:
+
+- [Driver](../../../Elevation/Run-ElevationGate.ps1): `Get-ChangedPaths`
+  (196–213), selection (226–282), zero-target success (288–292), and the late
+  `ScopeOnly` handling (296–299).
+- [Consumer descriptor](../../../.gates/Elevation/elevation.gates) and
+  [frozen snapshot](0160.gates): no comparison-base token or empty-scope refusal.
+- ASG `multistep/_arc_runner/gates/evaluate_gate.py`: conditional token
+  substitution (802–813), opt-in empty-scope check (2027–2058).
+- ASG `spec_writer/gates/descriptor.py` (382–389): scope metadata does not
+  change execution.
+
+The resumed supervisor ran and passed the preliminary build in 69 seconds,
+then escalated at review. It did not run the resumed elevation, constructor or
+invariant gates. This is an uncovered execution obligation found before those
+gates, not a claim that pending gates failed.
+
+Recurrence is real. The supervisor consoles for resumed 0132, 0145 and 0150
+contain zero-project elevation success; 0159 analyzed five projects, and the
+0160 operator verification analyzed seven. Earlier supplemental measurements
+did not repair the default command. An independent scan confirms all **335
+pending snapshots, 0160–0494**, invoke the same no-base elevation command.
+
+The receipt currently validates and all 988 compiled artifacts still match the
+pre-repair fingerprint. Checkpoint 158 retains 1,142 constructor cases;
+checkpoint 159 remains absent. The archived repair evidence records exactly
+1,136 passing cases, 1,111 method identities and no failures/skips. This review
+does not relabel those historical results as current supervisor acceptance.
+
+## Recommended repair, after agreement
+
+1. **Record the authority.** Add manual 013 and its project-prompt pointer,
+   explicitly extending 0160 to the shared elevation driver and focused scope
+   regression coverage. Preserve manual 012's product repair and normal-resume
+   exception. Update the repository's elevation usage guidance to describe the
+   new default. Record this as a consumer gate coverage defect, including the
+   mixed committed/uncommitted reproducer, rather than claiming an ASG patch.
+
+2. **Fix the invoked driver.** With neither `-Project`, `-All` nor an explicit
+   `-Base`, select every in-scope product project through the existing analysis
+   pipeline. Preserve explicit-base union with working-tree changes, dependent
+   expansion, explicit selection, exclusions and failure handling. Handle
+   `-ScopeOnly` before any success verdict. Add a focused PowerShell regression
+   harness under `Elevation/`, outside MTP discovery, using fixture data and
+   controlled Git responses; keep its output under this arc's `.artifacts/`.
+   Cover clean, report-only, test-only and mixed trees, explicit base and invalid
+   base, global triggers, `-All`, `-Project`, dependent closure and inspection
+   output. Do not introduce constructor test identities or change Git history.
+
+3. **Measure the real path.** Run all fifteen unchanged 0160 gates in their
+   existing evaluator/census context. Require actual analysis and readable
+   reports from all twelve current product projects, zero new findings under
+   the existing ELEV004 exclusion, exactly 1,136 passing constructor cases,
+   the exact census, zero failures/skips and no owned-code warnings. Check the
+   full analysis against the existing gate time budget. Preserve every retained
+   product regression and the seven-deletion/one-migration/one-addition effects.
+
+4. **Complete the handoff and wait for the operator's commit.** Validate all
+   494 steps; refresh the profile-1 receipt for the prompt pointer while proving
+   all 988 compiled artifacts unchanged. Record implementation, scope regression
+   results and gate measurements in the manual and slice handoff. Prepare the
+   operator reply under `.artifacts/0160-02-operator-repair/`. Preserve published
+   requirements, frozen descriptors, analyzer rules/known-findings, supervisor
+   counters, expected-red records, checkpoints/case evidence, contract registries,
+   versions/lock and ASG/STL source. Do not launch during the repair.
+
+The cost is broader analysis on subsequent slices. That is a deliberate tradeoff:
+the existing frozen command supplies no reliable base. A fallback only when zero
+targets are selected would leave mixed trees unsound. Injecting guessed branch
+or manifest history into this general driver would add a separate coupling.
+Changing the frozen descriptors to use `-Base {step_base}` could preserve narrower
+selection but requires a different contract-amendment decision. I recommend the
+driver fix above for this arc, with explicit-base selection still available.
+
+## Eventual relaunch
+
+After the operator commits and requests relaunch, first recheck the **actual
+post-commit default command**: scope must include all twelve projects, and an
+actual analyzer run must pass even when only reports/bookkeeping are dirty.
+That is the verification missing from the previous relaunch preflight.
+
+Then resume with the new operator reply and `--executability-profile 1`, using
+normal review and verification under manual 012. Do not use
+`--accept-current-slice`: the supervisor must publish checkpoint **159** and
+measured case evidence before 0161. The declared arithmetic remains
+`1142 - 7 + 1 = 1136`; the following slice has no retirement credit. Do not
+manufacture a lower floor, waive coverage or reset consumed resolver budgets.
+
+## Review boundary
+
+Only this matching secondary report was written. The primary postmortem,
+product source, handoffs, supervisor state and Git were left unchanged. Three
+read-only scope inspections were performed; no repair, build, test suite,
+analyzer run, acceptance or restart was performed. The arc remains stopped.

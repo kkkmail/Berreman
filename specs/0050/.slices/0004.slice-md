@@ -1,0 +1,24 @@
+# Step 0004 — ADD_RED
+
+```step
+anchor: ADD_RED
+touches: [OpticalConstructor.Tests]
+depends_on: [3]
+required_gates: [build, elevation, constructor-unit-tests]
+expected_red: [constructor-unit-tests]
+red: RED_0002
+red_in: [OpticalConstructor.Tests.DispersionModelsTests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.DispersionModelsTests.equal Tauc-Lorentz and Gaussian-oscillator models lower to equal axis data", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs", "class": "OpticalConstructor.Tests.DispersionModelsTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S11-OSCILLATORS"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "selected", "suite": "constructor-unit-tests", "values": ["OpticalConstructor.Tests.DispersionModelsTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.DispersionModelsTests.equal Tauc-Lorentz and Gaussian-oscillator models lower to equal axis data", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs", "class": "OpticalConstructor.Tests.DispersionModelsTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S11-OSCILLATORS"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: `OpticalConstructor.Tests.DispersionModelsTests`
+
+**How to implement.** Red first: an analytic model lowers to DATA, so equal models lower to equal axes (001 §B 'Physics is pure data'; .spec-md §3.1). Facts only. In `Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs` add `equal Tauc-Lorentz and Gaussian-oscillator models lower to equal axis data`. It uses the Tauc-Lorentz and Gaussian-oscillator coefficient sets of `AC-B5 transcendental models lower to the evaluated case and match evaluate` (`:306-326`). For each model, lowering it twice through `toEpsAxis`, and lowering two separately built equal models, MUST give equal `EpsAxisDispersion` values with equal hashes, and `toEpsValue` MUST give equal `EpsWithDispValue` values. A model whose `bandGap` (Tauc-Lorentz) or `energy` (Gaussian) differs MUST lower to an unequal axis. The fact is red on the start tree: both models lower to `EpsAxisEvaluated this.evaluate` (`OpticalConstructor.Domain/DispersionModels.fs:766-769`), a fresh closure on every call, which the custom equality compares by reference (`Berreman/Berreman/Dispersion.fs:386`).
+
+**Acceptance.** After the fact lands, constructor-unit-tests (DispersionModelsTests) MUST fail with exactly `equal Tauc-Lorentz and Gaussian-oscillator models lower to equal axis data`, failing on the first equality of two lowered axes; every fact the class held before MUST pass; and build, elevation and the three s01 invariants MUST pass.

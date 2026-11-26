@@ -13,41 +13,42 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-    <!-- Compile order (§I, slice 003): Errors first; SchemaValidation before
-         ProjectJson (deserializeProject calls validate-on-load); then ProjectFile
-         and Sidecar. The legacy placeholder `Storage.fs` is retained as a
-         namespace anchor. -->
     <ItemGroup>
         <Compile Include="Errors.fs" />
         <Compile Include="SchemaValidation.fs" />
-        <Compile Include="ProjectJson.fs" />
-        <Compile Include="ProjectFile.fs" />
+        <Compile Include="CanonicalJson.fs" />
+        <Compile Include="EntryFileJson.fs" />
+        <Compile Include="CatalogueFolderStore.fs" />
+        <Compile Include="LibraryDatabaseStore.fs" />
+        <Compile Include="MaterialDatabaseStore.fs" />
+        <Compile Include="CategoryDatabaseStore.fs" />
+        <Compile Include="SampleDatabaseStore.fs" />
+        <Compile Include="SourceDatabaseStore.fs" />
+        <Compile Include="PresetDatabaseStore.fs" />
+        <Compile Include="ItemModelDatabaseStore.fs" />
+        <Compile Include="LibraryBackupStore.fs" />
+        <Compile Include="MaterialImport.fs" />
+        <Compile Include="CatalogueImportStore.fs" />
+        <Compile Include="KitFolderStore.fs" />
+        <Compile Include="KitContentFiles.fs" />
+        <Compile Include="PlannerCacheStore.fs" />
+        <Compile Include="KitHistoryStore.fs" />
+        <Compile Include="KitArchiveStore.fs" />
         <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
-             collections store. Reuses ProjectJson.options + the validate-on-load seam;
-             compiles after ProjectJson (its shared options) and ProjectFile. -->
+             collections store. Reuses CanonicalJson.options + the validate-on-load seam;
+             compiles after CanonicalJson (its shared options). -->
         <Compile Include="GroupsLibrary.fs" />
         <Compile Include="Sidecar.fs" />
-        <Compile Include="MaterialImport.fs" />
+        <Compile Include="MaterialSourceStore.fs" />
         <Compile Include="SpectralImport.fs" />
-        <!-- Persistence II (§I.5-I.8, slice 013): recent-files/autosave, undo/redo,
-             export, and the report/material-library/design-history module. Export
-             before Report (Report consumes ChartHandle/exportChartImage). -->
-        <Compile Include="RecentFiles.fs" />
-        <Compile Include="History.fs" />
+        <!-- Persistence II (§I.5-I.8, slice 013): export. -->
         <Compile Include="Export.fs" />
         <!-- Spec 0046: the file-backed experiment-data export proxy (CSV). -->
         <Compile Include="ExperimentExportFile.fs" />
         <Compile Include="Report.fs" />
-        <!-- Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006): the real file-backed adapter
-             behind the step-035 ExperimentDataProxy — the ONLY new real IO this spec permits
-             (spec-md §0.3c). Reads the data file text at the boundary and delegates to the step-34
-             pure MeasuredData parsers; depends only on the Domain project reference. -->
-        <Compile Include="ExperimentDataStore.fs" />
-        <!-- Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009): the real file-backed adapter behind the
-             step-005 MuellerDataProxy — the pure header-aware CSV parser (parseMuellerCsv) plus the
-             disk-read edge (createFileBacked). Reads the CSV text at the boundary and delegates to the
-             pure parser; depends only on the Domain project reference (Angle + MuellerReconstruction). -->
         <Compile Include="MuellerDataStore.fs" />
+        <Compile Include="LabFileImport.fs" />
+        <Compile Include="ExperimentDataStore.fs" />
         <Compile Include="Storage.fs" />
     </ItemGroup>
 
@@ -55,12 +56,66 @@
          `schema/` path is preserved into the output (and flows to consumers) so
          `SchemaValidation` can load it beside the assembly at runtime (§I.2). -->
     <ItemGroup>
-        <Content Include="schema\optical-constructor-project.schema.json">
+        <Content Include="schema\material-metadata.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <!-- Spec 0026 Part G/H (slice 007): the groups/collections schema, build-copied
              beside the assembly so GroupsLibrary.validate loads it at runtime (G.3.1). -->
         <Content Include="schema\optical-constructor-groups.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-common.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-material.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-sample.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-source.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-polarizer.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-detector.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-category.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-item-model.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\library-catalogue.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\kit.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\kit-history.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\material-source-snapshot.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\experiment.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\item.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\study.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\fitrun.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="schema\setup.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Catalogue\Builtin\**" Link="Catalogue\Builtin\%(RecursiveDir)%(Filename)%(Extension)">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>
@@ -70,10 +125,6 @@
         <PackageReference Include="FSharp.Data" />
         <PackageReference Include="JsonSchema.Net" />
         <PackageReference Include="ClosedXML" />
-        <!-- The report HTML reuses the engine's own HTML-builder library (the same
-             Giraffe.ViewEngine Charting.fs uses via Plotly.NET), not a second builder
-             (§I.8). Plotly.NET pins the StrongName repackage; match it here. -->
-        <PackageReference Include="Giraffe.ViewEngine.StrongName" />
         <PackageReference Include="Softellect.Sys" />
     </ItemGroup>
 
@@ -83,6 +134,7 @@
              Numerics.csproj. No direct reference is needed (binding rule 1:
              no new C# project reference invented here). -->
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Database\OpticalConstructor.Database.csproj" />
     </ItemGroup>
 
 </Project>

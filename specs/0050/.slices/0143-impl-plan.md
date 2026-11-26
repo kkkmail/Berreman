@@ -1,0 +1,7 @@
+# Implementation plan — 0143
+
+Implement S42-CONFIRM within the two authorized F# files. Add `KitLibraryContext.confirm` by composing `CatalogueImportContext.apply` with ordered pinning of incoming versions for `AddIncomingEntry` and `AddIncomingVersion`. Reuse the existing action and dangling-reference validation, preserve its error channel and outcome, and leave forks unpinned because their new identities are not kit references. No storage format, migration, UI wiring or kit write is introduced.
+
+Add exactly the four authorized facts to `KitLibraryTests.fs`, reusing the Built-in catalogue and snapshot fixture. Open each snapshotted multilayer/source kit through a second read-only proxy with an independent library. Record writes and pins, check unchanged kit contents, and cover defaults, explicit additions, dependency refusal, rebindings and reuse on subsequent resolution. Include version additions, forks, invalid choices and failure propagation within those four identities.
+
+The main risks are accidentally pinning forks, pinning before all imports succeed, losing choice order, or writing to the kit during confirmation. The existing `apply` owns validation and reference-ordered writes; confirmation adds only a short-circuiting pin pass after success. The IMPLEMENT worker protocol assigns all executable verification to the supervisor. Write the required implementation log and state of the world at the supplied paths, retaining the recorded checkpoint baseline without editing supervisor state.

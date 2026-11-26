@@ -20,12 +20,11 @@
 
       -Project <name|path> ...   exactly these in-scope projects
       -All                       every in-scope project
-      (default)                  the projects the change touches - the working tree (git status, untracked
-                                 files included) plus <Base>...HEAD when -Base is given - with the projects
-                                 that reference them, because the duplicate-name rules (ELEV014/015/016/019)
-                                 see a collision only from downstream
+      -Base <commit>             committed changes since this base plus the working tree and dependents
+      (arc default)              the same union from ASG_ARC_BASE_COMMIT, the immutable arc origin
+      (standalone default)       every in-scope project when no comparison base is available
 
-    A clean tree, an unreadable git, or a change to what the rules read (.elevation-analyzers.json, a solution,
+    An unreadable git, or a change to what the rules read (.elevation-analyzers.json, a solution,
     the root Directory.Build.props or .targets) analyzes every in-scope project rather than report a green the
     run did not earn.
 
@@ -191,7 +190,20 @@ function Get-Dependents([string[]] $Seed) {
 }
 
 # --- the change set ------------------------------------------------------------------------------------------
-$git = @('-c', "safe.directory=$($repoRoot.Replace('\', '/'))", '-C', $repoRoot)
+$git = @('--no-optional-locks', '-c', "safe.directory=$($repoRoot.Replace('\', '/'))", '-C', $repoRoot)
+
+# Spec 0050 manual 013: committing an escalation must not narrow the arc's scope.
+$arcBase = [Environment]::GetEnvironmentVariable('ASG_ARC_BASE_COMMIT')
+if (-not [string]::IsNullOrWhiteSpace($arcBase)) {
+    if ($arcBase -notmatch '\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z') {
+        Exit-GateError 'ASG_ARC_BASE_COMMIT is not a full commit hash' 'invalid arc base'
+    }
+    if ($Base -ne '' -and $Base -ne $arcBase) {
+        Exit-GateError '-Base conflicts with the immutable ASG arc origin' 'conflicting arc base'
+    }
+    $Base = $arcBase
+    Write-Host "ELEV-GATE: arc base = $Base"
+}
 
 function Get-ChangedPaths {
     $porcelain = & git @git status --porcelain -uall 2>$null
@@ -239,6 +251,10 @@ elseif ($All) {
     $targets = $inScope
     $scopeReason = 'explicit -All'
 }
+elseif ($Base -eq '') {
+    $targets = $inScope
+    $scopeReason = 'no comparison base (all)'
+}
 else {
     $changed = Get-ChangedPaths
     if ($null -eq $changed) {
@@ -247,9 +263,9 @@ else {
         $scopeReason = 'git unavailable (fail-safe: all)'
     }
     elseif (@($changed).Count -eq 0) {
-        Write-Host 'ELEV-GATE: NOTE - nothing changed in the working tree and no -Base was given; analyzing every in-scope project'
+        Write-Host 'ELEV-GATE: NOTE - no changed paths found; analyzing every in-scope project'
         $targets = $inScope
-        $scopeReason = 'clean tree, no -Base (fail-safe: all)'
+        $scopeReason = 'no changed paths (fail-safe: all)'
     }
     else {
         $global = @($changed | Where-Object { Test-GlobalTrigger $_ })
@@ -285,16 +301,14 @@ if ($targets.Count -gt 0 -and -not $NoDependents -and $targets.Count -lt $inScop
 $excludedLabel = 'none'
 if ($ExcludeRules.Count -gt 0) { $excludedLabel = $ExcludeRules -join ', ' }
 
-if ($targets.Count -eq 0) {
-    Write-Host "ELEV-GATE: scope = 0 project(s) [$scopeReason] [excluded rules: $excludedLabel]"
-    Write-Host 'ELEV-GATE: OK - no in-scope project was touched'
-    exit 0
-}
-
 Write-Host "ELEV-GATE: scope = $($targets.Count) of $($inScope.Count) project(s) [$scopeReason] [excluded rules: $excludedLabel]"
 foreach ($t in $targets) { Write-Host "ELEV-SCOPE: $t" }
 if ($ScopeOnly) {
     Write-Host 'ELEV-GATE: SCOPE-ONLY - nothing was analyzed, this run is not a verdict'
+    exit 0
+}
+if ($targets.Count -eq 0) {
+    Write-Host 'ELEV-GATE: OK - no in-scope project was touched'
     exit 0
 }
 

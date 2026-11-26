@@ -1,5 +1,6 @@
 ﻿namespace Berreman
 open System.Numerics
+open MathNetNumericsMath
 open Berreman.Geometry
 open Constants
 open MaterialProperties
@@ -280,6 +281,226 @@ module Dispersion =
             this.terms |> List.fold (fun acc t -> acc + t.evaluate x) Complex.Zero
 
 
+    /// A reciprocal abscissa: abscissa = numerator / x, with x = λ / wavelengthScale.
+    [<Softellect.Sys.NumericCarrier("the reduced-wavelength scale and the numerator of a reciprocal abscissa, folded into every coefficient a reciprocal-abscissa lowering builds (R3)")>]
+    type ReciprocalAbscissa =
+        {
+            wavelengthScale : float<meter>
+            numerator : float
+        }
+
+
+    /// A dispersion law's abscissa at one wavelength: a reduced wavelength or a photon energy.
+    type AbscissaValue =
+        | AbscissaValue of float
+
+        member this.value = let (AbscissaValue v) = this in v
+
+
+    /// How a model's abscissa relates to the formula's reduced wavelength
+    /// x = λ / wavelengthScale (`DispersionFormula.wavelengthScale`): a length unit reads its
+    /// abscissa as x itself; the energy-like units are reciprocal,
+    /// abscissa = numerator / x with x in nanometers. In the core so a law carries it as data
+    /// (spec 0050 §3.1).
+    type AbscissaKind =
+        | LinearInX of wavelengthScale : float<meter>
+        | ReciprocalInX of ReciprocalAbscissa
+
+        /// The abscissa at `w`. It is the arithmetic `Units.fromMeters` performs over the scale
+        /// and numerator `ofUnit` derives, so the value is bit-identical for every unit (spec
+        /// 0050 step 5).
+        member this.abscissaAt (w : WaveLength) : AbscissaValue =
+            match this with
+            | LinearInX scale -> w.value / scale |> AbscissaValue
+            | ReciprocalInX r -> r.numerator / (w.value / r.wavelengthScale) |> AbscissaValue
+
+
+    /// Tauc–Lorentz: `ε₂(E)` above the band gap, `ε₁ = εInf` (no Kramers–Kronig `ε₁`), over the
+    /// model's abscissa. The kernel lives here once (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the five coefficients and the abscissa of one Tauc-Lorentz law, read by its kernel at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type TaucLorentzLaw =
+        {
+            epsInf : float
+            amplitude : float
+            resonance : float
+            broadening : float
+            bandGap : float
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let eps2 =
+                if x > c.bandGap then
+                    (c.amplitude * c.resonance * c.broadening * (x - c.bandGap) ** 2.0)
+                    / (x * ((x * x - c.resonance * c.resonance) ** 2.0 + c.broadening * c.broadening * x * x))
+                else 0.0
+            Complex.Sqrt (Complex(c.epsInf, eps2)) |> ComplexRefractionIndex
+
+
+    /// Gaussian oscillator: `ε₂(E) = A·exp(−((E − E₀)/σ)²)`, `ε₁ = εInf`, over the model's
+    /// abscissa. The kernel lives here once (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the four coefficients and the abscissa of one Gaussian-oscillator law, read by its kernel at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type GaussianOscillatorLaw =
+        {
+            epsInf : float
+            amplitude : float
+            energy : float
+            broadening : float
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let d = (x - c.energy) / c.broadening
+            Complex.Sqrt (Complex(c.epsInf, c.amplitude * exp (-(d * d)))) |> ComplexRefractionIndex
+
+
+    /// Forouhi–Bloomer five-parameter amorphous form: `k(E) = a·(E − bandGap)²/(E² − b·E + c)`
+    /// above the band gap, zero below it, with the Kramers–Kronig closed form for `n(E)`, over the
+    /// model's abscissa. The kernel lives here once (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the five coefficients and the abscissa of one Forouhi-Bloomer law, read by its kernel at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type ForouhiBloomerLaw =
+        {
+            nInf : float
+            a : float
+            b : float
+            c : float
+            bandGap : float
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let q = 0.5 * sqrt (4.0 * c.c - c.b * c.b)
+            let b0 = c.a / q * (-0.5 * c.b * c.b + c.bandGap * c.b - c.bandGap * c.bandGap + c.c)
+            let c0 = c.a / q * (0.5 * c.b * (c.bandGap * c.bandGap + c.c) - 2.0 * c.bandGap * c.c)
+            let denominator = x * x - c.b * x + c.c
+            let n = c.nInf + (b0 * x + c0) / denominator
+            let k = if x > c.bandGap then c.a * (x - c.bandGap) * (x - c.bandGap) / denominator else 0.0
+            Complex.create n k |> ComplexRefractionIndex
+
+
+    /// Term count of the Faddeeva rational series below. Weideman shows N = 24
+    /// already reaches near-machine accuracy over the closed upper half plane.
+    [<Literal>]
+    let private faddeevaTermCount = 24
+
+    /// Weideman's rational series for the Faddeeva function (SIAM J. Numer. Anal.
+    /// 31, 1497 (1994)): the optimal scale L = √(N/√2) of its Möbius map
+    /// (L + iz)/(L − iz), and its coefficients a₁..a_N.
+    [<Softellect.Sys.NumericCarrier("the scale and the coefficients of Weideman's rational series, the numbers the Faddeeva kernel computes with for every Brendel-Bormann oscillator at every wavelength of a sweep (R3)")>]
+    type private FaddeevaSeries =
+        {
+            scale : double
+            coefficients : double array
+        }
+
+    /// The coefficients are the cosine-transform samples
+    /// aₙ = (1/2M)·Σₖ f(θₖ)·cos(n·θₖ) of the even function
+    /// f(θ) = e^(−t²)·(L² + t²) under t = L·tan(θ/2), θₖ = kπ/M,
+    /// k = −M+1 .. M−1, M = 2N — computed once from the definition, not a
+    /// hand-copied table (f vanishes at θ = ±π, so those endpoints drop out).
+    let private faddeevaSeries : FaddeevaSeries =
+        let l = sqrt (float faddeevaTermCount / sqrt 2.0)
+        let m = 2 * faddeevaTermCount
+        let samples =
+            [| for k in -m + 1 .. m - 1 ->
+                let theta = float k * System.Math.PI / float m
+                let t = l * tan (0.5 * theta)
+                theta, exp (-(t * t)) * (l * l + t * t) |]
+        {
+            scale = l
+            coefficients =
+                [| for j in 1 .. faddeevaTermCount ->
+                    (samples |> Array.sumBy (fun (theta, f) -> f * cos (float j * theta))) / float (2 * m) |]
+        }
+
+    /// The Faddeeva function w(z) = e^(−z²)·erfc(−i·z) for Im z ≥ 0 — the kernel
+    /// of the Brendel–Bormann Gaussian-broadened oscillator. Weideman's rational
+    /// series: with Z = (L + iz)/(L − iz),
+    /// w(z) = 2·(Σₙ aₙ·Zⁿ⁻¹)/(L − iz)² + (1/√π)/(L − iz). Every argument built in
+    /// `BrendelBormannLaw.complexIndex` has Im ≥ 0 (α is the principal root of
+    /// E² + i·Γ·E), so the half-plane restriction is safe by construction.
+    let private faddeeva (z : Complex) : Complex =
+        let l = Complex.create faddeevaSeries.scale 0.0
+        let iz = Complex.create 0.0 1.0 * z
+        let ratio = (l + iz) / (l - iz)
+        let p = Array.foldBack (fun a acc -> acc * ratio + Complex.create a 0.0) faddeevaSeries.coefficients Complex.Zero
+        Complex.create 2.0 0.0 * p / ((l - iz) * (l - iz)) + Complex.create (1.0 / sqrt System.Math.PI) 0.0 / (l - iz)
+
+
+    /// Brendel–Bormann Gaussian-broadened (Voigt) oscillators:
+    /// `ε(E) = 1 − f₀·ωp²/(E² + i·Γ₀·E) + Σⱼ χⱼ(E)`, each `χⱼ` a Faddeeva-function pair, over the
+    /// model's abscissa. The four per-oscillator lists run in step. The kernel lives here once
+    /// (spec 0050 §3.1).
+    [<Softellect.Sys.NumericCarrier("the intraband coefficients, the per-oscillator lists and the abscissa of one Brendel-Bormann law, read by its kernel (the Faddeeva series) at every wavelength of a sweep (R3; as DispersionTerm)")>]
+    type BrendelBormannLaw =
+        {
+            plasmaFrequency : float
+            intrabandStrength : float
+            intrabandDamping : float
+            strength : float list
+            resonance : float list
+            damping : float list
+            broadening : float list
+            abscissa : AbscissaKind
+        }
+
+        member c.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let (AbscissaValue x) = c.abscissa.abscissaAt w
+            let wp2 = c.plasmaFrequency * c.plasmaFrequency
+            let intraband = Complex.create (c.intrabandStrength * wp2) 0.0 / Complex(x * x, c.intrabandDamping * x)
+            let oscillator (f : double) (r : double) (d : double) (s : double) : Complex =
+                let alpha = Complex.Sqrt (Complex(x * x, d * x))
+                let width = Complex.create (sqrt 2.0 * s) 0.0
+                let za = (alpha - Complex.create r 0.0) / width
+                let zb = (alpha + Complex.create r 0.0) / width
+                Complex.create 0.0 (sqrt System.Math.PI * f * wp2) / (Complex.create 2.0 0.0 * alpha * width) * (faddeeva za + faddeeva zb)
+            let interband =
+                List.map2 (fun (f, r, d) s -> oscillator f r d s) (List.zip3 c.strength c.resonance c.damping) c.broadening
+                |> List.fold (+) Complex.Zero
+            Complex.Sqrt (Complex.One - intraband + interband) |> ComplexRefractionIndex
+
+
+    /// The published closed-form index laws of the engine's coded presets (spec 0050 step 8):
+    /// Silicon's k is a ratio of polynomials in λ, Langasite's k a Gaussian in λ. Each closed form
+    /// lives here once; `value` is the wire tag.
+    type PublishedIndexLaw =
+        | SiliconIndexLaw
+        | LangasiteOrdinaryIndexLaw
+        | LangasiteExtraordinaryIndexLaw
+
+        member this.value : int =
+            match this with
+            | SiliconIndexLaw -> 1
+            | LangasiteOrdinaryIndexLaw -> 2
+            | LangasiteExtraordinaryIndexLaw -> 3
+
+        static member tryOfWire (v : int) : PublishedIndexLaw option =
+            match v with
+            | 1 -> Some SiliconIndexLaw
+            | 2 -> Some LangasiteOrdinaryIndexLaw
+            | 3 -> Some LangasiteExtraordinaryIndexLaw
+            | _ -> None
+
+        /// The index at `w`. The Langasite laws are published for 0.4 µm < λ < 1.0 µm.
+        member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            let lambda = w.value / 1.0<meter>
+            let numberE = exp 1.0
+            match this with
+            | SiliconIndexLaw ->
+                let nSi = 3.41696 - 2.09e7 * lambda ** 2.0 + 1.48e17 * lambda ** 4.0 + 0.013924/(-0.028 + 1.e12 * lambda ** 2.0) ** 2.0 + 0.138497/(-0.028 + 1.e12 * lambda ** 2.0)
+                let xiSiFinal = (4.402681698765214e9 * lambda ** 2.0)/(0.0001 + (-0.12189462353667012 + 1.0e12 * lambda ** 2.0) ** 2.0)
+                Complex.create nSi xiSiFinal |> ComplexRefractionIndex
+            | LangasiteOrdinaryIndexLaw ->
+                ((Complex.ofReal 0.00005) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> Complex.ofReal) + (sqrt(1.0 + (2.4981088 * lambda**2.0) / (-1.6845031370328092e-14 + lambda**2.0)) |> Complex.ofReal)
+                |> ComplexRefractionIndex
+            | LangasiteExtraordinaryIndexLaw ->
+                ((Complex.ofReal 0.0001) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> Complex.ofReal) + (sqrt(1.0 + (2.5408145 * lambda**2.0) / (-1.6679115500522497e-14 + lambda**2.0)) |> Complex.ofReal)
+                |> ComplexRefractionIndex
+
+
     // ==========================================================================
     // Serializable eps tree (spec 0033 Part B).
     // Pure data from which toEpsWithDisp BUILDS the engine's EpsWithDisp above
@@ -343,17 +564,6 @@ module Dispersion =
             | BiaxialAbsorbing b -> Eps.fromComplexRefractionIndex (b.nxComplex, b.nyComplex, b.nzComplex)
 
 
-    /// The dispersion of ONE principal axis: either separate real n and k
-    /// formulas (k = the zero formula for a transparent medium), one complex
-    /// eps formula for inherently complex models (Lorentz / Drude), or an
-    /// evaluated-directly closure for the transcendental models (Tauc–Lorentz,
-    /// Gaussian, Forouhi–Bloomer, Brendel–Bormann) that are not finite term sums —
-    /// it carries a `WaveLength -> ComplexRefractionIndex` exactly as the engine's
-    /// own `EpsWithDisp` case does, and `complexIndex` applies it. A function-typed
-    /// case removes F#'s structural equality type-wide, so the type provides custom
-    /// equality: `RealNK` / `ComplexEps` compare structurally (keeping the
-    /// `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
-    /// round-trip tests use) and the evaluated case compares by closure reference.
     /// The real n and k formulas of one principal axis.
     type RealNkFormulas =
         {
@@ -362,11 +572,129 @@ module Dispersion =
         }
 
 
-    [<CustomEquality; NoComparison>]
+    /// How a tabulated n,k table reads between and beyond its samples. `value` is the wire tag.
+    type TabulatedInterpolation =
+        /// Linear in λ between neighbouring samples, clamped to the end samples outside the table.
+        | LinearInWaveLengthClamped
+
+        member this.value : int =
+            match this with
+            | LinearInWaveLengthClamped -> 1
+
+        static member tryOfWire (v : int) : TabulatedInterpolation option =
+            match v with
+            | 1 -> Some LinearInWaveLengthClamped
+            | _ -> None
+
+
+    /// Why `TabulatedNkTable.tryCreate` refused its columns, or `withUncertainty` its uncertainties.
+    type TabulatedTableError =
+        | EmptyTableErr of reason : string
+        | SampleCountMismatchErr of reason : string
+        | UnsortedSamplesErr of reason : string
+        | InvalidUncertaintyErr of reason : string
+
+
+    /// The one-sigma uncertainties of n and k a source gives for each sample of a tabulated table, in the
+    /// table's order (spec 0050 S13.2).
+    [<Softellect.Sys.NumericCarrier("per-sample one-sigma uncertainties of a tabulated n,k table, read beside its columns")>]
+    type TabulatedNkUncertainty =
+        {
+            sigmaN : float array
+            sigmaK : float array
+        }
+
+
+    /// A tabulated n,k table (spec 0050 step 2, 001 §B): the samples of one principal axis,
+    /// wavelengths ascending, read through `interpolation`.
+    [<Softellect.Sys.NumericCarrier("the wavelength, n and k columns of a tabulated n,k table, a measured data series (R3): complexIndex scans them at every wavelength of a sweep")>]
+    type TabulatedNkTable =
+        {
+            wavelengths : float<meter> array
+            n : float array
+            k : float array
+            interpolation : TabulatedInterpolation
+            /// The source's one-sigma uncertainty of each sample, `None` where the source gives none (spec 0050 S13.2).
+            uncertaintyOpt : TabulatedNkUncertainty option
+        }
+
+        /// The table over these columns, read linearly in λ and clamped. Refuses an empty table,
+        /// columns of unequal length and a wavelength column that decreases anywhere; never sorts.
+        static member tryCreate (wavelengths : float<meter> array) (n : float array) (k : float array) : Result<TabulatedNkTable, TabulatedTableError> =
+            if n.Length <> wavelengths.Length || k.Length <> wavelengths.Length then
+                Error (SampleCountMismatchErr $"{wavelengths.Length} wavelengths, {n.Length} n values and {k.Length} k values")
+            elif wavelengths.Length = 0 then
+                Error (EmptyTableErr "a tabulated n,k table needs at least one sample")
+            else
+                match wavelengths |> Array.pairwise |> Array.tryFindIndex (fun (a, b) -> b < a) with
+                | Some i -> Error (UnsortedSamplesErr $"the wavelength at index {i + 1} ({wavelengths.[i + 1]} m) is below the one at index {i} ({wavelengths.[i]} m)")
+                | None -> Ok { wavelengths = wavelengths; n = n; k = k; interpolation = LinearInWaveLengthClamped; uncertaintyOpt = None }
+
+        /// This table holding per-sample one-sigma uncertainties of n and k, kept in the given order (spec 0050 S13.2).
+        /// Refuses columns whose length is not the table's and a NaN, infinite or negative value.
+        member this.withUncertainty (uncertainty : TabulatedNkUncertainty) : Result<TabulatedNkTable, TabulatedTableError> =
+            let count = this.wavelengths.Length
+            let invalidReason (column : string) (sigmas : float array) : string option =
+                sigmas
+                |> Array.tryFindIndex (fun sigma -> System.Double.IsNaN sigma || System.Double.IsInfinity sigma || sigma < 0.0)
+                |> Option.map (fun i -> $"{column} at index {i} is {sigmas.[i]}; an uncertainty is finite and non-negative")
+
+            if uncertainty.sigmaN.Length <> count || uncertainty.sigmaK.Length <> count then
+                Error (SampleCountMismatchErr $"{count} samples, {uncertainty.sigmaN.Length} sigma n values and {uncertainty.sigmaK.Length} sigma k values")
+            else
+                match invalidReason "sigma n" uncertainty.sigmaN, invalidReason "sigma k" uncertainty.sigmaK with
+                | Some reason, _
+                | None, Some reason -> Error (InvalidUncertaintyErr reason)
+                | None, None -> Ok { this with uncertaintyOpt = Some uncertainty }
+
+        /// The first to the last sample.
+        member this.sampleRange : WaveLengthInterval =
+            {
+                lower = WaveLength.nm (this.wavelengths.[0] / nmToMeter)
+                upper = WaveLength.nm (this.wavelengths.[this.wavelengths.Length - 1] / nmToMeter)
+            }
+
+        /// The index at `w`: one sample answers itself; at or below the first sample the first, at
+        /// or above the last the last; otherwise linear in λ between the bracketing pair (spec 0050
+        /// step 2).
+        member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            match this.interpolation with
+            | LinearInWaveLengthClamped ->
+                let lam = w.value
+                let count = this.wavelengths.Length
+                let n, k =
+                    if count = 1 then
+                        this.n.[0], this.k.[0]
+                    else
+                        let last = count - 1
+                        if lam <= this.wavelengths.[0] then this.n.[0], this.k.[0]
+                        elif lam >= this.wavelengths.[last] then this.n.[last], this.k.[last]
+                        else
+                            let mutable i = 0
+                            while i < count - 2 && this.wavelengths.[i + 1] < lam do
+                                i <- i + 1
+                            let a = this.wavelengths.[i]
+                            let b = this.wavelengths.[i + 1]
+                            let t = if b = a then 0.0 else (lam - a) / (b - a)
+                            this.n.[i] + (this.n.[i + 1] - this.n.[i]) * t, this.k.[i] + (this.k.[i + 1] - this.k.[i]) * t
+                Complex (n, k) |> ComplexRefractionIndex
+
+
+    /// The dispersion of ONE principal axis, as data (spec 0050 step 9, 001 §B): term data, either
+    /// separate real n and k formulas (`RealNK`; k = the zero formula for a transparent medium) or one
+    /// complex eps formula for an inherently complex model (`ComplexEps`; Lorentz / Drude), a tabulated
+    /// n,k table (`TabulatedNK`, step 2), the four oscillator laws (Tauc–Lorentz and Gaussian, step 5;
+    /// Forouhi–Bloomer and Brendel–Bormann, step 7) or a coded preset's published law (step 8). Every
+    /// case is data, so equality and hashing are F#'s structural ones.
     type EpsAxisDispersion =
         | RealNK of RealNkFormulas
         | ComplexEps of ComplexDispersionFormula
-        | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
+        | TabulatedNK of TabulatedNkTable
+        | TaucLorentzAxis of TaucLorentzLaw
+        | GaussianOscillatorAxis of GaussianOscillatorLaw
+        | ForouhiBloomerAxis of ForouhiBloomerLaw
+        | BrendelBormannAxis of BrendelBormannLaw
+        | PublishedLawAxis of PublishedIndexLaw
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
             match this with
@@ -375,23 +703,12 @@ module Dispersion =
                 let (DispersionValue k) = f.kFormula.evaluate w
                 Complex (n, k) |> ComplexRefractionIndex
             | ComplexEps eps -> eps.evaluate w |> sqrt |> ComplexRefractionIndex
-            | EpsAxisEvaluated f -> f w
-
-        override this.Equals (o : obj) : bool =
-            match o with
-            | :? EpsAxisDispersion as other ->
-                match this, other with
-                | RealNK f1, RealNK f2 -> f1 = f2
-                | ComplexEps e1, ComplexEps e2 -> e1 = e2
-                | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
-                | _ -> false
-            | _ -> false
-
-        override this.GetHashCode () : int =
-            match this with
-            | RealNK f -> hash (0, f.nFormula, f.kFormula)
-            | ComplexEps e -> hash (1, e)
-            | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
+            | TabulatedNK table -> table.complexIndex w
+            | TaucLorentzAxis law -> law.complexIndex w
+            | GaussianOscillatorAxis law -> law.complexIndex w
+            | ForouhiBloomerAxis law -> law.complexIndex w
+            | BrendelBormannAxis law -> law.complexIndex w
+            | PublishedLawAxis law -> law.complexIndex w
 
 
     /// One isotropic dispersion segment: a single axis over one interval.
@@ -608,14 +925,57 @@ module Dispersion =
         }
 
 
+    /// The published dispersive gyration laws of the engine's coded presets (spec 0050 step 10):
+    /// Langasite's ρ is diag(i·g₁₁(λ), 0, i·g₃₃(λ)), transcendental in λ through its published
+    /// index laws. Each closed form lives here once; `value` is the wire tag.
+    type PublishedGyrationLaw =
+        | LangasiteGyrationLaw
+
+        member this.value : int =
+            match this with
+            | LangasiteGyrationLaw -> 1
+
+        static member tryOfWire (v : int) : PublishedGyrationLaw option =
+            match v with
+            | 1 -> Some LangasiteGyrationLaw
+            | _ -> None
+
+        /// The gyration tensor at `w`. The Langasite law is published for 0.4 µm < λ < 1.0 µm.
+        member this.rhoAt (w : WaveLength) : Rho =
+            match this with
+            | LangasiteGyrationLaw ->
+                // Re nₒ + Re nₑ of the published laws, the factor g11 and g33 share (spec 0050 step 8).
+                let realIndexSum (w : WaveLength) =
+                    (LangasiteOrdinaryIndexLaw.complexIndex w).value.Real + (LangasiteExtraordinaryIndexLaw.complexIndex w).value.Real
+
+                let g11La3Ga5SiO14 (w : WaveLength) =
+                    let lambda = w.value / 1.0<meter>
+                    (lambda * ((6.278e-12 * lambda**2.0) / (-2.4335999999999998e-14 + lambda**2.0)**2.0 + 6.106e-12 / (-2.4335999999999998e-14 + lambda**2.0)) * realIndexSum w) / 2.0
+
+                let g33La3Ga5SiO14 (w : WaveLength) =
+                    let lambda = w.value / 1.0<meter>
+                    (3.0359999999999996e-12 * lambda * realIndexSum w) / (-3.9204e-14 + lambda**2.0)
+
+                let rhoLa3Ga5SiO14 lambda =
+                    [| (g11La3Ga5SiO14 lambda |> Complex.ofReal) * complexI; complexZero; (g33La3Ga5SiO14 lambda |> Complex.ofReal) * complexI|]
+                    |> complexFromDiagonal
+                    |> ComplexMatrix
+                    |> ComplexMatrix3x3
+                    |> Rho
+
+                rhoLa3Ga5SiO14 w
+
+
     /// The serializable counterpart of the engine's RhoWithDisp: a symmetry-class
     /// gyration whose components are either DispersionFormula (dispersive) or
-    /// RhoValue (constant). toRhoWithDisp — the assembly onto the engine type —
-    /// is a type extension in OpticalProperties/Active.fs, next to the
-    /// crystal-class Rho builders it routes through.
+    /// RhoValue (constant), or a published gyration law (`PublishedLawRho`, spec 0050
+    /// step 10) whose closed form `PublishedGyrationLaw.rhoAt` evaluates. toRhoWithDisp —
+    /// the assembly onto the engine type — is a type extension in OpticalProperties/Active.fs,
+    /// next to the crystal-class Rho builders it routes through.
     type RhoWithDispValue =
         | RhoWithDispValue of GyrotropicValue<DispersionFormula>
         | RhoWithoutDispValue of GyrotropicValue<RhoValue>
+        | PublishedLawRho of PublishedGyrationLaw
 
 
     // ==========================================================================

@@ -1,0 +1,25 @@
+# Post-mortem review -- slice 0494, attempt 01
+
+## Verdict
+
+I agree with the post-mortem: an operator action caused the stop, and solution 1 is the right recovery.
+Step 0494 was review-green and passed all 28 verify gates. The supervisor then refused the commit because the executability receipt binds ASG's validator sources, and the ASG checkout was fast-forwarded in the middle of the run.
+
+## Checked
+
+- **The ASG pull.** The last row of ASG's reflog is `01d6d545 -> 87a55635 ... 1795029956 -0500 merge @{u}: Fast-forward`, which is 2026-11-18T19:25:56Z. That falls inside 0494's verify phase (18:43:29Z to 19:59:34Z). The row before it is 2026-11-14, before this arc segment booted on 2026-11-16.
+- **Why a no-note relaunch resumes without a worker.** `run_arc_runner.py:4123-4127` sets `resume_pipeline_only = attempt_n == 1 and resume_pipeline_phase != "implement" and not pending_operator_note`. A reply would force the wire_ui_worker to spawn again over finished work, so no reply is written. The post-mortem traces the phase moving from `implement` to review through the receipt re-stamp and the worktree fingerprint drift; 0319 recovered by exactly this path (log 27571). If a worker does spawn anyway, it resumes over intact work. That costs time, not correctness.
+- **The Berreman tree.** Nothing in it changed after the review. The dirty files are only 0494's authorized ones (`AGENTS.md`, `Program.fs`, `AppContext.fs`, `WireUiFinalCompositionTests.fs`) plus `.manifest.state.json` and the untracked 0494 working notes. The supervisor commits them on green, so the operator commits nothing first.
+
+## Not adopted
+
+- **Solution 2** (`--accept-current-slice`) is barred by the standing constraint.
+- **Solution 3** (fail fast on ASG drift, and name the input that differs) is a fair ASG hardening item. It is not needed to recover, and it belongs to ASG, not this arc.
+
+## Recovery
+
+1. Do not pull or edit the ASG checkout until the arc logs COMPLETE.
+2. Relaunch with `--executability-profile 1`, without `--operator-reply` and without `--accept-current-slice`.
+3. The supervisor re-reviews, re-runs the frozen 28-gate roster, publishes checkpoint 493, commits 0494, and completes the arc. Expect about 80 minutes.
+
+No ruling, `.manual/` file or ledger row is needed.

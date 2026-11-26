@@ -1,0 +1,67 @@
+# Post-mortem (mechanical) -- slice 0046
+
+## Summary
+
+The arc terminated with exit code 5. This write-up is MECHANICAL: it was produced by the arc-runner on its way out, not by an agent, because this death had no worker session to analyse. It records what was knowable without a model.
+
+## Root cause
+
+Reported reason: ValueError: cycle 4 out of range [1, 3]
+
+- exit code: 5
+- slice: 0046 (state index 45)
+- state status at death: interrupted
+- completed slices: 45
+- manifest: C:\GitHub\Berreman\specs\0050\.manifest
+
+## Evidence
+
+Last 40 row(s) of `.manifest-arc-runner.log`:
+
+```
+{"ts": "2026-11-06T01:24:28+00:00", "level": "info", "event": "SPAWN", "fields": {"role": "code_judge", "provider": "openai", "model": "gpt-6-astra", "flavor": "subscription", "transport": "cli", "source": "specrc_tool_agents", "cli_version_or_sdk_version": null}}
+{"ts": "2026-11-06T01:24:28+00:00", "level": "info", "event": "SPAWN", "fields": {"message": "openai-codex label=code-judge c3 task=C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0046-01-code-judge-task.txt"}}
+{"ts": "2026-11-06T01:26:54+00:00", "level": "info", "event": "SPAWN-EXIT", "fields": {"message": "openai-codex exit=0 elapsed=146.4s hung_up=False rollout=C:\\Users\\claude-agent\\.codex\\sessions\\2026\\11\\05\\rollout-2026-11-05T20-24-29-01a1ae75-0fd5-79e1-bbcb-7005f00f20d5.jsonl"}}
+{"ts": "2026-11-06T01:26:54+00:00", "level": "info", "event": "WORKER_OUTCOME", "fields": {"role": "code_judge", "exit_code": 0, "hung_up": false, "hangup_reason": "", "elapsed_sec": 146.41773089999333, "transcript_path": "C:\\Users\\claude-agent\\.codex\\sessions\\2026\\11\\05\\rollout-2026-11-05T20-24-29-01a1ae75-0fd5-79e1-bbcb-7005f00f20d5.jsonl", "cost_record": null}}
+{"ts": "2026-11-06T01:26:54+00:00", "level": "info", "event": "JUDGE_VERDICT", "fields": {"slice": "0046.slice-md", "cycle": 3, "cycles_remaining": 0, "verdict": "review-green", "judge_md_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0046-01-code-judge.md", "cap_path_downgrade": false}}
+{"ts": "2026-11-06T01:26:54+00:00", "level": "info", "event": "REVIEW-SUBLOOP-VERDICT", "fields": {"message": "idx=45 cycle=3 verdict='review-green' cap_downgrade=False"}}
+{"ts": "2026-11-06T01:26:55+00:00", "level": "info", "event": "REVIEW-ATTESTED", "fields": {"slice_index": 45, "phase": "review", "tree_fingerprint": "ad7721f44e3a", "review_epoch": 1, "review_cycle": 3, "verdict": "review-green", "judge_path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\code_judge\\0046-01-code-judge.md"}}
+{"ts": "2026-11-06T01:26:55+00:00", "level": "info", "event": "PHASE-START", "fields": {"slice_index": 45, "phase": "build", "tree_fingerprint": "ad7721f44e3a", "review_epoch": 1, "gate_count": 1, "repair_attempt": 0}}
+{"ts": "2026-11-06T01:26:55+00:00", "level": "info", "event": "GATE-START", "fields": {"message": "build"}}
+{"ts": "2026-11-06T01:26:59+00:00", "level": "info", "event": "GATE_RESULT", "fields": {"gate_id": "build", "passed": true, "exit_code": 0, "elapsed_sec": 3.5, "detail": "passed", "whole": true}}
+{"ts": "2026-11-06T01:26:59+00:00", "level": "info", "event": "PHASE-RESULT", "fields": {"slice_index": 45, "phase": "build", "tree_fingerprint": "ad7721f44e3a", "review_epoch": 1, "elapsed_sec": 4.012769700028002, "result": "green", "gate_count": 1}}
+{"ts": "2026-11-06T01:26:59+00:00", "level": "info", "event": "PHASE-START", "fields": {"slice_index": 45, "phase": "verify", "tree_fingerprint": "ad7721f44e3a", "review_epoch": 1, "gate_count": 11}}
+{"ts": "2026-11-06T01:26:59+00:00", "level": "info", "event": "GATE-START", "fields": {"message": "elevation"}}
+{"ts": "2026-11-06T01:29:13+00:00", "level": "info", "event": "GATE_RESULT", "fields": {"gate_id": "elevation", "passed": true, "exit_code": 0, "elapsed_sec": 133.9, "detail": "passed", "whole": true}}
+{"ts": "2026-11-06T01:29:13+00:00", "level": "info", "event": "GATE-START", "fields": {"message": "constructor-unit-tests"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "warn", "event": "GATE_RESULT", "fields": {"gate_id": "constructor-unit-tests", "passed": false, "exit_code": 0, "elapsed_sec": 7.5, "detail": "incomplete test observation: test identities differ from accepted post-state; missing=[], unexpected=['OpticalConstructor.Tests.ExportImportTests.a material library round-trips a renamed category from the supplied list', 'OpticalConstructor.Tests.ExportImportTests.material library export rejects a category absent from the supplied list before writing', 'OpticalConstructor.Tests.ExportImportTests.material library import rejects a seeded category absent from the supplied list', 'OpticalConstructor.Tests.ExportImportTests.material library validation retains structural constraints for caller supplied categories']", "whole": true}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "GATE-STDOUT", "fields": {"message": "constructor-unit-tests (last 574 chars):"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  | Running tests from C:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Tests\\bin\\x64\\Release\\net10.0\\OpticalConstructor.Tests.dll (net10.0|x64)"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  | C:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Tests\\bin\\x64\\Release\\net10.0\\OpticalConstructor.Tests.dll (net10.0|x64) passed (6s 400ms)"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  | "}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  |   In process file artifacts produced:"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  |     - C:\\GitHub\\Berreman\\Berreman\\OpticalConstructor\\OpticalConstructor.Tests\\TestResults\\constructor-unit-tests.trx"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  | "}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  | Test run summary: Passed!"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  |   total: 806"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  |   failed: 0"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  |   succeeded: 806"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  |   skipped: 0"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "INFO", "fields": {"message": "  |   duration: 6s 896ms"}}
+{"ts": "2026-11-06T01:29:21+00:00", "level": "info", "event": "PHASE-RESULT", "fields": {"slice_index": 45, "phase": "verify", "tree_fingerprint": "ad7721f44e3a", "review_epoch": 1, "elapsed_sec": 142.34278269996867, "result": "red", "gate_count": 2}}
+{"ts": "2026-11-06T01:29:22+00:00", "level": "info", "event": "SLICE-ATTEMPT", "fields": {"message": "idx=45 n=4 failures=3/2 hangups=0/2"}}
+{"ts": "2026-11-06T01:29:22+00:00", "level": "info", "event": "CONSOLE-FILE", "fields": {"path": "C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\0046-04-console-20261105T232007Z.log"}}
+{"ts": "2026-11-06T01:29:22+00:00", "level": "info", "event": "TASK-FILE", "fields": {"message": "wrote C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\0046-attempt-04-task.txt"}}
+{"ts": "2026-11-06T01:29:22+00:00", "level": "info", "event": "SPAWN", "fields": {"role": "implement_worker", "provider": "openai", "model": "gpt-6-astra", "flavor": "subscription", "transport": "cli", "source": "specrc_tool_agents", "cli_version_or_sdk_version": null}}
+{"ts": "2026-11-06T01:29:22+00:00", "level": "info", "event": "SPAWN", "fields": {"message": "openai-codex label=0046.slice-md task=C:\\GitHub\\Berreman\\specs\\0050\\.artifacts\\0046-attempt-04-task.txt"}}
+{"ts": "2026-11-06T01:34:13+00:00", "level": "info", "event": "SPAWN-EXIT", "fields": {"message": "openai-codex exit=0 elapsed=291.5s hung_up=False rollout=C:\\Users\\claude-agent\\.codex\\sessions\\2026\\11\\05\\rollout-2026-11-05T20-29-23-01a1ae79-8bce-77d1-803f-5009cc12c5aa.jsonl"}}
+{"ts": "2026-11-06T01:34:13+00:00", "level": "info", "event": "WORKER_OUTCOME", "fields": {"role": "implement_worker", "exit_code": 0, "hung_up": false, "hangup_reason": "", "elapsed_sec": 291.45545899961144, "transcript_path": "C:\\Users\\claude-agent\\.codex\\sessions\\2026\\11\\05\\rollout-2026-11-05T20-29-23-01a1ae79-8bce-77d1-803f-5009cc12c5aa.jsonl", "cost_record": null}}
+{"ts": "2026-11-06T01:34:15+00:00", "level": "info", "event": "GATE-START", "fields": {"message": "build"}}
+{"ts": "2026-11-06T01:34:19+00:00", "level": "info", "event": "GATE_RESULT", "fields": {"gate_id": "build", "passed": true, "exit_code": 0, "elapsed_sec": 3.5, "detail": "passed", "whole": true}}
+{"ts": "2026-11-06T01:34:19+00:00", "level": "error", "event": "INTERRUPTED", "fields": {"slice_index": -1, "reason": "ValueError('cycle 4 out of range [1, 3]')", "traceback": "Traceback (most recent call last):\n  File \"C:\\GitHub\\AI-Strategy-Generator\\src\\ai_strategy_generator\\multistep\\_arc_runner\\runtime\\run_arc_runner.py\", line 4579, in _run_arc_runner_inner\n    verdict = run_review_subloop(\n        review_inputs,\n        log,\n        cost_tracker=cost_tracker,\n    )\n  File \"C:\\GitHub\\AI-Strategy-Generator\\src\\ai_strategy_generator\\multistep\\_arc_runner\\review\\run_review_subloop.py\", line 241, in run_review_subloop\n    raise ValueError(\n    ...<2 lines>...\n    )\nValueError: cycle 4 out of range [1, 3]\n"}}
+```
+
+## Proposed solutions
+
+Read the log tail above. A mechanical post-mortem does not diagnose; it guarantees that a death is never silent.
+

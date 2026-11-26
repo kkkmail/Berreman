@@ -16,27 +16,24 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 
-/// Spec 0038 Part D (step 011) — the two concrete facet catalogues, pinned
-/// over the SEEDED corpora (`builtInEntries`, `SeedSamples`/`seedEntries`)
-/// plus synthetic entries for what the seeds cannot reach (a data-dispersive
-/// multi-model material, magnetic materials, a wedge sample, a mixed
-/// transparent+absorbing film, and a small film corpus for the bucket flow).
-/// Pure construction throughout: no window, no IO, no solver run.
+/// Facets over BuiltinCatalogue.materials/samples/presets and synthetic entries
+/// for missing shapes (spec 0038 Part D step 011; spec 0050 S1.7).
 module LibraryFacetsTests =
 
     // ---- shared accessors ----
 
     let private materialDef (key : AttributeKey) : AttributeDef<MaterialEntry> =
-        materialFacets |> List.find (fun d -> d.key = key)
+        materialFacets (BuiltinCatalogue.categories ()) |> List.find (fun d -> d.key = key)
 
-    let private libraryDefs : AttributeDef<LibraryEntry> list = libraryFacets builtInEntries
+    let private libraryDefs : AttributeDef<LibraryEntry> list = libraryFacets (BuiltinCatalogue.categories ()) (BuiltinCatalogue.materials ())
 
     let private libraryDef (key : AttributeKey) : AttributeDef<LibraryEntry> =
         libraryDefs |> List.find (fun d -> d.key = key)
 
     let private entryOf (id : MaterialId) : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = id)
+        BuiltinCatalogue.material id
 
     let private siliconEntry = entryOf MaterialIds.silicon
     let private langasiteEntry = entryOf MaterialIds.langasite
@@ -68,6 +65,25 @@ module LibraryFacetsTests =
             | NumericValue v -> Some v.value
             | DiscreteValue _ -> None)
 
+    [<Fact>]
+    let ``the category facet names each material's category through the categories it is given`` () : unit =
+        let silicon = BuiltinCatalogue.materials () |> List.find (fun entry -> entry.id = MaterialIds.silicon)
+        let categories = BuiltinCatalogue.categories ()
+        let categoryDef = materialFacets categories |> List.find (fun def -> def.key = materialCategoryKey)
+        Assert.Equal<string list>([ "Semiconductor" ], extractedKeys categoryDef silicon)
+
+        let renamedName = CategoryName "Semiconductor from the caller"
+        let renamedCategories =
+            categories
+            |> List.map (fun category ->
+                if category.id = CategoryIds.semiconductor then
+                    {
+                        category with name = renamedName
+                    }
+                else category)
+        let renamedDef = materialFacets renamedCategories |> List.find (fun def -> def.key = materialCategoryKey)
+        Assert.Equal<string list>([ renamedName.value ], extractedKeys renamedDef silicon)
+
     let private discrete (key : AttributeKey) (values : string list) : AppliedConstraint =
         { key = key; selection = DiscreteSelection (values |> List.map DiscreteKey |> Set.ofList) }
 
@@ -75,22 +91,24 @@ module LibraryFacetsTests =
         node.branches |> List.map (fun b -> b.label.value, b.count.value)
 
     let private materialRepresentation : Representation =
-        Representation (materialFacets |> List.map (fun d -> d.key))
+        Representation (materialFacets (BuiltinCatalogue.categories ()) |> List.map (fun d -> d.key))
 
     let private libraryRepresentation : Representation =
         Representation (libraryDefs |> List.map (fun d -> d.key))
 
-    // ---- synthetic material entries (what the seeds cannot reach) ----
+    // ---- synthetic material entries (beyond BuiltinCatalogue.materials) ----
 
-    let private materialEntryWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+    let private physicsEntryWith (idText : string) (name : string) (physics : MaterialPhysics) : MaterialEntry =
         {
             id = Guid.Parse idText |> MaterialId
             name = EntryName name
             category = CategoryIds.crystal
             description = None
-            properties = complexity.toProperties
-            complexity = Some complexity
+            physics = physics
         }
+
+    let private materialEntryWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
+        physicsEntryWith idText name (ComplexityPhysics complexity)
 
     let private modelOfKind (kindCode : string) : DispersionModel =
         defaultModelChoices |> List.find (fun m -> m.kindCode = kindCode)
@@ -217,12 +235,7 @@ module LibraryFacetsTests =
             supportedEmission = ThinFilm.defaultSupportedEmission
         }
 
-    let private polarizerEntry : LibraryEntry =
-        seedEntries
-        |> List.pick (fun e ->
-            match e with
-            | PolarizerItem _ -> Some e
-            | SampleItem _ | SourceItem _ | DetectorItem _ -> None)
+    let private polarizerEntry : LibraryEntry = BuiltinCatalogue.preset PresetIds.polarizerLp
 
     /// The bucket-flow corpus: off-rung thicknesses (12 / 30 / 700 nm — never
     /// exactly on a 1-2-5 rung, so the meter round-trip cannot flip a bucket)
@@ -242,7 +255,7 @@ module LibraryFacetsTests =
     [<Fact>]
     let ``the category facet applies to every entry and keys the seeded catalogue names`` () =
         let def = materialDef materialCategoryKey
-        for entry in builtInEntries do
+        for entry in BuiltinCatalogue.materials () do
             Assert.True(applies def entry)
         Assert.Equal<string list>([ "Semiconductor" ], extractedKeys def siliconEntry)
         Assert.Equal<string list>([ "Vacuum" ], extractedKeys def vacuumEntry)
@@ -250,7 +263,7 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``the category branches are corpus-derived from the seeded catalogue`` () =
-        let tree = buildTree (Representation [ materialCategoryKey ]) materialFacets [] builtInEntries
+        let tree = buildTree (Representation [ materialCategoryKey ]) (materialFacets (BuiltinCatalogue.categories ())) [] (BuiltinCatalogue.materials ())
         let node = List.exactlyOne tree.facets
         Assert.Equal<(string * int) list>(
             [ "Crystal", 4; "Glass", 4; "Metal", 1; "Semiconductor", 2; "Vacuum", 1 ],
@@ -258,11 +271,11 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``the anisotropy facet applies to every entry and classifies the re-seeded presets`` () =
-        // Spec 0040 step 004: every built-in now carries a `complexity` value tree, so
+        // Spec 0040 step 004: every built-in now carries a physics (spec 0050 S11.1), so
         // the anisotropy facet — reading the eps CASE, never the engine tensor — applies
         // to ALL of them, including the former coded presets, and classifies them.
         let def = materialDef materialAnisotropyKey
-        for entry in builtInEntries do
+        for entry in BuiltinCatalogue.materials () do
             Assert.True(applies def entry)
         Assert.Equal<string list>([ "Isotropic" ], extractedKeys def siliconEntry)
         Assert.Equal<string list>([ "Uniaxial" ], extractedKeys def langasiteEntry)
@@ -273,13 +286,13 @@ module LibraryFacetsTests =
         // Spec 0040 step 004 acceptance: anisotropyOf classifies Silicon Isotropic,
         // Langasite Uniaxial and the Vacuum spacer Isotropic — from the value-tree
         // CASE, with NO engine-tensor evaluation.
-        let anisotropyOfEntry (entry : MaterialEntry) : Anisotropy =
-            match entry.complexity with
-            | Some c -> c.anisotropy
-            | None -> failwith $"{entry.name} must carry a complexity value tree"
-        Assert.Equal(Isotropic, anisotropyOfEntry siliconEntry)
-        Assert.Equal(Uniaxial, anisotropyOfEntry langasiteEntry)
-        Assert.Equal(Isotropic, anisotropyOfEntry vacuumEntry)
+        let anisotropyOf (entry : MaterialEntry) : Anisotropy =
+            match entry.physics with
+            | ComplexityPhysics complexity -> complexity.anisotropy
+            | CrystalParameterPhysics crystal -> crystal.anisotropy
+        Assert.Equal(Isotropic, anisotropyOf siliconEntry)
+        Assert.Equal(Uniaxial, anisotropyOf langasiteEntry)
+        Assert.Equal(Isotropic, anisotropyOf vacuumEntry)
 
     [<Fact>]
     let ``the anisotropy facet classifies the encoded eps value-tree shape`` () =
@@ -287,17 +300,15 @@ module LibraryFacetsTests =
         Assert.Equal<string list>([ "Isotropic" ], extractedKeys def glass152Entry)
         Assert.Equal<string list>([ "Isotropic" ], extractedKeys def euvSiliconEntry)
         Assert.Equal<string list>([ "Biaxial" ], extractedKeys def biaxialEntry)
-        // The seeded "Uniaxial crystal" is ENCODED as per-axis BiaxialTransparent
-        // values (MaterialLibrary seed comment: its (o, e, e) diagonal has no
-        // engine uniaxial shape), so the facet classifies the encoding.
+        // BuiltinCatalogue.material's "Uniaxial crystal" has an (o, e, e) diagonal,
+        // encoded as BiaxialTransparent; the facet classifies that encoding.
         Assert.Equal<string list>([ "Biaxial" ], extractedKeys def uniaxialEntry)
-        // The Uniaxial vocabulary key exists even though no seed extracts it.
         Assert.Equal("Uniaxial", Uniaxial.facetKey.value)
 
     [<Fact>]
     let ``the constant-vs-dispersive facet applies to every entry including coded presets`` () =
         let def = materialDef materialDispersionKey
-        for entry in builtInEntries do
+        for entry in BuiltinCatalogue.materials () do
             Assert.True(applies def entry)
         Assert.Equal<string list>([ "Dispersive" ], extractedKeys def siliconEntry)
         Assert.Equal<string list>([ "Dispersive" ], extractedKeys def langasiteEntry)
@@ -310,15 +321,36 @@ module LibraryFacetsTests =
         // transparency facet applies to EVERY entry. Constant materials still classify from
         // their eps value tree; every dispersive material lands under Absorbing.
         let def = materialDef materialTransparencyKey
-        for entry in builtInEntries do
+        for entry in BuiltinCatalogue.materials () do
             Assert.True(applies def entry)
         Assert.Equal<string list>([ "Transparent" ], extractedKeys def glass152Entry)
         Assert.Equal<string list>([ "Absorbing" ], extractedKeys def euvMolybdenumEntry)
         // Dispersive silicon/langasite now classify Absorbing (previously they offered nothing).
         Assert.Equal<string list>([ "Absorbing" ], extractedKeys def siliconEntry)
         Assert.Equal<string list>([ "Absorbing" ], extractedKeys def langasiteEntry)
-        // The re-seeded constant vacuum spacer still classifies from its value tree.
         Assert.Equal<string list>([ "Transparent" ], extractedKeys def vacuumEntry)
+
+    [<Fact>]
+    let ``a crystal-parameter material classifies its anisotropy and transparency from its crystal, and the ladder's facets do not apply`` () =
+        // Spec 0050 S11.1: a crystal classifies by its record; the ladder's facets classify value trees it does not carry.
+        let expected =
+            [
+                Uniaxial, Transparent
+                Biaxial, Transparent
+                Biaxial, Absorbing
+            ]
+        List.zip crystals expected
+        |> List.iteri (fun i (crystal, (anisotropy, transparency)) ->
+            let entry = physicsEntryWith $"7c1e9a3b-5d2f-4b8e-a6c0-{i + 1:D12}" $"Crystal {i + 1}" (CrystalParameterPhysics crystal)
+            Assert.Equal(anisotropy, crystal.anisotropy)
+            Assert.Equal(transparency, crystal.transparency)
+            Assert.Equal(anisotropy, entry.physics.anisotropy)
+            Assert.Equal<string list>([ anisotropy.facetKey.value ], extractedKeys (materialDef materialAnisotropyKey) entry)
+            Assert.Equal<string list>([ transparency.facetKey.value ], extractedKeys (materialDef materialTransparencyKey) entry)
+            Assert.Equal<string list>([ ConstantMaterial.facetKey.value ], extractedKeys (materialDef materialDispersionKey) entry)
+            for key in [ materialDispersionModelKey; materialGyrationClassKey; materialHandednessKey; materialMagneticKey ] do
+                Assert.False(applies (materialDef key) entry, $"{key.value} must not apply to crystal {i + 1}")
+                Assert.Empty(extractedKeys (materialDef key) entry))
 
     [<Fact>]
     let ``the transparency facet classifies transparent vs absorbing constant eps`` () =
@@ -329,13 +361,12 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``category, anisotropy, dispersion and transparency branch counts each sum to the material count`` () =
-        // Spec 0040 step 005 acceptance: the four single-valued facets are TOTAL over the seed
-        // corpus — every built-in contributes exactly one branch value to each, so a single-facet
-        // tree's branch counts sum to the material count. The MULTI-valued dispersion-model facet
-        // is deliberately excluded (its per-axis/segment counts need not sum to the total).
-        let materialCount = List.length builtInEntries
+        // Spec 0040 step 005; spec 0050 S1.7: each BuiltinCatalogue.materials entry
+        // contributes once per facet. The multi-valued dispersion-model facet is excluded:
+        // its per-axis/segment counts need not sum to the material count.
+        let materialCount = List.length (BuiltinCatalogue.materials ())
         let branchCountSum (key : AttributeKey) : int =
-            let tree = buildTree (Representation [ key ]) materialFacets [] builtInEntries
+            let tree = buildTree (Representation [ key ]) (materialFacets (BuiltinCatalogue.categories ())) [] (BuiltinCatalogue.materials ())
             let node = List.exactlyOne tree.facets
             node.branches |> List.sumBy (fun b -> b.count.value)
         for key in [ materialCategoryKey; materialAnisotropyKey; materialDispersionKey; materialTransparencyKey ] do
@@ -348,13 +379,12 @@ module LibraryFacetsTests =
         // constant transparent value).
         let def = materialDef materialTransparencyKey
         let dispersiveEntries =
-            builtInEntries |> List.filter (fun e -> e.dispersion = DispersiveMaterial)
-        // The seed corpus does carry dispersive materials (silicon / langasite / the EUV metals).
+            BuiltinCatalogue.materials () |> List.filter (fun e -> e.dispersion = DispersiveMaterial)
         Assert.NotEmpty(dispersiveEntries)
         for entry in dispersiveEntries do
             Assert.Equal<string list>([ "Absorbing" ], extractedKeys def entry)
         // ... and the Absorbing branch of the built tree counts every one of them.
-        let tree = buildTree (Representation [ materialTransparencyKey ]) materialFacets [] builtInEntries
+        let tree = buildTree (Representation [ materialTransparencyKey ]) (materialFacets (BuiltinCatalogue.categories ())) [] (BuiltinCatalogue.materials ())
         let node = List.exactlyOne tree.facets
         let absorbingCount =
             node.branches
@@ -363,7 +393,7 @@ module LibraryFacetsTests =
         Assert.True(absorbingCount >= List.length dispersiveEntries)
 
     // =======================================================================
-    // Dependent facets vanish; the seeded corpus tree.
+    // Dependent facets vanish; the BuiltinCatalogue.materials tree.
     // =======================================================================
 
     [<Fact>]
@@ -373,7 +403,7 @@ module LibraryFacetsTests =
         // facets are TOTAL, both apply (both land under Absorbing for transparency); and both
         // carry dispersive value trees, so the dispersion-model facet and (langasite) the
         // activity facets also apply.
-        let tree = buildTree materialRepresentation materialFacets [] [ siliconEntry; langasiteEntry ]
+        let tree = buildTree materialRepresentation (materialFacets (BuiltinCatalogue.categories ())) [] [ siliconEntry; langasiteEntry ]
         Assert.Equal<AttributeKey list>(
             [
                 materialCategoryKey
@@ -389,11 +419,9 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``the seeded corpus offers activity, transparency and dispersion-model facets but no magnetic`` () =
-        // Spec 0040 step 004: the two re-seeded coded presets (silicon / langasite)
-        // carry dispersive value trees, so the dispersion-model facet now appears; and
-        // langasite retains its optical activity, so it joins the active crystal under
-        // the gyration/handedness facets. No built-in is magnetic.
-        let tree = buildTree materialRepresentation materialFacets [] builtInEntries
+        // Spec 0040 step 004; spec 0050 S1.7: BuiltinCatalogue.materials retains
+        // dispersive silicon/langasite and active langasite, but no magnetic entry.
+        let tree = buildTree materialRepresentation (materialFacets (BuiltinCatalogue.categories ())) [] (BuiltinCatalogue.materials ())
         Assert.Equal<AttributeKey list>(
             [
                 materialCategoryKey
@@ -435,6 +463,25 @@ module LibraryFacetsTests =
     let ``the gyration-class and handedness extractors read the stored gyrotropic value`` () =
         Assert.Equal<string list>([ "Planar mm2 (g₁₂)" ], extractedKeys (materialDef materialGyrationClassKey) activeEntry)
         Assert.Equal<string list>([ "Right-handed" ], extractedKeys (materialDef materialHandednessKey) activeEntry)
+
+    [<Fact>]
+    let ``a published gyration law offers the activity facets but extracts no class or handedness`` () =
+        // Spec 0050 step 10: a published law is active, but has no editor class and no handedness field.
+        let entry =
+            materialEntryWith
+                "a0b1c2d3-6e74-4f81-92a0-d45f60718394"
+                "Published gyration law"
+                {
+                    eps = constantIsoEps
+                    magnetic = None
+                    active = Some (PublishedLawRho LangasiteGyrationLaw)
+                }
+        let classDef = materialDef materialGyrationClassKey
+        let handDef = materialDef materialHandednessKey
+        Assert.True(applies classDef entry)
+        Assert.True(applies handDef entry)
+        Assert.Equal<string list>([], extractedKeys classDef entry)
+        Assert.Equal<string list>([], extractedKeys handDef entry)
 
     [<Fact>]
     let ``the offered gyration-class vocabulary derives from availableGyrationClasses`` () =
@@ -484,9 +531,8 @@ module LibraryFacetsTests =
     [<Fact>]
     let ``the dispersion-model facet applies only to data-dispersive entries`` () =
         let def = materialDef materialDispersionModelKey
-        // Spec 0040 step 004: the nine expressible seeds are CONSTANT, but the two
-        // re-seeded coded presets (silicon / langasite) now carry dispersive value
-        // trees whose axes lowered to the evaluated case, so ONLY they offer the facet.
+        // Spec 0040 step 004; spec 0050 S1.7: BuiltinCatalogue.materials retains
+        // dispersive silicon/langasite alongside the constant glass/vacuum/active entries.
         Assert.True(applies def siliconEntry)
         Assert.True(applies def langasiteEntry)
         Assert.Equal<string list>([ "Evaluated (transcendental)" ], extractedKeys def siliconEntry)
@@ -507,13 +553,38 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``one multi-model entry counts once in each dispersion-model branch`` () =
-        let tree = buildTree (Representation [ materialDispersionModelKey ]) materialFacets [] [ syntheticDispersive ]
+        let tree = buildTree (Representation [ materialDispersionModelKey ]) (materialFacets (BuiltinCatalogue.categories ())) [] [ syntheticDispersive ]
         let node = List.exactlyOne tree.facets
         // Three branches, each counting the single item once: branch counts
         // sum to 3 while the result total is 1 — multi-valued by design.
         Assert.Equal<(string * int) list>(
             [ "Complex ε terms", 1; "Evaluated (transcendental)", 1; "Real n/k terms", 1 ],
             branchSummary node)
+
+    [<Fact>]
+    let ``a tabulated axis lands on the tabulated n,k facet key`` () =
+        // Spec 0050 step 2: a tabulated n,k table is its own storable shape, on the axis
+        // and through the dispersion-model facet of an entry that carries it.
+        let samples = [| toWaveLength Nanometer (UnitMagnitude 400.0); toWaveLength Nanometer (UnitMagnitude 700.0) |]
+        match TabulatedNkTable.tryCreate (samples |> Array.map (fun w -> w.value)) [| 1.5; 1.4 |] [| 0.01; 0.0 |] with
+        | Error (EmptyTableErr reason)
+        | Error (SampleCountMismatchErr reason)
+        | Error (UnsortedSamplesErr reason)
+        | Error (InvalidUncertaintyErr reason) -> Assert.Fail reason
+        | Ok table ->
+            Assert.Equal("Tabulated n/k", (TabulatedNK table).facetKey.value)
+            let entry =
+                materialEntryWith
+                    "8d2a8dc0-3c41-4e5f-a07c-b12d3e4f5061"
+                    "Synthetic tabulated"
+                    {
+                        eps = EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = table.sampleRange; dispersion = TabulatedNK table } ])
+                        magnetic = None
+                        active = None
+                    }
+            let def = materialDef materialDispersionModelKey
+            Assert.True(applies def entry)
+            Assert.Equal<string list>([ "Tabulated n/k" ], extractedKeys def entry)
 
     // =======================================================================
     // Library facets — kind, lifted material facets.
@@ -522,12 +593,13 @@ module LibraryFacetsTests =
     [<Fact>]
     let ``the kind facet applies to every library entry and groups the seeded corpus`` () =
         let def = libraryDef entryKindFacetKey
-        for entry in seedEntries do
+        let entries = (BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ()
+        for entry in entries do
             Assert.True(applies def entry)
-        let tree = buildTree (Representation [ entryKindFacetKey ]) libraryDefs [] seedEntries
+        let tree = buildTree (Representation [ entryKindFacetKey ]) libraryDefs [] entries
         let node = List.exactlyOne tree.facets
         Assert.Equal<(string * int) list>(
-            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.allSeedSources ],
+            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length (BuiltinCatalogue.sources ()) ],
             branchSummary node)
 
     [<Fact>]
@@ -535,19 +607,19 @@ module LibraryFacetsTests =
         // Langasite film on silicon: langasite is a film, silicon is the LOWER
         // half-space — both are constituents, so the lifted category facet is
         // their distinct union.
-        let keys = extractedKeys (libraryDef materialCategoryKey) (SampleItem SeedSamples.langasiteSilicon)
+        let keys = extractedKeys (libraryDef materialCategoryKey) (SampleItem (BuiltinCatalogue.sample SampleIds.langasiteSiliconId))
         Assert.Equal<string list>([ "Crystal"; "Semiconductor" ], List.sort keys)
 
     [<Fact>]
     let ``a sample matches a lifted material constraint through any constituent`` () =
         let byCategory (name : string) : string list =
-            filter libraryDefs [ discrete materialCategoryKey [ name ] ] seedEntries
+            filter libraryDefs [ discrete materialCategoryKey [ name ] ] ((BuiltinCatalogue.samples () |> List.map SampleItem) @ BuiltinCatalogue.presets ())
             |> List.map (fun e -> e.displayName)
         // Only the quarter-wave multilayer carries the vacuum spacer.
-        Assert.Equal<string list>([ SeedSamples.multilayerQw.name.value ], byCategory "Vacuum")
+        Assert.Equal<string list>([ (BuiltinCatalogue.sample SampleIds.multilayerQwId).name.value ], byCategory "Vacuum")
         // Only the EUV stack carries a metal (molybdenum) — its OTHER layer is
         // a semiconductor; either constituent alone makes the sample match.
-        Assert.Equal<string list>([ SeedSamples.euvMoSi.name.value ], byCategory "Metal")
+        Assert.Equal<string list>([ (BuiltinCatalogue.sample SampleIds.euvMoSiId).name.value ], byCategory "Metal")
 
     [<Fact>]
     let ``lifted material facets never offer themselves on non-sample entries`` () =
@@ -562,7 +634,7 @@ module LibraryFacetsTests =
         // constituents carry a value tree and the anisotropy/transparency facets are TOTAL,
         // both of those lifted facets now apply — the coded-preset gap is closed (the lifted
         // transparency is the distinct union over the two Absorbing constituents).
-        let entry = SampleItem SeedSamples.langasiteSilicon
+        let entry = SampleItem (BuiltinCatalogue.sample SampleIds.langasiteSiliconId)
         Assert.True(applies (libraryDef materialAnisotropyKey) entry)
         Assert.True(applies (libraryDef materialTransparencyKey) entry)
         Assert.Equal<string list>([ "Absorbing" ], extractedKeys (libraryDef materialTransparencyKey) entry)
@@ -583,7 +655,7 @@ module LibraryFacetsTests =
         // the single "Transparent".
         Assert.Equal<string list>(
             [ "Transparent" ],
-            extractedKeys (libraryDef materialTransparencyKey) (SampleItem SeedSamples.multilayerQw))
+            extractedKeys (libraryDef materialTransparencyKey) (SampleItem (BuiltinCatalogue.sample SampleIds.multilayerQwId)))
         // Glass + EUV molybdenum: one Transparent and one Absorbing constituent.
         Assert.Equal<string list>(
             [ "Absorbing"; "Transparent" ],
@@ -593,10 +665,10 @@ module LibraryFacetsTests =
     let ``the lifted dispersion facet classifies constituents through their properties`` () =
         Assert.Equal<string list>(
             [ "Constant" ],
-            extractedKeys (libraryDef materialDispersionKey) (SampleItem SeedSamples.glassPlate1mm))
+            extractedKeys (libraryDef materialDispersionKey) (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)))
         Assert.Equal<string list>(
             [ "Dispersive" ],
-            extractedKeys (libraryDef materialDispersionKey) (SampleItem SeedSamples.langasiteSilicon))
+            extractedKeys (libraryDef materialDispersionKey) (SampleItem (BuiltinCatalogue.sample SampleIds.langasiteSiliconId)))
 
     // =======================================================================
     // Sample-structural facets.
@@ -605,8 +677,8 @@ module LibraryFacetsTests =
     [<Fact>]
     let ``the substrate-material facet is offered for the plate geometry only`` () =
         let def = libraryDef sampleSubstrateMaterialKey
-        Assert.True(applies def (SampleItem SeedSamples.glassPlate1mm))
-        Assert.False(applies def (SampleItem SeedSamples.glassFilm600))
+        Assert.True(applies def (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)))
+        Assert.False(applies def (SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm600Id)))
         Assert.False(applies def polarizerEntry)
 
     [<Fact>]
@@ -614,22 +686,27 @@ module LibraryFacetsTests =
         let def = libraryDef sampleSubstrateMaterialKey
         Assert.Equal<string list>(
             [ "Transparent glass (n = 1.52)" ],
-            extractedKeys def (SampleItem SeedSamples.glassPlate1mm))
+            extractedKeys def (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)))
         Assert.Equal<string list>(
             [ "Active (gyrotropic) crystal" ],
-            extractedKeys def (SampleItem SeedSamples.activeCrystalPlate))
+            extractedKeys def (SampleItem (BuiltinCatalogue.sample SampleIds.activeCrystalPlateId)))
 
     [<Fact>]
     let ``has-thin-films derives from films alone, independent of the substrate kind`` () =
         let def = libraryDef sampleHasThinFilmsKey
-        Assert.Equal<string list>([ hasThinFilmsValue.value ], extractedKeys def (SampleItem SeedSamples.glassFilm600))
-        Assert.Equal<string list>([ noThinFilmsValue.value ], extractedKeys def (SampleItem SeedSamples.glassPlate1mm))
+        Assert.Equal<string list>([ hasThinFilmsValue.value ], extractedKeys def (SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm600Id)))
+        Assert.Equal<string list>([ noThinFilmsValue.value ], extractedKeys def (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)))
         // A PLATE carrying films still reads "has thin films" (operator, 003/Q11).
+        let glassPlate = BuiltinCatalogue.sample SampleIds.glassPlate1mmId
         let plateWithFilms =
-            { SeedSamples.glassPlate1mm with
-                structure =
-                    { SeedSamples.glassPlate1mm.structure with
-                        films = [ SingleLayer (layer MaterialIds.glass152 100.0) ] } }
+            {
+                glassPlate with
+                    structure =
+                        {
+                            glassPlate.structure with
+                                films = [ SingleLayer (layer MaterialIds.glass152 100.0) ]
+                        }
+            }
         Assert.Equal<string list>([ hasThinFilmsValue.value ], extractedKeys def (SampleItem plateWithFilms))
         Assert.False(applies def polarizerEntry)
 
@@ -640,16 +717,16 @@ module LibraryFacetsTests =
         // repeated cell AND as the closing single layer.
         Assert.Equal<string list>(
             [ "Transparent glass (n = 1.52)"; "Vacuum" ],
-            extractedKeys def (SampleItem SeedSamples.multilayerQw) |> List.sort)
+            extractedKeys def (SampleItem (BuiltinCatalogue.sample SampleIds.multilayerQwId)) |> List.sort)
         Assert.Equal<string list>(
             [ "Molybdenum (Mo, EUV)"; "Silicon (Si, EUV)" ],
-            extractedKeys def (SampleItem SeedSamples.euvMoSi) |> List.sort)
+            extractedKeys def (SampleItem (BuiltinCatalogue.sample SampleIds.euvMoSiId)) |> List.sort)
         // No films — the facet does not offer itself.
-        Assert.False(applies def (SampleItem SeedSamples.glassPlate1mm))
+        Assert.False(applies def (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)))
 
     [<Fact>]
     let ``film-material branches are name-sorted`` () =
-        let corpus = [ SampleItem SeedSamples.multilayerQw; SampleItem SeedSamples.euvMoSi ]
+        let corpus = [ SampleItem (BuiltinCatalogue.sample SampleIds.multilayerQwId); SampleItem (BuiltinCatalogue.sample SampleIds.euvMoSiId) ]
         let tree = buildTree (Representation [ sampleFilmMaterialKey ]) libraryDefs [] corpus
         let node = List.exactlyOne tree.facets
         Assert.Equal<string list>(
@@ -663,12 +740,12 @@ module LibraryFacetsTests =
     [<Fact>]
     let ``per-film thickness extracts one nm magnitude per layer`` () =
         let def = libraryDef sampleFilmThicknessKey
-        let glassFilm = numericValues def (SampleItem SeedSamples.glassFilm600)
+        let glassFilm = numericValues def (SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm600Id))
         Assert.Equal(1, List.length glassFilm)
         Assert.Equal(600.0, List.exactlyOne glassFilm, 1e-6)
         // The EUV stack's cell is two 2.65 nm layers: one value PER LAYER of
         // the cell (counted once — not per period, and never the period sum).
-        let euv = numericValues def (SampleItem SeedSamples.euvMoSi)
+        let euv = numericValues def (SampleItem (BuiltinCatalogue.sample SampleIds.euvMoSiId))
         Assert.Equal(2, List.length euv)
         for v in euv do
             Assert.Equal(2.65, v, 1e-6)
@@ -679,7 +756,7 @@ module LibraryFacetsTests =
         Assert.Equal(12.0, repeated[0], 1e-6)
         Assert.Equal(30.0, repeated[1], 1e-6)
         // Film-less samples do not offer the facet.
-        Assert.False(applies def (SampleItem SeedSamples.glassPlate1mm))
+        Assert.False(applies def (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)))
 
     [<Fact>]
     let ``per-film thicknesses flow into the step-10 buckets`` () =

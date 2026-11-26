@@ -1,0 +1,22 @@
+# Step 0023 — CLOSE_RED
+
+```step
+anchor: CLOSE_RED
+touches: [OpticalConstructor.Storage]
+depends_on: [22]
+required_gates: [build, elevation, constructor-unit-tests]
+closes: RED_0005
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CanonicalJson.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CanonicalJson.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** `CanonicalJson.options` gains two converters (001 §B; .spec-md §5). They sit beside `ComplexMatrixConverter` and are written as it is: private `JsonConverter` classes, registered before the `JsonFSharpConverter`. (1) `ComplexConverter` writes a `System.Numerics.Complex` as `[re, im]` and reads that pair back. (2) `RealMatrixConverter` writes a MathNet `Matrix<double>` as an array of rows and reads it back through `Matrix<double>.Build.DenseOfArray`, as `ComplexMatrixConverter` (moved from `ProjectJson.fs:92-123` in step 21) reads its cells. A malformed value throws `JsonException` inside the converter, and the callers already map that to `MalformedJsonErr` (as `ProjectJson.fs` `ProjectJsonText.parseProject` does). The options' doc names the two. No other option changes. The project, groups and environment formats gain the same form for a complex scalar. No schema constrains it (the `$defs` of `schema/optical-constructor-project.schema.json` hold no complex object), so their facts stay green.
+
+**Acceptance.** After the converters are added, constructor-unit-tests MUST pass, including `a complex number survives the shared options as its real and imaginary parts`, `a real matrix survives the shared options as its rows` and `an absorbing built-in material survives the shared options`, which step 22 left red; and build, elevation, constructor-unit-tests and the six s04 invariants MUST pass.

@@ -46,7 +46,7 @@ cd Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests && dotnet test --no-b
 # One class, or one test with all its theory rows (xUnit v3 filters, never VSTest's --filter)
 dotnet test --no-build -c Release --filter-method "BerremanTests.SolverTests.*" --filter-method "BerremanTests.SolverTests"
 
-# The ELEV analyzers over what you changed (repo root, after the build)
+# The ELEV analyzers (repo root, after the build; all projects without a base)
 powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
 ```
 
@@ -54,9 +54,15 @@ Test stack: **xUnit v3 on Microsoft.Testing.Platform**, **FsCheck**
 (property-based, run through `Check.One` inside a `[<Fact>]`),
 **FluentAssertions**, and **Avalonia.Headless** for UI tests. Run the relevant
 tests after every change; if your local build/tests are green, the matching
-gate is green too. `BerremanTests` takes about 30 minutes whole (the inverse-fit
-tests, spec 0044 `.manual/020`), so run the classes you touched; the two
-constructor suites take under a minute, `ui-tests` about three.
+gate is green too. `BerremanTests` takes about 52 minutes whole (51 min 44 s
+measured 2026-11-03; the inverse-fit classes alone run up to 997 s each, spec 0044
+`.manual/020`), so run the classes you touched; the two constructor suites take
+under a minute, `ui-tests` about three. No test, fixture, kit or database lives
+under `Documents`, `%APPDATA%` or `%LOCALAPPDATA%`; `OpticalConstructor.Ui.Tests`'
+own `appsettings.json` and `TestAppScope` (`testLocations`, `fileLocations`) put
+every location, the SQLite library (`:memory:` or a file) included, under the
+test run's output directory, and the committed kits under `data/` are opened
+read-only (spec 0050 §3.9, §3.12).
 
 **Release only.** There is no Debug configuration: the root
 `Directory.Build.props` defaults `Configuration` to Release and the root
@@ -143,17 +149,21 @@ Berreman/                              # solution root (Berreman.slnx, x64)
   OpticalProperties/  ...OpticalProperties          # material definitions (standard / active / dispersive)
   Analytics/       ...Analytics                      # Plotly.NET charting, ranged variables, Examples/*.fsx
   BerremanTests/                                     # solver unit tests (xUnit v3 + FsCheck)
+  BerremanTestSupport/                               # shared test ground truth: crystal samples, designs, the committed-kit locator
   BerremanRunner/  / BerremanModelGenerator/         # stale console apps kept on disk, NOT in Berreman.slnx
   OpticalConstructor/
-    OpticalConstructor.Domain         # pure domain (units, rays, placement, materials, project model)
+    Catalogue/Builtin/                # the shipped built-in library catalogue, as entry files
+    OpticalConstructor.Domain         # pure domain (units, rays, placement, materials, library entries, kits, setups, experiments, studies, planner)
     OpticalConstructor.Optimization   # fitting / inverse design (Alglib adapter, merit functions)
-    OpticalConstructor.Storage        # project files, JSON (de)serialization, schema validation, export
+    OpticalConstructor.Storage        # kit folders, entry and catalogue files, canonical JSON, schema validation, SQLite library proxies, export
+    OpticalConstructor.Database       # the C# EF Core library model: SQLite, `EnsureCreated` plus a schema stamp
     OpticalConstructor.Ui             # Avalonia FuncUI views (Elmish MVU)
     OpticalConstructor.App            # composition root that hosts the FuncUI shell
     OpticalConstructor.Tests          # domain/logic tests
     OpticalConstructor.Ui.Tests       # Avalonia.Headless UI smoke/structure tests
 MathNetNumerics/                       # customized MathNet.Numerics built FROM SOURCE (referenced, not a NuGet)
 Elevation/                             # the ELEV gate driver and its known-findings list (not a project)
+data/                                  # the committed reference experiment kits, read-only to tests
 ```
 
 `Softellect.Berreman.Core` references `MathNetNumerics/FSharp` and
@@ -374,20 +384,15 @@ declaration with `[<ElevationBoundary(nameof IoBoundary, "<reason>")>]` (or
 bulk numbers on purpose with `[<NumericCarrier("<reason>")>]`. Both are
 `Softellect.Sys` types, matched by name.
 
-The gates are `elevation` (the projects a step touches, plus their dependents)
-and `elevation-full` (every project). **ELEV004 is excluded in the gate command,
-not in the rules**, as in STL. The tree's findings when the gates were set up are
-recorded in `Elevation/elevation-known-findings.json`: a recorded finding does
-not fail the gate, a new one does, and so does a recorded one that is gone. **Fix
-a finding and delete its entry in the same change; never add an entry and never
-re-record the list.**
-
-The cleanup is the ELEV ledger `specs/0048/.manual/002-elevation-ledger.jsonl`,
-one row per unit of work, built from that list the way STL builds its elevation
-ledgers. Its plan, with the operator's rulings, is `002-elevation-plan.md`
-beside it. A row closes in the change that clears its last file, and nothing is
-deferred. A row that cannot be closed as ruled is marked `blocked` with its
-question.
+The gates are `elevation` (changes since ASG's immutable arc-start commit, plus
+uncommitted changes and dependents) and `elevation-full` (every project).
+Standalone elevation without `-Base` analyzes every project; ASG supplies its
+origin through `ASG_ARC_BASE_COMMIT` (spec 0050 `.manual/013`).
+**ELEV004 is excluded in the gate command,
+not in the rules**, as in STL. **The tree is ELEV-clean** (spec 0048 closed the
+cleanup): `Elevation/elevation-known-findings.json` lists no finding, so every
+finding fails the gate. **Never add an entry, never re-record the list, and never
+edit `.elevation-analyzers.json` or the analyzers to silence a finding.**
 
 ---
 
@@ -455,6 +460,13 @@ click harder.
 
   Never scatter id strings through the codebase, and never use a module of
   `[<Literal>]`s or `[<RequireQualifiedAccess>]`.
+
+  Here the type is `ConstructorUiId` (`OpticalConstructor.Controls/UiIds.fs`). An
+  id derived from a Domain value is an extension member of `ConstructorUiId` in
+  the project that owns the value's type
+  (`OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs`).
+- **Every user action is a semantic Elmish message.** The button and the test
+  send the same message, so tests drive by meaning, never by pixels.
 - **Three test layers, in this order:** (1) domain/model unit tests for behavior;
   (2) `Avalonia.Headless` tests for UI structure, input, layout, and rendered
   frames (the `ui-smoke` gate opens the host and renders one frame per view);
@@ -487,6 +499,17 @@ This is a spec-driven, gated repository.
   prompt that waits for user input.
 - Route persistent worker output only into the per-arc `.artifacts/` folder,
   never `%TEMP%` / `%LOCALAPPDATA%`.
+- **No legacy, no migration** (there is no release yet). Superseded code is
+  deleted in the change that replaces it. A stored format whose version differs
+  from the app's is a typed error: no schema up-converters, no EF Core migrations
+  (`EnsureCreated` plus a schema stamp), no compatibility shims, no fallback
+  readers, no "keep the old path as an option".
+- **Reuse, never copy.** A reuse is a move or a call: the change that adds code
+  at its new home deletes it at the old one. A duplicated function body, a
+  re-transcribed constant or a second parser for one format is a defect.
+- **Nothing is deferred** (operator, 2026-11-01). A step finishes what it is
+  asked for: no stub, no TODO, no "later" or "follow-up". Work that cannot be
+  finished as written stops with its question.
 - **Build machines run without OneDrive** (operator ruling, 2026-11-01). ASG's
   `Disable-OneDrive.ps1` removes it for every account and keeps it out, so
   Documents, Desktop and `%APPDATA%` are on the local disk. No build step, gate,
@@ -501,7 +524,8 @@ This is a spec-driven, gated repository.
 - **Line endings: LF.** `.gitattributes` stores all text as LF and `core.autocrlf`
   is `false`. After editing, verify you did not introduce CRLF churn
   (`git diff --numstat` vs `--ignore-cr-at-eol`) and convert back to LF if it
-  appears.
+  appears. The lab files under `data/optics-mueller/data/raw/` are the exception,
+  kept byte for byte by their `-text !eol` rule (spec 0050 S9.4), and are never converted.
 - **x64 only.** The solution declares x64 as its single platform; the root
   `Directory.Build.props` defaults `Platform` to x64 so `dotnet test --no-build`
   resolves the same `bin\x64\Release\` tree the build produces. Do not add
@@ -525,12 +549,55 @@ This is a spec-driven, gated repository.
   `Mirror` sample geometry); lenses AND polarizers are T-only (locked — a splitting polarizer
   would be a new kind); a source emits; samples carry R and T.
 - **An experiment runs on the light's real path** (`ExperimentRun` + `chartForRun`): for each
-  captured branch the DETECTOR on it decides the quantity (intensity → S₀, ellipsometer → Ψ, Δ);
-  polarizers before the sample prepare the input (the first sets a unit-intensity state), the
-  sample acts at its drawn incidence and spin (its R1), polarizers after it analyze. The sample's
-  transmitted Mueller matrix is FLUX-normalized (`Propagation.sampleMuellerSpun`) — the engine's
+  captured branch the DETECTOR on it decides the quantity (intensity → S₀, ellipsometer → Ψ, Δ),
+  and a detector captures the branch by which its light leaves the last object on its path;
+  every element on the path acts in light order through its Mueller matrix from `ItemEvaluation`
+  (a polarizer at its R1, every sample at its drawn incidence and spin for the branch the path
+  leaves it by), and the source emits its own Stokes state times its intensity scale, by default
+  unpolarized with the unit scale after the first polarizer. An experiment's chart is its scan's:
+  one series per value of the outer axes and captured branch, over the last axis of each block. The
+  sample's transmitted Mueller matrix is FLUX-normalized (`Propagation.sampleMuellerSpun`) — the engine's
   Mueller matrices are |E|²-based, its T is flux. Only a TUNABLE source (`SourceTuning`) can have
   its wavelength varied, within its limits, or set per experiment (`sourceWaveLengthOpt`).
+- **The table is the active setup.** Its elements are the setup's slots (`Setups.fs`), the source
+  first; a slot holds a kit item or nothing, and a dial-mounted item records its raw dial reading.
+  An experiment references its setup by name and revision, and recording a changed table over a
+  revision an experiment references mints the next revision (`Lifecycle.decideVersioning`).
+- **Names come from the kit's naming template** (`NamingTemplates.fs`, spec 0050 S8.3): `{source}` is the polarization
+  source (Prep 1), `{light}` the light source, `{obj<k>}` / `{phi<k>}` the objects and their angles (a dial reading or
+  R1), then `{analyzer}`, `{detector}` and `{note}`; an empty second or later slot of a role, or an empty note, is left
+  out with the text before it, and `{source:CPL1=CPL}` writes an item under another name. A new setup takes the
+  template's name made free (`setupNameAmong`), one it cannot name keeps `Setup <n>`; the reference pipeline reads the
+  lab's labels through `NamingTemplate.standard`, and the grid generator is `SetupGrids.fs`.
+- **An experiment is a scan over a setup revision** (`Experiments.fs`, spec 0050 S9.1): blocks of axes, each axis one
+  variable of one slot over its range (a dial-mounted item scans its raw reading); a block is the product of its axes,
+  the first outermost, read on its capture; its name comes from the kit's template (else `E<n>`) and is its file's
+  stem; its role, session and notes and its mapped attachment (import profile and row selection) live in its file; its
+  data badge is `ExperimentDataBadge.ofCheck`.
+- **Lab files are read through import profiles** (`ImportProfiles.fs`, `LabFileImport.fs`, spec 0050 S9.2): an experiment's
+  data is a kit file, a profile name and a row selection; a profile is a built-in (`Intensity series`,
+  `Ellipsometric series`, `Phone ROI CSV`, `Mueller-matrix observations`, each calling its parser) or a named column mapping
+  in `.kit-json`, never replaced once saved; `ChosenImportProfile.mapText` is the one read and `MappedPoints.validatedFor`
+  the one validation; the app writes only observation files (`KeyedObservation.observationFileText`); Attach data file…
+  opens the wizard, whose Attach sends `SaveImportProfile` then `AttachDataFile`.
+- **The Inverse flow ends at the study** (`Studies.fs`, `StudyEngine.fs`, `StudyPublishing.fs`, spec 0050 S11): the Inverse flow adds
+  Unknowns → Plan → Fit → Results → Publish after Data; a study fits experiments of one kit, running on `JobRunner` through the shell's `StudyFitJobHost` and
+  writing one append-only `<study>@<stamp>.fitrun-json` on completion. Plan runs the Measurement Planner (`MeasurementPlanner.fs`, `PlannerInformation.fs`,
+  `PlannerRuns.fs`, spec 0050 S14) on `JobRunner`, caches each candidate's Jacobian under `.oc/planner/` (derived, safe to delete, never sent, never written
+  by a read-only open), and Add to kit writes `PlannedRun` experiments. Publish calibration writes each item's next revision (`CalibratedParameter`); Promote
+  to library mints the entry's next library version under `FitProvenance` and snapshots it into the kit. There is no hand-off window.
+- **The Data step never edits a lab file** (`DataSplits.fs`, `ExperimentMatrices.fs`, `DataStepView.fs`, spec 0050 S9.3): an
+  exclusion numbers a point of its mapped attachment (`MappedPointNumber`, one per point, with its reason) and a new
+  attachment starts with none; `MappedPoints.keptBy` is the one rule from exclusions to the points validated and fitted; a
+  correction re-points `Experiment.setup` and appends its audit note, the name kept; a split groups a file by its profile's
+  key column (`splitGroups`) and `DataSplit.ofGroups` matches by name, then by the template, else offers the setup the name
+  describes; `MatchByTemplate` attaches the file once, each group as `KeyedDataRows`.
+- **The slot bar is the quick swap** (`SlotBarView.fs`, spec 0050 S8.4): one chip per slot in light order, directly
+  above the table, each listing the kit items that fit its slot (`SetupSlot.fittingItems`); choosing one is `SwapSlot`
+  (the held setup of that content, else a new one), Tab moves between chips and a typed letter picks (`pickedByLetter`).
+  `Record experiment` is `RecordExperiment`, a new experiment of the draft over the active setup every time (the direct
+  problem), while `ExpCommit` edits the draft's own; `Setup grid…` opens `SetupGridView.fs` over `SetupGridDraft`, whose
+  Generate is `GenerateSetupGrid`.
 - **The constructor is checked against the Analytics example scripts** (`FsxAcceptanceTests`,
   trait `fsx-acceptance`, ~1.5 min): each drives the headless app to build the script's table,
   exports the run through `ExperimentExportProxy`, and compares it with `Variables.calculate`.
@@ -544,9 +611,12 @@ This is a spec-driven, gated repository.
   WrapPanel (or a wrapping TextBlock) inside a horizontal StackPanel: it gets an unbounded width and never
   wraps — dock the label in a DockPanel instead. A plain wheel over the Main table scrolls the page until
   the table is fully in view, then zooms it (`wheelTarget`); with a modifier it is always the table's.
-- **Main ribbon:** Add (opens first) · Rotate · Move · Render · Select · Experiments · Details. The
-  Experiments bay's "Data files" section (Attach data file…) is the Inverse constructor's alone; a
-  collected experiment's View opens its chart (there is no separate Open chart button).
+- **Main ribbon:** Add (opens first) · Rotate · Move · Render · Select · Experiments · Details. Attach data
+  file… lives in the Inverse constructor's Data step (`DataStepView.fs`), not in the Experiments bay; a
+  collected experiment's View opens its chart (there is no separate Open chart button). The kit window's
+  left flow strip (`FlowStripView.fs`, `ConstructorFlowStep.stepsOf`) reaches Items, Setups and Experiments,
+  the last being this bay, in both constructors, and Data, Unknowns, Plan, Fit, Results and Publish in the
+  Inverse one alone.
 - **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
   `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
   the beam root is its 3-D centre, so moving it carries the whole beam — an x move included: the
@@ -559,14 +629,40 @@ This is a spec-driven, gated repository.
   (`raySpan` / `alongBeamRange`). The Main Rotate bay uses `RotationControls.wrappingView`; the
   rotation test windows keep the single-row `view`, because their headless tests click fixed
   window coordinates.
-- **The Main scene's Library is LIVE** (`Library.liveLibrary`: the seeded presets over the samples
-  and user-sources stores, composed in `AppContext.create`), so a sample or source created in the
-  Library window binds AND resolves on the table. User light sources live in `SourceProxy`
-  (edited by `LightSourceEditorView` / `LightSourceEditorWindow`); the seeded lasers and UV / EUV
-  lithography sources (`SeedSources`) are protected presets. A source is its wavelength.
+- **The Main scene's Library is LIVE** (`Library.liveLibrary`: the preset store over the samples
+  and user-sources stores). `AppContext.create` checks `Catalogue/Builtin/` and every registered
+  catalogue folder on every start through `CatalogueImportContext.importOnStart`, holding changed
+  rows for confirmation before import; a sample or source created in the Library window binds AND
+  resolves on the table. User light sources live in `SourceProxy` (edited by `LightSourceEditorView` /
+  `LightSourceEditorWindow`); the built-in lasers and UV / EUV lithography sources named by `PresetIds`
+  are protected presets. A source is its wavelength.
+- **The library is data, not code** (spec 0050 S1-S3): every material, sample, source, polarizer, detector, item model and category is a versioned
+  entry file (`<name>.material-json` and so on: canonical JSON with its SHA-256, `LibraryEntryEnvelope`) held in the SQLite library database
+  (`library.db`, the `OpticalConstructorSqlite` connection string; EF Core `EnsureCreated` plus a schema stamp, never a migration); the built-ins
+  ship as `Berreman/OpticalConstructor/Catalogue/Builtin/`, imported with every registered catalogue folder on every start by manifest hash
+  (`CatalogueImportContext.importOnStart`); code names a built-in only by its frozen GUID (`MaterialIds`, `CategoryIds`, `SampleIds`, `PresetIds`, `ItemModelIds`)
+  and holds no seed value; a library of another schema is `LibrarySchemaMismatchErr`, which the Launcher remedies with Recreate library from catalogues.
+- **Everything else lives in a kit folder** (`Kit.fs`, `KitOpening.fs`, spec 0050 S4-S12): a folder holding `.kit-json`, its root flat
+  (`<label>.item-json`, `<name>.setup-json`, `<name>.experiment-json`, `<study>.study-json`, append-only `<study>@<stamp>.fitrun-json`)
+  with three subfolders: `library/` (a snapshot of every library version the kit uses, so it opens on any machine), `data/` (lab
+  files the app only reads, referenced by relative path and SHA-256) and `.oc/` (the lock and the Planner's derived cache, never
+  sent); logic reaches it only through `KitProxy` (`KitProxy.create (folder : KitFolder)`) in a `KitContext`; every write is atomic
+  (`*.tmp`, then replace), a read-only open writes nothing, and a file of another schema version is `UnsupportedSchemaVersionErr`.
+- **Main and Inverse open the kit start screen** (`KitStartView.fs`, `KitStartWindow.fs`, spec 0050 S5-S6): New kit… (an empty folder
+  is initialised, a folder with files keeps them), Open kit…, Open kit from zip… and the history (`KitHistoryProxy` in the per-user
+  preferences, at most `KitHistoryLimit`, starred first); a chosen kit opens the constructor of that mode, one window per kit,
+  titled by the kit and its folder; Materials and Library need no kit; the Launcher's footer link opens Data locations, every
+  `DataLocations` path, each overridable in `appsettings.json`.
 - **Never touch `*.nb` files.** Mathematica notebooks are treated as pure binary
   (no EOL, no diff, no merge). Leave them alone.
 - **Vendored MathNet.Numerics** is built from source under `MathNetNumerics/`;
   reference the projects, not the NuGet.
-- Scratch/working folders (`Temp/`, `!Temp/`, `specs_copy/`, `data/`) are not the
+- Scratch/working folders (`Temp/`, `!Temp/`, `specs_copy/`) are not the
   product — don't build product code there.
+- `data/` holds the committed reference experiment kits (spec 0050 `.manual/001` §1),
+  one subfolder each. Only `data/chroma/` (the web app's knowledge base) and each kit's
+  `.oc/` are git-ignored. Tests open those kits read-only and never write into `data/`.
+- **The reference kits are AT-1's and AT-2's output, never hand-edited** (`KitAcceptanceTests.fs`, spec 0050 S12).
+  `data/optics-mueller/` is exactly AT-1's build output and `data/absorbing-biaxial-noisy/` AT-2's, five observation files
+  included, `.oc/` aside; output changes re-run `the built optics-mueller kit equals the committed kit file by file` or
+  `the built absorbing-biaxial-noisy kit equals the committed kit file by file` and re-commit what it names in the same step.

@@ -1,0 +1,289 @@
+{
+  "campaign_status": "complete",
+  "plan_approval_requested": true,
+  "plan_approved": true,
+  "sections": [
+    {
+      "name": "S1.1 -- Every dispersion axis is data: tabulated and transcendental cases",
+      "status": "authored",
+      "commit_ref": "d16b189",
+      "spec_jsonl_lines": 9
+    },
+    {
+      "name": "S1.2 -- A material's physics is its complexity",
+      "status": "authored",
+      "commit_ref": "1eaaefc",
+      "spec_jsonl_lines": 14
+    },
+    {
+      "name": "S1.3 -- Every library entry is identified by a frozen GUID",
+      "status": "authored",
+      "commit_ref": "e6ed7ea",
+      "spec_jsonl_lines": 20
+    },
+    {
+      "name": "S1.4 -- Library entry files: envelope, provenance, canonical JSON, content hash, schemas",
+      "status": "authored",
+      "commit_ref": "4eb7929",
+      "spec_jsonl_lines": 31
+    },
+    {
+      "name": "S1.5 -- The built-in catalogue generated once from the code seeds",
+      "status": "authored",
+      "commit_ref": "553c420",
+      "spec_jsonl_lines": 36
+    },
+    {
+      "name": "S1.6 -- CatalogueImport replaces seeding; the app and the tests load the catalogue",
+      "status": "authored",
+      "commit_ref": "c7dfe6b",
+      "spec_jsonl_lines": 44
+    },
+    {
+      "name": "S1.7 -- The code seed values are deleted",
+      "status": "authored",
+      "commit_ref": "4250beb",
+      "spec_jsonl_lines": 58
+    },
+    {
+      "name": "S2.1 -- The library model in EF Core, created without migrations",
+      "status": "authored",
+      "commit_ref": "b5b20ef",
+      "spec_jsonl_lines": 64
+    },
+    {
+      "name": "S2.2 -- Pinned replaces VersionsInUse; SQLite materials and categories",
+      "status": "authored",
+      "commit_ref": "d2ea45f",
+      "spec_jsonl_lines": 71
+    },
+    {
+      "name": "S2.3 -- SQLite samples, sources, presets and the live library",
+      "status": "authored",
+      "commit_ref": "2f2f782",
+      "spec_jsonl_lines": 80
+    },
+    {
+      "name": "S2.4 -- Database location, settings, backup and restore; the app runs on the database",
+      "status": "authored",
+      "commit_ref": "0276e93",
+      "spec_jsonl_lines": 90
+    },
+    {
+      "name": "S3.1 -- Import on every start and the per-entry decision table",
+      "status": "authored",
+      "commit_ref": "31acd24",
+      "spec_jsonl_lines": 101
+    },
+    {
+      "name": "S3.2 -- The import dialog and single-file drop",
+      "status": "authored",
+      "commit_ref": "92f0043",
+      "spec_jsonl_lines": 112
+    },
+    {
+      "name": "S3.3 -- Export, Export my library and licence attribution",
+      "status": "authored",
+      "commit_ref": "903dcb1",
+      "spec_jsonl_lines": 121
+    },
+    {
+      "name": "S4.1 -- The kit file, KitFolder, KitProxy and KitContext",
+      "status": "authored",
+      "commit_ref": "cfd7e4f",
+      "spec_jsonl_lines": 131
+    },
+    {
+      "name": "S4.2 -- Attachments by relative path and hash; the library snapshot and its resolution",
+      "status": "authored",
+      "commit_ref": "7c2d496",
+      "spec_jsonl_lines": 144
+    },
+    {
+      "name": "S4.3 -- Today's experiments and scenes persist in the kit; the in-memory seams go",
+      "status": "authored",
+      "commit_ref": "cffbcba",
+      "spec_jsonl_lines": 156
+    },
+    {
+      "name": "S4.4 -- The .ocproj aggregate is deleted",
+      "status": "authored",
+      "commit_ref": "5c326b2",
+      "spec_jsonl_lines": 161
+    },
+    {
+      "name": "S5.1 -- The kit history over the per-user preferences",
+      "status": "authored",
+      "commit_ref": "69217d5",
+      "spec_jsonl_lines": 169
+    },
+    {
+      "name": "S5.2 -- The kit start screen and the Launcher",
+      "status": "authored",
+      "commit_ref": "ff41ee4",
+      "spec_jsonl_lines": 180
+    },
+    {
+      "name": "S5.3 -- The kit window: title, Kit menu, lock, reload and mode; Data locations",
+      "status": "authored",
+      "commit_ref": "00028cb",
+      "spec_jsonl_lines": 195
+    },
+    {
+      "name": "S6 -- Send and receive kits; copy experiments between kits",
+      "status": "authored",
+      "commit_ref": "e67bf7a",
+      "spec_jsonl_lines": 211
+    },
+    {
+      "name": "S7.1 -- Items, parameters and item models",
+      "status": "authored",
+      "commit_ref": "bd8a879",
+      "spec_jsonl_lines": 229
+    },
+    {
+      "name": "S7.2 -- The Items panel, the flow strip and item mapping on copy",
+      "status": "authored",
+      "commit_ref": "8da6167",
+      "spec_jsonl_lines": 243
+    },
+    {
+      "name": "S8.1 -- The run law walks every object; the source is real",
+      "status": "authored",
+      "commit_ref": "bd79793",
+      "spec_jsonl_lines": 254
+    },
+    {
+      "name": "S8.2 -- Setups as slots",
+      "status": "authored",
+      "commit_ref": "461b150",
+      "spec_jsonl_lines": 266
+    },
+    {
+      "name": "S8.3 -- The naming template and the grid generator",
+      "status": "authored",
+      "commit_ref": "73fd344",
+      "spec_jsonl_lines": 276
+    },
+    {
+      "name": "S8.4 -- The slot bar, quick swap and the direct problem",
+      "status": "authored",
+      "commit_ref": "4316371",
+      "spec_jsonl_lines": 284
+    },
+    {
+      "name": "S9.1 -- Experiments v2: scans, roles, sessions and attachments",
+      "status": "authored",
+      "commit_ref": "af2bc41",
+      "spec_jsonl_lines": 297
+    },
+    {
+      "name": "S9.2 -- Import profiles and the column-mapping wizard",
+      "status": "authored",
+      "commit_ref": "07262a3",
+      "spec_jsonl_lines": 312
+    },
+    {
+      "name": "S9.3 -- One file, many experiments; exclusions, corrections, the Data step and the experiment matrix",
+      "status": "authored",
+      "commit_ref": "0879742",
+      "spec_jsonl_lines": 328
+    },
+    {
+      "name": "S9.4 -- The optics-mueller lab files move into the kit folder",
+      "status": "authored",
+      "commit_ref": "7af92b7",
+      "spec_jsonl_lines": 331
+    },
+    {
+      "name": "S10.1 -- The bench noise model and the fit harness move into Optimization",
+      "status": "authored",
+      "commit_ref": "da76018",
+      "spec_jsonl_lines": 343
+    },
+    {
+      "name": "S10.2 -- BerremanTestSupport: the shared ground truth and designs",
+      "status": "authored",
+      "commit_ref": "d540f53",
+      "spec_jsonl_lines": 347
+    },
+    {
+      "name": "S10.3 -- The staged Mueller pipeline and its reference values are promoted",
+      "status": "authored",
+      "commit_ref": "0aabacc",
+      "spec_jsonl_lines": 352
+    },
+    {
+      "name": "S11.1 -- Studies: unknowns, scopes, links, sessions and opened materials",
+      "status": "authored",
+      "commit_ref": "20d8cef",
+      "spec_jsonl_lines": 366
+    },
+    {
+      "name": "S11.2 -- The forward model of an experiment and the study residual",
+      "status": "authored",
+      "commit_ref": "b975df1",
+      "spec_jsonl_lines": 379
+    },
+    {
+      "name": "S11.3 -- Engines, staged and joint fits, and append-only fit runs",
+      "status": "authored",
+      "commit_ref": "5817381",
+      "spec_jsonl_lines": 393
+    },
+    {
+      "name": "S11.4 -- Fit results: uncertainty, correlation, realizability, product check, profile likelihood",
+      "status": "authored",
+      "commit_ref": "27a0f31",
+      "spec_jsonl_lines": 404
+    },
+    {
+      "name": "S11.5 -- Publishing, the study view; the solver hand-off stub goes",
+      "status": "authored",
+      "commit_ref": "e36b20a",
+      "spec_jsonl_lines": 419
+    },
+    {
+      "name": "S12.1 -- AT-1 and the optics-mueller reference kit",
+      "status": "authored",
+      "commit_ref": "72b9e7c",
+      "spec_jsonl_lines": 430
+    },
+    {
+      "name": "S12.2 -- AT-2 and the absorbing-biaxial-noisy reference kit",
+      "status": "authored",
+      "commit_ref": "61ba4c1",
+      "spec_jsonl_lines": 440
+    },
+    {
+      "name": "S13.1 -- MaterialSourceProxy and refractiveindex.info",
+      "status": "authored",
+      "commit_ref": "f0ad8d0",
+      "spec_jsonl_lines": 452
+    },
+    {
+      "name": "S13.2 -- PTB OCDB, the Henke compound calculator and glass catalogues",
+      "status": "authored",
+      "commit_ref": "b9601af",
+      "spec_jsonl_lines": 464
+    },
+    {
+      "name": "S14.1 -- The Measurement Planner: kit inputs and the structural layer",
+      "status": "authored",
+      "commit_ref": "4d81844",
+      "spec_jsonl_lines": 475
+    },
+    {
+      "name": "S14.2 -- The Planner's numerical layer, the plan, the cache and the Plan view",
+      "status": "authored",
+      "commit_ref": "55f065a",
+      "spec_jsonl_lines": 492
+    },
+    {
+      "name": "Close -- the composition root and the whole-tree proof",
+      "status": "authored",
+      "commit_ref": "649bd12",
+      "spec_jsonl_lines": 494
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "categoryOpt": null,
+  "contentHash": "391cb60ca34fa03f0b7118c1af9f13d828b840227e876266c9569de7ca3009d8",
+  "descriptionOpt": "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum.",
+  "id": "9f49dcfa-dede-4858-8757-216443deeba3",
+  "name": "Glass thin film (n=1.52, 200 nm)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [
+            {
+              "Case": "SingleLayer",
+              "Fields": [
+                {
+                  "materialId": {
+                    "materialId": "55750ee2-358c-40d4-ab6c-06fc144adbf8",
+                    "version": 1
+                  },
+                  "orientation": "PrimaryAxes",
+                  "thickness": {
+                    "Case": "Thickness",
+                    "Fields": [
+                      2.0000000000000002E-07
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "lower": null,
+          "substrate": null
+        },
+        "substrate": "ThinFilm",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

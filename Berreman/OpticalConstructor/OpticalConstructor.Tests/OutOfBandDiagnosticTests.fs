@@ -1,20 +1,20 @@
 namespace OpticalConstructor.Tests
 
-open System.Numerics
-open Berreman.MathNetNumericsMath
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.OutOfBandDiagnostic
+open OpticalConstructor.Tests.CrystalMaterialFixtures
 open Xunit
 
 /// Spec 0038 Part I (step 031) — the pure OUT-OF-BAND dispersion diagnostic. A fixed 600 nm request
 /// inside a 300–700 nm segment MUST NOT flag; a 200–800 nm sweep against the same segment MUST flag,
 /// naming the material and both ranges; multi-segment unions cover a request spanning them (a gap does
-/// not); a CONSTANT material (and a coded-preset `complexity = None`) NEVER flags. The requested-
+/// not); a CONSTANT material (and BuiltinCatalogue.material's unbounded band) NEVER flags. The requested-
 /// wavelengths derivation and the tooltip/Details text are proven here too — all without a window.
 module OutOfBandDiagnosticTests =
 
@@ -33,9 +33,10 @@ module OutOfBandDiagnosticTests =
         { eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex 1.5)); magnetic = None; active = None }
 
     /// A dispersive material complexity whose eps carries exactly the given segment intervals (the
-    /// per-axis dispersion content is irrelevant to the diagnostic, so a flat evaluated axis seeds it).
+    /// per-axis dispersion content is irrelevant to the diagnostic, so a flat data axis seeds it: the
+    /// constant `RealNK` n = 1.5, k = 0 that `ConstantNK` lowers to, spec 0050 step 9).
     let private dispersiveComplexity (segments : WaveLengthInterval list) : MaterialComplexity =
-        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (Complex.create 1.5 0.0))
+        let axis = (ConstantNK { n = 1.5; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }).toEpsAxis
         {
             eps =
                 segments
@@ -46,16 +47,19 @@ module OutOfBandDiagnosticTests =
             active = None
         }
 
-    /// A library material entry wrapping a complexity (its `properties` derived from it, as the seeds do).
-    let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
+    /// A library material entry holding a physics.
+    let private physicsEntryOf (name : string) (physics : MaterialPhysics) : MaterialEntry =
         {
             id = newMaterialId ()
             name = EntryName name
             category = CategoryIds.glass
             description = None
-            properties = c.toProperties
-            complexity = Some c
+            physics = physics
         }
+
+    /// A library material entry wrapping a complexity.
+    let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
+        physicsEntryOf name (ComplexityPhysics c)
 
     // ============================ the acceptance cases ============================
 
@@ -105,16 +109,18 @@ module OutOfBandDiagnosticTests =
         Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 100.0 2000.0)))
 
     [<Fact>]
+    let ``a crystal-parameter material never flags out of band`` () =
+        // Spec 0050 S11.1: a crystal's tensors hold at every wavelength, so it defines no segment to leave.
+        for crystal in crystals do
+            let entry = physicsEntryOf "Crystal" (CrystalParameterPhysics crystal)
+            Assert.Empty((ReachableMaterial.ofEntry entry).definedSegments)
+            Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 300.0 900.0)))
+
+    [<Fact>]
     let ``a coded-preset material (spectrum-spanning band) never flags`` () =
-        // Silicon is dispersive but its dispersion is a CODED closure valid at every
-        // wavelength (spec 0040 step 004 re-seeds it with a single spectrum-spanning
-        // segment — an UNBOUNDED band), so no request can leave its defined range and
-        // the diagnostic never flags it — exactly as the former `complexity = None`
-        // coded preset never flagged.
-        let silicon = builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
-        match silicon.complexity with
-        | Some _ -> ()
-        | None -> Assert.Fail "silicon must carry a complexity value tree after the step-004 re-seed"
+        // BuiltinCatalogue.material retains Silicon's spectrum-spanning segment, so no request
+        // leaves its defined range (spec 0040 step 004; spec 0050 S1.7).
+        let silicon = BuiltinCatalogue.material MaterialIds.silicon
         Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 200.0 800.0)))
         // Even an extreme sweep is covered by the unbounded band.
         Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 1.0 100000.0)))
@@ -164,20 +170,62 @@ module OutOfBandDiagnosticTests =
     [<Fact>]
     let ``requestedWavelengthsOf: a wavelength-sweep experiment requests its range; a dark line is fixed`` () =
         let fixedλ = nm 600.0
+        // A test-local setup revision both runs reference (spec 0050 S8.2).
+        let bench : OpticalConstructor.Domain.Kit.SetupReference =
+            {
+                name = OpticalConstructor.Domain.Kit.SetupName "Bench"
+                revision = OpticalConstructor.Domain.Kit.SetupRevision 1
+            }
+        // The source's wavelength over `lo`…`hi` nm.
+        let sourceSweep (lo : float) (hi : float) : ScanAxis =
+            {
+                elementId = OpticalConstructor.Domain.Library.ElementId "src"
+                label = ElementLabel "Light source #1"
+                variable = VaryWaveLength
+                range = { min = OpticalConstructor.Domain.Propagation.SweptValue lo; max = OpticalConstructor.Domain.Propagation.SweptValue hi; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
+            }
         let sweep : Experiment =
             {
                 id = ExperimentId 1
-                setup = []
-                varied = Some { VariedElement.elementId = OpticalConstructor.Domain.Library.ElementId "src"; variable = VaryWaveLength }
-                measurement = CaptureTransmitted
-                range = { min = OpticalConstructor.Domain.Propagation.SweptValue 200.0; max = OpticalConstructor.Domain.Propagation.SweptValue 800.0; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
-                dataFileOpt = None
-                sourceWaveLengthOpt = None
+                name = (ExperimentId 1).defaultName
+                setup = bench
+                scan = ExperimentScan.oneAxis (sourceSweep 200.0 800.0) CaptureTransmitted None
+                role = ScienceRun
+                sessionOpt = None
+                notes = ExperimentNotes.none
+                dataOpt = None
+                corrections = []
             }
         Assert.Equal(SweptWavelengths (band 200.0 800.0), requestedWavelengthsOf fixedλ sweep)
-        // A dark line (varied = None) has no sweep, so it runs at the fixed source λ.
-        let darkLine = seedExperiments |> List.head
+        // A dark line (a block of no axis) has no sweep, so it runs at the fixed source λ.
+        let darkLine : Experiment =
+            {
+                sweep with scan = ExperimentScan.darkLine CaptureTransmitted
+            }
         Assert.Equal(FixedWavelength fixedλ, requestedWavelengthsOf fixedλ darkLine)
+        // Spec 0050 S9.1: two blocks sweeping 300…500 nm and 400…700 nm request their span, 300…700 nm; an R1 axis
+        // beside them requests nothing more.
+        let analyzerTurn : ScanAxis =
+            {
+                elementId = OpticalConstructor.Domain.Library.ElementId "lp"
+                label = ElementLabel "Linear polarizer #2"
+                variable = VaryR1
+                range = VariableRange.forVariable VaryR1
+            }
+        let twoSweeps : Experiment =
+            {
+                sweep with
+                    scan =
+                        {
+                            blocks =
+                                [
+                                    { axes = [ sourceSweep 300.0 500.0 ]; capture = CaptureTransmitted }
+                                    { axes = [ analyzerTurn; sourceSweep 400.0 700.0 ]; capture = CaptureBoth }
+                                ]
+                            sourceWaveLengthOpt = None
+                        }
+            }
+        Assert.Equal(SweptWavelengths (band 300.0 700.0), requestedWavelengthsOf fixedλ twoSweeps)
 
     // ============================ the tooltip / Details text ============================
 

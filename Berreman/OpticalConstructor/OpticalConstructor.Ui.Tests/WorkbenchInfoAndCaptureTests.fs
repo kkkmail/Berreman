@@ -15,15 +15,16 @@ open Berreman.Fields
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.LibraryBackup
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0046 — what an element is (the hover tooltip and the element menu's header, the menu sized to its
@@ -36,10 +37,10 @@ module WorkbenchInfoAndCaptureTests =
     module LW = LibraryWindowView
     module SE = LightSourceEditorView
 
-    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
-    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, ElementValueId entryId)) m
-    let private glassFilm200Id : string = (SampleItem SeedSamples.glassFilm200).entryId.value
-    let private glassPlate1mmId : string = (SampleItem SeedSamples.glassPlate1mm).entryId.value
+    let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
+    let private bind (i : int) (entryId : ElementValueId) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, entryId)) m
+    let private glassFilm200Id : ElementValueId = (SampleItem (BuiltinCatalogue.sample SampleIds.glassFilm200Id)).entryId
+    let private glassPlate1mmId : ElementValueId = (SampleItem (BuiltinCatalogue.sample SampleIds.glassPlate1mmId)).entryId
 
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =
         TableScene.projectOnScene m.view (m.snappedCentres.[SceneElementIndex i])
@@ -65,7 +66,7 @@ module WorkbenchInfoAndCaptureTests =
 
     [<Fact>]
     let ``elementInfo names the element and its bound entry, or says it is unbound`` () =
-        let m = initMain () |> bind 0 "src-hene-633" |> updateTableAndElementRotation (AddElement CatalogueKind.Sample)
+        let m = SceneTestFixture.mainScene () |> bind 0 PresetIds.heNe633 |> updateTableAndElementRotation (AddElement CatalogueKind.Sample)
         let heading, detail = (fun (info : ElementInfo) -> info.heading.value, info.detail.value) (elementInfo m (SceneElementIndex 0))
         Assert.Equal("Light source #1", heading)
         Assert.Contains("HeNe laser 632.8 nm", detail)
@@ -76,7 +77,7 @@ module WorkbenchInfoAndCaptureTests =
     [<Trait("Category", "ui-smoke")>]
     let ``hovering an element shows what it is, and its menu says the same, wrapped, at most 460 px wide`` () =
         HeadlessSession.run (fun () ->
-            let m = initMain () |> bind 0 "src-arf-193"
+            let m = SceneTestFixture.mainScene () |> bind 0 PresetIds.arf193
             let window = mountView m ignore
             match findControl window (ConstructorUiId.elementHover (ElementId "src")).value with
             | Some target -> Assert.Contains("ArF excimer 193 nm", string (ToolTip.GetTip target))
@@ -97,11 +98,15 @@ module WorkbenchInfoAndCaptureTests =
     // ------------------------------ 4: the Library shows the current binding as chosen ------------------------------
 
     let private libraryContext () : LW.LibraryWindowContext =
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
         {
-            library = Library.createInMemory ()
+            library = BuiltinCatalogue.library ()
             samples = samples
-            materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+            materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
+            categories = BuiltinCatalogue.categoryStore (fun _ -> [])
+            libraryBackups = LibraryBackupProxy.createInMemory ()
+            catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
+            openImportDialog = ignore
             treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
             thicknessBucketCap = ThicknessBucketCap.defaultValue
             openSampleEditor = ignore
@@ -120,21 +125,21 @@ module WorkbenchInfoAndCaptureTests =
                 onSelected = ignore
                 onCancelled = ignore
             }
-        let m = LW.initLibraryWindow (libraryContext ()) (Select (session (Some (ElementValueId "src-hene-633"))))
-        Assert.Equal(Some (ElementValueId "src-hene-633"), m.selectedEntryId)
-        Assert.Equal(Some (ElementValueId "src-hene-633").libraryEntryCode, m.selectedNodeOpt)
+        let m = LW.initLibraryWindow (libraryContext ()) (Select (session (Some PresetIds.heNe633)))
+        Assert.Equal(Some PresetIds.heNe633, m.selectedEntryId)
+        Assert.Equal(Some PresetIds.heNe633.libraryEntryCode, m.selectedNodeOpt)
         Assert.True((m.expandedNodes.nodeExpansion (ConstructorUiKey "entries") = FacetedTreeControls.ExpandedNode), "the entries group opens so the chosen row shows")
         // Nothing bound (or a binding of another kind) shows nothing chosen.
         Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session None))).selectedEntryId)
-        Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session (Some (ElementValueId "det-intensity"))))).selectedEntryId)
+        Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session (Some PresetIds.detectorIntensity)))).selectedEntryId)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the menu's Choose… hands the Library the element's current binding`` () =
         HeadlessSession.run (fun () ->
             let captured : SelectionContext<LibraryEntry> option ref = ref None
-            let launchers = { EditorLaunchers.defaults with openLibrarySelectWindow = fun _ _ _ _ _ _ _ ctx -> captured.Value <- Some ctx; None }
-            let m0 = { (initMain () |> bind 0 "src-krf-248") with launchers = launchers }
+            let launchers = { EditorLaunchers.defaults with openLibrarySelectWindow = fun _ _ _ _ _ _ _ _ _ ctx -> captured.Value <- Some ctx; None }
+            let m0 = { (SceneTestFixture.mainScene () |> bind 0 PresetIds.krf248) with launchers = launchers }
             let opened = updateTableAndElementRotation (OpenElementMenuAt (canvasPointOf 0 m0)) m0
             let mutable model = opened
             let window = mountView opened (fun msg -> model <- updateTableAndElementRotation msg model)
@@ -147,7 +152,7 @@ module WorkbenchInfoAndCaptureTests =
                 | None -> Assert.Fail "Choose… has no on-screen position"
             | None -> Assert.Fail "the menu must offer Choose…"
             match captured.Value with
-            | Some ctx -> Assert.Equal(Some (ElementValueId "src-krf-248"), ctx.currentEntryIdOpt)
+            | Some ctx -> Assert.Equal(Some PresetIds.krf248, ctx.currentEntryIdOpt)
             | None -> Assert.Fail "Choose… must open the Library in Select state"
             window.Close()
             Dispatcher.UIThread.RunJobs())
@@ -155,8 +160,8 @@ module WorkbenchInfoAndCaptureTests =
     // ------------------------------ 5: tunable vs fixed sources in the bay ------------------------------
 
     /// A bound glass film (index 2) varied on R2, captured in T, with the given source.
-    let private filmOnR2 (source : string) : TableAndElementRotationModel =
-        let m = initMain () |> bind 0 source |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassFilm200Id
+    let private filmOnR2 (source : ElementValueId) : TableAndElementRotationModel =
+        let m = SceneTestFixture.mainScene () |> bind 0 source |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassFilm200Id
         m
         |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
         |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
@@ -164,7 +169,7 @@ module WorkbenchInfoAndCaptureTests =
 
     [<Fact>]
     let ``a tunable source is set within its limits while R2 varies; a fixed line shows read-only and ignores a setting`` () =
-        let tunable = filmOnR2 "src-xe-mono"
+        let tunable = filmOnR2 PresetIds.xenonMonochromator
         match (tunable.experimentState).sourceWaveLength with
         | ExperimentControls.TunableSourceWaveLength (setting, limits) ->
             Assert.True(abs (setting.value - 600.0) < 1e-9 && abs (limits.lowest.value - 190.0) < 1e-9 && abs (limits.highest.value - 1000.0) < 1e-9)
@@ -173,7 +178,7 @@ module WorkbenchInfoAndCaptureTests =
         match clamped.experimentCollection.draft.sourceWaveLengthOpt with
         | Some w -> Assert.True(abs (w.value / nmToMeter / oneNanometer - 1000.0) < 1e-9)
         | None -> Assert.Fail "the setting must be kept (clamped)"
-        let fixedLine = filmOnR2 "src-hene-633"
+        let fixedLine = filmOnR2 PresetIds.heNe633
         match (fixedLine.experimentState).sourceWaveLength with
         | ExperimentControls.FixedSourceWaveLength setting -> Assert.True(abs (setting.value - 632.8) < 1e-9)
         | other -> Assert.Fail($"expected a fixed line, got %A{other}")
@@ -181,13 +186,13 @@ module WorkbenchInfoAndCaptureTests =
 
     [<Fact>]
     let ``the run uses the source's wavelength: a tunable source set to 632.8 nm equals the HeNe line`` () =
-        let tuned = filmOnR2 "src-xe-mono" |> updateTableAndElementRotation (ExpSetSourceWaveLength (ExperimentControls.BayNanometers 632.8))
-        let line = filmOnR2 "src-hene-633"
+        let tuned = filmOnR2 PresetIds.xenonMonochromator |> updateTableAndElementRotation (ExpSetSourceWaveLength (ExperimentControls.BayNanometers 632.8))
+        let line = filmOnR2 PresetIds.heNe633
         let ys (m : TableAndElementRotationModel) : float list = (List.head (m.experimentResult).series).points |> List.map (fun p -> p.y)
         List.zip (ys tuned) (ys line)
         |> List.iter (fun (a, b) -> Assert.True(abs (a - b) < 1e-12, $"%g{a} vs %g{b}"))
         // ... and it differs from the 600 nm default (the wavelength really is used).
-        let default600 = filmOnR2 "src-600"
+        let default600 = filmOnR2 PresetIds.source600
         Assert.True(List.exists2 (fun a b -> abs (a - b) > 1e-6) (ys line) (ys default600))
 
     // ------------------------------ 6–7: the detector decides; the capture step waits ------------------------------
@@ -195,11 +200,11 @@ module WorkbenchInfoAndCaptureTests =
     [<Fact>]
     let ``each branch reads what its detector reads: T intensity, R Psi and Delta`` () =
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 2 glassPlate1mmId
             |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, BarDegrees 30.0))
             |> updateTableAndElementRotation (AddElement Detector)
-            |> fun m -> bind 3 "det-ellipsometer" m
+            |> fun m -> bind 3 PresetIds.detectorEllipsometer m
         Assert.Equal(BeamLayout.OnReflectedBeamOf (elem 2 m).id, (elem 3 m).beam)
         let chosen =
             m
@@ -222,6 +227,7 @@ module WorkbenchInfoAndCaptureTests =
                         chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                         setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
                         addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                        addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
                         viewExperiment = ignore; openChartWindow = ignore
                     }
                 let window = Window(Width = 600.0, Height = 800.0)
@@ -249,9 +255,9 @@ module WorkbenchInfoAndCaptureTests =
     [<Fact>]
     let ``Export data hands the draft's run to the export seam, and says so when there is nothing to export`` () =
         let store = ExperimentExport.createInMemoryExperimentExport ()
-        let nothing = updateTableAndElementRotation ExportExperimentData { initMain () with experimentExport = store.proxy }
+        let nothing = updateTableAndElementRotation ExportExperimentData { SceneTestFixture.mainScene () with experimentExport = store.proxy }
         Assert.StartsWith("Nothing exported", nothing.exportStatus |> Option.map (fun c -> c.value) |> Option.defaultValue "")
-        let exported = updateTableAndElementRotation ExportExperimentData { filmOnR2 "src-600" with experimentExport = store.proxy }
+        let exported = updateTableAndElementRotation ExportExperimentData { filmOnR2 PresetIds.source600 with experimentExport = store.proxy }
         Assert.StartsWith("Exported 1 series", exported.exportStatus |> Option.map (fun c -> c.value) |> Option.defaultValue "")
         match store.exported () with
         | [ run ] ->
@@ -264,7 +270,7 @@ module WorkbenchInfoAndCaptureTests =
     [<Fact>]
     let ``a polarizer AFTER the sample analyzes: crossed polarizers around a clear film pass nothing`` () =
         let m =
-            initMain ()
+            SceneTestFixture.mainScene ()
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                       // index 2, R1 = 0, before the sample
             |> updateTableAndElementRotation (AddElement CatalogueKind.Sample) |> bind 3 glassFilm200Id
             |> updateTableAndElementRotation (AddElement LinearPolarizer)                       // index 4, after the sample

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://berreman/schema/optical-constructor-groups.json",
   "title": "OpticalConstructorGroupsLibrary",
-  "description": "Canonical, hand/LLM-editable groups + experiment-collections library for the Berreman Optical Constructor (Spec 0026 Part G/H, slice 007). Stored as a separate per-user app-data JSON file, kept apart from any per-project .ocproj, so reusable element groups and sample-centred experiment collections are available across projects. Validated on load against this schema (no migration; a schemaVersion mismatch is a validation error). All physical magnitudes carried by a group member's placement are canonical SI meters; displayUnit is a display/IO label only.",
+  "description": "Canonical, hand/LLM-editable groups + experiment-collections library for the Berreman Optical Constructor (Spec 0026 Part G/H, slice 007). Stored as a separate per-user app-data JSON file, so reusable element groups and sample-centred experiment collections are available across projects. Validated on load against this schema (no migration; a schemaVersion mismatch is a validation error). All physical magnitudes carried by a group member's placement are canonical SI meters; displayUnit is a display/IO label only.",
   "type": "object",
   "required": ["schemaVersion", "groups", "collections"],
   "properties": {

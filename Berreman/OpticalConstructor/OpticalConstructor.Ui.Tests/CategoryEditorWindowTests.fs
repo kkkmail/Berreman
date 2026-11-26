@@ -9,6 +9,7 @@ open Avalonia.VisualTree
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
+open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.CategoryEditorView
 
@@ -149,9 +150,9 @@ module CategoryEditorWindowTests =
 
     [<Fact>]
     let ``init seeds the editor over the proxy's listCategories with nothing armed`` () =
-        let _, proxy = stubProxy standardCategories Set.empty
+        let _, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let m = (contextOver proxy).initCategoryEditor
-        Assert.Equal(List.length standardCategories, List.length m.editor.rows)
+        Assert.Equal(List.length (BuiltinCatalogue.categories ()), List.length m.editor.rows)
         Assert.Equal("", blockTextOf m)
         match m.pendingRemove with
         | None -> ()
@@ -161,9 +162,9 @@ module CategoryEditorWindowTests =
 
     [<Fact>]
     let ``BeginAdd appends a blank UserCategory SelectableOnCreate row and marks it editing`` () =
-        let _, proxy = stubProxy standardCategories Set.empty
+        let _, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let m = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
-        Assert.Equal(List.length standardCategories + 1, List.length m.editor.rows)
+        Assert.Equal(List.length (BuiltinCatalogue.categories ()) + 1, List.length m.editor.rows)
         let added = List.last m.editor.rows
         Assert.Equal("", added.name.value)
         Assert.Equal(SelectableOnCreate, added.visibility)
@@ -174,20 +175,20 @@ module CategoryEditorWindowTests =
 
     [<Fact>]
     let ``Add then set-name then Save persists a new category through addCategory`` () =
-        let calls, proxy = stubProxy standardCategories Set.empty
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let staged = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
         let newId = (List.last staged.editor.rows).id
         staged |> updateCategoryEditor (SetCategoryEditorName (newId, CategoryName "Polymer")) |> updateCategoryEditor (SaveRow newId) |> ignore
         match proxy.listCategories () with
         | Ok l ->
-            Assert.Equal(List.length standardCategories + 1, List.length l)
+            Assert.Equal(List.length (BuiltinCatalogue.categories ()) + 1, List.length l)
             Assert.True(l |> List.exists (fun c -> c.name.value = "Polymer" && c.origin = UserCategory), "the new user category must be persisted")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
         Assert.Contains("add:Polymer", calls)
 
     [<Fact>]
     let ``a blank new name is refused at Save with the typed InvalidCategory and nothing persists`` () =
-        let calls, proxy = stubProxy standardCategories Set.empty
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let staged = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
         let newId = (List.last staged.editor.rows).id
         let blocked = staged |> updateCategoryEditor (SaveRow newId)
@@ -197,7 +198,7 @@ module CategoryEditorWindowTests =
     [<Fact>]
     let ``Rename an existing user category commits through updateCategory`` () =
         let userId = CategoryId.create ()
-        let calls, proxy = stubProxy (standardCategories @ [ userCategory userId "Draft" ]) Set.empty
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories () @ [ userCategory userId "Draft" ]) Set.empty
         (contextOver proxy).initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (userId, CategoryName "Final")) |> updateCategoryEditor (SaveRow userId) |> ignore
         match proxy.listCategories () with
         | Ok l ->
@@ -209,7 +210,7 @@ module CategoryEditorWindowTests =
 
     [<Fact>]
     let ``a built-in category is renamable through updateCategory`` () =
-        let calls, proxy = stubProxy standardCategories Set.empty
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         (contextOver proxy).initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (CategoryIds.glass, CategoryName "Glazing")) |> updateCategoryEditor (SaveRow CategoryIds.glass) |> ignore
         match proxy.listCategories () with
         | Ok l ->
@@ -222,7 +223,7 @@ module CategoryEditorWindowTests =
     [<Fact>]
     let ``removing a referenced user category is confirm-gated, surfaces CategoryStillReferenced, and leaves the store unchanged`` () =
         let userId = CategoryId.create ()
-        let calls, proxy = stubProxy (standardCategories @ [ userCategory userId "Used" ]) (Set.ofList [ userId.value ])
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories () @ [ userCategory userId "Used" ]) (Set.ofList [ userId.value ])
         // First click ARMS the confirm — the store is not yet touched.
         let armed = (contextOver proxy).initCategoryEditor |> updateCategoryEditor (RemoveRow userId)
         Assert.True(blockTextOf armed <> "", "arming must surface the confirm prompt")
@@ -236,28 +237,28 @@ module CategoryEditorWindowTests =
 
     [<Fact>]
     let ``removing a built-in surfaces BuiltInNotRemovable and leaves the store unchanged`` () =
-        let _, proxy = stubProxy standardCategories Set.empty
+        let _, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let blocked =
             (contextOver proxy).initCategoryEditor
             |> updateCategoryEditor (RemoveRow CategoryIds.glass)
             |> updateCategoryEditor (RemoveRow CategoryIds.glass)
         Assert.Contains("cannot be removed", blockTextOf blocked)
         match proxy.listCategories () with
-        | Ok l -> Assert.Equal(List.length standardCategories, List.length l)
+        | Ok l -> Assert.Equal(List.length (BuiltinCatalogue.categories ()), List.length l)
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
 
     [<Fact>]
     let ``Cancel discards a freshly-added, unsaved row`` () =
-        let calls, proxy = stubProxy standardCategories Set.empty
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let staged = (contextOver proxy).initCategoryEditor |> updateCategoryEditor BeginAdd
         let newId = (List.last staged.editor.rows).id
         let cancelled = staged |> updateCategoryEditor (SetCategoryEditorName (newId, CategoryName "Temp")) |> updateCategoryEditor (CancelRow newId)
-        Assert.Equal(List.length standardCategories, List.length cancelled.editor.rows)
+        Assert.Equal(List.length (BuiltinCatalogue.categories ()), List.length cancelled.editor.rows)
         Assert.False(calls |> Seq.exists (fun s -> s.StartsWith "add:"), "a cancelled add must not reach the store")
 
     [<Fact>]
     let ``the window Save flushes a staged rename through the proxy and requests close`` () =
-        let calls, proxy = stubProxy standardCategories Set.empty
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let closed = ref false
         let context : CategoryEditorContext = { categories = proxy; requestClose = fun () -> closed.Value <- true }
         context.initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (CategoryIds.glass, CategoryName "Glazing")) |> updateCategoryEditor CommitAll |> ignore
@@ -266,7 +267,7 @@ module CategoryEditorWindowTests =
 
     [<Fact>]
     let ``the window Cancel requests close and writes nothing`` () =
-        let calls, proxy = stubProxy standardCategories Set.empty
+        let calls, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
         let closed = ref false
         let context : CategoryEditorContext = { categories = proxy; requestClose = fun () -> closed.Value <- true }
         context.initCategoryEditor |> updateCategoryEditor (SetCategoryEditorName (CategoryIds.glass, CategoryName "X")) |> updateCategoryEditor CancelWindow |> ignore
@@ -279,7 +280,7 @@ module CategoryEditorWindowTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the window mounts carrying the CategoryEditorWindow id and the CategoryControls surface`` () =
         HeadlessSession.run (fun () ->
-            let _, proxy = stubProxy standardCategories Set.empty
+            let _, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
             let window = CategoryEditorWindow(proxy)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -294,7 +295,7 @@ module CategoryEditorWindowTests =
     [<Trait("Category", "ui-smoke")>]
     let ``acceptance: Add then Save grows the category list through addCategory`` () =
         HeadlessSession.run (fun () ->
-            let _, proxy = stubProxy standardCategories Set.empty
+            let _, proxy = stubProxy (BuiltinCatalogue.categories ()) Set.empty
             let before =
                 match proxy.listCategories () with
                 | Ok l -> List.length l
@@ -318,7 +319,7 @@ module CategoryEditorWindowTests =
     let ``acceptance: Rename edits a category name in place through updateCategory`` () =
         HeadlessSession.run (fun () ->
             let userId = CategoryId.create ()
-            let _, proxy = stubProxy (standardCategories @ [ userCategory userId "Draft" ]) Set.empty
+            let _, proxy = stubProxy (BuiltinCatalogue.categories () @ [ userCategory userId "Draft" ]) Set.empty
             let window = CategoryEditorWindow(proxy)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -338,7 +339,7 @@ module CategoryEditorWindowTests =
     let ``acceptance: removing a referenced category surfaces the block and leaves the list unchanged`` () =
         HeadlessSession.run (fun () ->
             let userId = CategoryId.create ()
-            let _, proxy = stubProxy (standardCategories @ [ userCategory userId "Used" ]) (Set.ofList [ userId.value ])
+            let _, proxy = stubProxy (BuiltinCatalogue.categories () @ [ userCategory userId "Used" ]) (Set.ofList [ userId.value ])
             let window = CategoryEditorWindow(proxy)
             window.Show()
             Dispatcher.UIThread.RunJobs()

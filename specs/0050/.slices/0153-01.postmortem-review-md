@@ -1,0 +1,164 @@
+# Secondary review: 0153-01 — scene-test import collision
+
+This is the owning orchestrator's advisory review of the agent-written
+[primary postmortem](0153-01.postmortem-md). It is not a mechanical fallback or
+an operator decision. Implementation awaits agreement.
+
+Incident: arc-watch `a6ba4700b4b84f508087713be9b72082`, supervisor PID `117564`.
+The [event](../.artifacts/arc-watch/a6ba4700b4b84f508087713be9b72082/event.json),
+ticket and launch agree on ID, PID and spec. The final escalation was recorded
+at `2026-11-08T09:41:32Z`; the watcher observed exit at `09:42:10Z`.
+The supervisor has exited. The event identifies this exact primary report.
+
+## Conclusion
+
+The immediate blocker is a worker-introduced compilation error in
+`OpticalConstructor.Ui.Tests/SceneSaveLoadTests.fs:15`. The file opens
+`Avalonia.FuncUI` before bare `Elmish`, so the latter resolves through
+`Avalonia.FuncUI.Elmish` and produces FS0893. The bounded proposed repair is
+`open global.Elmish`, preserving both FuncUI imports and the real Elmish-host
+regression. This is already inside 0153's authorized edit list.
+
+The third unsuccessful feedback build exhausted the implementation-repair
+counter. Five builds ran: fail, fail, pass, pass, fail. The two judge corrections
+are separate from the three implementation-failure charges. ASG detected a real
+error and applied its configured limit; no loop, quota failure, Git failure or
+counter defect is demonstrated. Increasing budgets is unnecessary for recovery.
+
+The previous repair held: 0150–0152 completed, with checkpoint 149 recording
+1,157 constructor / 215 smoke cases. Subsequent authorized retirements produced
+1,155 at checkpoint 150 and 1,149 at 151. This escalation does not reopen the
+warning/picker repair or manual 010's scratch-construction contract.
+
+## Independent evidence and qualifications
+
+- HEAD is accepted 0152, `fc0d289ff94632e1ef011857208008b88f1d1dd3`. State has
+  152 completed slices and current index 152/0153 escalated. Checkpoint 152 is
+  absent. The five product changes are the four tracked files reported by the
+  primary plus the new scene-test source; all are declared 0153 edits. Preserve
+  that implementation and the supervisor-owned state.
+- The log independently establishes failed builds at `09:12:24Z` and
+  `09:15:16Z`, successful builds at `09:17:36Z` and `09:24:05Z`, and the final
+  failure at `09:36:09Z`. The last diagnostic names only FS0893 at the new test
+  file's line 15, with zero warnings. There is no verification of the latest
+  behavior after that failure.
+- The first failures were validator-name resolution, then unavailable
+  `Seq.ofType` and `RemoveSelected` references. Current source retains those
+  earlier repairs. The [attempt-03 task](../.artifacts/0153-attempt-03-task.txt)
+  contains the compiler's suggested existing `RemoveSelectedElement` command.
+- **Qualification to the primary's worker-only attribution:** the published
+  [slice recipe](0153.slice-md) itself says `RemoveSelected`, whereas accepted
+  `TableAndElementRotationView.fs:655` declares `RemoveSelectedElement`. This is
+  a small stale-reference defect in the spec's implementation recipe that
+  contributed to an earlier build failure. Workers must still reconcile such
+  references with actual source under the repository rules. It neither explains
+  the final import collision nor creates a new scope/acceptance conflict.
+  Do not amend the published spec or restore the nonexistent command.
+- `MainWorkbenchTests.fs` uses the same `Program.mkSimple / withHost / run`
+  approach without opening the parent `Avalonia.FuncUI`. The current new test
+  needs that parent for `Component` as well as the host integration import;
+  root-qualifying Elmish is preferable to dropping the regression fixture or
+  depending on import order. The correction has not been compiled in this review.
+- The latest [code judge](../.artifacts/code_judge/0153-01-code-judge.md) is cycle
+  2 despite its filename, and predates attempt 05. Its prior concerns are useful:
+  synthetic lost focus needed `FocusChangedEventArgs`, and Save needed to commit
+  the live name before saving. Current source includes both corrections.
+- `TableAndElementRotationView.fs:3530–3569` reads the live TextBox in the
+  clicked window using its stable ID, then dispatches `SceneSetName` before
+  `SceneSave`. Its callback does not capture the draft name. The test at
+  `SceneSaveLoadTests.fs:237–310` uses a real Elmish host and the actual reducer
+  for two successive focused edit/click saves in each mode, checking message
+  order, the reducer's input, persisted names/content and earlier scenes.
+  These are authored assertions, not passing runtime evidence. Preserve them.
+- The worker's no-checks instruction explicitly assigns execution to the
+  supervisor. The worker was not at fault for obeying that rule. Its defects
+  were the invalid references/import and incomplete initial UI interaction.
+- Read-only full-plan replay has no findings, and the existing profile-1 receipt
+  validates. The original roster has sixteen gates. It expects 1,149 constructor
+  runtime cases and 216 smoke facts. The selected UI census spans **46 classes
+  and 581 method identities**, including the three new non-smoke facts. Do not
+  confuse that method count with the runtime case count: the census uses method
+  granularity, and theory rows must be measured from the test report.
+
+## Proposed actions
+
+1. **Repair the import within the existing scope.** Change only the ambiguous
+   opening to `open global.Elmish` initially. Preserve all four test identities,
+   prior assertions, the live edit/click fixture and current product behavior.
+   No warning suppression, invented command alias or replacement message-collector
+   fixture is needed. No new edit authority or standing-rule amendment is needed.
+
+2. **Compile and exercise the four scene facts.** Build the Release solution,
+   inspect actual diagnostics, then run the complete `SceneSaveLoadTests` class,
+   including its smoke fact. Verify both constructor modes and both successive
+   direct saves without synthesizing Enter/LostFocus. Retain Enter/blur coverage,
+   refusal tests, persistence/reopen checks and previous-scene preservation.
+   Correct any subsequent measured failure within the original authorized
+   behavior before declaring the slice ready. A compiling import alone is not
+   sufficient evidence for the final judge-requested UI repair.
+
+3. **Run all sixteen unchanged gates and reconcile their reports.** Preserve
+   build, elevation, constructor-unit-tests, ui-smoke, the entire 46-class
+   selected ui-tests roster and all eleven s17 invariants. Require all 1,149
+   constructor cases, 216 smoke cases, the exact 581 selected UI method
+   identities and zero failures/skips, with no owned-code warnings. Record the
+   actual selected UI case count without promoting it to a whole-suite baseline.
+   Include all affected product projects and dependents in elevation; compare
+   against accepted `fc0d289` if intervening commits hide the partial slice from
+   the ordinary working-tree selection. Validate all 494 steps and the existing
+   profile-1 receipt while retaining all 988 compiled artifacts byte-for-byte.
+   No receipt rewrite is needed unless one of its actual inputs changes.
+
+4. **Record the verified handoff and wait for the operator's commit.** Put
+   evidence in `.artifacts/0153-operator-repair/`, update the slice's implementation
+   log and state-of-world report with measured outcomes, and retain inherited
+   YAML floors until supervisor acceptance. Preserve the published spec, oracle,
+   test effects, gate snapshots, state, counters, expected-red records and
+   checkpoints. Do not commit or relaunch as part of the repair. ASG source
+   requires no change for this recovery.
+
+## Eventual resume
+
+After all checks pass, the operator commits, and the operator requests relaunch,
+use **`--accept-current-slice --executability-profile 1`**, following the standing
+committed-green rule. Do not accept the present red tree. This agrees with the
+primary recommendation and differs deliberately from manual 011's 0150-only
+normal-resume exception.
+
+This choice does not assume acceptance writes measured checkpoint 152: it does
+not. The supervisor's `_backfill_accepted_expected_red` code explains the
+distinction. Numeric floors resolve by walking back to the latest available
+entry, whereas expected-red records require an exact index. Prior index 151 has
+an empty expected-red set, and 0153 declares no red, so the existing acceptance
+backfill handles that record. There is no new test retirement here requiring
+case-count credit. The full current roster must be measured before acceptance;
+0154 then runs both whole suites again and records its own fresh observations.
+Its UI selection is different and is **not** a substitute for the current
+46-class verification. Do not manufacture checkpoint 152 or a selected-UI floor.
+
+No 0153-specific measured-checkpoint requirement or normal-resume exception was
+found. If subsequent repair changes that contract, reconsider the resume choice
+explicitly rather than silently borrowing an earlier slice's exception.
+
+## Recurrence and prevention
+
+This resembles 0118's regression-fixture compilation failure after a justified
+review request. It is a new file and a different defect; the earlier fix did not
+promise to prevent every namespace collision. Resolve source references against
+the existing declarations, and root-qualify names when a parent import exposes
+a same-named child. Keep the deterministic build-feedback check: it caught the
+problem before acceptance. The evidence does not justify a backend-specific
+workaround, dropping coverage or raising the arc's budgets for this recovery.
+
+Read-only inventory confirms the scene-test source is edited at 0153 and 0260;
+the latter renames it to SetupSaveLoadTests. Preserve the root-qualified import
+and all regression coverage through that rename. Later selected observations
+are 0184, 0185, 0187, 0188, then 0260, 0262, 0264, 0272, 0276, 0278, 0279 and
+0282 under the successor class, with whole-suite coverage at 0494. Whole smoke
+runs retain the declared smoke identity as well.
+
+## Review boundary
+
+Only this matching secondary report was written. No source, primary postmortem,
+worker report, supervisor record or Git state was changed; no build, test, gate,
+repair, acceptance or restart was performed. The proposed work awaits agreement.

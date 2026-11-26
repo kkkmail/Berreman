@@ -1,0 +1,13 @@
+# Step 0411 implementation plan
+
+Share the existing parameter editor under spec 0050 S11.5 and obligation S115-PARAMETER-EDITOR. Replace the draft's item id and parameter name with StudyParameterRef, preserving all state parsing. Add the unguarded EditStudyParameter message to resolve kit item parameters or the selected study's opened material components, leaving the model unchanged for missing references.
+
+Move the current Items editor into the public parameterEditorView function with an injected Set message constructor. Preserve its controls, keys, text, styling and rules; the Items panel renders it only for its selected item's reference. The study view caller is step 0414's scope.
+
+Modify only TableAndElementRotationView.fs, ItemsPanelView.fs, ItemsPanelModelTests.fs and StudyWindowModelTests.fs. Preserve the existing authorized Items test assertions under the new reference and add exactly the named study-window fact, using the existing window fixture and shared crystal fixture. Cover item and material drafts, missing owners/names, selected-study isolation, unchanged state/files and read-only opening within that fact.
+
+Risks: missing F# extension/module imports, nested record indentation, and stale references to the removed draft fields. Review the source diff and call sites. Per implement_worker.system-md Invariant 6, leave all executable checks, measured counts and gate verdicts to the supervisor. Do not change the census, gate contracts, baselines, version files or pre-existing supervisor edits.
+
+Attempt 02: repair the supervisor-reported FS0039 in the existing SetParameterState fact by reading the draft's parameter name through StudyParameterRef. Preserve the assertion's expected value and test identity. Retain the completed implementation and authorized new fact, review draft consumers for other obsolete field access, and update the handoff with the supplied build failure and pending supervisor verification.
+
+Attempt 03: repair the declared study editor fact's fixture. The supervisor's TRX shows OpenMaterial fails while recording its material snapshot: the in-memory MaterialProxy accepts the saved crystal, but CatalogueImportProxy's separate envelope map does not hold that version. Within this fact, reuse BuiltinCatalogue.freshLibraryDatabase and construct the window's MaterialProxy and CatalogueImportProxy over that same database, following StudyMessageTests. Keep the existing save, OpenMaterial and editor assertions unchanged. Do not change production storage, the common window fixture, test identities, acceptance or supervisor metadata. Leave all executable verification to the supervisor under IMPLEMENT Invariant 6.

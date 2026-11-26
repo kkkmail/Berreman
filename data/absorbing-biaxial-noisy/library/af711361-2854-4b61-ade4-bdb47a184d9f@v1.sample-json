@@ -1,0 +1,39 @@
+{
+  "categoryOpt": null,
+  "contentHash": "3c2e891769e260edca5dbaf9d12c2dff6041e9afb5a99d847b33fadc7e6485db",
+  "descriptionOpt": "A 100 um plate of the absorbing triclinic crystal; each observation carries its cut.",
+  "id": "af711361-2854-4b61-ade4-bdb47a184d9f",
+  "name": "Absorbing triclinic plate 100 um",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [],
+          "lower": null,
+          "substrate": {
+            "materialId": {
+              "materialId": "81e1d115-5d06-4337-80fd-50765a403de7",
+              "version": 1
+            },
+            "orientation": "PrimaryAxes",
+            "thickness": {
+              "Case": "Thickness",
+              "Fields": [
+                9.999999999999999E-05
+              ]
+            }
+          }
+        },
+        "substrate": "ThickPlate",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": "UserProvenance",
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

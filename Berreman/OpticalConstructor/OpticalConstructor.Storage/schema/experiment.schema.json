@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/experiment.json",
+  "title": "ExperimentFile",
+  "description": "One experiment's .experiment-json content (spec 0050 S4.3). Only version 1's body is validated so other positive schema versions reach the typed version check before binding.",
+  "type": "object",
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" }
+  },
+  "if": {
+    "required": ["schemaVersion"],
+    "properties": { "schemaVersion": { "const": 1 } }
+  },
+  "then": {
+    "required": ["schemaVersion", "experiment"],
+    "additionalProperties": false,
+    "properties": {
+      "schemaVersion": true,
+      "experiment": {
+        "type": "object",
+        "required": ["id", "name", "setup", "scan", "role", "sessionOpt", "notes", "dataOpt", "corrections"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
+          "name": {
+            "description": "The stem of the experiment's <name>.experiment-json (spec 0050 S9.1).",
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "setup": {
+            "description": "The setup revision the experiment was recorded over (spec 0050 S8.2).",
+            "$ref": "#/$defs/setupReference"
+          },
+          "scan": {
+            "description": "What the run varies, block after block, and a tunable source's set wavelength (spec 0050 S9.1).",
+            "type": "object",
+            "required": ["blocks", "sourceWaveLengthOpt"],
+            "additionalProperties": false,
+            "properties": {
+              "blocks": { "type": "array" },
+              "sourceWaveLengthOpt": true
+            }
+          },
+          "role": {
+            "description": "What the run is for, its ExperimentRole tag (spec 0050 S9.1).",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "sessionOpt": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "string", "pattern": "\\S" }
+            ]
+          },
+          "notes": { "type": "string" },
+          "dataOpt": {
+            "description": "The measured data: a kit file, the import profile it is read through and the rows that are the run's (spec 0050 S9.1).",
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "required": ["attachment", "profile", "rows", "exclusions"],
+                "additionalProperties": false,
+                "properties": {
+                  "attachment": {
+                    "type": "object",
+                    "required": ["path", "contentHash"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "path": { "type": "string", "minLength": 1 },
+                      "contentHash": { "$ref": "https://berreman/schema/library-common.json#/$defs/contentHash" }
+                    }
+                  },
+                  "profile": { "type": "string", "pattern": "\\S" },
+                  "rows": {
+                    "description": "A DataRowSelection in the serializer's case form: AllDataRows is its name, KeyedDataRows an object; the serializer binds its shape.",
+                    "type": ["string", "object"]
+                  },
+                  "exclusions": {
+                    "description": "The points left out, each a 1-based point of the mapped rows with its reason (spec 0050 S9.3).",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["point", "reason"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "point": { "type": "integer", "minimum": 1 },
+                        "reason": { "type": "string", "pattern": "\\S" }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "corrections": {
+            "description": "The setup's re-pointings, oldest first, each with its audit note (spec 0050 S9.3).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["previous", "corrected", "note"],
+              "additionalProperties": false,
+              "properties": {
+                "previous": { "$ref": "#/$defs/setupReference" },
+                "corrected": { "$ref": "#/$defs/setupReference" },
+                "note": { "type": "string", "pattern": "\\S" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "setupReference": {
+      "description": "A setup's name and revision (spec 0050 S8.2).",
+      "type": "object",
+      "required": ["name", "revision"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "\\S" },
+        "revision": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

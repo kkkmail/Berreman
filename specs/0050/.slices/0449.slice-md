@@ -1,0 +1,23 @@
+# Step 0449 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [448]
+required_gates: [build, elevation, constructor-unit-tests, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "create", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "class": "OpticalConstructor.Ui.Tests.AppContextTests", "discovery_gate": "ui-tests", "obligations": ["S131-APP-SOURCES"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}, "ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.AppContextTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs", "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs"], "tests": [{"op": "create", "suite": "ui-tests", "id": "OpticalConstructor.Ui.Tests.AppContextTests.the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/AppContextTests.fs", "class": "OpticalConstructor.Ui.Tests.AppContextTests", "discovery_gate": "ui-tests", "obligations": ["S131-APP-SOURCES"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.AppContextTests`
+
+**How to implement.** The app offers refractiveindex.info over its configured sources folder (.spec-md §0.1: `AppContext.create` composes the library proxies over the configured locations; .spec-md §3.9; the S13.1 brief). Each doc is one to three lines citing spec 0050 S13.1. (1) `OpticalConstructor.Ui/AppContext.fs`: the `compose` that `create` and `recreateLibrary` share (steps 89, 100, 118) builds `catalogueImports` with, beside `exportFolderOpt` and in the same record update, `materialSources = [ MaterialSourceProxy.createRefractiveIndexInfo locations.materialSourcesFolder SourceArchiveDownloader.http ClockProvider.system ]` (steps 446, 447; `ClockProvider.system`, `KitOpening.fs`, step 150). Every other composition (`DefaultStores`, `initWith`, the tests' import contexts) keeps the `[]` of `CatalogueImportContext.create` (step 444). Composing it reads and writes nothing: no folder is created and nothing is downloaded until Update snapshot runs. The record's doc names the sources in no more words. (2) Tests: `AppContextTests` gains `the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot`: `TestAppScope.freshAppContext (FolderName "AppContextTests")`'s `catalogueImports.materialSources` is one source named `refractiveindex.info`, whose `snapshotVersion ()` answers `Ok None`, and nothing exists under the sources folder of `TestAppScope.testLocations (FolderName "AppContextTests")` (step 446). No test runs this source's `updateSnapshot`, so no test reaches the network (.spec-md §8).
+
+**Acceptance.** After the composition, `AppContext.create` MUST compose the refractiveindex.info source over `locations.materialSourcesFolder` with the HTTP seam and every other composition MUST offer none; constructor-unit-tests MUST pass; ui-smoke MUST pass; ui-tests MUST pass over the selected classes, including `the app scope offers refractiveindex.info over its configured sources folder, holding no snapshot`, the count rising by 1; and build, elevation and the twenty-one s43 invariants MUST pass.

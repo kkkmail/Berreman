@@ -3,41 +3,217 @@ namespace OpticalConstructor.Tests
 open System
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.Library   // samplesReferencing (the composed referencing store)
-open OpticalConstructor.Domain.Lifecycle // VersionsInUse.empty (the injected in-use seam)
-open OpticalConstructor.Domain.MaterialStore   // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.CategoryDatabaseStore
 
-/// Spec 0035 steps 002/003 (contract STORE_XDUO_0003) — the mutating category write-seam. The
-/// first two tests keep the step-002 DECLARED-lifecycle stubs verbatim (a STUB `CategoryProxy` of
-/// the exact declared shape over a fixed category list, plus the reference equality the Elmish host
-/// relies on). The remaining tests exercise the step-003 IMPLEMENTED store —
-/// `CategoryProxy.createInMemory (materialsReferencingCategory …)`, the real `ref Map` seeded from
-/// `standardCategories` — through the SAME four signatures against live state: add/rename/remove
-/// round-trips with fixed Guids, the built-in-not-removable block, the referenced-category hard
-/// block via the composed `MaterialProxy`, and the live referencing lookup.
-module CategoryProxyTests =
+module private CategoryProxyTestData =
 
-    /// A built-in `SelectableOnCreate` category from the step-1 seeded catalogue (the stub reuses
-    /// the real records rather than fabricating a category).
-    let private glass : MaterialCategory =
-        standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
+    let glass : MaterialCategory =
+        BuiltinCatalogue.category CategoryIds.glass
 
-    /// A `HiddenOnCreate` built-in — the removal test proves a `BuiltInCategory` is refused.
-    let private vacuum : MaterialCategory =
-        standardCategories |> List.find (fun c -> c.id = CategoryIds.vacuumCategory)
+    let vacuum : MaterialCategory =
+        BuiltinCatalogue.category CategoryIds.vacuumCategory
 
-    /// A fresh USER category under a MINTED id (not in the seeded catalogue): the add/update/remove
-    /// happy paths and the referenced-block scenario hang off this.
-    let private minted () : MaterialCategory =
+    let minted () : MaterialCategory =
         { id = CategoryId.create (); name = CategoryName "Test category (minted)"; visibility = SelectableOnCreate; origin = UserCategory }
 
+    let userCategoryId : CategoryId = Guid.Parse "7f1e2d3c-4b5a-6978-8091-a2b3c4d5e6f7" |> CategoryId
+
+    let otherCategoryId : CategoryId = Guid.Parse "8a2b3c4d-5e6f-7081-9192-b3c4d5e6f708" |> CategoryId
+
+    let referencingMaterialId : MaterialId = Guid.Parse "9b3c4d5e-6f70-8192-a2b3-c4d5e6f70819" |> MaterialId
+
+    let userCategory (id : CategoryId) (name : string) : MaterialCategory =
+        { id = id; name = CategoryName name; visibility = SelectableOnCreate; origin = UserCategory }
+
+    let referencingMaterial (categoryId : CategoryId) : MaterialEntry =
+        let glass = BuiltinCatalogue.material MaterialIds.glass152
+        { glass with id = referencingMaterialId; name = EntryName "Referencing material"; category = categoryId }
+
+open CategoryProxyTestData
+
+/// Category stores preserve duplicate, built-in and live material-reference guards.
+[<AbstractClass>]
+type CategoryProxyContract () =
+
+    abstract stores : unit -> CategoryProxy * MaterialProxy
+
     [<Fact>]
-    let ``a CategoryProxy compares by reference (the Elmish-required equality)`` () =
-        // Function-valued fields have no structural equality; the [<ReferenceEquality>] proxy
-        // compares by identity so a host model holding one stays comparable.
+    member this.``the real store add/rename/remove of an unreferenced user category round-trips with fixed Guids`` () : unit =
+        let categories, _ = this.stores ()
+        let cat = userCategory userCategoryId "My category"
+        match categories.addCategory cat with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () from add, got %A{other}")
+        match categories.listCategories () with
+        | Ok l ->
+            Assert.Equal(List.length (BuiltinCatalogue.categories ()) + 1, List.length l)
+            Assert.Contains(userCategoryId, l |> List.map (fun c -> c.id))
+        | Error err -> Assert.Fail($"%A{err}")
+        match categories.updateCategory { cat with name = CategoryName "Renamed category" } with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () from update, got %A{other}")
+        match categories.listCategories () with
+        | Ok l ->
+            match l |> List.tryFind (fun c -> c.id = userCategoryId) with
+            | Some c -> Assert.Equal("Renamed category", c.name.value)
+            | None -> Assert.Fail("the renamed category vanished from the store")
+        | Error err -> Assert.Fail($"%A{err}")
+        match categories.removeCategory userCategoryId with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () from remove, got %A{other}")
+        match categories.listCategories () with
+        | Ok l ->
+            Assert.Equal(List.length (BuiltinCatalogue.categories ()), List.length l)
+            Assert.DoesNotContain(userCategoryId, l |> List.map (fun c -> c.id))
+        | Error err -> Assert.Fail($"%A{err}")
+
+    [<Fact>]
+    member this.``the real store rejects a duplicate add — a seeded built-in id and a re-added user id`` () : unit =
+        let categories, _ = this.stores ()
+        match categories.addCategory (userCategory CategoryIds.glass "Clashing glass") with
+        | Error (DuplicateCategoryIdErr reason) -> Assert.Contains(string CategoryIds.glass.value, reason)
+        | other -> Assert.Fail($"expected Error (DuplicateCategoryIdErr _), got %A{other}")
+        let cat = userCategory userCategoryId "My category"
+        match categories.addCategory cat with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () from the first add, got %A{other}")
+        match categories.addCategory { cat with name = CategoryName "My category (re-added)" } with
+        | Error (DuplicateCategoryIdErr reason) -> Assert.Contains(string userCategoryId.value, reason)
+        | other -> Assert.Fail($"expected Error (DuplicateCategoryIdErr _), got %A{other}")
+
+    [<Fact>]
+    member this.``the real store rejects a blank-name add and update as InvalidCategory and persists nothing`` () : unit =
+        let categories, _ = this.stores ()
+        let blank = userCategory userCategoryId "   "
+        match categories.addCategory blank with
+        | Error (InvalidCategoryErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
+        match categories.listCategories () with
+        | Ok l -> Assert.DoesNotContain(userCategoryId, l |> List.map (fun c -> c.id))
+        | Error err -> Assert.Fail($"%A{err}")
+        let glass = BuiltinCatalogue.category CategoryIds.glass
+        match categories.updateCategory { glass with name = CategoryName "" } with
+        | Error (InvalidCategoryErr _) -> ()
+        | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
+        match categories.listCategories () with
+        | Ok l ->
+            match l |> List.tryFind (fun c -> c.id = CategoryIds.glass) with
+            | Some c -> Assert.Equal(glass.name, c.name)
+            | None -> Assert.Fail("the glass built-in vanished from the store")
+        | Error err -> Assert.Fail($"%A{err}")
+
+    [<Fact>]
+    member this.``the real store renames a built-in category — built-ins ARE renamable`` () : unit =
+        let categories, _ = this.stores ()
+        let glass = BuiltinCatalogue.category CategoryIds.glass
+        match categories.updateCategory { glass with name = CategoryName "Glass (renamed)" } with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () renaming a built-in, got %A{other}")
+        match categories.listCategories () with
+        | Ok l ->
+            match l |> List.tryFind (fun c -> c.id = CategoryIds.glass) with
+            | Some c -> Assert.Equal("Glass (renamed)", c.name.value)
+            | None -> Assert.Fail("the renamed built-in vanished from the store")
+        | Error err -> Assert.Fail($"%A{err}")
+
+    [<Fact>]
+    member this.``the real store rejects updateCategory and removeCategory on an unknown id`` () : unit =
+        let categories, _ = this.stores ()
+        match categories.updateCategory (userCategory otherCategoryId "Never added") with
+        | Error (UnknownCategoryIdErr reason) -> Assert.Contains(string otherCategoryId.value, reason)
+        | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
+        match categories.removeCategory otherCategoryId with
+        | Error (UnknownCategoryIdErr reason) -> Assert.Contains(string otherCategoryId.value, reason)
+        | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
+
+    [<Fact>]
+    member this.``the real store refuses to remove a built-in category and leaves the store unchanged`` () : unit =
+        let categories, _ = this.stores ()
+        match categories.removeCategory CategoryIds.glass with
+        | Error (BuiltInNotRemovableErr reason) -> Assert.Contains("Glass", reason)
+        | other -> Assert.Fail($"expected Error (BuiltInNotRemovableErr _), got %A{other}")
+        match categories.listCategories () with
+        | Ok l ->
+            Assert.Equal(List.length (BuiltinCatalogue.categories ()), List.length l)
+            Assert.Contains(CategoryIds.glass, l |> List.map (fun c -> c.id))
+        | Error err -> Assert.Fail($"%A{err}")
+
+    [<Fact>]
+    member this.``the real store blocks removeCategory on a user category a material references and leaves both stores unchanged`` () : unit =
+        let categories, materials = this.stores ()
+        match categories.addCategory (userCategory userCategoryId "Referenced category") with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")
+        let referencing = referencingMaterial userCategoryId
+        match materials.saveMaterial referencing with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () adding the referencing material, got %A{other}")
+        match categories.removeCategory userCategoryId with
+        | Error (CategoryStillReferencedErr reason) -> Assert.Contains(referencing.name.value, reason)
+        | other -> Assert.Fail($"expected Error (CategoryStillReferencedErr _), got %A{other}")
+        match categories.listCategories () with
+        | Ok l -> Assert.Contains(userCategoryId, l |> List.map (fun c -> c.id))
+        | Error err -> Assert.Fail($"%A{err}")
+        match materials.tryGetMaterial referencingMaterialId with
+        | Ok (Some _) -> ()
+        | other -> Assert.Fail($"expected the referencing material to survive, got %A{other}")
+
+    [<Fact>]
+    member this.``the referencing lookup is live — removing the referencing material unblocks the category`` () : unit =
+        let categories, materials = this.stores ()
+        match categories.addCategory (userCategory userCategoryId "Referenced then freed") with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")
+        match materials.saveMaterial (referencingMaterial userCategoryId) with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () adding the referencing material, got %A{other}")
+        match categories.removeCategory userCategoryId with
+        | Error (CategoryStillReferencedErr _) -> ()
+        | other -> Assert.Fail($"expected Error (CategoryStillReferencedErr _) while referenced, got %A{other}")
+        match materials.removeMaterial referencingMaterialId with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () removing the referencing material, got %A{other}")
+        match categories.removeCategory userCategoryId with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () once unreferenced, got %A{other}")
+
+type CategoryProxyTests () =
+    inherit CategoryProxyContract ()
+
+    override _.stores () : CategoryProxy * MaterialProxy =
+        let materials = BuiltinCatalogue.materialStore (fun _ -> [])
+        BuiltinCatalogue.categoryStore (materialsReferencingCategory materials), materials
+
+    [<Fact>]
+    member _.``a category resolves by id and by name through the list it is given`` () : unit =
+        let renamedName = CategoryName "Glass from the caller"
+        let originalName = CategoryName "Glass"
+        let originalGlass = BuiltinCatalogue.categories () |> List.find (fun category -> category.id = CategoryIds.glass)
+        let renamedGlass : MaterialCategory =
+            {
+                originalGlass with name = renamedName
+            }
+        let categories =
+            BuiltinCatalogue.categories ()
+            |> List.map (fun category -> if category.id = CategoryIds.glass then renamedGlass else category)
+
+        Assert.Equal<MaterialCategory option>(Some renamedGlass, tryFindCategory categories CategoryIds.glass)
+        Assert.Equal<MaterialCategory option>(Some renamedGlass, tryFindCategoryByName categories renamedName)
+        Assert.Equal<MaterialCategory option>(None, tryFindCategoryByName categories originalName)
+        Assert.Equal(renamedName.value, (CategoryIds.glass.categoryName categories).value)
+        Assert.Equal<MaterialCategory option>(None, tryFindCategory [] CategoryIds.glass)
+        Assert.Equal(string CategoryIds.glass.value, (CategoryIds.glass.categoryName []).value)
+
+    [<Fact>]
+    member _.``a CategoryProxy compares by reference (the Elmish-required equality)`` () : unit =
         let make () : CategoryProxy =
             {
-                listCategories = fun () -> Ok standardCategories
+                listCategories = fun () -> Ok (BuiltinCatalogue.categories ())
                 addCategory = fun _ -> Ok ()
                 updateCategory = fun _ -> Ok ()
                 removeCategory = fun _ -> Ok ()
@@ -48,12 +224,7 @@ module CategoryProxyTests =
         Assert.False((p = make ()))
 
     [<Fact>]
-    let ``a STUB CategoryProxy over a fixed category list exercises all four functions through their exact signatures`` () =
-        // The stub proves the seam: the SAME record shape, in-test functions over a fixed
-        // category list — a later slice substitutes the real store for these and exercises the
-        // exact same logic. Each function goes through the `validateCategory` /
-        // `UnknownCategoryIdErr` / `DuplicateCategoryIdErr` / `CategoryStillReferencedErr` /
-        // `BuiltInNotRemovableErr` outcomes the contract declares.
+    member _.``a STUB CategoryProxy over a fixed category list exercises all four functions through their exact signatures`` () : unit =
         let referenced = glass
         let builtIn = vacuum
         let user = minted ()
@@ -90,12 +261,10 @@ module CategoryProxyTests =
                                 else Ok ()
             }
 
-        // listCategories : unit -> Result<MaterialCategory list, CategoryError>
         match stub.listCategories () with
         | Ok l -> Assert.Equal(3, List.length l)
         | Error err -> Assert.Fail($"%A{err}")
 
-        // addCategory : MaterialCategory -> Result<unit, CategoryError>
         match stub.addCategory (minted ()) with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok (), got %A{other}")
@@ -106,7 +275,6 @@ module CategoryProxyTests =
         | Error (InvalidCategoryErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
 
-        // updateCategory : MaterialCategory -> Result<unit, CategoryError>
         match stub.updateCategory { user with name = CategoryName "Renamed user category" } with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok (), got %A{other}")
@@ -118,7 +286,6 @@ module CategoryProxyTests =
         | Error (UnknownCategoryIdErr reason) -> Assert.Contains(string missing.id.value, reason)
         | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
 
-        // removeCategory : CategoryId -> Result<unit, CategoryError>
         match stub.removeCategory builtIn.id with
         | Error (BuiltInNotRemovableErr reason) -> Assert.Contains(builtIn.name.value, reason)
         | other -> Assert.Fail($"expected Error (BuiltInNotRemovableErr _), got %A{other}")
@@ -133,10 +300,7 @@ module CategoryProxyTests =
         | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
 
     [<Fact>]
-    let ``a STUB CategoryProxy surfaces CategoryStillReferenced when a user category is in use`` () =
-        // A dedicated stub whose fixed user category IS referenced — proves the
-        // `CategoryStillReferencedErr` case is reachable through `removeCategory`'s exact signature
-        // (the previous stub's built-in guard shadowed it for the built-in seeds).
+    member _.``a STUB CategoryProxy surfaces CategoryStillReferenced when a user category is in use`` () : unit =
         let inUse = minted ()
         let stub : CategoryProxy =
             {
@@ -153,185 +317,84 @@ module CategoryProxyTests =
         | Error (CategoryStillReferencedErr reason) -> Assert.Contains(inUse.name.value, reason)
         | other -> Assert.Fail($"expected Error (CategoryStillReferencedErr _), got %A{other}")
 
-    // ============================ the real store (spec 0035 step 003, IMPLEMENTED) ============================
+type CategoryProxySqliteTests () =
+    inherit CategoryProxyContract ()
 
-    /// A FIXED literal id for the user category the round-trip / referenced-block tests use, so
-    /// every scenario is deterministic across runs (the how-to's "fixed Guids").
-    let private userCategoryId : CategoryId = Guid.Parse "7f1e2d3c-4b5a-6978-8091-a2b3c4d5e6f7" |> CategoryId
+    let database = BuiltinCatalogue.freshLibraryDatabase ()
 
-    /// A second FIXED literal id — the unknown-id / never-added scenarios use it so they never
-    /// collide with `userCategoryId` or a seeded built-in.
-    let private otherCategoryId : CategoryId = Guid.Parse "8a2b3c4d-5e6f-7081-9192-b3c4d5e6f708" |> CategoryId
-
-    /// A FIXED literal id for the material entry the referenced-block tests categorise under the
-    /// user category (not a seeded `MaterialIds` value).
-    let private referencingMaterialId : MaterialId = Guid.Parse "9b3c4d5e-6f70-8192-a2b3-c4d5e6f70819" |> MaterialId
-
-    /// A fresh `UserCategory` under a fixed id (the real store seeds only `BuiltInCategory` records,
-    /// so a `UserCategory` is the only origin that can reach the remove / referenced paths).
-    let private userCategory (id : CategoryId) (name : string) : MaterialCategory =
-        { id = id; name = CategoryName name; visibility = SelectableOnCreate; origin = UserCategory }
-
-    /// A material entry (a copy of the seeded glass, re-identified and re-categorised) that
-    /// references the given category id — the referenced-block scenarios add it to the materials
-    /// store the category store's referencing lookup reads.
-    let private referencingMaterial (categoryId : CategoryId) : MaterialEntry =
-        let glass = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
-        { glass with id = referencingMaterialId; name = EntryName "Referencing material"; category = categoryId }
+    override _.stores () : CategoryProxy * MaterialProxy =
+        CategoryProxy.createInDatabase database, MaterialProxy.createInDatabase database
 
     [<Fact>]
-    let ``the real store add/rename/remove of an unreferenced user category round-trips with fixed Guids`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        let cat = userCategory userCategoryId "My category"
-        // add
-        match categories.addCategory cat with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () from add, got %A{other}")
-        match categories.listCategories () with
-        | Ok l ->
-            Assert.Equal(List.length standardCategories + 1, List.length l)
-            Assert.Contains(userCategoryId, l |> List.map (fun c -> c.id))
-        | Error err -> Assert.Fail($"%A{err}")
-        // rename
-        match categories.updateCategory { cat with name = CategoryName "Renamed category" } with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () from update, got %A{other}")
-        match categories.listCategories () with
-        | Ok l ->
-            match l |> List.tryFind (fun c -> c.id = userCategoryId) with
-            | Some c -> Assert.Equal("Renamed category", c.name.value)
-            | None -> Assert.Fail("the renamed category vanished from the store")
-        | Error err -> Assert.Fail($"%A{err}")
-        // remove (unreferenced → succeeds)
-        match categories.removeCategory userCategoryId with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () from remove, got %A{other}")
-        match categories.listCategories () with
-        | Ok l ->
-            Assert.Equal(List.length standardCategories, List.length l)
-            Assert.DoesNotContain(userCategoryId, l |> List.map (fun c -> c.id))
-        | Error err -> Assert.Fail($"%A{err}")
+    member _.``a category's provenance follows its origin, and an update keeps it`` () : unit =
+        let proxy = CategoryProxy.createInDatabase database
+        let latestOf (categoryId : CategoryId) : StoredEntryVersion =
+            database.run (fun context -> context.tryLatestStored categoryId.toLibraryEntryId)
+            |> Result.bind id
+            |> Result.defaultWith (fun error -> failwith error.describe)
+            |> Option.defaultWith (fun () -> failwith $"Missing category {categoryId.value}")
+
+        let user = userCategory userCategoryId "User category"
+        Assert.Equal<Result<unit, CategoryError>>(Ok (), proxy.addCategory user)
+        let firstUser = latestOf user.id
+        Assert.Equal(VersionNumber.first, firstUser.envelope.content.version)
+        Assert.Equal(UserProvenance, firstUser.envelope.content.provenance)
+        Assert.Equal(VersionUnpinned, firstUser.state.pin)
+        Assert.Equal<Result<MaterialCategory, LibraryEntryError>>(Ok user, firstUser.envelope.content.toMaterialCategory)
+
+        let builtIn : MaterialCategory =
+            {
+                id = otherCategoryId
+                name = CategoryName "Additional built-in category"
+                visibility = SelectableOnCreate
+                origin = BuiltInCategory
+            }
+        let builtInProvenance = BuiltInProvenance CatalogueIds.builtInCatalogue
+        Assert.Equal<Result<unit, CategoryError>>(Ok (), proxy.addCategory builtIn)
+        let firstBuiltIn = latestOf builtIn.id
+        Assert.Equal(VersionNumber.first, firstBuiltIn.envelope.content.version)
+        Assert.Equal(builtInProvenance, firstBuiltIn.envelope.content.provenance)
+        Assert.Equal<Result<MaterialCategory, LibraryEntryError>>(Ok builtIn, firstBuiltIn.envelope.content.toMaterialCategory)
+        match proxy.removeCategory builtIn.id with
+        | Error (BuiltInNotRemovableErr reason) -> Assert.Contains(builtIn.name.value, reason)
+        | other -> Assert.Fail($"Expected built-in removal refusal, got %A{other}")
+        Assert.Equal(firstBuiltIn, latestOf builtIn.id)
+
+        let renamed =
+            {
+                glass with name = CategoryName "Glass renamed in SQLite"
+            }
+        Assert.Equal<Result<unit, CategoryError>>(Ok (), proxy.updateCategory renamed)
+        let edited = latestOf glass.id
+        Assert.Equal(VersionNumber.first, edited.envelope.content.version)
+        Assert.Equal(builtInProvenance, edited.envelope.content.provenance)
+        Assert.Equal<Result<MaterialCategory, LibraryEntryError>>(Ok renamed, edited.envelope.content.toMaterialCategory)
+
+        let changedOrigin =
+            {
+                renamed with origin = UserCategory
+            }
+        match proxy.updateCategory changedOrigin with
+        | Error (InvalidCategoryErr reason) -> Assert.Contains("origin disagrees", reason)
+        | other -> Assert.Fail($"Expected a provenance mismatch refusal, got %A{other}")
+        Assert.Equal(edited, latestOf glass.id)
 
     [<Fact>]
-    let ``the real store rejects a duplicate add — a seeded built-in id and a re-added user id`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        // an id the seeded catalogue already holds
-        match categories.addCategory (userCategory CategoryIds.glass "Clashing glass") with
-        | Error (DuplicateCategoryIdErr reason) -> Assert.Contains(string CategoryIds.glass.value, reason)
-        | other -> Assert.Fail($"expected Error (DuplicateCategoryIdErr _), got %A{other}")
-        // re-adding a freshly-added user id — the stateful duplicate
-        let cat = userCategory userCategoryId "My category"
-        match categories.addCategory cat with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () from the first add, got %A{other}")
-        match categories.addCategory { cat with name = CategoryName "My category (re-added)" } with
-        | Error (DuplicateCategoryIdErr reason) -> Assert.Contains(string userCategoryId.value, reason)
-        | other -> Assert.Fail($"expected Error (DuplicateCategoryIdErr _), got %A{other}")
+    member _.``a database failure below the category store is CategoryStoreUnavailableErr, never a throw`` () : unit =
+        let proxy = CategoryProxy.createInDatabase database
+        (database :> IDisposable).Dispose()
 
-    [<Fact>]
-    let ``the real store rejects a blank-name add and update as InvalidCategory and persists nothing`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        let blank = userCategory userCategoryId "   "
-        match categories.addCategory blank with
-        | Error (InvalidCategoryErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
-        match categories.listCategories () with
-        | Ok l -> Assert.DoesNotContain(userCategoryId, l |> List.map (fun c -> c.id))
-        | Error err -> Assert.Fail($"%A{err}")
-        // a blank rename of a seeded built-in is rejected and keeps the stored name
-        let glass = standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
-        match categories.updateCategory { glass with name = CategoryName "" } with
-        | Error (InvalidCategoryErr _) -> ()
-        | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
-        match categories.listCategories () with
-        | Ok l ->
-            match l |> List.tryFind (fun c -> c.id = CategoryIds.glass) with
-            | Some c -> Assert.Equal(glass.name, c.name)
-            | None -> Assert.Fail("the glass built-in vanished from the store")
-        | Error err -> Assert.Fail($"%A{err}")
+        let unavailable (result : Result<'Outcome, CategoryError>) : unit =
+            match result with
+            | Error (CategoryStoreUnavailableErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+            | other -> Assert.Fail($"Expected a typed database failure, got %A{other}")
 
-    [<Fact>]
-    let ``the real store renames a built-in category — built-ins ARE renamable`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        let glass = standardCategories |> List.find (fun c -> c.id = CategoryIds.glass)
-        match categories.updateCategory { glass with name = CategoryName "Glass (renamed)" } with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () renaming a built-in, got %A{other}")
-        match categories.listCategories () with
-        | Ok l ->
-            match l |> List.tryFind (fun c -> c.id = CategoryIds.glass) with
-            | Some c -> Assert.Equal("Glass (renamed)", c.name.value)
-            | None -> Assert.Fail("the renamed built-in vanished from the store")
-        | Error err -> Assert.Fail($"%A{err}")
+        let user = userCategory userCategoryId "User category"
+        proxy.listCategories () |> unavailable
+        proxy.addCategory user |> unavailable
+        proxy.updateCategory glass |> unavailable
+        proxy.removeCategory glass.id |> unavailable
 
-    [<Fact>]
-    let ``the real store rejects updateCategory and removeCategory on an unknown id`` () =
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        match categories.updateCategory (userCategory otherCategoryId "Never added") with
-        | Error (UnknownCategoryIdErr reason) -> Assert.Contains(string otherCategoryId.value, reason)
-        | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
-        match categories.removeCategory otherCategoryId with
-        | Error (UnknownCategoryIdErr reason) -> Assert.Contains(string otherCategoryId.value, reason)
-        | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
-
-    [<Fact>]
-    let ``the real store refuses to remove a built-in category and leaves the store unchanged`` () =
-        // Every seeded category is a `BuiltInCategory`, so the built-in guard fires before the
-        // referenced check could — the acceptance's built-in block.
-        let categories = CategoryProxy.createInMemory (fun _ -> [])
-        match categories.removeCategory CategoryIds.glass with
-        | Error (BuiltInNotRemovableErr reason) -> Assert.Contains("Glass", reason)
-        | other -> Assert.Fail($"expected Error (BuiltInNotRemovableErr _), got %A{other}")
-        match categories.listCategories () with
-        | Ok l ->
-            Assert.Equal(List.length standardCategories, List.length l)
-            Assert.Contains(CategoryIds.glass, l |> List.map (fun c -> c.id))
-        | Error err -> Assert.Fail($"%A{err}")
-
-    [<Fact>]
-    let ``the real store blocks removeCategory on a user category a material references and leaves both stores unchanged`` () =
-        // The composition-root wiring: a materials store, and a category store whose referencing
-        // lookup is backed by it (`materialsReferencingCategory` — the acceptance's referenced block).
-        let materials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        match categories.addCategory (userCategory userCategoryId "Referenced category") with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")
-        let referencing = referencingMaterial userCategoryId
-        match materials.saveMaterial referencing with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () adding the referencing material, got %A{other}")
-        // blocked, NAMING the referencing material
-        match categories.removeCategory userCategoryId with
-        | Error (CategoryStillReferencedErr reason) -> Assert.Contains(referencing.name.value, reason)
-        | other -> Assert.Fail($"expected Error (CategoryStillReferencedErr _), got %A{other}")
-        // never cascades, never silently deletes: the category survives…
-        match categories.listCategories () with
-        | Ok l -> Assert.Contains(userCategoryId, l |> List.map (fun c -> c.id))
-        | Error err -> Assert.Fail($"%A{err}")
-        // …and the referencing material is untouched.
-        match materials.tryGetMaterial referencingMaterialId with
-        | Ok (Some _) -> ()
-        | other -> Assert.Fail($"expected the referencing material to survive, got %A{other}")
-
-    [<Fact>]
-    let ``the referencing lookup is live — removing the referencing material unblocks the category`` () =
-        // The lookup consults the CURRENT materials store, not a snapshot taken at construction.
-        let materials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        match categories.addCategory (userCategory userCategoryId "Referenced then freed") with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")
-        match materials.saveMaterial (referencingMaterial userCategoryId) with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () adding the referencing material, got %A{other}")
-        match categories.removeCategory userCategoryId with
-        | Error (CategoryStillReferencedErr _) -> ()
-        | other -> Assert.Fail($"expected Error (CategoryStillReferencedErr _) while referenced, got %A{other}")
-        // free the reference
-        match materials.removeMaterial referencingMaterialId with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () removing the referencing material, got %A{other}")
-        match categories.removeCategory userCategoryId with
-        | Ok () -> ()
-        | other -> Assert.Fail($"expected Ok () once unreferenced, got %A{other}")
+    interface IDisposable with
+        member _.Dispose () : unit =
+            (database :> IDisposable).Dispose()

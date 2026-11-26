@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "8ffc1a00a72406d10d9a68335c6b3cd3c3180f77eb93930fe9bb84798a91d638",
+  "descriptionOpt": null,
+  "id": "f7a747e7-a0da-4fae-a28e-0abd36d32b08",
+  "name": "BEUV 6.7 nm (beyond EUV)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            6.7
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

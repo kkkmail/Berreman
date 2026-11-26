@@ -5,6 +5,7 @@ open Berreman.MaterialProperties
 open Berreman.Fields
 open Berreman.Dispersion
 open OpticalProperties.Active
+open OpticalProperties.Dispersive
 open Xunit
 open BerremanTests.MatrixComparison
 
@@ -244,3 +245,45 @@ type RhoWithDispValueTests() =
             |> Rho.fromIm
 
         verifyMatrixEqualityRho output result expected
+
+
+    [<Fact>]
+    member _.``The langasite gyration law reproduces the engine Langasite rho`` () =
+        // The start tree's `Langasite` closure (`Dispersive.fs` rhoLa3Ga5SiO14) as G17: ρ = diag(i·g₁₁, 0, i·g₃₃).
+        let references : (WaveLength * UniaxialGyration<RhoValue>) list =
+            [
+                WaveLength.nm 400.0<nm>, { g11 = RhoValue 7.7796658883776097E-05; g33 = RhoValue 3.9268453508546882E-05 }
+                WaveLength.nm 500.0<nm>, { g11 = RhoValue 5.566915309022512E-05; g33 = RhoValue 2.7705682331063212E-05 }
+                WaveLength.nm 600.0<nm>, { g11 = RhoValue 4.3800662519989662E-05; g33 = RhoValue 2.1674625084557655E-05 }
+                WaveLength.nm 800.0<nm>, { g11 = RhoValue 3.1088573216705199E-05; g33 = RhoValue 1.5313404762903638E-05 }
+                WaveLength.nm 1000.0<nm>, { g11 = RhoValue 2.425983327036832E-05; g33 = RhoValue 1.1928082171088859E-05 }
+            ]
+
+        for (w, g) in references do
+            let rho = LangasiteGyrationLaw.rhoAt w
+            Assert.Equal(g.g11.value, rho.[0, 0].Imaginary)
+            Assert.Equal(g.g33.value, rho.[2, 2].Imaginary)
+
+            for i in 0 .. 2 do
+                for j in 0 .. 2 do
+                    Assert.Equal(0.0, rho.[i, j].Real)
+
+                    match (i, j) with
+                    | (0, 0)
+                    | (2, 2) -> ()
+                    | _ -> Assert.Equal(0.0, rho.[i, j].Imaginary)
+
+            verifyMatrixEqualityRho output ((PublishedLawRho LangasiteGyrationLaw).toRhoWithDisp.getRho w) rho
+            verifyMatrixEqualityRho output (langasiteOpticalProperties.rhoWithDisp.getRho w) rho
+
+
+    [<Fact>]
+    member _.``The published gyration law round-trips its wire tag and refuses an unknown tag`` () =
+        let laws = [ LangasiteGyrationLaw ]
+        Assert.Equal<int list>([ 1 ], laws |> List.map (fun law -> law.value))
+
+        for law in laws do
+            Assert.Equal<PublishedGyrationLaw option>(Some law, PublishedGyrationLaw.tryOfWire law.value)
+
+        for tag in [ 0; 2; -1 ] do
+            Assert.Equal<PublishedGyrationLaw option>(None, PublishedGyrationLaw.tryOfWire tag)

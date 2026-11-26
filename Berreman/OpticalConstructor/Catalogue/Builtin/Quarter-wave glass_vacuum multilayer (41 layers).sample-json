@@ -1,0 +1,87 @@
+{
+  "categoryOpt": null,
+  "contentHash": "d03821574d6ba1acccffa7581927a438c5c12cc4e90c425fa9188544a7e03134",
+  "descriptionOpt": "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers.",
+  "id": "80e5b7b0-8f10-42f6-9d87-bae692454fd5",
+  "name": "Quarter-wave glass/vacuum multilayer (41 layers)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [
+            {
+              "Case": "Repeated",
+              "Fields": [
+                {
+                  "cell": [
+                    {
+                      "materialId": {
+                        "materialId": "55750ee2-358c-40d4-ab6c-06fc144adbf8",
+                        "version": 1
+                      },
+                      "orientation": "PrimaryAxes",
+                      "thickness": {
+                        "Case": "Thickness",
+                        "Fields": [
+                          9.86842105263158E-08
+                        ]
+                      }
+                    },
+                    {
+                      "materialId": {
+                        "materialId": "4355ad6d-b743-4ca9-8365-7ce9f585a7a0",
+                        "version": 1
+                      },
+                      "orientation": "PrimaryAxes",
+                      "thickness": {
+                        "Case": "Thickness",
+                        "Fields": [
+                          1.5000000000000002E-07
+                        ]
+                      }
+                    }
+                  ],
+                  "count": 20
+                }
+              ]
+            },
+            {
+              "Case": "SingleLayer",
+              "Fields": [
+                {
+                  "materialId": {
+                    "materialId": "55750ee2-358c-40d4-ab6c-06fc144adbf8",
+                    "version": 1
+                  },
+                  "orientation": "PrimaryAxes",
+                  "thickness": {
+                    "Case": "Thickness",
+                    "Fields": [
+                      9.86842105263158E-08
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "lower": null,
+          "substrate": null
+        },
+        "substrate": "ThinFilm",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/library-source.json",
+  "title": "LibrarySourceEntry",
+  "description": "One light source per file, <name>.source-json (spec 0050 001 §A, §B). The schema header is checked for every version, the body only for version 1, so a file of another version reaches the typed version check: there are no up-converters. The physics inside the payload is bound by the serializer.",
+  "type": "object",
+  "required": ["schema"],
+  "properties": {
+    "schema": {
+      "type": "object",
+      "required": ["kind", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": 3, "description": "The source kind's wire tag." },
+        "version": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" }
+      }
+    }
+  },
+  "if": {
+    "required": ["schema"],
+    "properties": {
+      "schema": {
+        "required": ["version"],
+        "properties": { "version": { "const": 1 } }
+      }
+    }
+  },
+  "then": {
+    "required": ["schema", "id", "version", "name", "categoryOpt", "descriptionOpt", "payload", "provenance", "contentHash"],
+    "additionalProperties": false,
+    "properties": {
+      "schema": true,
+      "id": { "$ref": "https://berreman/schema/library-common.json#/$defs/guid" },
+      "version": { "$ref": "https://berreman/schema/library-common.json#/$defs/positiveVersion" },
+      "name": { "type": "string", "minLength": 1 },
+      "categoryOpt": { "type": "null" },
+      "descriptionOpt": { "type": "null" },
+      "payload": {
+        "type": "object",
+        "required": ["Case", "Fields"],
+        "additionalProperties": false,
+        "properties": {
+          "Case": { "const": "SourcePayload" },
+          "Fields": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "object",
+                "required": ["waveLength", "tuning"],
+                "additionalProperties": false,
+                "properties": {
+                  "waveLength": { "type": "object" },
+                  "tuning": { "type": ["string", "object"] }
+                },
+                "description": "The source's wavelength, and whether it is a fixed line or tunable between limits."
+              }
+            ],
+            "minItems": 1,
+            "items": false
+          }
+        }
+      },
+      "provenance": { "$ref": "https://berreman/schema/library-common.json#/$defs/provenance" },
+      "contentHash": { "$ref": "https://berreman/schema/library-common.json#/$defs/contentHash" }
+    }
+  }
+}

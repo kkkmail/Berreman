@@ -1,0 +1,9 @@
+# Implementation plan
+
+Implement S32-DROPPED-DECISIONS in the four authorized source files. Extend the import context with the existing standalone entry reader and two diagnostic errors. Decide drops in four phases: read every recognized file and aggregate refusals, collapse equal id/version duplicates while rejecting contradictions, resolve references against the complete drop and held entries, then call the shared per-entry decision table in drop order. No library writes occur during these phases.
+
+Add the four exact acceptance facts to CatalogueImportContract so both in-memory and SQLite stores inherit them. Reuse the current built-in import, sealed envelopes, atomic writer, test-output folders and write observers. Cover injected reads, empty drops, error propagation and unchanged stores within those facts; extend the existing error-rendering fact. Add tests before implementation and capture the expected missing-member build failure.
+
+Run the resolved local verification: Release solution build, elevation, the complete constructor suite and the eleven s13 invariants. Expected constructor increase is eight from the preceding measured 971; only measured results will be recorded. The higher-priority session verification requirement takes precedence over the worker protocol's act-only wording; supervisor acceptance remains external.
+
+Risks are preserving first-file/drop ordering, aggregating all file failures before proxy reads, allowing forward references within a drop, and returning the first proxy error without further reads. Reuse LibraryEntryKind.tryOfFileName, LibraryFileText.readEntryFile, referencedEntryIds and proxy.decideEntry; introduce no alternate parser or stored format. Preserve the supervisor's pre-existing manifest edit and leave all version rings and acceptance files untouched.

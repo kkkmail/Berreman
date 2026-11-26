@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "89b95fddffe5a386dc42bba83fe650036805e3908c7e50fca45e730b624aa08e",
+  "descriptionOpt": null,
+  "id": "ba473d8c-3eff-449c-84df-2e2e759c9306",
+  "name": "HeNe laser 543.5 nm (green)",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            543.5
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

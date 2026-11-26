@@ -1,6 +1,5 @@
 namespace OpticalConstructor.Ui.Tests
 
-open System.Numerics
 open Avalonia
 open OpticalConstructor.Controls
 open Avalonia.Controls
@@ -10,22 +9,20 @@ open Avalonia.FuncUI
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Xunit
-open Berreman.MathNetNumericsMath
 open Berreman.MaterialProperties
 open Berreman.Dispersion
 open Berreman.Media
 open Berreman.Constants
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
-open OpticalConstructor.Domain.Lifecycle
-open OpticalConstructor.Domain.MaterialStore
-open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Tests
 
 /// Spec 0038 Part I (step 031) — the OUT-OF-BAND dispersion warning badge on a scene element. A bound
 /// sample whose (only) material carries dispersion DEFINED over 300–700 nm, run against a 200–800 nm
@@ -48,9 +45,10 @@ module OutOfBandBadgeTests =
             | _ -> None)
 
     /// A dispersive material complexity DEFINED over 300–700 nm (the per-axis content is irrelevant to
-    /// the diagnostic — only the segment interval is read).
+    /// the diagnostic — only the segment interval is read — so a flat data axis seeds it: the constant
+    /// `RealNK` n = 1.5, k = 0 that `ConstantNK` lowers to, spec 0050 step 9).
     let private dispersiveComplexity : MaterialComplexity =
-        let axis = EpsAxisEvaluated (fun _ -> ComplexRefractionIndex (Complex.create 1.5 0.0))
+        let axis = (ConstantNK { n = 1.5; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }).toEpsAxis
         {
             eps =
                 EpsWithDispValue
@@ -67,8 +65,7 @@ module OutOfBandBadgeTests =
             name = EntryName "Dispersive glass"
             category = CategoryIds.glass
             description = None
-            properties = dispersiveComplexity.toProperties
-            complexity = Some dispersiveComplexity
+            physics = ComplexityPhysics dispersiveComplexity
         }
 
     /// A single-film sample referencing the dispersive material at its pinned version one.
@@ -95,26 +92,27 @@ module OutOfBandBadgeTests =
         let entry = dispersiveMaterial matId
         let sample = dispersiveSample matId
         let entryId = (SampleItem sample).entryId
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let samples = BuiltinCatalogue.sampleStore ()
+        let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         // Insert the dispersive material at version one so the sample layer's pinned reference resolves.
         match materials.saveMaterial entry with
         | Ok () -> ()
         | Error e -> failwith $"seeding the dispersive material failed: %A{e}"
-        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         let libStub : LibraryProxy =
             {
                 entriesForKind = fun _ -> Ok []
                 libraryTrees = fun () -> Ok []
                 tryGetEntry = fun id -> Ok (if id = entryId then Some (SampleItem sample) else None)
             }
-        let baseModel = initMainWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
-        let flagged : TestElement =
+        let baseModel = SceneTestFixture.mainSceneWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
+        let flagged : Setups.SetupSlot =
             {
                 id = Library.ElementId "sample0"
                 placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some entryId }
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
+                content = Setups.EmptySlotContent
             }
         let draft = { baseModel.experimentCollection.draft with variable = variable; range = { min = Propagation.SweptValue 200.0; max = Propagation.SweptValue 800.0; points = Propagation.CurvePointCount 91 } }
         let model =
@@ -124,7 +122,7 @@ module OutOfBandBadgeTests =
         model, List.length baseModel.elements
 
     /// Whether element `e` raises an out-of-band warning under model `m`.
-    let private isFlagged (m : TableAndElementRotationModel) (e : TestElement) : bool =
+    let private isFlagged (m : TableAndElementRotationModel) (e : Setups.SetupSlot) : bool =
         match outOfBandWarningFor m e with
         | Some _ -> true
         | None -> false

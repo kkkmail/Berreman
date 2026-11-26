@@ -1,0 +1,32 @@
+{
+  "categoryOpt": null,
+  "contentHash": "973c4e44d1683cdb037eed768e8888706c114d88cdf9dae63f7e1dc31dbd4a16",
+  "descriptionOpt": null,
+  "id": "5820d1d3-f4d0-4c99-ba4e-2642734e82a2",
+  "name": "Argon-ion laser 514.5 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": "FixedLine",
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            514.5
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

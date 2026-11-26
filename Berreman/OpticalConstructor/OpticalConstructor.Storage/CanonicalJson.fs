@@ -1,0 +1,307 @@
+namespace OpticalConstructor.Storage
+
+open System
+open System.Buffers
+open System.Numerics
+open System.Text
+open System.Text.Encodings.Web
+open System.Text.Json
+open System.Text.Json.Nodes
+open System.Text.Json.Serialization
+open MathNet.Numerics.LinearAlgebra
+open Berreman.Dispersion
+open Softellect.Sys
+open Softellect.Sys.Primitives
+open OpticalConstructor.Domain.LibraryEntryFiles
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitHistory
+open OpticalConstructor.Domain.Experiments
+open OpticalConstructor.Domain.Studies
+open OpticalConstructor.Domain.FitRuns
+open OpticalConstructor.Storage.Errors
+
+/// The canonical JSON stack every JSON store of the app shares (spec 0050 001 §B, `.spec-md` §5).
+module CanonicalJson =
+
+    /// Keeps `BeamBranch` on the wire as the schema's `"Reflected"` / `"Transmitted"`: the cases were
+    /// renamed apart from the engine's `RT` (spec 0048 `.manual/005`), the stored format was not.
+    type private BeamBranchConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.BeamTree.BeamBranch>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.BeamTree.ReflectedBeam -> writer.WriteStringValue "Reflected"
+            | OpticalConstructor.Domain.BeamTree.TransmittedBeam -> writer.WriteStringValue "Transmitted"
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetString() with
+            | "Reflected" -> OpticalConstructor.Domain.BeamTree.ReflectedBeam
+            | "Transmitted" -> OpticalConstructor.Domain.BeamTree.TransmittedBeam
+            | other -> raise (JsonException $"unknown beam branch '{other}'")
+
+    /// Keeps a rotation lock on the wire as the schema's boolean, `true` for locked: the
+    /// lock became a union (spec 0048 E013), the stored format did not.
+    type private RotationLockConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Placement.RotationLock>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Placement.RotationLocked -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Placement.RotationFree -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Placement.RotationLocked
+            | false -> OpticalConstructor.Domain.Placement.RotationFree
+
+    /// Keeps a group member's presence on the wire as the groups schema's boolean `inBeam`, `true`
+    /// for in the beam: it became a union (spec 0048 E014), the stored format did not.
+    type private BeamPresenceConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.BeamPresence>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.InBeam -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.OutOfBeam -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.InBeam
+            | false -> OpticalConstructor.Domain.Groups.OutOfBeam
+
+    /// Keeps a toggle's state on the wire as the groups schema's boolean `enabled`, `true` for
+    /// enabled: it became a union (spec 0048 E014), the stored format did not.
+    type private ToggleStateConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Groups.ToggleState>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Groups.ToggleEnabled -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Groups.ToggleDisabled -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Groups.ToggleEnabled
+            | false -> OpticalConstructor.Domain.Groups.ToggleDisabled
+
+    /// Keeps a closed set on the wire as its int tag, its `value`, read back through its `tryOfWire`
+    /// (AGENTS.md; spec 0050 step 28). Anything else, an old case name included, throws `JsonException`,
+    /// which the callers report as `MalformedJsonErr`.
+    type private ClosedSetTagConverter<'Tag>(tagOf : 'Tag -> int, tryOfWire : int -> 'Tag option) =
+        inherit JsonConverter<'Tag>()
+
+        override _.Write(writer, value, _options) = writer.WriteNumberValue(tagOf value)
+
+        override _.Read(reader, _typeToConvert, _options) =
+            let read =
+                match reader.TokenType with
+                | JsonTokenType.Number ->
+                    match reader.TryGetInt32() with
+                    | true, tag -> tryOfWire tag
+                    | false, _ -> None
+                | _ -> None
+
+            match read with
+            | Some value -> value
+            | None ->
+                let token = Encoding.UTF8.GetString(reader.ValueSpan)
+                raise (JsonException $"'{token}' is not a {typeof<'Tag>.Name} tag")
+
+    /// Keeps a `System.Numerics.Complex` (an absorbing material's `ComplexRefractionIndex`, a complex
+    /// matrix's cell) on the wire as `[re, im]`: System.Text.Json alone writes its four properties and
+    /// reads back zero (spec 0050 001 §B).
+    type private ComplexConverter() =
+        inherit JsonConverter<Complex>()
+
+        override _.Write(writer, value, _options) =
+            writer.WriteStartArray()
+            writer.WriteNumberValue value.Real
+            writer.WriteNumberValue value.Imaginary
+            writer.WriteEndArray()
+
+        override _.Read(reader, _typeToConvert, options) =
+            match JsonSerializer.Deserialize<float[]>(&reader, options) with
+            | [| re; im |] -> Complex(re, im)
+            | _ -> raise (JsonException "a complex number is the pair [re, im]")
+
+    /// Round-trip the Math.NET matrices exposed by unwrapped Eps/Mu/Rho values.
+    /// Rectangular arrays of ComplexConverter cells preserve element-wise equality
+    /// (spec 0050 S4.4, manual 012).
+    type private ComplexMatrixConverter() =
+        inherit JsonConverter<Matrix<Complex>>()
+
+        override _.Write(writer, value, options) =
+            writer.WriteStartArray()
+            for i in 0 .. value.RowCount - 1 do
+                writer.WriteStartArray()
+                for j in 0 .. value.ColumnCount - 1 do
+                    JsonSerializer.Serialize<Complex>(writer, value.[i, j], options)
+                writer.WriteEndArray()
+            writer.WriteEndArray()
+
+        override _.Read(reader, _typeToConvert, options) =
+            use doc = JsonDocument.ParseValue(&reader)
+            let root = doc.RootElement
+            let rows = root.GetArrayLength()
+            let cols = if rows = 0 then 0 else root.[0].GetArrayLength()
+            let arr = Array2D.zeroCreate rows cols
+            let mutable i = 0
+            for rowEl in root.EnumerateArray() do
+                let mutable j = 0
+                for cellEl in rowEl.EnumerateArray() do
+                    arr.[i, j] <- cellEl.Deserialize<Complex>(options)
+                    j <- j + 1
+                i <- i + 1
+            Matrix<Complex>.Build.DenseOfArray arr
+
+    /// Keeps a Math.NET real matrix (`Matrix<double>`: a `MuellerMatrix` unwrapped through
+    /// `RealMatrix4x4` and `RealMatrix`) on the wire as its array of rows of numbers: it is abstract, so
+    /// System.Text.Json alone cannot read it back (spec 0050 001 §B).
+    type private RealMatrixConverter() =
+        inherit JsonConverter<Matrix<double>>()
+
+        override _.Write(writer, value, _options) =
+            writer.WriteStartArray()
+            for i in 0 .. value.RowCount - 1 do
+                writer.WriteStartArray()
+                for j in 0 .. value.ColumnCount - 1 do
+                    writer.WriteNumberValue value.[i, j]
+                writer.WriteEndArray()
+            writer.WriteEndArray()
+
+        override _.Read(reader, _typeToConvert, options) =
+            let rows = JsonSerializer.Deserialize<float[][]>(&reader, options)
+            match rows |> Array.forall (fun row -> not (isNull row) && row.Length = rows.[0].Length) with
+            | true -> Matrix<double>.Build.DenseOfArray(array2D rows)
+            | false -> raise (JsonException "a real matrix is an array of equal-length rows of numbers")
+
+    /// The single shared `JsonSerializerOptions` (§I.1 — registered once): the one options value every
+    /// JSON store of the app reads (spec 0050). F# records, `option` values, and discriminated unions
+    /// round-trip idiomatically via FSharp.SystemTextJson: single-case unions unwrap (`Eps`,
+    /// `WaveLength`'s magnitudes, `RefractionIndex`, ...), `option` unwraps to value-or-null, and
+    /// fieldless union cases (`UnitOfMeasure`, `BeamBranch`, the nullary `ConstructorElement` cases)
+    /// serialize as plain strings. A `Complex` is `[re, im]` (`ComplexConverter`) and a real matrix its
+    /// rows (`RealMatrixConverter`), as an entry file holds them (001 §B). The closed sets with an int tag
+    /// (`LibraryEntryKind`, `TabulatedInterpolation`, `PublishedIndexLaw`, `PublishedGyrationLaw`, the kit
+    /// history's `KitStar`, step 166, a run's `ExperimentRole`, S9.1, a study's `ParameterScope` and `FitMode`, S11.1,
+    /// a fit run's `FitStage`, `CalibrationUse` and `StudyEngineKind`, S11.3, and an import profile's `DataDelimiter`,
+    /// `HeaderRowChoice`, `ByteOrderMark`, `ScanColumnUnit` and `ScanReading`, S9.2) are that int
+    /// (`ClosedSetTagConverter`, step 28).
+    let options : JsonSerializerOptions =
+        let o = JsonSerializerOptions(WriteIndented = true)
+        o.Converters.Add(ComplexConverter())
+        o.Converters.Add(ComplexMatrixConverter())
+        o.Converters.Add(RealMatrixConverter())
+        o.Converters.Add(BeamBranchConverter())
+        o.Converters.Add(RotationLockConverter())
+        o.Converters.Add(BeamPresenceConverter())
+        o.Converters.Add(ToggleStateConverter())
+        o.Converters.Add(ClosedSetTagConverter<LibraryEntryKind>((fun kind -> kind.value), LibraryEntryKind.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<TabulatedInterpolation>((fun interpolation -> interpolation.value), TabulatedInterpolation.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<PublishedIndexLaw>((fun law -> law.value), PublishedIndexLaw.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<PublishedGyrationLaw>((fun law -> law.value), PublishedGyrationLaw.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<KitStar>((fun star -> star.value), KitStar.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ExperimentRole>((fun role -> role.value), ExperimentRole.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ParameterScope>((fun scope -> scope.value), ParameterScope.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<FitMode>((fun mode -> mode.value), FitMode.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<FitStage>((fun stage -> stage.value), FitStage.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<CalibrationUse>((fun calibrationUse -> calibrationUse.value), CalibrationUse.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<StudyEngineKind>((fun engine -> engine.value), StudyEngineKind.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<DataDelimiter>((fun delimiter -> delimiter.value), DataDelimiter.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<HeaderRowChoice>((fun header -> header.value), HeaderRowChoice.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ByteOrderMark>((fun mark -> mark.value), ByteOrderMark.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ScanColumnUnit>((fun columnUnit -> columnUnit.value), ScanColumnUnit.tryOfWire))
+        o.Converters.Add(ClosedSetTagConverter<ScanReading>((fun reading -> reading.value), ScanReading.tryOfWire))
+        let fsharpOptions =
+            JsonFSharpOptions
+                .Default()
+                .WithUnionUnwrapFieldlessTags()
+                .WithUnionUnwrapSingleCaseUnions()
+                .WithUnwrapOption()
+        o.Converters.Add(JsonFSharpConverter(fsharpOptions))
+        o
+
+    /// A value's JSON tree through `options` (spec 0050 001 §B): a serializer failure, such as a non-finite
+    /// double or an unsupported type, is `MalformedJsonErr` carrying its message, never a throw.
+    let nodeOf<'Value> (value : 'Value) : Result<JsonNode, StorageError> =
+        try Ok(JsonSerializer.SerializeToNode<'Value>(value, options))
+        with e -> Error(MalformedJsonErr e.Message)
+
+    /// Validates a versioned file before comparing its top-level schemaVersion and binding its value.
+    /// Parse and binding failures are MalformedJsonErr; unsupported versions never bind (spec 0050 S4.1).
+    [<ElevationBoundary(nameof StorageBoundary, "a versioned file's text, parsed, validated and bound at the storage seam (spec 0050 S4.1)")>]
+    let parseVersionedText<'Value>
+        (validate : JsonElement -> Result<unit, StorageError>)
+        (extension : FileExtension)
+        (expected : FileSchemaVersion)
+        (text : JsonText)
+        : Result<'Value, StorageError> =
+        try
+            use document = JsonDocument.Parse text.value
+            let root = document.RootElement
+            validate root
+            |> Result.bind (fun () ->
+                let found = root.GetProperty("schemaVersion").Deserialize<FileSchemaVersion> options
+                if found = expected then
+                    Ok (root.Deserialize<'Value> options)
+                else
+                    let mismatch : SchemaVersionMismatchInfo =
+                        {
+                            fileExtension = extension
+                            found = found
+                            expected = expected
+                        }
+                    Error (UnsupportedSchemaVersionErr mismatch))
+        with e -> Error (MalformedJsonErr e.Message)
+
+    /// Every object's keys in ordinal order; arrays keep theirs, and a value its serializer's text, so a number
+    /// stays the invariant shortest round-trip form (spec 0050 001 §B).
+    let rec private writeCanonical (writer : Utf8JsonWriter) (node : JsonNode) : unit =
+        match node with
+        | null -> writer.WriteNullValue()
+        | :? JsonObject as o ->
+            writer.WriteStartObject()
+            for KeyValue (name, child) in o |> Seq.sortWith (fun a b -> StringComparer.Ordinal.Compare(a.Key, b.Key)) do
+                writer.WritePropertyName name
+                writeCanonical writer child
+            writer.WriteEndObject()
+        | :? JsonArray as a ->
+            writer.WriteStartArray()
+            for item in a do
+                writeCanonical writer item
+            writer.WriteEndArray()
+        | value -> value.WriteTo(writer, options)
+
+    /// Relaxed escaping keeps a name such as `CO₂ laser 10.6 µm` readable in a committed file (spec 0050 001 §B).
+    let private indentedWriterOptions : JsonWriterOptions =
+        JsonWriterOptions(Indented = true, IndentCharacter = ' ', IndentSize = 2, NewLine = "\n", Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
+
+    let private compactWriterOptions : JsonWriterOptions =
+        JsonWriterOptions(Indented = false, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
+
+    /// The canonical renderings (spec 0050 001 §B): sorted keys, UTF-8 without a BOM.
+    type JsonNode with
+
+        member private this.canonicalTextWith (writerOptions : JsonWriterOptions) : string =
+            let buffer = ArrayBufferWriter<byte>()
+            use writer = new Utf8JsonWriter(buffer, writerOptions)
+            writeCanonical writer this
+            writer.Flush()
+            Encoding.UTF8.GetString(buffer.WrittenSpan)
+
+        /// The file form: two-space indents and `\n` line ends, with no final line end.
+        member this.indentedCanonicalText : string = this.canonicalTextWith indentedWriterOptions
+
+        /// The complete file form: indented canonical JSON followed by exactly one `\n` (spec 0050 S4.1).
+        member this.canonicalFileText : string = $"{this.indentedCanonicalText}\n"
+
+        /// The hashed form: no whitespace at all.
+        member this.compactCanonicalText : string = this.canonicalTextWith compactWriterOptions
+
+    /// The lowercase hex SHA-256 of the UTF-8 of a value's compact canonical text (spec 0050 001 §B), so the
+    /// hash depends on neither whitespace, key order nor the current culture.
+    let contentHashOf<'Value> (value : 'Value) : Result<ContentHash, StorageError> =
+        nodeOf value
+        |> Result.map (fun node ->
+            let bytes = Encoding.UTF8.GetBytes(node.compactCanonicalText) |> FileByteContent
+            ContentHash.ofBytes bytes)

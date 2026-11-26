@@ -1,0 +1,12 @@
+{
+  "author": "absorbing-biaxial-noisy bench",
+  "created": "2026-06-01T12:00:00Z",
+  "id": "e15b30f6-b9ff-4a6b-a88d-b5401df2a7ae",
+  "importProfiles": [],
+  "modified": "2026-06-01T12:00:00Z",
+  "name": "absorbing-biaxial-noisy",
+  "namingTemplate": "{obj1}",
+  "notes": "",
+  "schemaVersion": 1,
+  "sendExclude": []
+}

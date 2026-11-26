@@ -1,115 +1,137 @@
-/// Spec 0038 Part C (step 006): the ONE app-scope composition value. The five domain
-/// proxies used to be created INSIDE `MainConstructorWindow`'s constructor
-/// (`…App/Program.fs`), so a second window could never share the stores; now they are
-/// built once at startup — before any window opens — bundled with the step-005
-/// `WorkbenchSettings`, and injected into the launcher, the Main workbench window,
-/// and every window opened later, so launcher-opened and constructor-opened windows
-/// observe the SAME in-memory stores. The parameterless `DefaultStores` composition
-/// (`TableAndElementRotationView.fs`) stays the test-scene default; this record is
-/// the product composition.
 namespace OpticalConstructor.Ui
 
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.CatalogueFiles
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Domain.ItemModels
+open OpticalConstructor.Domain.Kit
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.Lifecycle           // VersionsInUse.empty (the injected in-use seam)
-open OpticalConstructor.Domain.MaterialStore       // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
-open OpticalConstructor.Domain.SampleStore         // SampleProxy.createInMemory (versioned, spec 0038 step 022)
+open OpticalConstructor.Domain.LibraryBackup
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.MaterialSources
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Storage.CatalogueFolderStore
+open OpticalConstructor.Storage.CatalogueImportStore
+open OpticalConstructor.Storage.CategoryDatabaseStore
+open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Storage.ItemModelDatabaseStore
+open OpticalConstructor.Storage.KitHistoryStore
+open OpticalConstructor.Storage.LibraryBackupStore
+open OpticalConstructor.Storage.LibraryDatabaseStore
+open OpticalConstructor.Storage.MaterialDatabaseStore
+open OpticalConstructor.Storage.MaterialSourceStore
+open OpticalConstructor.Storage.PresetDatabaseStore
+open OpticalConstructor.Storage.SampleDatabaseStore
+open OpticalConstructor.Storage.SourceDatabaseStore
+open OpticalConstructor.Ui.KitOpening
+open Softellect.Sys.Logging
 
-/// The app-scope composition context (the `*Context` convention: the IO-boundary
-/// proxies plus the app-configuration data, constructed once at the composition
-/// root). The proxy fields are `[<ReferenceEquality>]` function records, and ONE
-/// context IS the app scope, so the context itself compares by reference — two
-/// structurally-similar contexts are two different scopes with independent stores.
+/// The one app scope, composed at the root over the configured locations (the SQLite library stores and the catalogue
+/// import of every start) and injected into the launcher, the start screen and every window (spec 0050 Close).
+/// Context identity is by reference; database identity comes from its configured connection.
 [<ReferenceEquality>]
 type AppContext =
     {
-        /// The catalogue seam behind the Select bay (spec 0027) — spec 0046: the LIVE Library
-        /// (`Library.liveLibrary` — the seeded presets over the samples and user-sources stores), so
-        /// an entry created in the Library window binds and resolves on the table.
+        /// The live database library combines presets, samples and user sources for selection and binding.
         library : Library.LibraryProxy
         /// The read-only experiment-template seam behind the Experiments bay.
         experiments : Experiments.ExperimentProxy
-        /// The materials WRITE store (STORE_XDUO_0001) — its remove-block consults
-        /// the LIVE `samples` store below through `samplesReferencing`.
+        /// The materials database store refuses removal while samples reference the material.
         materials : MaterialLibrary.MaterialProxy
-        /// The samples WRITE store (STORE_XDUO_0002).
+        /// The samples database store.
         samples : Library.SampleProxy
-        /// Spec 0046: the USER light-source WRITE store behind the Library window's source editor.
+        /// The user light-source database store behind the Library window's source editor.
         sources : Library.SourceProxy
-        /// The category WRITE store (STORE_XDUO_0003) — its remove-block consults
-        /// the LIVE `materials` store above through `materialsReferencingCategory`.
+        /// The category database store refuses removal while materials reference the category.
         categories : MaterialLibrary.CategoryProxy
-        /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006) —
-        /// the real file-backed adapter (step 036, the one file-read seam §0.3c
-        /// permits) behind the inverse flow's per-experiment data-file attach.
-        experimentData : ExperimentData.ExperimentDataProxy
-        /// Spec 0038 Part I/L (037): the experiment-collection persistence seam
-        /// (STORE_XDUO_0005, step 029 in-memory `createInMemory`) — named collections
-        /// of experiments save / list / load through it.
-        experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy
-        /// Spec 0038 (027, STORE_XDUO_0004): the scene persistence seam — the in-memory
-        /// `Scene.SceneProxy.createInMemory` store (`Scene.fs`), built ONCE at the app scope
-        /// beside the five stores and the two experiment seams above, so "every proxy is built
-        /// exactly once at the root" holds (step 047 acceptance). The scene save/load surface
-        /// that consumes it is a later cycle — the seam is composed here now exactly as
-        /// `experimentCollections` was before its builder wired in; a future disk-backed `create`
-        /// swaps in with no change to any consumer.
-        scenes : Scene.SceneProxy
-        /// Spec 0046: the experiment-data export seam — the CSV adapter writing each exported run into the
-        /// user's `Documents/Optical Constructor/Exports` folder (nothing touches the disk until an export).
+        /// The item-model store over the app's library database (spec 0050 S7.1).
+        itemModels : ItemModelProxy
+        /// The library's backup store, Backups beside the database (spec 0050 001 §G).
+        libraryBackups : LibraryBackupProxy
+        /// The database import seam through which the Library window registers catalogue folders (spec 0050 S3.1)
+        /// and pulls from refractiveindex.info, PTB OCDB and CXRO Henke over the configured sources folder (spec 0050 S13.1, S13.2).
+        catalogueImports : CatalogueImportContext
+        /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
+        pendingImports : PendingCatalogueImport list
+        /// Write each exported run as CSV in the configured exports folder (spec 0046; spec 0050 §3.9).
+        /// No file is written until an export is requested.
         experimentExport : ExperimentExport.ExperimentExportProxy
         /// The step-005 typed appsettings.json values (`AppConfig.loadWorkbenchSettings`
         /// elevates them once at the composition root); later Part C/E/F steps read the
         /// window-policy / quick-pick / tree / bucketing fields from HERE, never from
         /// the provider.
         settings : WorkbenchSettings
+        /// The locations the app scope was composed over, where its windows' dialogs start (spec 0050 §3.9, S6).
+        locations : DataLocations
+        /// The kit history the start screen lists and bumps, in the per-user preferences (001 §F, spec 0050 S5.2).
+        kitHistory : KitHistoryProxy
     }
 
-    /// Build the ONE app scope over the in-memory stores (§0.2: no library state is
-    /// persisted — every app start re-seeds). The composition ORDER is the
-    /// load-bearing part (the `DefaultStores` / former in-window precedent): the
-    /// samples store first, then the materials store whose remove-block consults the
-    /// LIVE samples through `samplesReferencing`, then the category store whose
-    /// remove-block consults the LIVE materials through
-    /// `materialsReferencingCategory`. Real, disk-backed proxies would later be built
-    /// here instead (in `OpticalConstructor.Storage`), leaving every consumer
-    /// unchanged.
-    static member create (settings : WorkbenchSettings) : AppContext =
-        // Both stores are versioned (spec 0038 steps 021/022) and take the step-20 `VersionsInUse`
-        // seam. Step 25 implements the real builder — `Experiments.versionsInUseSeam` over the
-        // `boundVersions` of a live experiment collection (fully unit-verified: injected into a store,
-        // a bound sample version blocks removal and mints on physics change). Wiring it HERE needs a
-        // mutable experiment source shared with the once-built stores, but the live experiment
-        // collection lives in the immutable Elmish model (`TableAndElementRotationView`), not a store
-        // this composition root can read; that shared source lands with the `ExperimentCollectionProxy`
-        // (spec 0038 Part I, a later step). Until then `VersionsInUse.empty` is truthful — no experiment
-        // is persisted, so no version is in use across app scope yet (§0.2).
-        let samples = SampleProxy.createInMemory VersionsInUse.empty
-        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-        let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
-        let sources = Library.SourceProxy.createInMemory ()
+    static member private compose (locations : DataLocations) (settings : WorkbenchSettings) (database : LibraryDatabase) : AppContext =
+        let materials = MaterialProxy.createInDatabase database
+        let samples = SampleProxy.createInDatabase database
+        let sources = SourceProxy.createInDatabase database
+        let categories = CategoryProxy.createInDatabase database
+        let catalogueImports =
+            {
+                CatalogueImportContext.create (CatalogueImportProxy.createInDatabase database) with
+                    exportFolderOpt = Some locations.cataloguesFolder
+                    // In this order: the Online sources window opens on the first; building them touches nothing (spec 0050 S13.2).
+                    materialSources =
+                        [
+                            MaterialSourceProxy.createRefractiveIndexInfo
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                            MaterialSourceProxy.createPtbOcdb
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                            MaterialSourceProxy.createHenkeCompounds
+                                locations.materialSourcesFolder
+                                SourceArchiveDownloader.http
+                                ClockProvider.system
+                        ]
+            }
+        let pendingImports =
+            match catalogueImports.importOnStart (CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder) with
+            | Error e ->
+                Logger.logError $"AppContext.compose: could not import catalogues on start: {e.describe}"
+                []
+            | Ok report ->
+                for folder in report.folders do
+                    match folder.outcome with
+                    | Error e -> Logger.logError $"AppContext.compose: could not import catalogue folder '{folder.folder.value}': {e.describe}"
+                    | Ok _ -> ()
+                report.pending
+
         {
-            library = Library.liveLibrary (Library.createInMemory ()) samples sources
+            library = LibraryProxy.createInDatabase database
             experiments = Experiments.createInMemoryExperiments ()
             materials = materials
             samples = samples
             sources = sources
             categories = categories
-            // Spec 0038 Part L (037): the measured-data load seam is the real file-backed adapter
-            // (step 036 — read a picked file's text and hand it to the step-34 parsers, the one
-            // file-read seam §0.3c permits); the experiment-collection store is the step-029
-            // in-memory `createInMemory`. Both thread into `initMainWith` / `initInverse`.
-            experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
-            experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
-            // Spec 0038 (027): the scene store — the in-memory `SceneProxy.createInMemory` (a fresh
-            // session starts with no saved scenes, §0.2), the last of the STORE_XDUO_000x proxies to
-            // be composed at the root (step 047 "every proxy built once at the root").
-            scenes = Scene.SceneProxy.createInMemory ()
+            itemModels = ItemModelProxy.createInDatabase database
+            libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
+            catalogueImports = catalogueImports
+            pendingImports = pendingImports
             experimentExport =
-                let documents = System.Environment.GetFolderPath System.Environment.SpecialFolder.MyDocuments
                 OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
-                    (Softellect.Sys.Primitives.FolderName (System.IO.Path.Combine(documents, "Optical Constructor", "Exports")))
+                    locations.exportsFolder
                     (fun () -> OpticalConstructor.Storage.ExperimentExportFile.ExportTime System.DateTime.Now)
             settings = settings
+            locations = locations
+            kitHistory = KitHistoryProxy.create locations.preferencesFolder
         }
+
+    /// Every start imports the shipped catalogue and registered folders by manifest hash, pending confirmation (spec 0050 S2.4; S3.1).
+    static member create (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
+        LibraryDatabase.openOrCreate locations.libraryConnection
+        |> Result.map (AppContext.compose locations settings)
+
+    /// Backs up and recreates; every start imports shipped and registered catalogues by manifest hash, pending confirmation (spec 0050 001 §C; S3.1).
+    static member recreateLibrary (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
+        LibraryDatabase.recreate locations.libraryConnection locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
+        |> Result.map (AppContext.compose locations settings)

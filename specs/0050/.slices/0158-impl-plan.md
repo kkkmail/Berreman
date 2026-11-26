@@ -1,0 +1,7 @@
+# Implementation plan — 0158
+
+Retire Storage's whole-project edit history under `S44-EDIT-HISTORY`. Delete `History.fs` and its compile entry, and remove only the undo/redo words from the existing persistence comment. Delete the two authorized AC-I7 facts and their History import. Retain `projectWith`, `preEdit`, `edited`, all other fixtures, and both remaining facts unchanged. Reduce the test module documentation to its existing autosave sentence.
+
+Source edits are limited to `OpticalConstructor.Storage/History.fs`, `OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj`, and `OpticalConstructor.Tests/HistoryTests.fs`. Write the implementation log and state-of-the-world at the supplied slice paths. No replacement history API, durable-format change, test identity addition, version bump or git mutation is needed.
+
+The main risk is removing shared fixtures still used by autosave. Source inspection found history references confined to the deleted module and the two retiring facts/import. Review the diff to preserve the surviving fixtures and assertions and LF line endings. The IMPLEMENT worker's Invariant 6 reserves build, elevation, constructor-unit-tests, acceptance grep and all twelve s18 invariants for the supervisor; execute none locally and claim no gate result. The expected test-count change is minus two non-parameterized facts; the supervisor owns its measurement and checkpoint.

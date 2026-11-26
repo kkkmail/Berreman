@@ -1,0 +1,60 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "d4d8dfc0-3d43-4a24-853c-369479de4f5d",
+    "label": "Laser",
+    "model": {
+      "Case": "PresetInstance",
+      "Fields": [
+        {
+          "itemModelId": "239b0cfb-9938-5f3b-a767-c4252ea671b6",
+          "version": 1
+        },
+        "a77786fe-f38e-4af3-8cfc-bd94be27567e"
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "azimuth",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "ellipticity",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "degreeOfPolarization",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "intensityScale",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            1
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

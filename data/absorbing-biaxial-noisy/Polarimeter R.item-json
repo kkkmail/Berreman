@@ -1,0 +1,50 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "938e1eb1-4b3d-43ea-b4a0-12c1dc5c4191",
+    "label": "Polarimeter R",
+    "model": {
+      "Case": "ItemModelVersionInstance",
+      "Fields": [
+        {
+          "itemModelId": "7e74324f-ded2-4607-b9d8-a40d477ac437",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "rotationUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.003490658503988659
+          ]
+        }
+      },
+      {
+        "name": "elementUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.005
+          ]
+        }
+      },
+      {
+        "name": "throughputUncertainty",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0.01
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

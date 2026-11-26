@@ -1,0 +1,3 @@
+﻿experiment,capture_index,captured_at,description,iso,exposure_ns,focus_distance,region_x,region_y,region_w,region_h,n_pixels,avg_R,avg_G,avg_B,avg_total
+BullshitCheck,1,2026-05-31T01:10:40Z,60,100,10000000,0,992,383,2190,2342,4017048,19355.5,2182.68,2805.81,24344
+BullshitCheck-2,1,2026-05-31T01:49:53Z,60,100,10000000,0,992,383,2190,2342,4017048,15088.6,1488.33,1926.14,18503.1

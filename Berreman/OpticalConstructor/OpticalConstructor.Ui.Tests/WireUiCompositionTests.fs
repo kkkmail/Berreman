@@ -1,36 +1,26 @@
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Tests
+
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
-open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Spec 0033 (026) / 0035 (019) / 0038 (013) — the WIRE_UI composition acceptance. Every proof
-/// here drives the REAL `OpticalConstructor.App.MainConstructorWindow` over the app-scope
-/// `AppContext` (spec 0038 step 006 hoisted the five-proxy composition out of the window's
-/// constructor: `AppContext.create` builds the samples store first, then the materials store
-/// whose remove-block consults the LIVE samples through `samplesReferencing`, then the category
-/// store whose remove-block consults the LIVE materials through `materialsReferencingCategory`,
-/// beside the library / experiments proxies) — all five injected through `initMainWith`, NOT a
-/// test-side model with injected stores (that layer is `MainWorkbenchTests`). Windows are opened
-/// by the REAL `EditorLaunchers.defaults` and observed through the public global
-/// `Window.WindowOpenedEvent` (the seam the desktop lifetime itself uses for window tracking),
-/// so the proof is end-to-end. Spec 0038 (013): the Materials bay left the ribbon — the
-/// materials surface is now the single-instance Materials WINDOW behind the ribbon strip's
-/// right-aligned `Materials…` button, so the material-side proofs go strip button → real
-/// Materials window over the root-wired stores → verb click → the real Material / Category
-/// editors mount headless. Spec 0038 (015): the Library (samples) workbench bay left the same
-/// way — the sample-side proofs go `Library…` strip button → real Library window → verb click →
-/// the real Sample editor.
+/// WIRE_UI acceptance drives real Main, Materials, Library and editor windows over `AppContext.create`,
+/// which fills empty stores from the Built-in catalogue (spec 0033 (026); 0035 (019); 0038 (006, 013, 015); 0050 §3.4).
+/// Real `EditorLaunchers.defaults` launches are observed through `Window.WindowOpenedEvent`.
 module WireUiCompositionTests =
+
+    let private owner = FolderName "WireUiCompositionTests"
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView
     module LW = OpticalConstructor.Ui.LibraryWindowView
@@ -105,12 +95,11 @@ module WireUiCompositionTests =
         | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail("the filter box was not found")
 
-    /// Mount the REAL composition root headless: a FRESH app-scope context (test isolation —
-    /// the stores are mutable) injected into the real window, whose constructor runs the
-    /// Elmish loop over `initMainWith` — exactly what the launcher's Main button does with
-    /// `Startup.context` (spec 0038 step 006).
+    /// Mounts the real window over an isolated app scope and kit (spec 0038 step 006; spec 0050 S4.3).
     let private mountRoot () : Window =
-        let window = OpticalConstructor.App.MainConstructorWindow(AppContext.create WorkbenchSettings.defaults)
+        let context = TestAppScope.freshAppContext owner
+        let opened = TestAppScope.openedKitIn owner context.catalogueImports
+        let window = OpticalConstructor.App.MainConstructorWindow(context, opened)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window
@@ -174,9 +163,8 @@ module WireUiCompositionTests =
             clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector.value)).value
             for id in [ ConstructorUiId.libraryKindLabel.value; ConstructorUiId.libraryBoundReadout.value; ConstructorUiId.libraryTree.value ] do
                 Assert.True(isPresent window id, $"the Select bay must mount %s{id}")
-            // Materials: the strip button opens the REAL single-instance Materials window,
-            // whose faceted tree lists the SEEDED store — the root wired a live MaterialProxy,
-            // not an empty stand-in.
+            // Materials: the strip button opens the REAL single-instance window, whose tree
+            // lists BuiltinCatalogue.materials () through the root-wired live MaterialProxy.
             let materialsWindow = openMaterialsWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
             clickOn materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
@@ -186,15 +174,14 @@ module WireUiCompositionTests =
                         "the Materials window must list the seeded silicon entry from the root-wired store")
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()
-            // Library: the strip button opens the REAL single-instance Library window, whose
-            // by-kind faceted tree lists BOTH the seeded live samples store and the read-only
-            // preset entries — the root wired live proxies, not empty stand-ins.
+            // Library: the REAL single-instance window's by-kind tree lists BuiltinCatalogue.samples ()
+            // from the live store and BuiltinCatalogue.presets () through root-wired proxies.
             let libraryWindow = openLibraryWindow window
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode SeedSamples.glassFilm600.id.toElementValueId).value),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode SampleIds.glassFilm600Id.toElementValueId).value),
                         "the Library window must list the seeded glassFilm600 sample from the root-wired store")
-            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode (OpticalConstructor.Domain.Placement.ElementValueId "src-600")).value),
+            Assert.True(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value),
                         "the Library window must list the seeded source preset from the root-wired proxy")
             libraryWindow.Close()
             Dispatcher.UIThread.RunJobs()
@@ -228,7 +215,7 @@ module WireUiCompositionTests =
             Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryWindow, "the strip button must open the Library window")
             commitFilter libraryWindow "n=1.75"
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
-            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode SeedSamples.glassFilm600.id.toElementValueId).value)
+            clickOn libraryWindow ((ConstructorUiId.libraryEntryNode SampleIds.glassFilm600Id.toElementValueId).value)
             clickOn libraryWindow ConstructorUiId.libraryEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)

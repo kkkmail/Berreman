@@ -1,0 +1,112 @@
+# Secondary review — slice 0160, postmortem 03
+
+This is the owning orchestrator's advisory review of the agent-written
+[primary postmortem](0160-03.postmortem-md). It is not an operator decision.
+The only change authorized by this review is this report; no repair, commit,
+acceptance, counter edit or relaunch was performed.
+
+## Diagnosis
+
+The immediate cause is a live configuration change: `.specrc.agent` changed
+from `openai-codex` to `claude-code` after boot published the profile-1 receipt
+and before the implementation worker returned. ASG fingerprints the entire
+`.specrc` file, so the agent-selection change invalidated that receipt. The
+post-worker guard escalated before build, elevation, tests or a new judge run.
+
+I independently recomputed the receipt using the current ASG functions. The
+only differing input is `inputs.specrc`. All source, bundle, prompt and validator
+identities match, as do all 988 compiled descriptors and gate snapshots. The
+stored `.specrc` identity matches committed HEAD; the working copy differs only
+in the agent value after line-ending normalization. Product and elevation-driver
+files have no diff against HEAD `37cb5491c313fe5a8ebe46c12c8a83435504c14b`.
+
+The trigger is therefore configuration drift during execution. There is no
+evidence of an implementation defect or recurrence of the arc-origin coverage
+defect. ASG's current guard behaved according to its implementation, but its
+generic error conceals the changed file and it couples backend selection to
+proof validity. Those are tooling design/diagnostic concerns, separate from the
+already-fixed schema and analyzer-scope incidents.
+
+## Evidence and timing
+
+- Validated event `c071075cd29243efa8dfc38c4e29fbb3` against its ticket and launch
+  record under `.artifacts/arc-watch/c071075cd29243efa8dfc38c4e29fbb3/`.
+  Action is `review_escalation`, slice index 159, postmortem attempt 03.
+- The watched entry process was PID 60484; it waited for detached supervisor
+  PID 109952 and forwarded its exit. Both processes and watcher PID 202056 have
+  exited. This is a confirmed terminal escalation, not an old monitor message.
+- `.manifest-arc-runner.log`: receipt publication/compile success at 17:02:14Z;
+  arc origin confirmed at 17:02:15Z; Codex worker started at 17:02:28Z.
+- `.specrc` last-write time is 17:03:11Z, during that worker's run. Its diff is
+  exactly `agent: openai-codex -> claude-code` after normalization.
+- Worker exited successfully at 17:05:56Z. The receipt check escalated at
+  17:05:58Z; no new gate or judge ran. The subsequent postmortem used Anthropic,
+  demonstrating that backend dispatch consumed the changed selection.
+- Receipt/current `.specrc` hashes respectively:
+  `00a96e8c76e2d337f526da833c00660a8f440162e05ad3b344aba4769faa8355`
+  and `080945bfd4d71d941c4f3ba6b80b99b2e1fdd56fad390ede8a1b89505e02d25f`.
+  `validate_receipt` returns only the stale-input error.
+- ASG source: `executability/receipt.py:input_fingerprint` binds `.specrc`;
+  `validate_receipt` compares that identity; `profile.py:file_hash` uses
+  `cleaned_sha256`, which normalizes line endings. CRLF is not this trigger.
+  `run_arc_runner.py` checks the receipt after worker exit, before feedback
+  gates. `step_compiler/compile.py` republishes the receipt following successful
+  compilation, including the normal boot path in `_common/runtime/main.py`.
+- State remains escalated on 0160, conversation sequence 5, one resolver run
+  and zero route-backs. There are 159 accepted slices, ending at 0159.
+  Checkpoint 159 is absent; checkpoint 158 still records 1,142 constructor cases.
+- The worker changed only its three handoff documents and explicitly recorded
+  the concurrent agent-selection edit. ASG has no tracked working-tree changes.
+
+## Agreement and corrections to the primary analysis
+
+I agree with the fingerprint diagnosis and the recommendation to resume only
+after configuration is settled. I do not adopt its categorical attribution to
+an operator: the diff, timestamp and worker account establish an external edit
+relative to the worker's reported writes, but do not identify the editor.
+
+An isolated `.specrc` commit is not technically required. The operator may
+commit all current reports/state alongside the intended configuration, as is
+standard here. Such a commit does not fix or invalidate product verification;
+the next successful boot recompiles and republishes the receipt. No manual
+receipt edit or rollback of the worker's handoff is warranted.
+
+The previous 0069 receipt incident was caused by tooling-owned registry
+initialization and was repaired. This incident concerns a different input and
+does not establish that repair regressed. The 0160-01 schema repair and
+0160-02 origin/scope repair also remain intact. Earlier local validation of all
+15 gates, 12 analyzed projects and 1,136 constructor cases remains historical
+evidence; this interrupted run supplied no new gate verdict.
+
+## Recommended course of action — awaiting agreement
+
+1. Settle the backend choice while the arc is stopped. Preserve the current
+   `claude-code` selection if that edit was intended; otherwise restore the
+   intended selection explicitly. Normalize `.specrc` to LF as required by the
+   repository. Do not infer permission to reverse the concurrent edit.
+2. Let the operator commit the configuration and any desired escalation
+   artifacts. No ASG/STL source repair, product edit, ledger amendment or gate
+   change is necessary to unblock this incident. Preserve the origin record,
+   counters, inherited floor and missing checkpoint for the supervisor to own.
+3. On the operator's relaunch request, resume normally with the existing
+   `.artifacts/0160-02-operator-repair/operator-reply.md` and
+   `--executability-profile 1`, following manuals 012 and 013. Do not use
+   `--accept-current-slice`: measured checkpoint 159 and case evidence are still
+   required. Boot must successfully compile and publish a receipt for the settled
+   configuration. Leave receipt-bound configuration/prompts unchanged during
+   that run; make further backend switches between stopped runs under the
+   present implementation.
+4. Verify normal review and all 15 gates, including actual elevation coverage
+   from `f395597c071910aaa215518626563f6c784bfb62`, measured 1,136 constructor
+   cases and the exact census. Require checkpoint 159 before advancing to 0161.
+   Reattach the terminal-event monitor. No separate repetition of the prior
+   product tests is needed before that normal supervisor verification.
+
+If live backend switching is a required workflow, address it explicitly in ASG:
+identify changed receipt components in the error, distinguish dispatch settings
+from contract-affecting `.specrc` settings, and define when a backend change
+takes effect. Do not remove `.specrc` wholesale from validation. Such a change
+needs tests proving backend-only switches preserve execution proofs while gate,
+scope and other semantic changes still invalidate them. This is an alternative
+tooling enhancement requiring agreement, not a prerequisite for the recovery
+above and not work performed by this review. STL remains untouched.

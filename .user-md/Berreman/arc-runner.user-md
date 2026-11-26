@@ -81,7 +81,7 @@ dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
 - Filter with xUnit v3's own options only (`--filter-class`,
   `--filter-method`, `--filter-trait`, `--filter-not-trait`). VSTest's
   `--filter` does not exist here.
-- `BerremanTests` takes about 30 minutes whole, so run the classes you
+- `BerremanTests` takes about 52 minutes whole, so run the classes you
   touched. The two constructor suites take under a minute, and
   `ui-tests` about three.
 - The ELEV analyzers run over what you changed, from the repo root,
@@ -91,8 +91,14 @@ dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
   powershell -NoProfile -ExecutionPolicy Bypass -File Elevation/Run-ElevationGate.ps1 -ExcludeRules ELEV004
   ```
 
-- Build machines have no OneDrive. No test, fixture or kit may live
-  under Documents or depend on a OneDrive folder.
+- No test, fixture or kit lives under Documents; test kits and
+  databases go under the test run's output directory.
+- When a development run exceeds its effective gate deadline, report the gate,
+  measured duration and deadline in the state-of-the-world's Tests section.
+  The supervisor enforces `attempt_timeout_seconds`, else
+  `runtime_estimate_seconds`, from the step's `.gates` snapshot. For spec 0050
+  from step 0210, read `specs/0050/.manual/015-ui-smoke-deadline.md` for the
+  approved deadline increase and normal profile-1 recovery.
 
 ---
 
@@ -121,34 +127,14 @@ duplicate it here. What you need to know while implementing:
   count is at least the baseline from the prior green step's
   checkpoint record (`.checkpoints-json`, maintained by the
   arc-runner). You never author baselines yourself.
-- **The known-findings list** (`Elevation/elevation-known-findings.json`):
-  - a recorded finding does not fail `elevation`, but a new one does;
-  - a recorded finding that is gone fails as stale, so a fix deletes its
-    entry (or lowers its count) in the same step. That includes entries in
-    other files your change cleared, such as the higher side of a
-    duplicate name whose lower side you renamed;
-  - never add an entry, never re-record the list, and never edit
-    `.elevation-analyzers.json` to silence a finding.
-
----
-
-## The ELEV ledger
-
-The ELEV cleanup is the ledger
-`specs/0048/.manual/002-elevation-ledger.jsonl`, one JSON row per unit of
-work. Its plan, with the operator's rulings R1-R7, is
-`specs/0048/.manual/002-elevation-plan.md`, and that plan binds over a
-row's own text.
-
-- A step works inside ONE row: the whole row, or some of its files in
-  the row's order. Rows close in id order.
-- The step that clears a row's last file flips the row, in the same
-  change as its code: `state` becomes `done`, `closedIn` names the step,
-  and the note is written as plan section 5 lists.
-- A public rename in a shipped package goes in
-  `specs/0048/.manual/renames.tsv`, and a changed stored shape in
-  `specs/0048/.manual/stored-format-changes.md`.
-- The ledger is never regenerated.
+- **The tree is ELEV-clean.** The known-findings list
+  (`Elevation/elevation-known-findings.json`) is empty, so every ELEV
+  finding (ELEV004 excepted) fails `elevation`:
+  - every line you write is ELEV-clean;
+  - never add an entry to the list, and never edit
+    `.elevation-analyzers.json` or the analyzers to silence a finding;
+  - a mark (`[<ElevationBoundary>]`, `[<NumericCarrier>]`) goes on a
+    declaration, never on a module, and only where AGENTS.md allows it.
 
 ---
 
@@ -213,6 +199,12 @@ entry's `id` is reserved.
 
 ## Standing operator rulings (every spec)
 
+At spec 0050 steps 0252, 0254, 0259, 0260 and 0261, every role also reads
+`specs/0050/.manual/016-step-0252-recommit-fixture.md`. Preserve the copied-item
+fixture's three stored items through later slot changes and reuse the shared
+ordered Result collector. The 0252 recovery resumes normally with profile 1,
+without `--accept-current-slice`, to record measured checkpoint 251.
+
 These bind every role on every step of every spec, a post-mortem's
 proposals included. A project prompt states its own rulings because
 ASG cannot; these are the ones STL's prompt carries (ASG spec 0090
@@ -220,14 +212,73 @@ ASG cannot; these are the ones STL's prompt carries (ASG spec 0090
 
 1. **Nothing is deferred** (operator, 2026-11-01; STL spec 0229
    `.manual/006`). A step finishes what its brief asks for. Work that
-   cannot be finished is a blocked step, or a blocked ledger row, naming
-   the question. It is never a "later", never a follow-up, and never an
+   cannot be finished is a blocked step naming the question. It is never a "later", never a follow-up, and never an
    entry left for another step.
 2. **A published spec is not amended.** An operator ruling in the
    spec's `.manual/`, or an operator note, is the amendment.
 3. **Committed green work resumes with `--accept-current-slice`**, not
    with a relaunch that re-runs the worker.
 4. **No failure allowance, waiver or carried red.**
+
+For spec 0050, every role reads
+`specs/0050/.manual/005-step-0056-parity-retirement.md` at steps 0056, 0057,
+0210 and 0354. It authorizes early parity retirement while preserving step
+0057's test effects, normal verification and measured-count checkpoint.
+
+At steps 0059, 0151, 0152 and 0260, every role also reads
+`specs/0050/.manual/006-step-0059-case-count-accounting.md`. It corrects
+method-versus-case retirement arithmetic without changing test effects or
+gates. Its explicit 0059 recovery exception requires a normal profile-1 resume
+to record the measured checkpoint, without `--accept-current-slice`.
+
+At step 0132, every role also reads
+`specs/0050/.manual/009-step-0132-lock-guard-recovery.md`. It authorizes the
+shared storage-guard repair and existing-test extensions outside the original
+attachment slice's effects. Its explicit recovery exception requires a normal
+profile-1 resume after the operator's commit to record checkpoint 131, without
+`--accept-current-slice`. Later edits to the shared guard preserve that repaired
+contract, including steps 0133, 0138, 0196, 0204, 0307 and 0484.
+
+For spec 0050, every role also reads
+`specs/0050/.manual/010-step-0145-scratch-kit-construction.md` at 0145 and when
+creating or consuming scratch-kit and scene initializers (especially 0150,
+0152–0154 and the forward inventory in that ruling). It authorizes the
+Storage-owned, Result-returning constructor and required downstream signature
+changes, preserving canonical serialization and typed errors. Its 0145 recovery
+exception requires normal profile-1 resume after the operator's commit to record
+checkpoint 144, without `--accept-current-slice`.
+
+At step 0150, every role also reads
+`specs/0050/.manual/011-step-0150-warning-and-picker-recovery.md`. It authorizes
+the inherited JSON-index warning repair and direct kit-picker coverage inside
+the existing UI facts. An incremental zero-warning summary does not clear a
+previous diagnostic without source repair and recompilation. Its recovery
+exception requires normal profile-1 resume after the operator's commit to record
+checkpoint 149, without `--accept-current-slice`. Later edits preserve the
+corrected indexing and extended picker assertions.
+
+At steps 0160 and 0354, every role also reads
+`specs/0050/.manual/012-step-0160-material-schema-recovery.md`. Material metadata
+schemas validate structure; category membership is resolved through the caller's
+list. Extract the effective schema without the obsolete JSON category enum and
+preserve all accepted export/import assertions. Its explicit 0160 recovery
+exception requires normal profile-1 resume after the operator's commit to record
+checkpoint 159 and measured case evidence, without `--accept-current-slice`.
+
+For spec 0050 from step 0160 onward, also read
+`specs/0050/.manual/013-arc-origin-elevation-recovery.md`. Elevation covers all
+committed and uncommitted arc changes from the immutable `.arc-base-json`
+origin supplied by ASG. Operator commits never narrow that scope. Preserve the
+0160 normal-resume exception and its measured checkpoint requirement.
+
+At steps 0185, 0187, 0188 and 0260, every role also reads
+`specs/0050/.manual/014-step-0185-read-only-scene-fixture.md`. It authorizes the
+scene-save fixture repair and the launcher acceptance test's disabled-Save
+expectations, preserving separate UI, model-guard and storage-refusal coverage.
+Its 0185 recovery exception
+requires normal resume with `--executability-profile 1` after the operator's
+commit, without `--accept-current-slice`, to record measured checkpoint 184
+before 0186. Preserve the repaired fixture through the later setup-test rename.
 
 The repository's own walls, from AGENTS.md:
 

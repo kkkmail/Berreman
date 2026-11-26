@@ -1,0 +1,21 @@
+# Step 0068 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain]
+depends_on: [65]
+required_gates: [build, elevation, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialStore.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs", "Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialStore.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** Before a second materials store exists, the in-memory store's version payload and refusal texts become members that both stores call (AGENTS.md 'Reuse, never copy'; .spec-md §6). A move: every text and the payload stay exactly as they are. (1) `OpticalConstructor.Domain/MaterialStore.fs`, above the store: `MaterialMetadata` (`MaterialStore.fs:MaterialMetadata`) becomes public, with a one-line doc, and `type MaterialEntry with member this.versionPayload : VersionPayload<MaterialComplexity, MaterialMetadata>` replaces the store's local `payloadOf`. (2) `OpticalConstructor.Domain/MaterialLibrary.fs`, where every holder of these texts can reach them: directly after `MaterialError`, `type MaterialError with` gains `static member unknownMaterial (id : MaterialId) : MaterialError` (`unknown material id '<id>'`, the text both the in-memory store's local `unknown` and `MaterialLibrary.fs:resolveMaterialWithDisp` build today, so both call it) and `static member stillReferenced (entry : MaterialEntry) (samples : EntryName list) : MaterialError` (quoting and sorting the names as `removeMaterial` does); beside step 65's `unknownMaterialVersion`, `static member versionsPinned (entry : MaterialEntry) (versions : VersionNumber list) : MaterialError` (step 65's pinned refusal). The in-memory store and `resolveMaterialWithDisp` call them and build no refusal text themselves. Each doc is one line citing spec 0050 S2.2. No behaviour, message or fact changes.
+
+**Acceptance.** After the move, `MaterialStore.fs` MUST declare `MaterialEntry.versionPayload`, `MaterialLibrary.fs` MUST declare `unknownMaterial`, `stillReferenced` and `versionsPinned` on `MaterialError`, and neither the in-memory store nor `resolveMaterialWithDisp` MUST build a refusal text of its own; constructor-unit-tests MUST pass with its count unchanged; and build, elevation and the ten s09 invariants MUST pass.

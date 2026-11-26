@@ -1,0 +1,22 @@
+# Step 0017 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui.Tests]
+depends_on: [15]
+required_gates: [build, elevation, ui-tests, ui-smoke]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LibraryWindowTests.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.LibraryWindowTests"]}, "ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LibraryWindowTests.fs"], "tests": [], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.LibraryWindowTests`
+
+**How to implement.** `OpticalConstructor.Ui.Tests/LibraryWindowTests.fs` names every seeded preset through `PresetIds` (.spec-md §3.3) while the ids still hold their step-15 text, so every fact keeps its result. Every occurrence, comments included, switches; afterwards `git grep -n -E "(src|det|pol)-[a-z0-9]" -- Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LibraryWindowTests.fs` finds nothing. (1) Each `ElementValueId "src-600"`, `"pol-lp"`, `"pol-cp-left"`, `"det-intensity"` and `"det-ellipsometer"` is its member, inside `ConstructorUiId.libraryEntryNode`, `.libraryEntryCode`, `SelectLibraryEntry` and `SelectLibraryEntryNode` as well. (2) Text compared with `filteredEntryIds` (`:227-228`) or with the `onSelected` recorder (`:214`) is built from the member: `PresetIds.source600.value` (`:437`, `:623`), `PresetIds.polarizerLp.value` (`:447`), `[ PresetIds.polarizerLp.value ]` (`:1080`), and `"selected:" + PresetIds.detectorIntensity.value` (`:1102`, `:1106`) or `PresetIds.detectorEllipsometer.value` (`:1151`). The two lists the facts sort (`:1072-1074`, `:1143-1145`) are written `List.sort [ PresetIds.polarizerCpLeft.value; PresetIds.polarizerCpRight.value ]` and `List.sort [ PresetIds.detectorEllipsometer.value; PresetIds.detectorIntensity.value ]`, so they hold whatever the ids spell. (3) The id-format facts build their expected text from the member: `"FacetTreeNode_entry:" + PresetIds.source600.value` (`:251`) and `"branch:" + entryKindFacetKey.value + ":Source:entry:" + PresetIds.source600.value` (`:369-371`). (4) The Select-bay rows (`:1372`, `:1383`) are `ConstructorUiId.libraryEntry PresetIds.detectorIntensity.uiKey`, the key the bay gives its leaf rows (`ElementValueId.uiKey`, `OpticalConstructor.Ui/ConstructorUiIdOfDomain.fs:28`).
+
+**Acceptance.** After the switch, ui-tests (LibraryWindowTests) and ui-smoke MUST pass with unchanged counts, every fact holding its assertion; and build, elevation and the five s03 invariants MUST pass.

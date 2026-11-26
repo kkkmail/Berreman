@@ -1,0 +1,33 @@
+# Post-mortem — slice 0363, attempt 01 (MECHANICAL — the post-mortem agent failed)
+
+## What this is
+
+The post-mortem agent was spawned for this escalation and did not produce its report. This file was written mechanically by the arc-runner so the escalation is not left undiagnosable. It contains **only** facts the runner already had; there is no analysis, no root cause and no proposed remedy, because nothing here was reasoned about.
+
+## The post-mortem agent
+
+- exit code: `1`
+- elapsed: `10.7s`
+- hung up (idle-killed): `False`
+- transcript: `C:\Users\claude-agent\.claude\projects\C--GitHub-Berreman\f043eab4-ecd5-4db9-b61e-fd8b30bd8de3.jsonl`
+- reported cause: `terminal_reason=api_error; api_error_status=403; result=Failed to authenticate. API Error: 403 Attention Required! | Cloudflare (console: 0363-postmortem-01-worker-console-20261113T095122Z.log)`
+
+## The slice that escalated
+
+- escalation MD: `(not written)`
+- gate results: `(('build', 'pending'), ('elevation', 'pending'), ('constructor-unit-tests', 'pending'), ('invariant-s36-elev-list-empty', 'pending'), ('invariant-s36-no-vstest', 'pending'), ('invariant-s36-no-kit-kit-json', 'pending'), ('invariant-s36-no-eps-axis-evaluated', 'pending'), ('invariant-s36-complexity-mandatory', 'pending'), ('invariant-s36-no-seeded-string-preset-ids', 'pending'), ('invariant-s36-no-seeding-seam', 'pending'), ('invariant-s36-t1-no-code-seeds', 'pending'), ('invariant-s36-no-seed-modules', 'pending'), ('invariant-s36-no-test-db', 'pending'), ('invariant-s36-no-versions-in-use', 'pending'), ('invariant-s36-no-scene-collection-seams', 'pending'), ('invariant-s36-t4-no-ocproj', 'pending'), ('invariant-s36-no-recent-json', 'pending'), ('invariant-s36-no-measured-element-of', 'pending'), ('invariant-s36-t8-no-experiment-regex', 'pending'), ('invariant-s36-t9-no-mueller-data-set', 'pending'), ('invariant-s36-t9-no-data-mueller-matrix', 'pending'), ('invariant-s36-no-archive-data-proxy', 'pending'), ('invariant-s36-t10-no-harness-noise', 'pending'))`
+- conversation_seq: `1`
+- total_route_backs: `0`
+- resolver_runs: `1`
+- slice spec: `C:\GitHub\Berreman\specs\0050\.slices\0363.slice-md`
+- arc-runner log: `C:\GitHub\Berreman\specs\0050\.manifest-arc-runner.log`
+
+## Where to look
+
+- the agent console captures under `C:\GitHub\Berreman\specs\0050\.artifacts\postmortem`
+- the worker console captures for this slice in the same `.artifacts/` folder (a worker that never completed a turn writes no impl-log, impl-plan or state-of-the-world, so those files may legitimately be absent)
+- the arc-runner log around this slice's `SLICE-ATTEMPT` / `SPAWN-EXIT` / `ESCALATE` rows
+
+## Next step
+
+Read the reported cause above first. A transient provider fault (529 / 5xx / dropped response) means there is nothing to fix in the slice and a plain relaunch is the whole remedy. Anything else wants a real diagnosis — re-run the post-mortem once the provider is healthy, or read the captures listed above.

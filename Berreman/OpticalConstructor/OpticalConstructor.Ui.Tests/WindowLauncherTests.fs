@@ -20,6 +20,8 @@
 /// couple tests.
 namespace OpticalConstructor.Ui.Tests
 
+open OpticalConstructor.Domain.CatalogueImport
+open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open OpticalConstructor.Controls
 open Avalonia.Controls
@@ -31,6 +33,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.WindowLauncher
+open OpticalConstructor.Tests
 
 module WindowLauncherTests =
 
@@ -130,7 +133,6 @@ module WindowLauncherTests =
             [
                 MaterialsWindowKey
                 LibraryWindowKey
-                SolverHandoffWindowKey
                 CategoryEditorKey
                 MaterialEditorKey (MaterialLibrary.newMaterialId ())
                 SampleEditorKey (Library.newSampleId ())
@@ -192,18 +194,14 @@ module WindowLauncherTests =
     let private realWith (created : ResizeArray<WindowKey>) (modality : SelectWindowModality) : WindowLauncher =
         WindowLauncher.create (recordingFactory created) modality BrowseOpen
 
-    /// In-memory app-shaped stores for the end-to-end defaults proofs (the canonical coupling
-    /// order; the `Library` open is scoped here for the `createInMemory` type extensions).
+    /// BuiltinCatalogue store doubles preserve app coupling for end-to-end defaults proofs.
     module private Stores =
         open OpticalConstructor.Domain.Library
-        open OpticalConstructor.Domain.Lifecycle
-        open OpticalConstructor.Domain.MaterialStore
-        open OpticalConstructor.Domain.SampleStore
 
         let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
-            let samples = SampleProxy.createInMemory VersionsInUse.empty
-            let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
-            let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
+            let samples = BuiltinCatalogue.sampleStore ()
+            let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
+            let categories = BuiltinCatalogue.categoryStore (MaterialLibrary.materialsReferencingCategory materials)
             materials, samples, categories
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId`
@@ -450,7 +448,7 @@ module WindowLauncherTests =
             let materials, _, categories = Stores.create ()
             // The REAL step-013 Materials window: its context launchers bake the step-008
             // editor keys over the shared registry — the rewired Edit path under test.
-            let materialsWindow = MaterialsWindow(materials, categories)
+            let materialsWindow = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
             materialsWindow.Show()
             Dispatcher.UIThread.RunJobs()
             commitFilter materialsWindow "1.52"
@@ -485,7 +483,7 @@ module WindowLauncherTests =
                 match materials.listMaterials MaterialLibrary.ActiveOnly with
                 | Ok entries -> entries |> List.map (fun e -> e.id) |> Set.ofList
                 | Error e -> failwith $"listMaterials failed: %A{e}"
-            let materialsWindow = MaterialsWindow(materials, categories)
+            let materialsWindow = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
             materialsWindow.Show()
             Dispatcher.UIThread.RunJobs()
             let opened = ResizeArray<Window>()
@@ -510,7 +508,7 @@ module WindowLauncherTests =
             clickOn opened.[1] ConstructorUiId.materialEditorSaveButton.value
             Assert.False(opened.[0].IsVisible)
             Assert.False(opened.[1].IsVisible)
-            // Both persisted, under two DISTINCT non-seeded ids.
+            // Persisted with DISTINCT ids outside BuiltinCatalogue.materials ().
             match materials.listMaterials MaterialLibrary.ActiveOnly with
             | Ok entries ->
                 let added = entries |> List.filter (fun e -> not (Set.contains e.id seededIds))
@@ -542,7 +540,7 @@ module WindowLauncherTests =
             // upfront-minted id (spec 0038 step 008).
             let launcher =
                 WindowLauncher.create
-                    (fun (_ : WindowKey) -> SampleEditorWindow(materials, samples, categories, SampleEditorView.NewBlankSample minted) :> Window |> Ok)
+                    (fun (_ : WindowKey) -> SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, SampleEditorView.NewBlankSample minted) :> Window |> Ok)
                     SelectWindowModality.defaultValue
                     BrowseOpen
             launcher.openOrActivate (SampleEditorKey minted) |> ignore

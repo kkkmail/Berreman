@@ -4,13 +4,13 @@
 /// named/grouped favorites board (pinned reused engine `Layer`/`OpticalSystem`
 /// fragments and `materialEntry`/`sourceSpec` ids — §A.7 shapes, by value), the
 /// last working folder(s), the window/panel layout and theme (J.8), the toolbar
-/// contents, and the `Preferences` (J.7). The ordered recent-files list is NOT a
-/// field here — it lives solely in `Storage.RecentFiles` (its own `recent.json`).
+/// contents, and the `Preferences` (J.7). Recently opened kits are NOT kept here —
+/// the kit history keeps them (`KitHistoryProxy`, spec 0050 S5.1).
 ///
 /// Persistence is JSON validated on load against `optical-constructor-environment.
 /// schema.json` (added to the §A.7 schema family, same `JsonSchema.Net` library) —
 /// NOT FsPickler/`.binz`, because it is hand/LLM-inspectable config (binding rule
-/// 4 / §A.7). The serialization REUSES the slice-003 shared `ProjectJson.options`
+/// 4 / §A.7). The serialization REUSES the slice-003 shared `CanonicalJson.options`
 /// `JsonSerializerOptions` (§I.1) — never a second JSON stack — so the favorites'
 /// `Layer`/`OpticalSystem` (and their `Matrix<Complex>` tensors) round-trip through
 /// the same converters the canonical project does. Schema versioning/migration is
@@ -138,7 +138,7 @@ type Preferences =
 // (Part I / UserEnvironment.fs:141). Reuses the settings store rather than a parallel
 // preferences file (E.8.1). A pure, serializable shape — no Avalonia handle and no
 // dependency on `Commands` — so it round-trips through the shared
-// `ProjectJson.options` and `Commands` parses the gesture strings against its
+// `CanonicalJson.options` and `Commands` parses the gesture strings against its
 // registry without a module cycle.
 // ---------------------------------------------------------------------------
 
@@ -224,9 +224,9 @@ type PickerPurpose =
 /// The persistent user environment (§J.6 [Core] + J.7/J.8 fields). Persisted as
 /// schema-validated JSON (NOT `.binz`); the favorites board, last folders, panel
 /// layout, theme, toolbar, and preferences all round-trip through it (AC-J6/AC-J8).
-/// The recent-files list is NOT persisted here — `Storage.RecentFiles` is the single
-/// recent-files store. This is the net-new persistent customization from 010 Part
-/// II §1.
+/// Recently opened kits are NOT kept here — the kit history keeps them
+/// (`KitHistoryProxy`, spec 0050 S5.1). This is the net-new persistent customization
+/// from 010 Part II §1.
 type EnvironmentSettings =
     {
         favorites : FavoriteGroup list
@@ -247,7 +247,7 @@ type EnvironmentSettings =
         /// next launch. Defaults to `English`. The *Settings*-ribbon selector (Part D /
         /// slice 006) writes through `save`; every UI string resolves through
         /// `Localization` against this language. A fieldless DU, so the shared
-        /// `ProjectJson.options` round-trip it as a bare string.
+        /// `CanonicalJson.options` round-trip it as a bare string.
         language : Language
         /// The configurable constructor key map (Spec 0026 Part E §E.8.1): the user's
         /// key-binding overrides + the rotation step (§E.3.1), persisted here so a
@@ -325,23 +325,10 @@ let schemaFileName : FileName = FileName "optical-constructor-environment.schema
 /// `$id` in the process-global registry, so a second load would throw.
 let private envSchema : Result<JsonSchema, StorageError> Lazy = lazy (schemaFileName.tryLoadSchema ())
 
-/// Validate a parsed document against the env schema (§J.6 item 1) via
-/// `JsonSchema.Net`. On any evaluation failure returns `SchemaValidationErr`
-/// with the library's messages; the caller MUST NOT bind on `Error`.
-let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError> =
-    match envSchema.Value with
-    | Error e -> Error e
-    | Ok schema ->
-        let options = EvaluationOptions(OutputFormat = OutputFormat.List)
-        let results = schema.Evaluate(element, options)
-        if results.IsValid then Ok ()
-        else
-            let messages =
-                match results.Errors with
-                | null -> []
-                | errs -> [ for kv in errs -> $"{results.InstanceLocation}: {kv.Key} -> {kv.Value}" ]
-            let messages = if List.isEmpty messages then [ "environment schema validation failed" ] else messages
-            Error (SchemaValidationErr messages)
+/// Validate a parsed document against the env schema (§J.6 item 1), REUSING
+/// `SchemaValidation.validateWith`, so a nested violation keeps its instance location
+/// (spec 0050 step 29). The caller MUST NOT bind on `Error`.
+let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError> = validateWith envSchema element
 
 /// The text of an `environment.json` document.
 type EnvironmentJsonText =
@@ -364,20 +351,20 @@ type EnvironmentJsonText =
             match validateUserEnvironment doc.RootElement with
             | Error e -> Error e
             | Ok () ->
-                try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(ProjectJson.options))
+                try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(CanonicalJson.options))
                 with e -> Error(MalformedJsonErr e.Message)
 
 type EnvironmentSettings with
 
     /// Serialize the environment to canonical JSON (§J.6 item 1), injecting the
-    /// envelope `schemaVersion`, REUSING the slice-003 shared `ProjectJson.options`
+    /// envelope `schemaVersion`, REUSING the slice-003 shared `CanonicalJson.options`
     /// (§I.1) — never a second JSON stack, never `.binz`.
     member this.serialize : Result<EnvironmentJsonText, StorageError> =
         try
-            let node = JsonSerializer.SerializeToNode(this, ProjectJson.options)
+            let node = JsonSerializer.SerializeToNode(this, CanonicalJson.options)
             let envelope = node.AsObject()
             envelope.["schemaVersion"] <- JsonValue.Create(userEnvironmentSchemaVersion)
-            Ok(EnvironmentJsonText (envelope.ToJsonString(ProjectJson.options)))
+            Ok(EnvironmentJsonText (envelope.ToJsonString(CanonicalJson.options)))
         with e -> Error(MalformedJsonErr e.Message)
 
     /// Persist the environment to `path` as schema-validated canonical JSON (§J.6 item
@@ -412,7 +399,7 @@ type EnvironmentSettings with
 
 /// The single fixed per-user settings path under the OS application-data folder
 /// (§J.6 item 2 — outside the repository working tree, so a committable-vs-gitignore
-/// non-issue). Mirrors the slice-013 recent-files path convention.
+/// non-issue).
 let settingsPath () : FileName =
     let folder =
         FolderName (
@@ -440,16 +427,11 @@ let measuredDataFolderKey : PickerPurpose = PickerPurpose "measured-data"
 let lastFolder (purpose : PickerPurpose) (settings : EnvironmentSettings) : FolderName option =
     settings.lastFolders |> Map.tryFind purpose
 
-type Experiments.DataFilePath with
-
-    /// The folder this data file is in, or `None` for a path with no folder part.
-    member this.tryGetFolderName : FolderName option = (FileName this.value).tryGetFolderName
-
 /// Record the folder of a confirmed `selectedFile` under `purpose` — the pure state transition the
 /// picker persists on a confirmed selection. A path with no folder part leaves the map untouched.
 let rememberFolder
     (purpose : PickerPurpose)
-    (selectedFile : Experiments.DataFilePath)
+    (selectedFile : FileName)
     (settings : EnvironmentSettings)
     : EnvironmentSettings =
     match selectedFile.tryGetFolderName with
@@ -460,7 +442,7 @@ let rememberFolder
 /// confirmed-vs-cancel decision the picker makes at its IO edge folds through `applyPick` here rather
 /// than living as untested control flow.
 type DataFilePick =
-    | FilePicked of Experiments.DataFilePath
+    | FilePicked of FileName
     | PickCancelled
 
 /// Fold a picker outcome into the environment: a confirmed selection records its folder under

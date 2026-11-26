@@ -1,0 +1,24 @@
+# Step 0006 — ADD_RED
+
+```step
+anchor: ADD_RED
+touches: [OpticalConstructor.Tests]
+depends_on: [5]
+required_gates: [build, elevation, constructor-unit-tests]
+expected_red: [constructor-unit-tests]
+red: RED_0003
+red_in: [OpticalConstructor.Tests.DispersionModelsTests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.DispersionModelsTests.equal Forouhi-Bloomer and Brendel-Bormann models lower to equal axis data", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs", "class": "OpticalConstructor.Tests.DispersionModelsTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S11-OSCILLATORS"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "selected", "suite": "constructor-unit-tests", "values": ["OpticalConstructor.Tests.DispersionModelsTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.DispersionModelsTests.equal Forouhi-Bloomer and Brendel-Bormann models lower to equal axis data", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs", "class": "OpticalConstructor.Tests.DispersionModelsTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S11-OSCILLATORS"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: `OpticalConstructor.Tests.DispersionModelsTests`
+
+**How to implement.** Red first, as in step 4, for the two remaining transcendental models (001 §B; .spec-md §3.1). Facts only. In `Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs` add `equal Forouhi-Bloomer and Brendel-Bormann models lower to equal axis data`. Lowering `forouhiBloomerASi` and `brendelBormannGold` (`:403-430`) twice each, and lowering a separately built equal copy of each, MUST give equal `toEpsAxis` values with equal hashes and equal `toEpsValue` values. A copy whose `bandGap` (Forouhi-Bloomer) or first `broadening` (Brendel-Bormann) differs MUST lower to an unequal axis. The fact is red on the tree step 5 leaves: both models still lower to `EpsAxisEvaluated this.evaluate`, which the custom equality compares by reference (`Berreman/Berreman/Dispersion.fs:386`).
+
+**Acceptance.** After the fact lands, constructor-unit-tests (DispersionModelsTests) MUST fail with exactly `equal Forouhi-Bloomer and Brendel-Bormann models lower to equal axis data`, failing on the first equality of two lowered axes; every fact the class held before MUST pass; and build, elevation and the three s01 invariants MUST pass.

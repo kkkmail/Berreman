@@ -1,0 +1,165 @@
+# Orchestrator review — slice 0132, postmortem 01
+
+This is the complementary review of [the agent-written primary postmortem](0132-01.postmortem-md),
+not an emergency mechanical report. Trigger: event
+`33ceef6193a14b128a9f6956bcc13e6e`, monitored PID `231624`, terminal ESCALATE at
+2026-11-07 17:16:32 UTC. The event and launch record are under
+`../.artifacts/arc-watch/33ceef6193a14b128a9f6956bcc13e6e/`.
+
+The arc is stopped. Slice 0118 was manually accepted on the authorized restart;
+0119–0131 then completed normally. HEAD is accepted 0131, `6d45e90`, with 131
+completed slices. Slice 0132/index 131 remains escalated. Its implementation and
+reports are uncommitted. This review is the only write made by this analysis.
+
+## Finding
+
+The immediate defect is in the existing product's filesystem lock guard, added
+at accepted step 0129 (`3807ea3`), not in 0132's new attachment shapes.
+
+The constructor TRX independently records 1,076 executed cases: 1,075 passed,
+one failed, zero skipped. The failure is
+`OpticalConstructor.Tests.KitProxyFolderTests.a lock left on this machine by a process that has ended is taken over`.
+At `KitProxyTests.fs:144`, one of three simultaneous openers returned `KitIoErr`
+with access denied to `.oc/lock-guard.tmp`; the existing assertion requires
+`KitLockedErr` identifying the single winner. Sequential stale-lock takeover had
+already succeeded before the contention call at line 984. All four prescribed
+0132 attachment facts passed.
+
+`KitFolderStore.fs:98-111` opens the guard with `OpenOrCreate`, exclusive sharing
+and `DeleteOnClose`. It catches only `IOException` whose low HRESULT is 32 or 33.
+Other failures escape into `tryKitFolderIo`, which retains only the exception
+message in `KitIoErr`. Both acquisition and release call this shared guard and
+recheck ownership after obtaining it. The current attachment additions do not
+enter this code path; blame places the guard entirely in step 0129.
+
+Build and elevation passed. The constructor suite failed with process exit 2;
+the eleven s16 invariants were consequently not reached. A later successful
+build does not replace the failed suite. The preceding full constructor runs at
+0129, 0130 and 0131 passed with 1,058, 1,062 and 1,072 cases respectively. This
+supports an intermittent contention defect, not a consistently broken setup.
+
+## What this review adds
+
+1. **The suspected native mechanism has a strong external precedent, but the
+   exact incident remains uninstrumented.** Microsoft documents that opening a
+   file pending deletion can return access denied. A .NET runtime issue contains
+   a reproduction using the same `OpenOrCreate` / `FileShare.None` /
+   `DeleteOnClose` combination and discusses the same intermittent exception.
+   This supports the deletion-race hypothesis; it does not prove which exception
+   type/HRESULT occurred in this test run. See [CreateFile documentation](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea)
+   and [.NET runtime issue 61395](https://github.com/dotnet/runtime/issues/61395).
+
+2. **A native error code alone cannot reliably distinguish transient deletion
+   from a permanent permission denial.** The .NET discussion identifies that
+   ambiguity. Capture exception type and HRESULT during reproduction, but do not
+   make the repair depend on a supposedly unique transient access-denied code.
+   A small, finite retry policy confined to opening this coordination file can
+   tolerate the transient case and still return a real `KitIoErr` for a persistent
+   failure. It must never invent a winning holder. [Runtime discussion](https://github.com/dotnet/runtime/issues/61395)
+
+3. **The existing sharing-violation retry is already unbounded.** `tryOpen`
+   recurses after every 32/33 failure with `SpinWait` and no deadline or attempt
+   cap. That is a separate, directly visible hang risk. The repair should bound
+   the whole guard-open retry, not merely add access denial to its catch filter.
+   This also applies to release, which uses the same guard.
+
+4. **ASG behaved as designed in this incident.** The worker received an explicit
+   instruction to repair within declared effects or report an authority conflict.
+   Slice 0132 permits only Domain `Kit.fs` and Tests `KitTests.fs`; the measured
+   failure needs Storage `KitFolderStore.fs` and related existing lock tests in
+   `KitProxyTests.fs`. Judge cycle 2 and the one allowed resolver confirmed that
+   conflict. This is not another exhausted repair loop or a missing-terminal-event
+   defect. There were no QUOTA_HIT events in this launch; the prior auth fix is
+   not implicated. No ASG source change or budget increase is justified here.
+
+5. **The receipt and census remain valid.** Read-only validation reports no
+   receipt errors and no temporal replay findings. The four attachment identities
+   are the four authorized additions. This is an actual test failure, unlike the
+   earlier undeclared-identity/count issues. Keeping the existing lock fact
+   identities avoids another census amendment.
+
+The primary diagnosis and its proposed shared-guard repair are sound. I refine
+its recovery sequence below so the operator can commit the completed repair
+normally, using an explicit measured-checkpoint exception instead of requiring
+a preparatory selective commit and deliberately uncommitted implementation.
+
+## Recommended plan — awaiting agreement
+
+1. **Record the scope and recovery decision.** Create the next BRM manual ruling,
+   `009-...md`, authorizing the minimum S41-KIT-LOCK repair in
+   `Berreman/OpticalConstructor/OpticalConstructor.Storage/KitFolderStore.fs`
+   and regression extensions in
+   `Berreman/OpticalConstructor/OpticalConstructor.Tests/KitProxyTests.fs`.
+   Preserve S42-ATTACH-SHAPES, existing assertions and test identities. Add its
+   pointer to the project prompt so resumed workers and reviewers see the
+   authority. The ruling should explicitly require normal profile-1 verification
+   of 0132 after the operator's commit, as a one-time exception to the standing
+   committed-green acceptance rule, because the new full-suite checkpoint is
+   still missing. Published steps, oracle and gates remain unchanged.
+
+2. **Reproduce and repair the shared guard.** Preserve the existing attachment
+   implementation. Capture exception type/HRESULT and timing in a bounded
+   contention reproduction under `.artifacts/0132-operator-repair/`. Apply a
+   finite guard-open retry for the demonstrated transient sharing/deletion
+   failures, preserving diagnostics when it expires. Use the same corrected
+   path for acquisition and release. Preserve exclusive cross-process/file
+   coordination, ownership rechecks, non-overwriting publication, stale/malformed
+   takeover and temporary-file cleanup. A process-local mutex alone cannot
+   replace the file-based coordination. Removing the guard would restore the
+   stale-delete race it was introduced to prevent.
+
+3. **Verify the behavior, not just one lucky rerun.** Extend existing lock facts
+   and their shared helper with repeated synchronized empty/stale/malformed
+   contention. Require exactly one winner, precise loser diagnostics, unchanged
+   foreign/live ownership, repeated acquisition, correct release and no orphan
+   temporary files. Cover transient failures followed by success and persistent
+   sharing/access failures that finish within the retry budget with `KitIoErr`;
+   include release failures. Prefer deterministic failure sequences for retry
+   exhaustion alongside real filesystem contention. Retain every current
+   assertion and identity. Then run all 14 unchanged gates: build, elevation,
+   the all-discovered constructor suite and eleven s16 invariants. Require
+   **1,076 passes**, exact identities, zero failures/skips and no warnings from
+   owned code. Review the complete final diff against both S41 and S42.
+
+4. **Validate publication, document and pause for commit.** Validate the full
+   494-step plan and refresh the profile-1 receipt for the changed project
+   prompt, preserving all 988 compiled artifacts and published requirements.
+   Record the reproduction, repair, full verification and final review in the
+   new manual ruling, implementation log and handoff. Preserve supervisor state,
+   counters, numeric checkpoints and expected-red records. Do not create a
+   checkpoint manually. Leave the repaired tree ready for the operator's
+   commit; do not launch during this work. ASG itself needs no edit or commit.
+
+After the operator commits and instructs relaunch, use a **normal resume with
+`--operator-reply <approved-recovery-note> --executability-profile 1`**, without
+`--accept-current-slice`. The note should preserve the repaired source, cite the
+scope ruling and checkpoint exception, and require normal review plus all gates.
+The supervisor must record checkpoint index 131 from the successful measured
+run, raising the full constructor floor from 1,072 to 1,076, and complete its
+expected-red bookkeeping. Attach a new monitor ticket as usual.
+
+This differs from 0118: that step's additional identities were in a selected UI
+run and did not change a whole-suite floor. Here `.checkpoints-json["130"]` is
+1,072 and key `131` is absent. `.expected-red-json["130"]` is empty, key `131`
+is absent, and the observed journal at `131` is empty. Accept-current-slice
+backfills expected-red bookkeeping but bypasses normal measured checkpoint
+publication. Its use would therefore omit a required recovery result. Manual
+006 already provides the precedent for an explicit normal-resume exception.
+
+## Recurrence and review boundary
+
+There are 329 pending all-discovered constructor observations, including this
+step, so leaving this contention defect in place would repeatedly expose the
+arc to the same failure. Pending storage edits at 0133, 0138, 0196, 0204, 0307
+and 0484 must retain the repaired lock contract. That is a reason to fix the
+shared boundary now, not to widen ASG's authority to silently repair arbitrary
+earlier code.
+
+Evidence inspected: event/launch records, state, primary postmortem, judge and
+resolver reports, retry instructions, actual TRX, gate log, current source and
+diff, guard blame, 0129 refinement log, both slice contracts, operator rulings,
+receipt/census replay and the acceptance/checkpoint source paths in ASG.
+No build, gate, stress test or reproduction was run by this review. Native
+diagnostics and the effectiveness of the proposed retry remain to be measured
+after authorization. No implementation, source/state/Git change, acceptance or
+restart was made. Recommendations above are proposals, not the operator's decision.

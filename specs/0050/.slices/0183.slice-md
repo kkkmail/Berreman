@@ -1,0 +1,28 @@
+# Step 0183 — IMPLEMENT_CONTRACT SVC_BigBoy_0001 ExplorerProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: SVC_BigBoy_0001
+name: ExplorerProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Ui, OpticalConstructor.Tests]
+depends_on: [182]
+required_gates: [build, elevation, constructor-unit-tests, ui-smoke, ui-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/KitOpening.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/ExplorerProxyTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.ExplorerProxyTests.the system explorer refuses a folder that does not exist and starts nothing", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/ExplorerProxyTests.fs", "class": "OpticalConstructor.Tests.ExplorerProxyTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S53-EXPLORER-SYSTEM"]}], "contracts": [{"symbol": "OpticalConstructor.Ui.KitOpening.ExplorerProxy.system", "op": "create", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui/KitOpening.fs", "obligations": ["S53-EXPLORER-SYSTEM"]}], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}, "ui-smoke": {"mode": "all_discovered", "suite": "ui-smoke"}, "ui-tests": {"mode": "selected", "suite": "ui-tests", "values": ["OpticalConstructor.Ui.Tests.KitStartWindowTests"]}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Ui/KitOpening.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/ExplorerProxyTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.ExplorerProxyTests.the system explorer refuses a folder that does not exist and starts nothing", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/ExplorerProxyTests.fs", "class": "OpticalConstructor.Tests.ExplorerProxyTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S53-EXPLORER-SYSTEM"]}], "contracts": [{"symbol": "OpticalConstructor.Ui.KitOpening.ExplorerProxy.system", "op": "create", "path": "Berreman/OpticalConstructor/OpticalConstructor.Ui/KitOpening.fs", "obligations": ["S53-EXPLORER-SYSTEM"]}], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+- `ui-smoke`: 
+- `ui-tests`: `OpticalConstructor.Ui.Tests.KitStartWindowTests`
+
+**How to implement.** The real explorer, composed beside the app's other shell seams (step 150: `ClockProvider.system` and `KitFolderPicker.ofWindow` live in `KitOpening.fs`). In `OpticalConstructor.Ui/KitOpening.fs`, beside `KitFolderPicker.ofWindow`, its doc one to three lines citing spec 0050 S5.3: `type ExplorerProxy with static member system : ExplorerProxy` (step 182). Its `showFolder folder` resolves the folder's text with `Path.GetFullPath`; a folder that does not exist (`Directory.Exists` answers false) answers `MissingFolderErr` naming it and starts nothing; otherwise it starts `explorer.exe` with the full path as its one argument (`ProcessStartInfo("explorer.exe")`, the path added through `ArgumentList`, `UseShellExecute` false), disposes the returned `Process` at once and answers `Ok ()`. Any exception of the resolution or the start is `ExplorerLaunchErr` carrying its message. It is the IO edge, in the shape of `KitFolderPicker.ofWindow`: nothing above it handles an exception, and it creates no folder, because a location that does not exist yet is told, never made (001 §G). No wait for the browser, retry or fallback browser is added. Tests: `ExplorerProxyTests` (step 182) gains `the system explorer refuses a folder that does not exist and starts nothing`: `ExplorerProxy.system`'s `showFolder` of a GUID-named folder under `Path.Combine(System.AppContext.BaseDirectory, "ExplorerProxyTests")` that the fact never creates answers `Error (MissingFolderErr _)` whose reason names that folder, and the folder still does not exist. No fact asks it to show a folder that exists, because that would open Explorer on the machine running the tests.
+
+**Acceptance.** After the real explorer lands, `ExplorerProxy.system` MUST refuse a missing folder with `MissingFolderErr` and start Explorer only for a folder that exists; constructor-unit-tests MUST pass, including `the system explorer refuses a folder that does not exist and starts nothing`, the count rising by 1; ui-smoke MUST pass; and build, elevation and the fourteen s21 invariants MUST pass.

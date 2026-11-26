@@ -1,0 +1,21 @@
+# Step 0028 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Storage, OpticalConstructor.Tests]
+depends_on: [27]
+required_gates: [build, elevation, constructor-unit-tests]
+effects: {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CanonicalJson.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.every closed set with an int tag is written as its tag and read back", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "class": "OpticalConstructor.Tests.CanonicalJsonTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S14-WIRE-TAGS"]}, {"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.an unknown disk tag is refused", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "class": "OpticalConstructor.Tests.CanonicalJsonTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S14-WIRE-TAGS"]}], "contracts": [], "packages": [], "checks": []}
+gate_selection: {"constructor-unit-tests": {"mode": "all_discovered", "suite": "constructor-unit-tests"}}
+```
+
+**Executable gate contract.** The compiled sibling gate snapshot is the resolved membership, prerequisites and selection contract. Check acceptance coverage against the immutable oracle; do not expand the roster from generic applicability rules.
+
+**Authorized effects.** {"edits": ["Berreman/OpticalConstructor/OpticalConstructor.Storage/CanonicalJson.fs", "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs"], "tests": [{"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.every closed set with an int tag is written as its tag and read back", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "class": "OpticalConstructor.Tests.CanonicalJsonTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S14-WIRE-TAGS"]}, {"op": "create", "suite": "constructor-unit-tests", "id": "OpticalConstructor.Tests.CanonicalJsonTests.an unknown disk tag is refused", "path": "Berreman/OpticalConstructor/OpticalConstructor.Tests/CanonicalJsonTests.fs", "class": "OpticalConstructor.Tests.CanonicalJsonTests", "discovery_gate": "constructor-unit-tests", "obligations": ["S14-WIRE-TAGS"]}], "contracts": [], "packages": [], "checks": []}
+
+**Test filters.** For this step these gates run only the tests their filter selects (plus any inherited expected-red tests); put the tests this step adds or changes where a filter value finds them:
+- `constructor-unit-tests`: 
+
+**How to implement.** A closed set's disk tag is its int (`AGENTS.md`: 'A closed set's wire/disk tag is an integer'; .spec-md §4 'Shapes'). `CanonicalJson.options` gains four converters, written as step 23's are and registered before the `JsonFSharpConverter`. They cover `LibraryEntryKind` (step 24); S1.1's `TabulatedInterpolation` (step 2) and `PublishedIndexLaw` (step 8); and S1.2's `PublishedGyrationLaw` (step 10). The last three are in `Berreman/Berreman/Dispersion.fs`. Each converter writes the case's `value` and reads through `tryOfWire`. An unknown tag throws `JsonException`, which the callers report as `MalformedJsonErr`. No other union changes its form. The fieldless unions without an int tag (`SubstrateKind`, `DetectorKind`, `CategoryVisibility` and the rest) keep the serializer's case-name form, which the project, groups and environment formats already store. Giving them int tags is out of scope. Tests, in `CanonicalJsonTests`: (a) `every closed set with an int tag is written as its tag and read back`: every case of the four sets serializes as its `value` (for example `1`) and reads back equal. (b) `an unknown disk tag is refused`: reading `9` as a `LibraryEntryKind` and `4` as a `PublishedIndexLaw` throws `JsonException`.
+
+**Acceptance.** After the tag converters land, constructor-unit-tests MUST pass, including `every closed set with an int tag is written as its tag and read back` and `an unknown disk tag is refused`; and build, elevation, constructor-unit-tests and the six s04 invariants MUST pass.
