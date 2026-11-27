@@ -30,6 +30,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Tests
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0046 — the constructor's numbers checked against the Analytics example scripts
 /// (`Berreman/Analytics/Examples/*.fsx`, the operator's trusted reference). Each test builds the script's
@@ -147,26 +148,6 @@ module FsxAcceptanceTests =
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window, (fun msg -> dispatchRef.Value msg; Dispatcher.UIThread.RunJobs()), (fun () -> latest.Value)
-
-    let private clickOn (window : Window) (autoId : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (fun v ->
-                match v with
-                | :? Border as border when AutomationProperties.GetAutomationId border = autoId && border.IsEffectivelyVisible -> Some border
-                | _ -> None)
-        match found with
-        | None -> failwith $"%s{autoId} was not found"
-        | Some border ->
-            border.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            match Option.ofNullable (border.TranslatePoint(Point(border.Bounds.Width / 2.0, border.Bounds.Height / 2.0), window)) with
-            | Some c ->
-                window.MouseDown(c, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                window.MouseUp(c, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-            | None -> failwith $"%s{autoId} has no on-screen position"
 
     /// Build the table and the experiment through the app's own messages (its MVU `update` — the same
     /// messages the bays dispatch; rendering every intermediate step would re-run the whole sweep each

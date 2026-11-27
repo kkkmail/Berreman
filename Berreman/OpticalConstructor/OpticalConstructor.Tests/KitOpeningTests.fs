@@ -516,18 +516,18 @@ module KitOpeningTests =
         withOpeningFolder (fun folder _ _ ->
             let answering : KitFolderPicker =
                 {
-                    pickKitFolder = fun () -> async { return Some folder }
+                    pickKitFolder = fun _ -> async { return Some folder }
                 }
             let picked = ResizeArray<KitFolder>()
-            answering.pickThen picked.Add
+            answering.pickThen ChooseKitFolder picked.Add
             Assert.Equal<KitFolder list>([ folder ], List.ofSeq picked)
 
             let cancelling : KitFolderPicker =
                 {
-                    pickKitFolder = fun () -> async { return None }
+                    pickKitFolder = fun _ -> async { return None }
                 }
             let cancelled = ResizeArray<KitFolder>()
-            cancelling.pickThen cancelled.Add
+            cancelling.pickThen ChooseKitFolder cancelled.Add
             Assert.Empty cancelled
             Assert.False(Directory.Exists folder.value.value))
 

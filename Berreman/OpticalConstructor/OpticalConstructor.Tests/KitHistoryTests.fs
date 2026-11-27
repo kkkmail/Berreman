@@ -21,6 +21,7 @@ module KitHistoryTests =
             name = KitName $"Kit {kit}"
             lastOpened = ClockTime (firstOpen.AddMinutes minutes)
             star = star
+            lastSetupOpt = None
         }
 
     let private historyOf (entries : KitHistoryEntry list) : KitHistory = { KitHistory.empty with entries = entries }
@@ -64,7 +65,7 @@ module KitHistoryTests =
 
     [<Fact>]
     let ``starred kits are listed first, each group newest open first`` () : unit =
-        Assert.Equal<FileSchemaVersion>(FileSchemaVersion 1, KitHistory.currentSchemaVersion)
+        Assert.Equal<FileSchemaVersion>(FileSchemaVersion 2, KitHistory.currentSchemaVersion)
         Assert.Equal<FileSchemaVersion>(KitHistory.currentSchemaVersion, KitHistory.empty.schemaVersion)
         Assert.Empty(KitHistory.empty.entries)
         Assert.Empty(KitHistory.empty.displayOrder)
@@ -182,6 +183,7 @@ module KitHistoryTests =
                 name = newName
                 lastOpened = ClockTime reopenedAt
                 star = StarredKit
+                lastSetupOpt = None
             }
 
         Assert.Equal<KitHistory>(historyOf [ reopened; kitB; kitC ], bumped)
@@ -261,3 +263,21 @@ module KitHistoryTests =
 
         Assert.Equal<string>($"the kit history could not be written: {reason}", description)
         Assert.Contains(reason, description)
+
+    /// Spec 0051 `.manual/003` 3.1 (D2): the history keeps each kit's last active setup across opens.
+    [<Fact>]
+    let ``a kit's last setup is recorded, kept by a reopen and read back by its folder`` () : unit =
+        let limit = KitHistoryLimit 10
+        let clock = steppingClock firstOpen
+        let folderA = folderOf "C:/kits/a"
+        let opened = KitHistory.empty.bump limit clock folderA (kitFileOf (kitIdOf 201) (KitName "Kit a"))
+        Assert.Equal<SetupName option>(None, opened.tryLastSetup folderA)
+        let recorded = opened.withLastSetup folderA (SetupName "Bench")
+        Assert.Equal<SetupName option>(Some (SetupName "Bench"), recorded.tryLastSetup (folderOf @"C:\KITS\A"))
+        let reopened = recorded.bump limit clock folderA (kitFileOf (kitIdOf 201) (KitName "Kit a"))
+        Assert.Equal<SetupName option>(Some (SetupName "Bench"), reopened.tryLastSetup folderA)
+        // A kit the history lacks is not added by a remembered setup.
+        let elsewhere = folderOf "C:/kits/b"
+        Assert.Equal<KitHistory>(reopened, reopened.withLastSetup elsewhere (SetupName "Other"))
+        Assert.Equal<SetupName option>(None, reopened.tryLastSetup elsewhere)
+

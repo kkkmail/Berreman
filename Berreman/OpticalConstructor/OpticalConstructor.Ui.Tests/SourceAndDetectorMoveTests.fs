@@ -253,7 +253,7 @@ module SourceAndDetectorMoveTests =
         window.GetVisualDescendants()
         |> Seq.tryPick (fun v ->
             match v with
-            | :? TextBlock as t when t.Name = name -> Some t.Text
+            | :? TextBlock as t when UiDriver.hasId name t -> Some t.Text
             | _ -> None)
         |> Option.defaultValue ""
 

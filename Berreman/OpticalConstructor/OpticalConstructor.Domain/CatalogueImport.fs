@@ -266,6 +266,36 @@ module CatalogueImport =
             decisions : ImportDecision list
         }
 
+    /// Whether the shipped catalogue was imported before, which decides whether its new entries ask (spec 0051
+    /// `.manual/003` 5.3, D6).
+    type ShippedImport =
+        | ShippedFirstImport
+        | ShippedImportedBefore
+
+    /// Whether a start-up row needs the user's decision (spec 0051 `.manual/003` 5.3, D6).
+    type ImportQuestion =
+        | ImportAsksUser
+        | ImportSettlesItself
+
+    type ImportDecision with
+
+        /// A row with no alternative settles itself, and so does a new entry of the shipped catalogue's first import;
+        /// every other row asks (spec 0051 `.manual/003` 5.3, D6).
+        member this.questionOn (catalogue : CatalogueId) (shipped : ShippedImport) : ImportQuestion =
+            match this.alternatives, this.status, shipped with
+            | [], _, _ -> ImportSettlesItself
+            | _ :: _, EntryIdNotHeld _, ShippedFirstImport when catalogue = CatalogueIds.builtInCatalogue -> ImportSettlesItself
+            | _ :: _, _, _ -> ImportAsksUser
+
+    type PendingCatalogueImport with
+
+        /// Every row's default choice when no row asks the user, else none: such an import is applied on start without a
+        /// question (spec 0051 `.manual/003` 5.3, D6).
+        member this.unaskedChoicesOpt (shipped : ShippedImport) : ImportChoice list option =
+            let asks = this.decisions |> List.exists (fun decision -> decision.questionOn this.entry.catalogueId shipped = ImportAsksUser)
+            if asks then None
+            else Some (this.decisions |> List.map (fun decision -> { decision = decision; action = decision.defaultAction }))
+
     type FolderImportResult =
         | CatalogueUnchanged of CatalogueImportLogEntry
         | CatalogueImported of CatalogueImportLogEntry

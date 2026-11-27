@@ -17,6 +17,7 @@ module OpticalConstructor.Ui.CategoryEditorView
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
@@ -235,33 +236,13 @@ let updateCategoryEditor (msg : CategoryEditorMsg) (m : CategoryEditorModel) : C
 // ---------------------------------------------------------------------------
 
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private saveBackground = Color.FromRgb(186uy, 224uy, 186uy)
-let private cancelBackground = Color.FromRgb(236uy, 202uy, 202uy)
-let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-
-/// A window-level action button (one row, distinct positive/negative styling). `e.Handled <- true`
-/// drops FuncUI's duplicate Tunnel|Bubble pass.
-let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(22.0, 6.0))
-        Border.margin (Thickness(0.0, 0.0, 10.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
-    ] :> IView
-
 let private saveCancelRow (dispatch : CategoryEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
-            actionButton ConstructorUiId.categorySaveButton (ControlCaption "Save") saveBackground (fun () -> dispatch CommitAll)
-            actionButton ConstructorUiId.categoryCancelButton (ControlCaption "Cancel") cancelBackground (fun () -> dispatch CancelWindow)
+            CommandControls.actionCommand ConstructorUiId.categorySaveButton (ControlCaption "Save") PositiveCommand (fun () -> dispatch CommitAll)
+            CommandControls.actionCommand ConstructorUiId.categoryCancelButton (ControlCaption "Cancel") NegativeCommand (fun () -> dispatch CancelWindow)
         ]
     ] :> IView
 

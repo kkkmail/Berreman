@@ -33,6 +33,9 @@ module KitHistory =
             name : KitName
             lastOpened : ClockTime
             star : KitStar
+            /// The setup last active in the kit's window on this machine, which the window opens on (spec 0051
+            /// `.manual/003` 3.1, D2).
+            lastSetupOpt : SetupName option
         }
 
     /// The text typed into the start screen's filter box; `none` is the empty box (spec 0050 S5.2).
@@ -50,7 +53,7 @@ module KitHistory =
             entries : KitHistoryEntry list
         }
 
-        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 2
 
         static member empty : KitHistory =
             {
@@ -83,6 +86,15 @@ module KitHistory =
         /// Unstars the kit in `folder`, keeping its place, time and other fields (spec 0050 S5.1).
         member this.unstar (folder : KitFolder) : KitHistory =
             this.changeEntry folder (fun entry -> Some { entry with star = UnstarredKit })
+
+        /// Records `setup` as the one last active in the kit in `folder`; a kit the history lacks is not added (spec 0051
+        /// `.manual/003` 3.1).
+        member this.withLastSetup (folder : KitFolder) (setup : SetupName) : KitHistory =
+            this.changeEntry folder (fun entry -> Some { entry with lastSetupOpt = Some setup })
+
+        /// The setup last active in the kit in `folder`, if the history holds the kit and one was recorded.
+        member this.tryLastSetup (folder : KitFolder) : SetupName option =
+            this.entries |> List.tryPick (KitHistory.tryMatchFolder folder) |> Option.bind _.lastSetupOpt
 
         /// Removes the kit in `folder`, starred or not; the folder itself is untouched (spec 0050 S5.1, S5.2).
         member this.forget (folder : KitFolder) : KitHistory =
@@ -131,14 +143,11 @@ module KitHistory =
 
             { this with entries = kept }
 
-        /// Puts the kit opened from `folder` first, with `kitFile`'s id and name, one reading of `clock` and the star of
-        /// the entry it replaces (unstarred when new), then evicts down to `limit`, which can drop it (spec 0050 S5.1).
+        /// Puts the kit opened from `folder` first, with `kitFile`'s id and name, one reading of `clock` and the star and
+        /// last setup of the entry it replaces (unstarred, no setup, when new), then evicts down to `limit`, which can drop
+        /// it (spec 0050 S5.1; 0051 `.manual/003` 3.1).
         member this.bump (limit : KitHistoryLimit) (clock : ClockProvider) (folder : KitFolder) (kitFile : KitFile) : KitHistory =
-            let star =
-                this.entries
-                |> List.tryPick (KitHistory.tryMatchFolder folder)
-                |> Option.map _.star
-                |> Option.defaultValue UnstarredKit
+            let replacedOpt = this.entries |> List.tryPick (KitHistory.tryMatchFolder folder)
 
             let opened : KitHistoryEntry =
                 {
@@ -146,7 +155,8 @@ module KitHistory =
                     kitId = kitFile.id
                     name = kitFile.name
                     lastOpened = clock.now ()
-                    star = star
+                    star = replacedOpt |> Option.map _.star |> Option.defaultValue UnstarredKit
+                    lastSetupOpt = replacedOpt |> Option.bind _.lastSetupOpt
                 }
 
             let others = this.forget folder
@@ -238,3 +248,29 @@ module KitHistory =
         member this.changeHistory (change : KitHistory -> KitHistory) : Result<KitHistory, KitHistoryError> =
             let changed = change (this.readHistory ())
             this.writeHistory changed |> Result.map (fun () -> changed)
+
+    /// What a kit window recalls and remembers of its kit's last active setup, across sessions on this machine: the kit
+    /// history's entry for the window's folder, or `inert` for a window without one (spec 0051 `.manual/003` 3.1, D2).
+    [<ReferenceEquality>]
+    type KitSetupMemory =
+        {
+            recallSetup : unit -> SetupName option
+            rememberSetup : SetupName -> Result<unit, KitHistoryError>
+        }
+
+        /// Recalls nothing and remembers nothing: the test scenes' and a folderless window's memory.
+        static member inert : KitSetupMemory =
+            {
+                recallSetup = fun () -> None
+                rememberSetup = fun _ -> Ok ()
+            }
+
+    type KitHistoryProxy with
+
+        /// The memory of the kit in `folder`, read and written through this history.
+        member this.setupMemoryOf (folder : KitFolder) : KitSetupMemory =
+            {
+                recallSetup = fun () -> (this.readHistory ()).tryLastSetup folder
+                rememberSetup = fun setup -> this.changeHistory (fun history -> history.withLastSetup folder setup) |> Result.map ignore
+            }
+

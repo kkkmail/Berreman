@@ -240,7 +240,7 @@ module CanonicalJsonTests =
         assertWrittenAsTag<ParameterScope> (fun scope -> scope.value)
         assertWrittenAsTag<FitMode> (fun mode -> mode.value)
         assertWrittenAsTag<FitRuns.FitStage> (fun stage -> stage.value)
-        assertWrittenAsTag<FitRuns.CalibrationUse> (fun calibrationUse -> calibrationUse.value)
+        assertWrittenAsTag<Studies.CalibrationUse> (fun calibrationUse -> calibrationUse.value)
         assertWrittenAsTag<FitRuns.StudyEngineKind> (fun engine -> engine.value)
 
         for star, tag in [ StarredKit, 1; UnstarredKit, 2 ] do
@@ -268,8 +268,8 @@ module CanonicalJsonTests =
         Assert.Equal<FitMode>(StagedFit, ofJson<FitMode> "2")
         Assert.Equal<string>("3", toJson FitRuns.ObjectStage)
         Assert.Equal<FitRuns.FitStage>(FitRuns.ObjectStage, ofJson<FitRuns.FitStage> "3")
-        Assert.Equal<string>("2", toJson FitRuns.CalibrationAsPrior)
-        Assert.Equal<FitRuns.CalibrationUse>(FitRuns.CalibrationAsPrior, ofJson<FitRuns.CalibrationUse> "2")
+        Assert.Equal<string>("2", toJson Studies.CalibrationAsPrior)
+        Assert.Equal<Studies.CalibrationUse>(Studies.CalibrationAsPrior, ofJson<Studies.CalibrationUse> "2")
         Assert.Equal<string>("2", toJson FitRuns.NonlinearStudyEngine)
         Assert.Equal<FitRuns.StudyEngineKind>(FitRuns.NonlinearStudyEngine, ofJson<FitRuns.StudyEngineKind> "2")
 
@@ -292,7 +292,7 @@ module CanonicalJsonTests =
         Assert.Throws<JsonException>(fun () -> ofJson<ParameterScope> "5" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<FitMode> "3" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.FitStage> "4" |> ignore) |> ignore
-        Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.CalibrationUse> "3" |> ignore) |> ignore
+        Assert.Throws<JsonException>(fun () -> ofJson<Studies.CalibrationUse> "3" |> ignore) |> ignore
         Assert.Throws<JsonException>(fun () -> ofJson<FitRuns.StudyEngineKind> "3" |> ignore) |> ignore
 
         // No file holds a role before step 288, so the role rides an anonymous record through the readers' seam.
@@ -318,11 +318,11 @@ module CanonicalJsonTests =
         let fitRunTagTexts : (JsonText * string) list =
             [
                 JsonText "{ \"schemaVersion\": 1, \"stage\": 4, \"calibrationUse\": 1, \"engine\": 1 }", nameof FitRuns.FitStage
-                JsonText "{ \"schemaVersion\": 1, \"stage\": 1, \"calibrationUse\": 3, \"engine\": 1 }", nameof FitRuns.CalibrationUse
+                JsonText "{ \"schemaVersion\": 1, \"stage\": 1, \"calibrationUse\": 3, \"engine\": 1 }", nameof Studies.CalibrationUse
                 JsonText "{ \"schemaVersion\": 1, \"stage\": 1, \"calibrationUse\": 1, \"engine\": 3 }", nameof FitRuns.StudyEngineKind
             ]
 
         for text, refusedType in fitRunTagTexts do
-            match parseVersionedText<{| schemaVersion : FileSchemaVersion; stage : FitRuns.FitStage; calibrationUse : FitRuns.CalibrationUse; engine : FitRuns.StudyEngineKind |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) text with
+            match parseVersionedText<{| schemaVersion : FileSchemaVersion; stage : FitRuns.FitStage; calibrationUse : Studies.CalibrationUse; engine : FitRuns.StudyEngineKind |}> (fun _ -> Ok ()) (FileExtension ".json") (FileSchemaVersion 1) text with
             | Error (MalformedJsonErr reason) -> Assert.Contains(refusedType, reason)
             | other -> Assert.Fail($"{text.value}: expected MalformedJsonErr, got %A{other}")

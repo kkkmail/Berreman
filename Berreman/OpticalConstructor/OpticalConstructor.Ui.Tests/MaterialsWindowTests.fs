@@ -15,6 +15,7 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.EntryFileJson
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Controls.Platform
 open Avalonia.Headless
 open Avalonia.Input
@@ -38,6 +39,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0038 Part E (step 013) — the Materials window (UICOMP_XDUO_0009): the single-instance
 /// window instantiating the step-012 `FacetedTreeControls` over the step-011 material facets,
@@ -58,42 +60,6 @@ module MaterialsWindowTests =
 
     // ============================ shared helpers ============================
 
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
-    /// window's rows / offers / verbs live in variable-membership lists, so they carry an
-    /// AutomationId — the FacetedTreeControls discipline).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                if window.IsVisible then
-                    window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
-
     /// Expand the tree node with this code by clicking its disclosure chevron (spec 0040 step 002).
     /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
     /// only after this — and the expansion PERSISTS across the window's later re-renders.
@@ -103,17 +69,6 @@ module MaterialsWindowTests =
     /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
     /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
     let private expandEntries (window : Window) : unit = expandNode window "entries"
-
-    /// The display text under the control carrying `id` (the control itself when it is a
-    /// TextBlock, its first TextBlock descendant otherwise).
-    let private textOf (window : Window) (id : string) : string =
-        match tryFindControl window id with
-        | None -> ""
-        | Some (:? TextBlock as t) -> (if isNull t.Text then "" else t.Text)
-        | Some c ->
-            c.GetVisualDescendants()
-            |> Seq.tryPick (function :? TextBlock as t when not (isNull t.Text) -> Some t.Text | _ -> None)
-            |> Option.defaultValue ""
 
     /// Set the text of the TextBox carrying `id` (the editor windows subscribe text changes;
     /// the faceted filter box does NOT — it is driven through `commitFilter` below).
@@ -144,7 +99,7 @@ module MaterialsWindowTests =
     /// The label text INSIDE the clickable Border carrying `id` (a picker option box is a
     /// Border with a single TextBlock child).
     let private labelInside (window : Window) (id : string) : string =
-        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Control as b when UiDriver.hasId id b -> Some b | _ -> None) with
         | Some b ->
             match b.GetVisualDescendants() |> Seq.tryPick (function :? TextBlock as t -> Some t.Text | _ -> None) with
             | Some text -> text
@@ -153,16 +108,13 @@ module MaterialsWindowTests =
 
     /// The clickable label Border of the tree row carrying `id` (the row's `treeNode` id — the
     /// chevron carries a DISTINCT id, so this is unambiguously the label box).
-    let private labelBorderOf (window : Window) (id : string) : Border =
-        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+    let private labelBorderOf (window : Window) (id : string) : TemplatedControl =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? TemplatedControl as b when UiDriver.hasId id b -> Some b | _ -> None) with
         | Some b -> b
         | None -> failwith $"%s{id} label border was not found"
 
     /// A Border's solid fill colour (None when it carries a non-solid brush).
-    let private backgroundColorOf (b : Border) : Color option =
-        match b.Background with
-        | :? SolidColorBrush as s -> Some s.Color
-        | _ -> None
+    let private backgroundColorOf (b : TemplatedControl) : Color option = Some (UiDriver.fillOfControl b)
 
     // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
     let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
@@ -1455,7 +1407,7 @@ module MaterialsWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
-            Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
             Assert.True(materialsWindow.IsVisible)
             // The single-instance acceptance: a second click ACTIVATES the live window — the
             // shared registry under MaterialsWindowKey creates nothing new.
@@ -1518,7 +1470,7 @@ module MaterialsWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]
-            Assert.True(matchesId ConstructorUiId.materialEditorWindow.value editor, "the opened window must be the Material editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialEditorWindow.value editor, "the opened window must be the Material editor")
             setText editor ConstructorUiId.materialNameBox.value "Faceted window material"
             clickOn editor ConstructorUiId.materialEditorSaveButton.value
             Dispatcher.UIThread.RunJobs()
@@ -1592,14 +1544,14 @@ module MaterialsWindowTests =
             clickOn window ConstructorUiId.materialsEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
-            Assert.True(matchesId ConstructorUiId.materialEditorWindow.value opened.[0], "the opened window must be the Material editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialEditorWindow.value opened.[0], "the opened window must be the Material editor")
             Assert.Contains("Transparent glass", opened.[0].Title)
             opened.[0].Close()
             Dispatcher.UIThread.RunJobs()
             clickOn window ConstructorUiId.materialsCategoriesButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
-            Assert.True(matchesId ConstructorUiId.categoryEditorWindow.value opened.[1], "the opened window must be the Category editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.categoryEditorWindow.value opened.[1], "the opened window must be the Category editor")
             opened.[1].Close()
             Dispatcher.UIThread.RunJobs()
             window.Close())

@@ -235,11 +235,12 @@ module KitWindowModelTests =
                 let refused =
                     [
                         ready |> updateTableAndElementRotation ExpCommit
-                        ready |> updateTableAndElementRotation (ExpRemove storedExperiment.id)
+                        // Spec 0051 `.manual/003` 2.3: Remove only asks; its Yes is the write refused.
+                        ready |> updateTableAndElementRotation (ExpRemove storedExperiment.id) |> updateTableAndElementRotation ExpConfirmRemove
                         // Spec 0050 S9.2: the wizard opens over nothing, and neither its profile nor its file is written.
                         ready |> updateTableAndElementRotation (OpenImportWizard (storedExperiment.id, dataFile))
                         ready |> updateTableAndElementRotation (SaveImportProfile KitTests.labScanProfile)
-                        ready |> updateTableAndElementRotation (AttachDataFile (storedExperiment.id, dataFile, ImportProfileName.intensitySeries))
+                        ready |> updateTableAndElementRotation (AttachDataFile { experiment = storedExperiment.id; file = dataFile; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
                         // Spec 0050 S9.3: a split is refused as the wizard is, and holds no split.
                         ready |> updateTableAndElementRotation (SplitByColumn (dataFile, ImportProfileName.phoneRoiCsv))
                         // Spec 0050 S9.3: the split wizard opens over nothing, as the attach wizard does.
@@ -269,7 +270,7 @@ module KitWindowModelTests =
                     Assert.Equal<Setups.Setup list>(ready.kitSetups, answer.kitSetups)
                     Assert.Equal<KitContext>(ready.kit, answer.kit)
                     Assert.Equal<DataSplitState option>(ready.dataSplitOpt, answer.dataSplitOpt)
-                    Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), answer.kitStatus)
+                    Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), answer.kitStatusCaption)
                 Assert.Empty(requests)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
 
@@ -340,7 +341,7 @@ module KitWindowModelTests =
                         loaded with kitShell = refusing
                     }
                 let answer = model |> updateTableAndElementRotation ShowKitInExplorer
-                match answer.kitStatus with
+                match answer.kitStatusCaption with
                 | Some status ->
                     Assert.Contains("gone", status.value)
                     Assert.StartsWith("The kit folder could not be shown — ", status.value)
@@ -428,7 +429,7 @@ module KitWindowModelTests =
             Assert.Equal<SetupName list>([ SetupName "Setup 1" ], offered.kitSetups |> List.map (fun setup -> setup.name))
             Assert.Equal<Setups.Setup list>(bench :: offered.kitSetups, reloaded.kitSetups)
             Assert.Empty(reloaded.kitChanges)
-            Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Reloaded .kit-json, Bench.setup-json, E2.experiment-json from the kit."), reloaded.kitStatusCaption)
             let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
             Assert.Empty(again.kitChanges))
 
@@ -453,10 +454,10 @@ module KitWindowModelTests =
             let opened = openKitAt folder ReadWriteKitAccess ClockProvider.system titleAuthor imports |> openedValue
             withLoadedScene opened (fun model ->
                 let requested = model |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), requested.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), requested.kitStatusCaption)
                 Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = requested.kitStatus }, requested)
                 let activated = model |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
-                Assert.Equal<ControlCaption option>(None, activated.kitStatus)
+                Assert.Equal<ControlCaption option>(None, activated.kitRefusalOpt)
                 Assert.Equal<TableAndElementRotationModel>(model, activated)))
 
     [<Fact>]
@@ -484,7 +485,7 @@ module KitWindowModelTests =
                 Assert.Equal<Experiments.Experiment list>(held, reloaded.experimentCollection.experiments)
                 Assert.Equal<KitAccess>(ReadOnlyKitAccess, reloaded.kit.access)
                 Assert.Empty(reloaded.kitChanges)
-                Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Reloaded E2.experiment-json from the kit."), reloaded.kitStatusCaption)
                 let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
                 Assert.Empty(again.kitChanges)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
@@ -506,10 +507,10 @@ module KitWindowModelTests =
                 Assert.Equal<NamingTemplate>(template, stored.namingTemplate)
                 Assert.Equal<KitFile>(saved.kit.kitFile, stored)
                 Assert.Equal<ControlCaption>(template.caption, saved.namingTemplateText)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved the naming template."), saved.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved the naming template."), saved.kitStatusCaption)
                 let checkedKit = saved |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
                 Assert.Empty(checkedKit.kitChanges)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), checkedKit.kitStatus)))
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), checkedKit.kitStatusCaption)))
 
     [<Fact>]
     let ``a naming template that does not parse, or the kit's own, is told and writes nothing`` () : unit =
@@ -524,7 +525,7 @@ module KitWindowModelTests =
                     model
                     |> updateTableAndElementRotation (SetNamingTemplateText (ControlCaption "{sauce}"))
                     |> updateTableAndElementRotation SaveNamingTemplate
-                match unparsed.kitStatus with
+                match unparsed.kitStatusCaption with
                 | Some status ->
                     Assert.StartsWith("Not saved", status.value)
                     Assert.Contains("the naming template is not valid", status.value)
@@ -535,7 +536,7 @@ module KitWindowModelTests =
                     model
                     |> updateTableAndElementRotation (SetNamingTemplateText NamingTemplate.standard.caption)
                     |> updateTableAndElementRotation SaveNamingTemplate
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "The naming template is unchanged."), unchanged.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "The naming template is unchanged."), unchanged.kitStatusCaption)
                 Assert.Equal<KitContext>(model.kit, unchanged.kit)
                 Assert.Equal<FileByteContent>(before, kitFileBytes ())))
 
@@ -613,14 +614,14 @@ module KitWindowModelTests =
             let stored = saved.kit.proxy.readKitFile () |> kitValue
             Assert.Equal<ImportProfile list>([ labScan ], stored.importProfiles)
             Assert.Equal<KitFile>(saved.kit.kitFile, stored)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved the import profile 'Lab scan'."), saved.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved the import profile 'Lab scan'."), saved.kitStatusCaption)
             Assert.Equal<TableAndElementRotationModel>({ model with kit = saved.kit; kitStatus = saved.kitStatus }, saved)
             // Spec 0050 S9.2: the window's own write is no change offered for reload (step 130).
             let checkedKit = saved |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
             Assert.Empty(checkedKit.kitChanges)
             let before = kitFileBytes ()
             let refusal (answer : TableAndElementRotationModel) : string =
-                match answer.kitStatus with
+                match answer.kitStatusCaption with
                 | Some status -> status.value
                 | None -> failwith "a refused import profile must be told in the kit status"
             let held = saved |> updateTableAndElementRotation (SaveImportProfile labScan)
@@ -647,6 +648,7 @@ module KitWindowModelTests =
             Assert.Equal<FileName>(picked, request.file)
             Assert.Equal<ImportProfile list>([ KitTests.labScanProfile ], request.kitProfiles)
             Assert.Equal<ImportProfileName>(ImportProfileName "Intensity series", request.defaultProfile)
+            Assert.Equal<DataRowSelection>(AllDataRows, request.defaultRows)
             // The wizard's one read is the window's: the picked file's bytes, read without touching the kit.
             match request.readPickedFile request.file with
             | Ok source ->
@@ -656,6 +658,22 @@ module KitWindowModelTests =
             let unknown = saved |> updateTableAndElementRotation (OpenImportWizard (Experiments.ExperimentId 9, picked))
             Assert.Equal<TableAndElementRotationModel>(saved, unknown)
             Assert.Single(requests) |> ignore)
+
+    [<Fact>]
+    let ``a re-attach opens the wizard on the experiment's profile and rows, and Attach keeps the rows chosen`` () : unit =
+        withWizardKit (fun factFolder _ requests model ->
+            let phoneRoi = (FileName "phone-roi.csv").combine factFolder
+            File.WriteAllBytes(phoneRoi.value, phoneRoiBytes.value)
+            let keyed = KeyedDataRows (DataRowKey "CPL-(AIR#0)-CPL")
+            let attach = AttachDataFile { experiment = Experiments.ExperimentId 1; file = phoneRoi; profile = ImportProfileName.phoneRoiCsv; rows = keyed }
+            let attached = model |> updateTableAndElementRotation attach
+            match (Assert.Single attached.experimentCollection.experiments).dataOpt with
+            | Some data -> Assert.Equal<DataRowSelection>(keyed, data.rows)
+            | None -> Assert.Fail "E1 must hold the attached phone ROI file"
+            attached |> updateTableAndElementRotation (OpenImportWizard (Experiments.ExperimentId 1, phoneRoi)) |> ignore
+            let request = Assert.Single(requests)
+            Assert.Equal<ImportProfileName>(ImportProfileName.phoneRoiCsv, request.defaultProfile)
+            Assert.Equal<DataRowSelection>(keyed, request.defaultRows))
 
     [<Fact>]
     let ``the wizard's Attach saves its new mapping first and attaches the file by it`` () : unit =
@@ -668,8 +686,9 @@ module KitWindowModelTests =
                     file = phoneRoi
                     profile = phoneRoiByColumns.name
                     savedOpt = Some phoneRoiByColumns
+                    rows = AllDataRows
                 }
-            let attach = AttachDataFile (Experiments.ExperimentId 1, phoneRoi, phoneRoiByColumns.name)
+            let attach = AttachDataFile { experiment = Experiments.ExperimentId 1; file = phoneRoi; profile = phoneRoiByColumns.name; rows = AllDataRows }
             Assert.Equal<TableAndElementRotationMsg list>([ SaveImportProfile phoneRoiByColumns; attach ], applied.messages)
             let picked =
                 {
@@ -688,7 +707,7 @@ module KitWindowModelTests =
             | None -> Assert.Fail "E1 must hold the attached phone ROI file"
             Assert.Equal<Experiments.Experiment list>([ e1 ], attached.kit.proxy.readExperiments () |> kitValue)
             Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredPointCount 2), attached.dataBadgeOf e1)
-            Assert.Equal<ControlCaption option>(None, attached.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved the import profile 'Phone ROI by columns'."), attached.kitStatusCaption)
             Assert.Empty(requests))
 
     [<Fact>]
@@ -711,6 +730,7 @@ module KitWindowModelTests =
                     file = picked
                     profile = labScan.name
                     savedOpt = Some labScan
+                    rows = AllDataRows
                 }
             Assert.Equal<TableAndElementRotationMsg list>([ SaveImportProfile labScan; SplitByColumn (picked, labScan.name) ], applied.messages)
             // Spec 0050 S9.3: the new profile is in the kit before the file is split by it, and the split is only held.
@@ -761,7 +781,7 @@ module KitWindowModelTests =
                 let reloaded = offered |> updateTableAndElementRotation ReloadKitChanges
                 Assert.Equal<Item list>([ windowCpl1; windowLp1 ], reloaded.kitItems)
                 Assert.Empty(reloaded.kitChanges)
-                Assert.Equal<ControlCaption option>(None, reloaded.kitStatus)))
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Reloaded LP1.item-json from the kit."), reloaded.kitStatusCaption)))
 
     [<Fact>]
     let ``Send kit zips the kit's folder and tells how many files it sent`` () : unit =
@@ -789,7 +809,7 @@ module KitWindowModelTests =
                         | KitContentPath -> None)
                 Assert.Empty(cacheEntries)
                 let zippedFiles = KitTreeEntry.filePathsOf entries |> List.length
-                Assert.Equal<ControlCaption option>(Some (ControlCaption $"The kit was sent: {zippedFiles} file(s) zipped."), sent.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption $"The kit was sent: {zippedFiles} file(s) zipped."), sent.kitStatusCaption)
                 Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, sent.kitSend)))
 
     [<Fact>]
@@ -868,7 +888,7 @@ module KitWindowModelTests =
                 let archiveEnd = job observer
                 Assert.Equal<Result<KitArchiveOutcome, KitArchiveError>>(Ok KitArchiveCancelled, archiveEnd)
                 let ended = cancelling |> updateTableAndElementRotation (SendKitEnded archiveEnd)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "Send kit was cancelled: no zip was written."), ended.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Send kit was cancelled: no zip was written."), ended.kitStatusCaption)
                 Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.kitSend)
                 Assert.False(File.Exists zip.value, "a cancelled send writes no zip")
                 Assert.False(File.Exists $"{zip.value}.tmp", "a cancelled send leaves no partial zip")))
@@ -885,7 +905,7 @@ module KitWindowModelTests =
                     }
                 let zip = exportsZipUnder factFolder
                 let answer = model |> updateTableAndElementRotation (SendKit zip)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "A kit with no folder cannot be sent."), answer.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "A kit with no folder cannot be sent."), answer.kitStatusCaption)
                 Assert.Empty(messages)
                 Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = answer.kitStatus }, answer)
                 Assert.False(answer.kitSend.job.isRunning, "no send may start for a scratch kit")
@@ -904,7 +924,7 @@ module KitWindowModelTests =
                     }
                 let inside = (FileName "Optics QZ.zip").combine folder.value
                 let ended = model |> updateTableAndElementRotation (SendKit inside) |> passedThrough (List.ofSeq messages)
-                match ended.kitStatus with
+                match ended.kitStatusCaption with
                 | Some status ->
                     Assert.StartsWith("The kit could not be sent — ", status.value)
                     Assert.Contains("inside the kit it holds", status.value)
@@ -929,7 +949,7 @@ module KitWindowModelTests =
                 let sent = model |> updateTableAndElementRotation (SendKit zip) |> passedThrough (List.ofSeq messages)
                 Assert.True(File.Exists zip.value, "a kit opened read-only must be sent")
                 let zippedFiles = KitArchiveProxy.create().listZipEntries zip |> archiveValue |> KitTreeEntry.filePathsOf |> List.length
-                Assert.Equal<ControlCaption option>(Some (ControlCaption $"The kit was sent: {zippedFiles} file(s) zipped."), sent.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption $"The kit was sent: {zippedFiles} file(s) zipped."), sent.kitStatusCaption)
                 Assert.Equal<KitAccess>(ReadOnlyKitAccess, sent.kit.access)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)))
 
@@ -1048,7 +1068,7 @@ module KitWindowModelTests =
                     Assert.Equal<Experiments.Experiment list>([ source.e1; source.e2 ], copySource.experiments)
                     Assert.Empty(copySource.chosen)
                 | None -> Assert.Fail "the chosen kit was not opened to copy from"
-                Assert.Equal<ControlCaption option>(None, listed.kitStatus)
+                Assert.Equal<ControlCaption option>(None, listed.kitRefusalOpt)
                 Assert.Equal<Experiments.ExperimentCollection>(model.experimentCollection, listed.experimentCollection)
                 Assert.False(Directory.Exists(appCacheOf source.sourceFolder), "a read-only open writes no .oc")
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes source.sourceFolder)))
@@ -1079,7 +1099,7 @@ module KitWindowModelTests =
                 Assert.True(File.Exists copiedData, "E2's data file must be copied under data")
                 Assert.Equal<byte>(File.ReadAllBytes(Path.Combine(source.sourceFolder.value.value, "data", "measured.csv")), File.ReadAllBytes copiedData)
                 Assert.Equal<KitCopySource option>(None, copied.kitCopyOpt)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatusCaption)
                 Assert.Equal<Item list>(model.kitItems, copied.kitItems)
                 Assert.Empty(model.kitSetups)
                 Assert.Equal<Setups.Setup list>([ darkSetup ], copied.kitSetups)
@@ -1134,9 +1154,9 @@ module KitWindowModelTests =
                 let before = folderBytes folder
                 let sourceBefore = folderBytes source.sourceFolder
                 let refused = model |> updateTableAndElementRotation (OpenCopySource source.sourceFolder)
-                Assert.Equal<ControlCaption option>(readOnlyRefusal, refused.kitStatus)
+                Assert.Equal<ControlCaption option>(readOnlyRefusal, refused.kitStatusCaption)
                 Assert.Equal<KitCopySource option>(None, refused.kitCopyOpt)
-                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = readOnlyRefusal }, refused)
+                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = readOnlyRefusal |> Option.map KitStatusRefused }, refused)
                 let sourceContext = KitContext.openKit (KitProxy.create source.sourceFolder) ReadOnlyKitAccess ClockProvider.system |> kitValue
                 let withSource =
                     {
@@ -1150,11 +1170,12 @@ module KitWindowModelTests =
                                         items = []
                                         setups = [ darkSetup ]
                                         itemRows = []
+                                        sourceItemModels = model.itemModels
                                     }
                     }
                 let notCopied = withSource |> updateTableAndElementRotation CopyChosenExperiments
-                Assert.Equal<ControlCaption option>(readOnlyRefusal, notCopied.kitStatus)
-                Assert.Equal<TableAndElementRotationModel>({ withSource with kitStatus = readOnlyRefusal }, notCopied)
+                Assert.Equal<ControlCaption option>(readOnlyRefusal, notCopied.kitStatusCaption)
+                Assert.Equal<TableAndElementRotationModel>({ withSource with kitStatus = readOnlyRefusal |> Option.map KitStatusRefused }, notCopied)
                 Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder)
                 Assert.Equal<Map<FileName, FileByteContent>>(sourceBefore, folderBytes source.sourceFolder)))
 
@@ -1165,13 +1186,13 @@ module KitWindowModelTests =
             withLoadedScene opened (fun model ->
                 let itself = model |> updateTableAndElementRotation (OpenCopySource (KitFolder (FolderName $"{folder.value.value}/")))
                 let selfRefusal = Some (ControlCaption "A kit cannot copy experiments from itself.")
-                Assert.Equal<ControlCaption option>(selfRefusal, itself.kitStatus)
-                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = selfRefusal }, itself)
+                Assert.Equal<ControlCaption option>(selfRefusal, itself.kitStatusCaption)
+                Assert.Equal<TableAndElementRotationModel>({ model with kitStatus = selfRefusal |> Option.map KitStatusRefused }, itself)
                 let notes = factFolder.combine (FolderName "Notes")
                 Directory.CreateDirectory notes.value |> ignore
                 File.WriteAllText(Path.Combine(notes.value, "notes.txt"), "Not a kit\n")
                 let noKit = model |> updateTableAndElementRotation (OpenCopySource (KitFolder notes))
-                match noKit.kitStatus with
+                match noKit.kitStatusCaption with
                 | Some status ->
                     Assert.StartsWith("The kit could not be opened to copy from — ", status.value)
                     Assert.Contains("the folder is not a kit", status.value)
@@ -1366,7 +1387,7 @@ module KitWindowModelTests =
                     Assert.Equal<ItemCopyRow list>([ laserRow; qzRow ], (copySourceOf bothChosen).itemRows)
                     let e1Chosen = bothChosen |> updateTableAndElementRotation (ToggleCopiedExperiment source.e2.id)
                     Assert.Equal<ItemCopyRow list>([ laserRow ], (copySourceOf e1Chosen).itemRows)
-                    Assert.Equal<ControlCaption option>(None, e1Chosen.kitStatus)
+                    Assert.Equal<ControlCaption option>(None, e1Chosen.kitRefusalOpt)
                     Assert.Equal<Item list>([ targetLaser600 ], e1Chosen.kitItems)
                     Assert.Empty(experimentFilesIn folder)
                 finally listed.closeCopySource () |> ignore))
@@ -1410,7 +1431,7 @@ module KitWindowModelTests =
                 let copied = kept |> updateTableAndElementRotation CopyChosenExperiments
                 Assert.Equal<string list>([ "Laser600 (2).item-json"; "Laser600.item-json"; "QZ.item-json" ], rootFilesIn folder "*.item-json")
                 Assert.Equal<Item list>([ targetLaser600; addedLaser600; sourceQz ], copied.kitItems)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 2 experiment(s) and added 2 item(s) from Copy source."), copied.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 2 experiment(s) and added 2 item(s) from Copy source."), copied.kitStatusCaption)
                 Assert.Equal<KitCopySource option>(None, copied.kitCopyOpt))
             let added = reopenedCopy folder
             Assert.Equal<Experiments.ExperimentId list>([ source.e1.id; source.e2.id ], added.experiments |> List.map (fun experiment -> experiment.id))
@@ -1439,7 +1460,7 @@ module KitWindowModelTests =
                     ],
                     (copySourceOf onDial).itemRows)
                 let copied = onDial |> updateTableAndElementRotation CopyChosenExperiments
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatus))
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Copied 1 experiment(s) from Copy source."), copied.kitStatusCaption))
             let mapped = reopenedCopy benchFolder
             match mapped.experiments, mapped.resolved with
             | [ copiedE1 ], Ok [ onPiece ] ->
@@ -1479,7 +1500,7 @@ module KitWindowModelTests =
                     let before = folderBytes folder
                     let sourceBefore = folderBytes source.sourceFolder
                     let refused = refusing |> updateTableAndElementRotation CopyChosenExperiments
-                    match refused.kitStatus with
+                    match refused.kitStatusCaption with
                     | Some status ->
                         Assert.StartsWith("The experiments could not be copied", status.value)
                         Assert.Contains("the kit already has an item of that id", status.value)
@@ -1535,7 +1556,7 @@ module KitWindowModelTests =
                     let diagnostic = SetupItemReferenceErr (UnknownKitItemErr held)
                     Assert.Equal<ControlCaption option>(
                         Some (ControlCaption $"The experiment could not be chosen to copy — {diagnostic.describe}"),
-                        refused.kitStatus)
+                        refused.kitStatusCaption)
                     Assert.Equal<KitCopySource option>(injected.kitCopyOpt, refused.kitCopyOpt)
                     Assert.Equal<Experiments.ExperimentId list>([ source.e1.id ], (copySourceOf refused).chosen)
                     Assert.Equal<ItemCopyRow list>(

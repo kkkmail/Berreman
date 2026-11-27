@@ -59,8 +59,7 @@ module WorkbenchInfoAndCaptureTests =
             | :? Control as c when AutomationProperties.GetAutomationId c = autoId -> Some c
             | _ -> None)
 
-    let private findBorder (window : Window) (autoId : string) : Border option =
-        findControl window autoId |> Option.bind (fun c -> match c with :? Border as b -> Some b | _ -> None)
+    let private findBorder (window : Window) (autoId : string) : Control option = findControl window autoId
 
     // ------------------------------ 1–2: what an element is; the menu's width ------------------------------
 
@@ -144,12 +143,7 @@ module WorkbenchInfoAndCaptureTests =
             let mutable model = opened
             let window = mountView opened (fun msg -> model <- updateTableAndElementRotation msg model)
             match findBorder window ConstructorUiId.elementMenuChoose.value with
-            | Some row ->
-                match Option.ofNullable (row.TranslatePoint(Point(row.Bounds.Width / 2.0, row.Bounds.Height / 2.0), window)) with
-                | Some c ->
-                    window.MouseDown(c, MouseButton.Left, RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-                | None -> Assert.Fail "Choose… has no on-screen position"
+            | Some row -> UiDriver.pressAtCentre window row
             | None -> Assert.Fail "the menu must offer Choose…"
             match captured.Value with
             | Some ctx -> Assert.Equal(Some PresetIds.krf248, ctx.currentEntryIdOpt)
@@ -226,7 +220,7 @@ module WorkbenchInfoAndCaptureTests =
                     {
                         chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                         setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
-                        addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                        addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore; confirmRemoval = ignore; cancelRemoval = ignore
                         addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
                         viewExperiment = ignore; openChartWindow = ignore
                     }

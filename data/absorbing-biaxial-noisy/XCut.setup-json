@@ -202,7 +202,7 @@
           "r2Locked": false,
           "r3": 0,
           "r3Locked": true,
-          "valueId": "ffa07a4d-1fd4-4e71-83e9-d15f5dfa25b6"
+          "valueId": null
         },
         "zoom": 5
       }

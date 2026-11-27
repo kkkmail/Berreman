@@ -24,6 +24,7 @@ open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.MaterialEditorView
 open OpticalConstructor.Ui.NkDispersionChart
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0033 (023) — the MaterialEditorWindow component (UICOMP_XDUO_0004): the Material editor
 /// window in OpticalConstructor.Ui over the pure Domain `MaterialComplexityEditor`
@@ -35,43 +36,6 @@ open OpticalConstructor.Ui.NkDispersionChart
 /// through `MaterialProxy` with its physics. Declared, not wired.
 module MaterialEditorWindowTests =
 
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
-    /// ladder panels are variable-membership subtrees, so their controls carry AutomationIds —
-    /// the SampleEditorWindow precedent).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                // A Save / Cancel click closes the window during the press — skip the release then.
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
-
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// view's `onTextChanged` binds — still driving the control found by its UiId).
     let private setText (window : Window) (id : string) (text : string) : unit =
@@ -81,13 +45,6 @@ module MaterialEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
         | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail($"%s{id} was not found")
-
-    /// The text of the TextBlock carrying `id`.
-    let private textOf (window : Window) (id : string) : string =
-        match tryFindControl window id with
-        | Some (:? TextBlock as tb) -> tb.Text
-        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
-        | None -> failwith $"%s{id} was not found in the visual tree"
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
 
@@ -634,7 +591,7 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()), BuiltinCatalogue.categoryStore (fun _ -> []))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(matchesId ConstructorUiId.materialEditorWindow.value window, "the window itself carries the MaterialEditorWindow id")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialEditorWindow.value window, "the window itself carries the MaterialEditorWindow id")
             for id in
                 [
                     ConstructorUiId.materialNameBox.value

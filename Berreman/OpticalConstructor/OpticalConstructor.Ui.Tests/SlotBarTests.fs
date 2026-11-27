@@ -4,6 +4,7 @@ open System
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Headless
 open Avalonia.Input
 open Avalonia.Threading
@@ -22,6 +23,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open global.Elmish
+open OpticalConstructor.Ui.Tests.UiDriver.ById
 
 /// The slot bar above the Main table, mounted in `mainView` and driven through its messages, its keyboard and its
 /// presses: a chip per slot in light order, the open chip's fitting items, Tab and letters, swaps and Record experiment
@@ -103,7 +105,7 @@ module SlotBarTests =
             |> withItemAdded (ControlCaption "LP2") linearPolarizerChoice
             |> withItemAdded (ControlCaption "QZ") (plateChoice Library.SampleIds.glassPlate1mmId)
             |> withItemAdded (ControlCaption "QZ2") (plateChoice Library.SampleIds.glassPlate2mmId)
-        Assert.Equal<ControlCaption option>(None, stocked.kitStatus)
+        Assert.Equal<ControlCaption option>(None, stocked.kitRefusalOpt)
         Assert.Equal<ItemLabel list>(
             [ ItemLabel "LP1"; ItemLabel "LP2"; ItemLabel "Laser"; ItemLabel "QZ"; ItemLabel "QZ2" ],
             stocked.kitItems |> List.map (fun item -> item.label))
@@ -118,7 +120,7 @@ module SlotBarTests =
             |> update (AssignSlot (source, Some (itemLabelled (ItemLabel "Laser") stocked)))
             |> update (AssignSlot (polarizer, Some (itemLabelled (ItemLabel "LP1") stocked)))
             |> update (AssignSlot (sample, Some (itemLabelled (ItemLabel "QZ") stocked)))
-        Assert.Equal<ControlCaption option>(None, table.kitStatus)
+        Assert.Equal<ControlCaption option>(None, table.kitRefusalOpt)
         {
             table = table
             polarizer = polarizer
@@ -148,47 +150,11 @@ module SlotBarTests =
             window.Close()
             Dispatcher.UIThread.RunJobs()
 
-    /// Every control under `root` carrying `id` as its AutomationId.
-    let internal controlsUnder (root : Visual) (id : ConstructorUiId) : Control list =
-        root.GetVisualDescendants()
-        |> Seq.choose (function :? Control as control -> Some control | _ -> None)
-        |> Seq.filter (fun control -> AutomationProperties.GetAutomationId control = id.value)
-        |> List.ofSeq
-
-    let internal tryControlById (window : Window) (id : ConstructorUiId) : Control option =
-        controlsUnder window id |> List.tryHead
-
-    let internal controlById (window : Window) (id : ConstructorUiId) : Control =
-        tryControlById window id |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
-
-    let internal assertAbsent (window : Window) (id : ConstructorUiId) : unit =
-        match tryControlById window id with
-        | Some _ -> Assert.Fail $"{id.value} must be absent"
-        | None -> ()
-
-    /// The label of the chip or box carrying `id`: the text of the box's child.
-    let internal boxLabelOf (window : Window) (id : ConstructorUiId) : string =
-        Assert.IsType<TextBlock>(Assert.IsType<Border>(controlById window id).Child).Text
-
     /// The window position of the control's top-left corner.
     let internal topLeftOf (window : Window) (control : Control) : Point =
         match control.TranslatePoint(Point(0.0, 0.0), window) |> Option.ofNullable with
         | Some point -> point
         | None -> failwith $"{AutomationProperties.GetAutomationId control} has no position in its window"
-
-    /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does.
-    let internal pressBox (window : Window) (id : ConstructorUiId) : unit =
-        let pressed = Assert.IsType<Border>(controlById window id)
-        Assert.True(pressed.IsEffectivelyVisible, $"{id.value} must be visible")
-        pressed.BringIntoView() |> ignore
-        Dispatcher.UIThread.RunJobs()
-        match pressed.TranslatePoint(Point(pressed.Bounds.Width / 2.0, pressed.Bounds.Height / 2.0), window) |> Option.ofNullable with
-        | Some centre ->
-            window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
-            window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
-        | None -> Assert.Fail $"{id.value} has no position in its window"
 
     /// The ids the panel's children carry, in order.
     let private childIds (panel : Panel) : string list =
@@ -233,27 +199,27 @@ module SlotBarTests =
                     let chips =
                         [ SourceSlotRole; prepRole; objectRole; DetectorSlotRole (SlotPosition 1) ]
                         |> List.map ConstructorUiId.slotChip
-                    let bar = controlById window ConstructorUiId.slotBar
+                    let bar = findControl window ConstructorUiId.slotBar
                     let shown =
                         bar.GetVisualDescendants()
-                        |> Seq.choose (function :? Border as border -> Some (AutomationProperties.GetAutomationId border) | _ -> None)
+                        |> Seq.choose (function :? ToggleButton as chip -> Some (AutomationProperties.GetAutomationId chip) | _ -> None)
                         |> Seq.filter (fun id -> not (isNull id) && id.StartsWith "SlotChip_")
                         |> List.ofSeq
                     Assert.Equal<string list>(chips |> List.map (fun chip -> chip.value), shown)
                     Assert.Equal<string list>(
                         [ "Source: Laser ▾"; "Prep 1: LP1 ▾"; "Obj 1: QZ @ 45° ▾"; "Detector 1: — ▾" ],
-                        chips |> List.map (boxLabelOf window))
+                        chips |> List.map (captionOf window))
                     for chip in chips do
-                        let chipBox = controlById window chip
+                        let chipBox = findControl window chip
                         Assert.True(chipBox.Focusable && KeyboardNavigation.GetIsTabStop chipBox, $"{chip.value} must be a focusable tab stop")
                     // One row, left to right in light order.
-                    let corners = chips |> List.map (fun chip -> topLeftOf window (controlById window chip))
+                    let corners = chips |> List.map (fun chip -> topLeftOf window (findControl window chip))
                     let rowTop = (List.head corners).Y
                     Assert.True(corners |> List.forall (fun corner -> abs (corner.Y - rowTop) < 0.5), $"the chips must share one row: %A{corners}")
                     Assert.True(corners |> List.pairwise |> List.forall (fun (left, right) -> left.X < right.X), $"the chips must run left to right: %A{corners}")
                     let canvas =
                         window.GetVisualDescendants()
-                        |> Seq.pick (function :? Canvas as canvas when canvas.Name = ConstructorUiId.tableElementCanvas.value -> Some canvas | _ -> None)
+                        |> Seq.pick (function :? Canvas as canvas when UiDriver.hasId ConstructorUiId.tableElementCanvas.value canvas -> Some canvas | _ -> None)
                     let barBottom = (topLeftOf window bar).Y + bar.Bounds.Height
                     let tableTop = (topLeftOf window canvas).Y
                     Assert.True(barBottom <= tableTop + 0.5, $"the bar's bottom {barBottom} must be above the table's top {tableTop}"))))
@@ -265,22 +231,19 @@ module SlotBarTests =
                 let held = barTable scene
                 let itemOf (label : string) : ItemId = itemLabelled (ItemLabel label) held.table
                 withMainWindow (held.table |> update (ToggleSlotChip held.polarizer)) (fun window _ ->
-                    let list = Assert.IsType<WrapPanel>(controlById window ConstructorUiId.slotChipChoiceList)
+                    let list = Assert.IsType<WrapPanel>(findControl window ConstructorUiId.slotChipChoiceList)
                     let listed = [ itemOf "LP1"; itemOf "LP2" ] |> List.map (ConstructorUiId.slotChipChoice prepRole)
                     Assert.Equal<string list>(listed |> List.map (fun id -> id.value), childIds list)
                     for unfit in [ "Laser"; "QZ"; "QZ2" ] do
                         assertAbsent window (ConstructorUiId.slotChipChoice prepRole (itemOf unfit))
-                    Assert.Equal<string list>([ "LP1"; "LP2" ], listed |> List.map (boxLabelOf window))
+                    Assert.Equal<string list>([ "LP1"; "LP2" ], listed |> List.map (captionOf window))
                     // The open chip and the item its slot holds are on the chosen-option fill.
-                    let fillOf (id : ConstructorUiId) : Media.IBrush = Assert.IsType<Border>(controlById window id).Background
-                    let chosen = Assert.IsAssignableFrom<Media.ISolidColorBrush>(fillOf (ConstructorUiId.slotChip prepRole))
-                    Assert.Equal(MaterialsWindowView.positiveBackground, chosen.Color)
-                    let heldFill = Assert.IsAssignableFrom<Media.ISolidColorBrush>(fillOf (List.head listed))
-                    Assert.Equal(MaterialsWindowView.positiveBackground, heldFill.Color)
-                    let otherFill = Assert.IsAssignableFrom<Media.ISolidColorBrush>(fillOf (List.item 1 listed))
-                    Assert.NotEqual(MaterialsWindowView.positiveBackground, otherFill.Color))
+                    let fillOf (id : ConstructorUiId) : Media.Color = UiDriver.fillOfControl (findControl window id)
+                    Assert.Equal(PositiveCommand.fill, fillOf (ConstructorUiId.slotChip prepRole))
+                    Assert.Equal(PositiveCommand.fill, fillOf (List.head listed))
+                    Assert.NotEqual(PositiveCommand.fill, fillOf (List.item 1 listed)))
                 withMainWindow (held.table |> update (ToggleSlotChip detector)) (fun window _ ->
-                    let list = Assert.IsType<WrapPanel>(controlById window ConstructorUiId.slotChipChoiceList)
+                    let list = Assert.IsType<WrapPanel>(findControl window ConstructorUiId.slotChipChoiceList)
                     Assert.Equal("No item of this kit fits Detector 1.", Assert.IsType<TextBlock>(Assert.Single(list.Children)).Text))))
 
     [<Fact>]
@@ -290,7 +253,7 @@ module SlotBarTests =
                 let held = barTable scene
                 let itemOf (label : string) : ItemId = itemLabelled (ItemLabel label) held.table
                 withMainWindow held.table (fun window answered ->
-                    let chip (role : SlotRole) : Control = controlById window (ConstructorUiId.slotChip role)
+                    let chip (role : SlotRole) : Control = findControl window (ConstructorUiId.slotChip role)
                     let tab () : unit =
                         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None)
                         Dispatcher.UIThread.RunJobs()
@@ -327,12 +290,12 @@ module SlotBarTests =
                 let qz2 = itemLabelled (ItemLabel "QZ2") held.table
                 withMainWindow held.table (fun window _ ->
                     assertAbsent window ConstructorUiId.slotChipChoiceList
-                    pressBox window (ConstructorUiId.slotChip objectRole)
-                    Assert.Same(box (controlById window (ConstructorUiId.slotChip objectRole)), focusedIn window)
-                    Assert.IsType<WrapPanel>(controlById window ConstructorUiId.slotChipChoiceList) |> ignore
-                    pressBox window (ConstructorUiId.slotChipChoice objectRole qz2)
+                    clickOn window (ConstructorUiId.slotChip objectRole)
+                    Assert.Same(box (findControl window (ConstructorUiId.slotChip objectRole)), focusedIn window)
+                    Assert.IsType<WrapPanel>(findControl window ConstructorUiId.slotChipChoiceList) |> ignore
+                    clickOn window (ConstructorUiId.slotChipChoice objectRole qz2)
                     assertAbsent window ConstructorUiId.slotChipChoiceList
-                    Assert.Equal("Obj 1: QZ2 @ 45° ▾", boxLabelOf window (ConstructorUiId.slotChip objectRole)))
+                    Assert.Equal("Obj 1: QZ2 @ 45° ▾", captionOf window (ConstructorUiId.slotChip objectRole)))
                 let setup = Assert.Single(held.table.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess)
                 let sampleSlot = setup.slots |> List.find (fun slot -> slot.id = held.sample)
                 Assert.Equal<ItemId option>(Some qz2, sampleSlot.content.itemOpt)))
@@ -350,8 +313,8 @@ module SlotBarTests =
                     |> update (ExpChooseElement held.polarizer)
                 Assert.Equal<SetupName option>(Some (SetupName "Bench"), ready.activeSetupOpt |> Option.map (fun setup -> setup.name))
                 withMainWindow ready (fun window _ ->
-                    pressBox window ConstructorUiId.recordExperimentButton
-                    pressBox window ConstructorUiId.recordExperimentButton)
+                    clickOn window ConstructorUiId.recordExperimentButton
+                    clickOn window ConstructorUiId.recordExperimentButton)
                 let recorded = ready.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess
                 Assert.Equal<Experiments.ExperimentId list>(
                     [ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ],

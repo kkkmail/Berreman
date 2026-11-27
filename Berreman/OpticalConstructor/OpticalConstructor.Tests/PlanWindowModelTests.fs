@@ -220,7 +220,7 @@ module PlanWindowModelTests =
             Assert.True running.planJob.job.isRunning
             Assert.Single jobs |> ignore
             Assert.Empty cancels
-            Assert.Equal<ControlCaption option>(None, running.kitStatus)
+            Assert.Equal<ControlCaption option>(None, running.kitRefusalOpt)
             assertPlansTwoCandidates jobs.[0]
 
             // One plan at a time: a second RunPlan starts nothing and changes nothing.
@@ -262,7 +262,7 @@ module PlanWindowModelTests =
             let running = ready |> updateTableAndElementRotation (StudyPlan (RunPlan request))
             Assert.True running.planJob.job.isRunning
             Assert.Single jobs |> ignore
-            Assert.Equal<ControlCaption option>(None, running.kitStatus)
+            Assert.Equal<ControlCaption option>(None, running.kitRefusalOpt)
             assertPlansTwoCandidates jobs.[0]
 
             let cancelling = running |> updateTableAndElementRotation (StudyPlan CancelPlan)
@@ -404,7 +404,7 @@ module PlanWindowModelTests =
             |> updateTableAndElementRotation (AssignSlot (detectorSlot, Some polarimeter.id))
             |> updateTableAndElementRotation (ExpChooseElement sampleSlot)
 
-        Assert.Equal<ControlCaption option>(None, ready.kitStatus)
+        Assert.Equal<ControlCaption option>(None, ready.kitRefusalOpt)
         Assert.Equal<ItemId option>(Some polarimeter.id, (ready.elements |> List.find (fun slot -> slot.id = detectorSlot)).content.itemOpt)
         Assert.Equal<ElementId option>(Some sampleSlot, ready.experimentCollection.draft.elementId)
         ready
@@ -459,7 +459,7 @@ module PlanWindowModelTests =
             Assert.Equal(CandidateInKit experiment.name, candidate.coverageIn added.kitSetups added.experimentCollection.experiments)
             Assert.Equal(CandidateInKit experiment.name, candidate.coverageIn setups experiments)
 
-            match added.kitStatus with
+            match added.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Planned ", status.value)
                 Assert.Equal($"Planned {experiment.name.value} over {setup.reference.describe}.", status.value)
@@ -484,7 +484,7 @@ module PlanWindowModelTests =
 
             let again = added |> updateTableAndElementRotation (AddPlannedExperiment candidate)
 
-            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Not added — {experiment.name.value} already plans it."), again.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Not added — {experiment.name.value} already plans it."), again.kitStatusCaption)
             Assert.Equal<string list>(paths, pathsOf folder)
             Assert.Equal<Setups.Setup list>(setups, setupsOf again)
             Assert.Equal<Experiment list>(experiments, experimentsOf again)
@@ -501,7 +501,7 @@ module PlanWindowModelTests =
             let refused = ready |> updateTableAndElementRotation (AddPlannedExperiment (candidateOn ReflectedMueller ready))
             Assert.Equal<ControlCaption option>(
                 Some (ControlCaption "Not added — no detector of the table captures the reflected light of the sample."),
-                refused.kitStatus)
+                refused.kitStatusCaption)
             Assert.Equal<TableAndElementRotationModel>({ ready with kitStatus = refused.kitStatus }, refused)
             Assert.Equal<string list>(before, pathsOf folder)
 
@@ -512,7 +512,7 @@ module PlanWindowModelTests =
                 |> updateTableAndElementRotation RemoveSelectedElement
             Assert.DoesNotContain<Setups.SetupSlot>(bare.elements, fun slot -> slot.id = sampleSlot)
             let unslotted = bare |> updateTableAndElementRotation (AddPlannedExperiment (candidateOn TransmittedMueller ready))
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Not added — the table has no sample slot."), unslotted.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Not added — the table has no sample slot."), unslotted.kitStatusCaption)
             Assert.Equal<TableAndElementRotationModel>({ bare with kitStatus = unslotted.kitStatus }, unslotted)
             Assert.Equal<string list>(before, pathsOf folder)
             Assert.Empty(setupsOf unslotted)
@@ -526,6 +526,6 @@ module PlanWindowModelTests =
 
             let refused = ready |> updateTableAndElementRotation (AddPlannedExperiment (candidateOn TransmittedMueller ready))
 
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatusCaption)
             Assert.Equal<TableAndElementRotationModel>({ ready with kitStatus = refused.kitStatus }, refused)
             Assert.Equal<string list>(before, pathsOf folder))

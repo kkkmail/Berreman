@@ -23,6 +23,7 @@ module OpticalConstructor.Ui.MaterialsWindowView
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
@@ -962,38 +963,8 @@ let facetedHandlers (dispatch : MaterialsWindowMsg -> unit) : FacetedTreeControl
 
 /// The Materials and import-dialog brush adapter (spec 0050 S3.2).
 let brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 /// The Materials and import-dialog refusal colour (spec 0050 S3.2).
 let messageColor : Color = Color.FromRgb(178uy, 34uy, 34uy)
-/// The Materials and import-dialog positive action fill (spec 0050 S3.2).
-let positiveBackground : Color = Color.FromRgb(186uy, 224uy, 186uy)
-/// The Materials and import-dialog negative action fill (spec 0050 S3.2).
-let negativeBackground : Color = Color.FromRgb(236uy, 202uy, 202uy)
-
-/// A keyed verb box shared by both library windows and the import dialog (spec 0050 S3.2; S3.3).
-/// Refreshes captured selection data and supplies the handled press for owner-window lookup.
-let verbButtonOn (id : ConstructorUiId) (label : ControlCaption) (onPressed : PointerPressedEventArgs -> unit) : IView =
-    let keyedBox =
-        Border.create [
-            id.automationAttribute<Border> ()
-            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
-            Border.background (brush idleBackground)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onPressed e), SubPatchOptions.Always)
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey id.value
-    keyedBox :> IView
-
-/// A shared verb box whose action needs no pointer event (spec 0050 S3.3).
-let verbButton (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
-    verbButtonOn id label (fun _ -> onClick ())
 
 /// Picks one library folder with an optional starting location, posting a confirmed pick on the UI thread (spec 0050 S3.3).
 /// Cancellation or an unavailable storage provider leaves the caller unchanged.
@@ -1050,9 +1021,10 @@ let pickEntryExportFile (owner : Window) (startOpt : FolderName option) (envelop
         }
     Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
 
-/// Opens one Zemax `.agf` glass catalogue, posting a confirmed pick on the UI thread (spec 0050 S13.2).
-/// Cancellation or an unavailable storage provider leaves the caller unchanged.
-let pickGlassCatalogueFile (owner : Window) (onPicked : FileName -> unit) : unit =
+/// Opens one Zemax `.agf` glass catalogue, posting a confirmed pick on the UI thread, starting in `startOpt` (spec 0050
+/// S13.2; 0051 `.manual/003` 5.2: the Catalogues location). Cancellation or an unavailable storage provider leaves the
+/// caller unchanged.
+let pickGlassCatalogueFile (owner : Window) (startOpt : FolderName option) (onPicked : FileName -> unit) : unit =
     let pick =
         async {
             try
@@ -1062,6 +1034,13 @@ let pickGlassCatalogueFile (owner : Window) (onPicked : FileName -> unit) : unit
                         Title = "Import glass catalogue",
                         AllowMultiple = false,
                         FileTypeFilter = [ fileType ])
+                match startOpt with
+                | Some folder ->
+                    let! suggested =
+                        Avalonia.Platform.Storage.StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, folder.value)
+                        |> Async.AwaitTask
+                    options.SuggestedStartLocation <- suggested
+                | None -> ()
                 let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
                 match List.ofSeq files with
                 | file :: _ ->
@@ -1073,12 +1052,9 @@ let pickGlassCatalogueFile (owner : Window) (onPicked : FileName -> unit) : unit
     Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
 
 /// Hands a verb press's window to `onOwner`; a press outside a window does nothing (spec 0050 S3.3, S13.2).
-let private onOwnerWindow (onOwner : Window -> unit) (e : PointerPressedEventArgs) : unit =
-    match e.Source with
-    | :? Visual as source ->
-        match TopLevel.GetTopLevel source with
-        | :? Window as owner -> onOwner owner
-        | _ -> ()
+let private onOwnerWindow (onOwner : Window -> unit) (pressed : CommandButton) : unit =
+    match TopLevel.GetTopLevel pressed with
+    | :? Window as owner -> onOwner owner
     | _ -> ()
 
 /// Shows each entry's attribution as wrapping text, omitting the panel when there is none (spec 0050 S3.3).
@@ -1087,7 +1063,7 @@ let attributionPanel (id : ConstructorUiId) (lines : EntryAttributionLine list) 
     | [] -> []
     | _ ->
         [ StackPanel.create [
-              id.automationAttribute<StackPanel> ()
+              yield! id.groupAttributes<StackPanel> ()
               AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Licence attribution", ValueNone)
               StackPanel.orientation Orientation.Vertical
               StackPanel.children (
@@ -1098,24 +1074,6 @@ let attributionPanel (id : ConstructorUiId) (lines : EntryAttributionLine list) 
                           TextBlock.maxWidth 380.0
                       ] :> IView))
           ] :> IView ]
-
-/// A keyed, colour-coded action box shared by Materials and the import dialog (spec 0050 S3.2).
-let actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    let keyedBox =
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(22.0, 6.0))
-            Border.margin (Thickness(0.0, 0.0, 10.0, 4.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey id.value
-    keyedBox :> IView
 
 type SelectionTarget with
 
@@ -1138,8 +1096,8 @@ let private selectModeRows (m : MaterialsWindowModel) (dispatch : MaterialsWindo
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
-                  actionButton ConstructorUiId.materialsSelectButton (ControlCaption "Select") positiveBackground (fun () -> dispatch ConfirmSelect)
-                  actionButton ConstructorUiId.materialsSelectCloseButton (ControlCaption "Close") negativeBackground (fun () -> dispatch CancelSelect)
+                  CommandControls.actionCommand ConstructorUiId.materialsSelectButton (ControlCaption "Select") PositiveCommand (fun () -> dispatch ConfirmSelect)
+                  CommandControls.actionCommand ConstructorUiId.materialsSelectCloseButton (ControlCaption "Close") NegativeCommand (fun () -> dispatch CancelSelect)
               ]
           ] :> IView
           (TextBlock.create [
@@ -1154,9 +1112,9 @@ let private selectModeRows (m : MaterialsWindowModel) (dispatch : MaterialsWindo
 /// One lifecycle verb box (spec 0038 step 023), by its action.
 let private lifecycleButton (dispatch : MaterialsWindowMsg -> unit) (action : LifecycleAction) : IView =
     match action with
-    | MarkInactiveAction -> verbButton ConstructorUiId.materialsMarkInactiveButton (ControlCaption "Mark inactive") (fun () -> dispatch RequestMarkInactive)
-    | MarkActiveAction -> verbButton ConstructorUiId.materialsMarkActiveButton (ControlCaption "Mark active") (fun () -> dispatch RequestMarkActive)
-    | SupersedeAction -> verbButton ConstructorUiId.materialsSupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersede)
+    | MarkInactiveAction -> CommandControls.verbCommand ConstructorUiId.materialsMarkInactiveButton (ControlCaption "Mark inactive") (fun () -> dispatch RequestMarkInactive)
+    | MarkActiveAction -> CommandControls.verbCommand ConstructorUiId.materialsMarkActiveButton (ControlCaption "Mark active") (fun () -> dispatch RequestMarkActive)
+    | SupersedeAction -> CommandControls.verbCommand ConstructorUiId.materialsSupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersede)
 
 /// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
 /// entry loses the verb — removed, not greyed); Remove only while an entry is selected; the
@@ -1168,37 +1126,37 @@ let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
-            [ verbButton ConstructorUiId.materialsAddButton (ControlCaption "Add") (fun () -> dispatch AddMaterial) ]
+            [ CommandControls.verbCommand ConstructorUiId.materialsAddButton (ControlCaption "Add") (fun () -> dispatch AddMaterial) ]
             @ (match m.editableSelection with
-               | Some _ -> [ verbButton ConstructorUiId.materialsEditButton (ControlCaption "Edit") (fun () -> dispatch EditSelected) ]
+               | Some _ -> [ CommandControls.verbCommand ConstructorUiId.materialsEditButton (ControlCaption "Edit") (fun () -> dispatch EditSelected) ]
                | None -> [])
             @ (match m.selectedId with
-               | Some _ -> [ verbButton ConstructorUiId.materialsRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelected) ]
+               | Some _ -> [ CommandControls.verbCommand ConstructorUiId.materialsRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelected) ]
                | None -> [])
             @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch))
-            @ [ verbButton ConstructorUiId.materialsCategoriesButton (ControlCaption "Categories…") (fun () -> dispatch OpenCategories) ]
+            @ [ CommandControls.verbCommand ConstructorUiId.materialsCategoriesButton (ControlCaption "Categories…") (fun () -> dispatch OpenCategories) ]
             @ (match m.mode with
                | Select _ -> []
                | Browse ->
                    (match m.exportableSelection with
                     | None -> []
                     | Some envelope ->
-                        [ verbButtonOn ConstructorUiId.materialsExportButton (ControlCaption "Export…") (onOwnerWindow (fun owner ->
+                        [ CommandControls.verbCommandOn ConstructorUiId.materialsExportButton (ControlCaption "Export…") (onOwnerWindow (fun owner ->
                               pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
                                   (fun file -> dispatch (ExportSelectedMaterial file)))) ])
                    @ (match m.filteredEntries with
                       | [] -> []
                       | _ ->
-                          [ verbButtonOn ConstructorUiId.materialsExportShownButton (ControlCaption "Export shown to catalogue…") (onOwnerWindow (fun owner ->
+                          [ CommandControls.verbCommandOn ConstructorUiId.materialsExportShownButton (ControlCaption "Export shown to catalogue…") (onOwnerWindow (fun owner ->
                                 pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
                                     (fun folder -> dispatch (ExportShownMaterials (CatalogueExportTarget.ofFolder folder))))) ])
                    @ (match m.context.catalogueImports.materialSources with
                       | [] -> []
                       | _ ->
-                          [ verbButton ConstructorUiId.materialsOnlineSourcesButton (ControlCaption "Online sources…") (fun () ->
+                          [ CommandControls.verbCommand ConstructorUiId.materialsOnlineSourcesButton (ControlCaption "Online sources…") (fun () ->
                                 dispatch OpenOnlineSources) ])
-                   @ [ verbButtonOn ConstructorUiId.materialsImportGlassCatalogueButton (ControlCaption "Import glass catalogue…") (onOwnerWindow (fun owner ->
-                           pickGlassCatalogueFile owner (fun file -> dispatch (ImportGlassCatalogue file)))) ]))
+                   @ [ CommandControls.verbCommandOn ConstructorUiId.materialsImportGlassCatalogueButton (ControlCaption "Import glass catalogue…") (onOwnerWindow (fun owner ->
+                           pickGlassCatalogueFile owner m.context.catalogueImports.exportFolderOpt (fun file -> dispatch (ImportGlassCatalogue file)))) ]))
     ] :> IView
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
@@ -1213,7 +1171,7 @@ let private toggleRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             match m.showInactive with
             | ActiveOnly -> ControlCaption $"Show inactive (%d{n.value})"
             | IncludeInactive -> ControlCaption $"Hide inactive (%d{n.value})"
-        [ verbButton ConstructorUiId.materialsShowInactiveToggle label (fun () -> dispatch ToggleShowInactive) ]
+        [ CommandControls.verbCommand ConstructorUiId.materialsShowInactiveToggle label (fun () -> dispatch ToggleShowInactive) ]
 
 /// The inline remove confirmation — present only while a remove is armed.
 let private confirmRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView list =
@@ -1232,8 +1190,8 @@ let private confirmRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton ConstructorUiId.materialsRemoveConfirmButton (ControlCaption "Remove") (fun () -> dispatch ConfirmRemove)
-                  verbButton ConstructorUiId.materialsRemoveCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelRemove)
+                  CommandControls.verbCommand ConstructorUiId.materialsRemoveConfirmButton (ControlCaption "Remove") (fun () -> dispatch ConfirmRemove)
+                  CommandControls.verbCommand ConstructorUiId.materialsRemoveCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelRemove)
               ]
           ] :> IView ]
 
@@ -1261,8 +1219,8 @@ let private lifecycleConfirmRow (m : MaterialsWindowModel) (dispatch : Materials
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton ConstructorUiId.materialsLifecycleConfirmButton (ControlCaption "Confirm") (fun () -> dispatch ConfirmLifecycle)
-                  verbButton ConstructorUiId.materialsLifecycleCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelLifecycle)
+                  CommandControls.verbCommand ConstructorUiId.materialsLifecycleConfirmButton (ControlCaption "Confirm") (fun () -> dispatch ConfirmLifecycle)
+                  CommandControls.verbCommand ConstructorUiId.materialsLifecycleCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelLifecycle)
               ]
           ] :> IView ]
 
@@ -1327,7 +1285,7 @@ let private versionsRow (m : MaterialsWindowModel) (versions : (VersionNumber * 
     | [] | [ _ ] -> []
     | _ ->
         [ StackPanel.create [
-              ConstructorUiId.materialsVersionsPanel.automationAttribute<StackPanel> ()
+              yield! ConstructorUiId.materialsVersionsPanel.groupAttributes<StackPanel> ()
               StackPanel.orientation Orientation.Horizontal
               StackPanel.spacing 0.0
               StackPanel.children (
@@ -1340,7 +1298,7 @@ let private versionsRow (m : MaterialsWindowModel) (versions : (VersionNumber * 
                       |> List.map (fun (version, _) ->
                           let marker = if version = shown then "▸ " else ""
                           let latestTag = if version = latest then " (latest)" else ""
-                          verbButton (ConstructorUiId.materialsVersionRow version) (ControlCaption $"%s{marker}v%d{version.value}%s{latestTag}") (fun () -> dispatch (ViewVersion version)))))
+                          CommandControls.verbCommand (ConstructorUiId.materialsVersionRow version) (ControlCaption $"%s{marker}v%d{version.value}%s{latestTag}") (fun () -> dispatch (ViewVersion version)))))
           ] :> IView ]
 
 /// The view panel: the selected entry's read-only metadata plus the dual-axis n/k chart over the
@@ -1379,14 +1337,14 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             if viewingOlder then
                 [ TextBlock.create [
                       ConstructorUiId.materialsViewOnlyNote.automationAttribute<TextBlock> ()
-                      TextBlock.foreground (brush idleBorder)
+                      TextBlock.foreground (brush NeutralCommand.outline)
                       TextBlock.textWrapping TextWrapping.Wrap
                       TextBlock.maxWidth 380.0
                       TextBlock.text $"Viewing version %d{shownVersion.value} (view-only) — the library edits the latest, version %d{latestVersion.value}."
                   ] :> IView ]
             else []
         [ Border.create [
-              ConstructorUiId.materialsViewPanel.automationAttribute<Border> ()
+              yield! ConstructorUiId.materialsViewPanel.groupAttributes<Border> ()
               Border.child (
                   StackPanel.create [
                       StackPanel.orientation Orientation.Vertical
@@ -1442,7 +1400,7 @@ let materialsWindowView (m : MaterialsWindowModel) (dispatch : MaterialsWindowMs
                     ])
             ]
             Border.create [
-                ConstructorUiId.materialsFacetTreeHost.automationAttribute<Border> ()
+                yield! ConstructorUiId.materialsFacetTreeHost.groupAttributes<Border> ()
                 Border.padding (Thickness 8.0)
                 Border.child (FacetedTreeControls.facetedTreeControlsView (facetedState m) (facetedHandlers dispatch))
             ]

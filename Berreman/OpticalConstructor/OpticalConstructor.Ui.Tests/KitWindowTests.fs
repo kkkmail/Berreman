@@ -36,6 +36,7 @@ open OpticalConstructor.App
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open global.Elmish
+open OpticalConstructor.Ui.Tests.UiDriver.ById
 
 module KitWindowTests =
 
@@ -84,9 +85,10 @@ module KitWindowTests =
         [
             ConstructorUiId.experimentAddButton
             ConstructorUiId.experimentRemoveButton storedExperiment.id.uiKey
-            ConstructorUiId.createSetupButton
-            ConstructorUiId.saveSetupButton
         ]
+
+    /// The Setups step's write controls (spec 0051 `.manual/003` 3.2: the setups moved there).
+    let private setupWriteControlIds : ConstructorUiId list = [ ConstructorUiId.createSetupButton; ConstructorUiId.saveSetupButton ]
 
     /// The Data step's controls that send the kit's write messages: `E1`'s Attach data file and Split a file by key (spec
     /// 0050 S9.3).
@@ -100,28 +102,6 @@ module KitWindowTests =
     let private openedAt (folder : KitFolder) (access : KitAccess) (ctx : AppContext) : OpenedKit =
         openKitAt folder access ClockProvider.system kitAuthor ctx.catalogueImports
         |> Result.defaultWith (fun error -> failwith error.describe)
-
-    /// Every control in the window carrying `id` as its AutomationId.
-    let private controlsById (window : Window) (id : ConstructorUiId) : Control list =
-        window.GetVisualDescendants()
-        |> Seq.choose (function :? Control as control -> Some control | _ -> None)
-        |> Seq.filter (fun control -> AutomationProperties.GetAutomationId control = id.value)
-        |> List.ofSeq
-
-    let private tryControlById (window : Window) (id : ConstructorUiId) : Control option =
-        controlsById window id |> List.tryHead
-
-    let private controlById (window : Window) (id : ConstructorUiId) : Control =
-        tryControlById window id
-        |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
-
-    /// The text of the `TextBlock` carrying `id`.
-    let private textOf (window : Window) (id : ConstructorUiId) : string =
-        Assert.IsType<TextBlock>(controlById window id).Text
-
-    /// The label of the verb or action box carrying `id`: the text of the box's child.
-    let private boxLabelOf (window : Window) (id : ConstructorUiId) : string =
-        Assert.IsType<TextBlock>(Assert.IsType<Border>(controlById window id).Child).Text
 
     /// Hosts `view` over `model` in a FuncUI window, as `ScrollExtentTests.constructorWindow` mounts a view.
     let private hostedWindow
@@ -161,16 +141,12 @@ module KitWindowTests =
                 Dispatcher.UIThread.RunJobs()
         | None -> Assert.Fail $"{name} has no position in its window"
 
-    /// Presses the box carrying `id` at its centre.
-    let private pressBox (window : Window) (id : ConstructorUiId) : unit =
-        pressAtCentre window (Assert.IsType<Border>(controlById window id)) id.value
-
     /// Presses the ribbon tab of `bay`, which carries its id as its `Name` (`Ribbon.tab`).
     let private pressRibbonTab (window : Window) (bay : Ribbon.BayName) : unit =
         let id = ConstructorUiId.ribbonTab bay.uiKey
         let tab =
             window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as border when border.Name = id.value -> Some border | _ -> None)
+            |> Seq.tryPick (function :? Control as border when UiDriver.hasId id.value border -> Some border | _ -> None)
             |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
         pressAtCentre window tab id.value
 
@@ -241,27 +217,39 @@ module KitWindowTests =
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 for id in writeControlIds do
-                    let control = controlById window id
+                    let control = findControl window id
                     match expected with
                     | ControlOffered -> Assert.True(control.IsEnabled, $"{id.value} must be enabled over a read-write kit")
                     | ControlWithheld -> Assert.False(control.IsEnabled, $"{id.value} must be disabled over a read-only kit")
                 // Spec 0050 S8.4: the slot bar's Record experiment is present only while the kit takes writes.
-                match expected, tryControlById window ConstructorUiId.recordExperimentButton with
+                match expected, tryFindControl window ConstructorUiId.recordExperimentButton with
                 | ControlOffered, Some _
                 | ControlWithheld, None -> ()
                 | ControlOffered, None -> Assert.Fail "Record experiment must be on the slot bar of a read-write kit"
                 | ControlWithheld, Some _ -> Assert.Fail "Record experiment must not be on the slot bar of a read-only kit"
                 // Spec 0050 S9.3: the data files moved to the Data step, so the Experiments bay attaches none.
-                Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.attachDataFile storedExperiment.id))
+                Assert.Equal<Control option>(None, tryFindControl window (ConstructorUiId.attachDataFile storedExperiment.id))
             finally
                 window.Close()
+                Dispatcher.UIThread.RunJobs()
+            let setupsWindow = hostedWindow mainView (model |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep))
+            try
+                setupsWindow.Show()
+                Dispatcher.UIThread.RunJobs()
+                for id in setupWriteControlIds do
+                    let control = findControl setupsWindow id
+                    match expected with
+                    | ControlOffered -> Assert.True(control.IsEnabled, $"{id.value} must be enabled over a read-write kit")
+                    | ControlWithheld -> Assert.False(control.IsEnabled, $"{id.value} must be disabled over a read-only kit")
+            finally
+                setupsWindow.Close()
                 Dispatcher.UIThread.RunJobs()
             let dataWindow = hostedWindow DataStepView.dataStepView model
             try
                 dataWindow.Show()
                 Dispatcher.UIThread.RunJobs()
                 for id in dataWriteControlIds do
-                    let control = controlById dataWindow id
+                    let control = findControl dataWindow id
                     match expected with
                     | ControlOffered -> Assert.True(control.IsEnabled, $"{id.value} must be enabled over a read-write kit")
                     | ControlWithheld -> Assert.False(control.IsEnabled, $"{id.value} must be disabled over a read-only kit")
@@ -270,7 +258,7 @@ module KitWindowTests =
                 Dispatcher.UIThread.RunJobs()
             // Spec 0050 S8.3: the kit bar's Save template is present only while the kit takes writes.
             withKitWindow model (fun kitWindow ->
-                match expected, tryControlById kitWindow ConstructorUiId.saveNamingTemplateButton with
+                match expected, tryFindControl kitWindow ConstructorUiId.saveNamingTemplateButton with
                 | ControlOffered, Some _
                 | ControlWithheld, None -> ()
                 | ControlOffered, None -> Assert.Fail "Save template must be in the kit bar of a read-write kit"
@@ -327,30 +315,30 @@ module KitWindowTests =
                             studySurface = surface
                     }
                 withKitWindow readOnly (fun window ->
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.createStudyButton)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.newStudyNameField)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.createStudyButton)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.newStudyNameField)
                     for experiment in readOnly.experimentCollection.experiments do
-                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.addExperimentToStudyButton experiment.name))
-                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.newStudyExperimentToggle experiment.name))
+                        Assert.Equal<Control option>(None, tryFindControl window (ConstructorUiId.addExperimentToStudyButton experiment.name))
+                        Assert.Equal<Control option>(None, tryFindControl window (ConstructorUiId.newStudyExperimentToggle experiment.name))
                     let session = SessionName "Session 1"
-                    let gain = Assert.IsType<ComboBox>(controlById window (ConstructorUiId.studySessionGainChoice session))
+                    let gain = Assert.IsType<ComboBox>(findControl window (ConstructorUiId.studySessionGainChoice session))
                     Assert.False gain.IsEnabled
                     Assert.Equal("Free", Assert.IsType<string> gain.SelectedItem)
                     let unknowns = subset.unknownsWith (readOnly.studyContext.itemsUsedBy subset)
                     Assert.NotEmpty unknowns
                     for unknown in unknowns do
-                        let scope = controlById window (ConstructorUiId.studyParameterScopeChoice unknown.parameter)
+                        let scope = findControl window (ConstructorUiId.studyParameterScopeChoice unknown.parameter)
                         Assert.False(scope.IsEnabled)
-                        let link = controlById window (ConstructorUiId.studyParameterLinkChoice unknown.parameter)
+                        let link = findControl window (ConstructorUiId.studyParameterLinkChoice unknown.parameter)
                         Assert.False(link.IsEnabled))
                 withKitWindow (readOnly |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)) (fun window ->
-                    controlById window ConstructorUiId.studyFitPanel |> ignore
+                    findControl window ConstructorUiId.studyFitPanel |> ignore
                     for mode in FitMode.all do
-                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.studyFitModeChoice mode))
+                        Assert.Equal<Control option>(None, tryFindControl window (ConstructorUiId.studyFitModeChoice mode))
                     let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
                     Assert.Contains($"Fit mode: {subset.settings.mode.text}", texts)
                     for id in [ ConstructorUiId.studyRunFitButton; ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ] do
-                        Assert.Equal<Control option>(None, tryControlById window id))
+                        Assert.Equal<Control option>(None, tryFindControl window id))
                 let publishing = StudyPublishViewFixture.publicationModelWithSubjects studyModel
                 let publicationReadOnly =
                     {
@@ -364,15 +352,15 @@ module KitWindowTests =
                 | Ok items -> Assert.Equal(3, items.Length)
                 | Error error -> Assert.Fail error.describe
                 withKitWindow publicationReadOnly (fun window ->
-                    controlById window ConstructorUiId.studyPublishPanel |> ignore
-                    controlById window ConstructorUiId.publishCalibrationPreview |> ignore
-                    controlById window ConstructorUiId.promotionList |> ignore
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.publishCalibrationButton)
+                    findControl window ConstructorUiId.studyPublishPanel |> ignore
+                    findControl window ConstructorUiId.publishCalibrationPreview |> ignore
+                    findControl window ConstructorUiId.promotionList |> ignore
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.publishCalibrationButton)
                     for subject in subjects do
-                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.promoteButton subject)))
+                        Assert.Equal<Control option>(None, tryFindControl window (ConstructorUiId.promoteButton subject)))
                 withKitWindow publishing (fun window ->
-                    controlById window ConstructorUiId.publishCalibrationButton |> ignore
-                    for subject in subjects do controlById window (ConstructorUiId.promoteButton subject) |> ignore)
+                    findControl window ConstructorUiId.publishCalibrationButton |> ignore
+                    for subject in subjects do findControl window (ConstructorUiId.promoteButton subject) |> ignore)
             finally studyModel.kit.close () |> SceneTestFixture.kitSuccess
             // Spec 0050 S14.2: a plan writes no kit file, so a read-only window still offers Run plan; Add to kit writes
             // one, so the plan's candidates show without it. The plan runs in full as the host is handed it.
@@ -428,11 +416,11 @@ module KitWindowTests =
                     }
                 Assert.Equal<ControlAvailability>(ControlWithheld, readOnlyPlan.kitWrites)
                 withKitWindow readOnlyPlan (fun window ->
-                    controlById window ConstructorUiId.planPanel |> ignore
-                    Assert.Equal("Run plan", boxLabelOf window ConstructorUiId.planRunButton)
+                    findControl window ConstructorUiId.planPanel |> ignore
+                    Assert.Equal("Run plan", captionOf window ConstructorUiId.planRunButton)
                     for candidate in candidates do
-                        controlById window (ConstructorUiId.planCandidateRow candidate) |> ignore
-                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.addPlanCandidateButton candidate)))
+                        findControl window (ConstructorUiId.planCandidateRow candidate) |> ignore
+                        Assert.Equal<Control option>(None, tryFindControl window (ConstructorUiId.addPlanCandidateButton candidate)))
             finally planModel.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
@@ -466,16 +454,16 @@ module KitWindowTests =
                 let forward = kitWindowModel ctx opened ForwardConstructor (recordingShell shown closes)
                 withKitWindow forward (fun window ->
                     Assert.Equal(forward.kitCaption.value, textOf window ConstructorUiId.kitCaptionText)
-                    Assert.Equal("Show in Explorer", boxLabelOf window ConstructorUiId.kitShowInExplorerButton)
-                    Assert.Equal("Reload changes", boxLabelOf window ConstructorUiId.kitReloadChangesButton)
-                    Assert.Equal("Close kit", boxLabelOf window ConstructorUiId.kitCloseButton)
+                    Assert.Equal("Show in Explorer", captionOf window ConstructorUiId.kitShowInExplorerButton)
+                    Assert.Equal("Reload changes", captionOf window ConstructorUiId.kitReloadChangesButton)
+                    Assert.Equal("Close kit", captionOf window ConstructorUiId.kitCloseButton)
                     Assert.Equal("Main constructor", textOf window ConstructorUiId.kitModeText)
-                    Assert.Equal("Switch to Inverse", boxLabelOf window ConstructorUiId.kitSwitchModeButton))
+                    Assert.Equal("Switch to Inverse", captionOf window ConstructorUiId.kitSwitchModeButton))
                 let inverse = kitWindowModel ctx opened InverseConstructor (recordingShell shown closes)
                 withKitWindow inverse (fun window ->
                     Assert.Equal(inverse.kitCaption.value, textOf window ConstructorUiId.kitCaptionText)
                     Assert.Equal("Inverse constructor", textOf window ConstructorUiId.kitModeText)
-                    Assert.Equal("Switch to Main", boxLabelOf window ConstructorUiId.kitSwitchModeButton))
+                    Assert.Equal("Switch to Main", captionOf window ConstructorUiId.kitSwitchModeButton))
                 Assert.Empty(shown)
                 Assert.Empty(closes)
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
@@ -483,9 +471,9 @@ module KitWindowTests =
             try
                 withKitWindow scratch (fun window ->
                     Assert.Equal(scratch.kitCaption.value, textOf window ConstructorUiId.kitCaptionText)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitShowInExplorerButton)
-                    Assert.Equal("Reload changes", boxLabelOf window ConstructorUiId.kitReloadChangesButton)
-                    Assert.Equal("Close kit", boxLabelOf window ConstructorUiId.kitCloseButton))
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitShowInExplorerButton)
+                    Assert.Equal("Reload changes", captionOf window ConstructorUiId.kitReloadChangesButton)
+                    Assert.Equal("Close kit", captionOf window ConstructorUiId.kitCloseButton))
             finally scratch.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
@@ -498,11 +486,11 @@ module KitWindowTests =
             try
                 let model = kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
                 withKitWindow model (fun window ->
-                    let field = Assert.IsType<TextBox>(controlById window ConstructorUiId.namingTemplateField)
+                    let field = Assert.IsType<TextBox>(findControl window ConstructorUiId.namingTemplateField)
                     Assert.Equal(opened.library.kit.kitFile.namingTemplate.value, field.Text)
-                    Assert.Contains<Visual>(controlById window ConstructorUiId.kitBar, field.GetVisualAncestors())
-                    let save = Assert.IsType<Border>(controlById window ConstructorUiId.saveNamingTemplateButton)
-                    Assert.Equal("Save template", boxLabelOf window ConstructorUiId.saveNamingTemplateButton)
+                    Assert.Contains<Visual>(findControl window ConstructorUiId.kitBar, field.GetVisualAncestors())
+                    let save = (findControl window ConstructorUiId.saveNamingTemplateButton : Control)
+                    Assert.Equal("Save template", captionOf window ConstructorUiId.saveNamingTemplateButton)
                     let windowX (control : Control) (x : float) : float =
                         match control.TranslatePoint(Point(x, 0.0), window) |> Option.ofNullable with
                         | Some point -> point.X
@@ -513,7 +501,7 @@ module KitWindowTests =
                     // Spec 0050 S8.3: the field and the button send the messages the model facts send.
                     field.Text <- "{obj1}"
                     Dispatcher.UIThread.RunJobs()
-                    pressBox window ConstructorUiId.saveNamingTemplateButton
+                    clickOn window ConstructorUiId.saveNamingTemplateButton
                     Assert.Equal("Saved the naming template.", textOf window ConstructorUiId.kitStatus)
                     let stored = (KitProxy.create opened.folder).readKitFile () |> SceneTestFixture.kitSuccess
                     Assert.Equal<NamingTemplate>(NamingTemplate "{obj1}", stored.namingTemplate))
@@ -529,7 +517,7 @@ module KitWindowTests =
                 let offerIds = [ ConstructorUiId.kitChangesText; ConstructorUiId.kitChangesReloadButton; ConstructorUiId.kitChangesKeepMineButton ]
                 withKitWindow model (fun window ->
                     for id in offerIds do
-                        Assert.Equal<Control option>(None, tryControlById window id))
+                        Assert.Equal<Control option>(None, tryFindControl window id))
                 // Another writer (step 126) adds `E2` and renames the kit, so both of its files are offered (step 187).
                 let writer = KitProxy.create opened.folder
                 let e2 =
@@ -551,17 +539,17 @@ module KitWindowTests =
                     Assert.Equal(
                         "Changed outside the app: .kit-json, E2.experiment-json. Reload them, or keep your version?",
                         textOf window ConstructorUiId.kitChangesText)
-                    let reload = Assert.IsType<Border>(controlById window ConstructorUiId.kitChangesReloadButton)
-                    let keepMine = Assert.IsType<Border>(controlById window ConstructorUiId.kitChangesKeepMineButton)
-                    Assert.Equal("Reload", boxLabelOf window ConstructorUiId.kitChangesReloadButton)
-                    Assert.Equal("Keep mine", boxLabelOf window ConstructorUiId.kitChangesKeepMineButton)
+                    let reload = (findControl window ConstructorUiId.kitChangesReloadButton : Control)
+                    let keepMine = (findControl window ConstructorUiId.kitChangesKeepMineButton : Control)
+                    Assert.Equal("Reload", captionOf window ConstructorUiId.kitChangesReloadButton)
+                    Assert.Equal("Keep mine", captionOf window ConstructorUiId.kitChangesKeepMineButton)
                     let row = Assert.IsType<StackPanel>(reload.Parent)
                     Assert.Same(row, keepMine.Parent)
                     Assert.Equal(Avalonia.Layout.Orientation.Horizontal, row.Orientation)
                     Assert.Equal(reload.Bounds.Top, keepMine.Bounds.Top)
                     Assert.True(keepMine.Bounds.Left > reload.Bounds.Right, "Keep mine must sit to the right of Reload, past a gap")
-                    Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(reload.Background).Color)
-                    Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(keepMine.Background).Color))
+                    Assert.Equal(PositiveCommand.fill, UiDriver.fillOfControl reload)
+                    Assert.Equal(NegativeCommand.fill, UiDriver.fillOfControl keepMine))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
@@ -573,12 +561,12 @@ module KitWindowTests =
                 let model =
                     kitWindowModel ctx opened ForwardConstructor (recordingShell (ResizeArray ()) (ResizeArray ()))
                     |> updateTableAndElementRotation (CheckKitChanges KitCheckOnRequest)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), model.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "No kit file changed outside the app."), model.kitStatusCaption)
                 for bay in [ BayNames.add; BayNames.experiments ] do
                     withKitWindow (model |> updateTableAndElementRotation (SelectBay bay)) (fun window ->
-                        let status = Assert.IsType<TextBlock>(Assert.Single(controlsById window ConstructorUiId.kitStatus))
+                        let status = Assert.IsType<TextBlock>(Assert.Single(controlsWithId window ConstructorUiId.kitStatus))
                         Assert.Equal("No kit file changed outside the app.", status.Text)
-                        let bar = controlById window ConstructorUiId.kitBar
+                        let bar = findControl window ConstructorUiId.kitBar
                         Assert.Contains<Visual>(bar, status.GetVisualAncestors()))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
@@ -596,22 +584,22 @@ module KitWindowTests =
                     }
                 withKitWindow running (fun window ->
                     Assert.StartsWith("2 / 5", textOf window ConstructorUiId.sendKitProgressText)
-                    let bar = Assert.IsType<ProgressBar>(controlById window ConstructorUiId.sendKitProgressBar)
+                    let bar = Assert.IsType<ProgressBar>(findControl window ConstructorUiId.sendKitProgressBar)
                     Assert.Equal(0.4, bar.Value, 12)
                     Assert.False(bar.IsIndeterminate, "a send that told its files must not show an indeterminate bar")
-                    Assert.Equal("Cancel", boxLabelOf window ConstructorUiId.sendKitCancelButton)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.sendKitButton))
+                    Assert.Equal("Cancel", captionOf window ConstructorUiId.sendKitCancelButton)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.sendKitButton))
                 withKitWindow idle (fun window ->
-                    Assert.Equal("Send kit…", boxLabelOf window ConstructorUiId.sendKitButton)
+                    Assert.Equal("Send kit…", captionOf window ConstructorUiId.sendKitButton)
                     for id in sendProgressIds do
-                        Assert.Equal<Control option>(None, tryControlById window id))
+                        Assert.Equal<Control option>(None, tryFindControl window id))
                 Assert.Empty(cancels)
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
             let scratch = initMain () |> SceneTestFixture.kitSuccess
             try
                 withKitWindow scratch (fun window ->
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.sendKitButton)
-                    Assert.Equal("Close kit", boxLabelOf window ConstructorUiId.kitCloseButton))
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.sendKitButton)
+                    Assert.Equal("Close kit", captionOf window ConstructorUiId.kitCloseButton))
             finally scratch.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
@@ -625,16 +613,16 @@ module KitWindowTests =
             try
                 let model = kitWindowModel ctx opened ForwardConstructor (recordingShell shown closes)
                 withKitWindow model (fun window ->
-                    pressBox window ConstructorUiId.kitSwitchModeButton
+                    clickOn window ConstructorUiId.kitSwitchModeButton
                     Assert.Equal("Inverse constructor", textOf window ConstructorUiId.kitModeText)
-                    Assert.Equal("Switch to Main", boxLabelOf window ConstructorUiId.kitSwitchModeButton)
-                    pressBox window ConstructorUiId.kitShowInExplorerButton
+                    Assert.Equal("Switch to Main", captionOf window ConstructorUiId.kitSwitchModeButton)
+                    clickOn window ConstructorUiId.kitShowInExplorerButton
                     Assert.Equal<FolderName list>([ opened.folder.value ], List.ofSeq shown)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitStatus)
-                    pressBox window ConstructorUiId.kitReloadChangesButton
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitStatus)
+                    clickOn window ConstructorUiId.kitReloadChangesButton
                     Assert.Equal("No kit file changed outside the app.", textOf window ConstructorUiId.kitStatus)
                     Assert.Empty(closes)
-                    pressBox window ConstructorUiId.kitCloseButton
+                    clickOn window ConstructorUiId.kitCloseButton
                     Assert.Equal(1, closes.Count)
                     Assert.Equal<FolderName list>([ opened.folder.value ], List.ofSeq shown))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
@@ -676,16 +664,16 @@ module KitWindowTests =
                 let model = kitWindowModel ctx opened ForwardConstructor shell
                 withKitWindow model (fun window ->
                     for id in sendProgressIds do
-                        Assert.Equal<Control option>(None, tryControlById window id)
-                    pressBox window ConstructorUiId.sendKitButton
+                        Assert.Equal<Control option>(None, tryFindControl window id)
+                    clickOn window ConstructorUiId.sendKitButton
                     Assert.Equal<FileName list>([ kitZipName ], List.ofSeq suggestions)
                     Assert.Single(jobs) |> ignore
-                    let progressText = controlById window ConstructorUiId.sendKitProgressText
+                    let progressText = findControl window ConstructorUiId.sendKitProgressText
                     Assert.True(progressText.IsEffectivelyVisible, "a started send must show its progress")
                     Assert.Equal("Starting…", textOf window ConstructorUiId.sendKitProgressText)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.sendKitButton)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.sendKitButton)
                     Assert.Empty(cancels)
-                    pressBox window ConstructorUiId.sendKitCancelButton
+                    clickOn window ConstructorUiId.sendKitCancelButton
                     Assert.Equal(1, cancels.Count)
                     Assert.Single(jobs) |> ignore)
                 Assert.False(File.Exists zip.value, "a kept job writes no zip")
@@ -724,8 +712,8 @@ module KitWindowTests =
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 // Showing activates the window: its first check finds nothing, because opening the kit recorded its stamps.
-                Assert.True((controlById window ConstructorUiId.kitBar).IsEffectivelyVisible, "the kit bar must show above the workbench")
-                Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitChangesText)
+                Assert.True((findControl window ConstructorUiId.kitBar).IsEffectivelyVisible, "the kit bar must show above the workbench")
+                Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitChangesText)
                 // Another writer (step 126) adds `E2` while the window is open.
                 let writer = KitProxy.create opened.folder
                 writer.writeExperiment e2 |> SceneTestFixture.kitSuccess
@@ -735,10 +723,10 @@ module KitWindowTests =
                 window.Activate()
                 Dispatcher.UIThread.RunJobs()
                 Assert.Contains("E2.experiment-json", textOf window ConstructorUiId.kitChangesText)
-                pressBox window ConstructorUiId.kitChangesReloadButton
-                Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitChangesText)
+                clickOn window ConstructorUiId.kitChangesReloadButton
+                Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitChangesText)
                 pressRibbonTab window BayNames.experiments
-                let row = controlById window (ConstructorUiId.experimentEditButton e2.id.uiKey)
+                let row = findControl window (ConstructorUiId.experimentEditButton e2.id.uiKey)
                 Assert.True(row.IsEffectivelyVisible, "the reloaded kit's E2 must be a row of the collection")
             finally
                 other.Close()
@@ -760,7 +748,7 @@ module KitWindowTests =
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 Assert.True(File.Exists(lockFile), "the open kit must hold its lock")
-                pressBox window ConstructorUiId.kitCloseButton
+                clickOn window ConstructorUiId.kitCloseButton
                 Assert.Equal(1, closings.Count)
                 Assert.False(window.IsVisible, "Close kit must close the window")
                 Assert.False(File.Exists(lockFile), "closing the constructor window must release its kit")
@@ -800,7 +788,7 @@ module KitWindowTests =
 
     /// The `CheckBox` carrying the copy toggle of `experimentId`.
     let private copyToggleOf (window : Window) (experimentId : Experiments.ExperimentId) : CheckBox =
-        Assert.IsType<CheckBox>(controlById window (ConstructorUiId.kitCopyExperimentToggle experimentId))
+        Assert.IsType<CheckBox>(findControl window (ConstructorUiId.kitCopyExperimentToggle experimentId))
 
     [<Fact>]
     let ``the copy UiIds are the stable intent-named ids`` () : unit =
@@ -823,38 +811,39 @@ module KitWindowTests =
                 let listed =
                     kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert
                     |> updateTableAndElementRotation (OpenCopySource sourceFolder)
-                let sourceName =
+                let copySource =
                     match listed.kitCopyOpt with
-                    | Some copySource -> copySource.source.kitFile.name.value
+                    | Some copySource -> copySource
                     | None -> failwith "the source kit was not opened to copy from"
+                let sourceName = copySource.source.kitFile.name.value
                 try
                     let chosen = listed |> updateTableAndElementRotation (ToggleCopiedExperiment e2.id)
                     withKitWindow chosen (fun window ->
                         Assert.Equal($"Copy from {sourceName}: choose the experiments to copy.", textOf window ConstructorUiId.kitCopySourceText)
-                        let list = Assert.IsType<ScrollViewer>(controlById window ConstructorUiId.kitCopyExperimentList)
+                        let list = Assert.IsType<ScrollViewer>(findControl window ConstructorUiId.kitCopyExperimentList)
                         Assert.Equal(160.0, list.MaxHeight)
                         let e1Toggle = copyToggleOf window e1.id
                         let e2Toggle = copyToggleOf window e2.id
-                        Assert.Equal($"E1 — {e1.description}", Assert.IsType<TextBlock>(e1Toggle.Content).Text)
+                        Assert.Equal($"E1 — {(copySource.describe e1).value}", Assert.IsType<TextBlock>(e1Toggle.Content).Text)
                         Assert.Equal(System.Nullable false, e1Toggle.IsChecked)
                         Assert.Equal(System.Nullable true, e2Toggle.IsChecked)
                         Assert.Contains<Visual>(list, e2Toggle.GetVisualAncestors())
-                        let copy = Assert.IsType<Border>(controlById window ConstructorUiId.kitCopyChosenButton)
-                        let cancel = Assert.IsType<Border>(controlById window ConstructorUiId.kitCopyCancelButton)
-                        Assert.Equal("Copy", boxLabelOf window ConstructorUiId.kitCopyChosenButton)
-                        Assert.Equal("Cancel", boxLabelOf window ConstructorUiId.kitCopyCancelButton)
+                        let copy = (findControl window ConstructorUiId.kitCopyChosenButton : Control)
+                        let cancel = (findControl window ConstructorUiId.kitCopyCancelButton : Control)
+                        Assert.Equal("Copy", captionOf window ConstructorUiId.kitCopyChosenButton)
+                        Assert.Equal("Cancel", captionOf window ConstructorUiId.kitCopyCancelButton)
                         let row = Assert.IsType<StackPanel>(copy.Parent)
                         Assert.Same(row, cancel.Parent)
                         Assert.Equal(Avalonia.Layout.Orientation.Horizontal, row.Orientation)
                         Assert.Equal(copy.Bounds.Top, cancel.Bounds.Top)
                         Assert.True(cancel.Bounds.Left > copy.Bounds.Right, "Cancel must sit to the right of Copy, past a gap")
-                        Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(copy.Background).Color)
-                        Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(cancel.Background).Color)
-                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton))
+                        Assert.Equal(PositiveCommand.fill, UiDriver.fillOfControl copy)
+                        Assert.Equal(NegativeCommand.fill, UiDriver.fillOfControl cancel)
+                        Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyExperimentsButton))
                     withKitWindow listed (fun window ->
                         Assert.Equal(System.Nullable false, (copyToggleOf window e2.id).IsChecked)
-                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyChosenButton)
-                        Assert.Equal("Cancel", boxLabelOf window ConstructorUiId.kitCopyCancelButton))
+                        Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyChosenButton)
+                        Assert.Equal("Cancel", captionOf window ConstructorUiId.kitCopyCancelButton))
                 finally listed.closeCopySource () |> ignore
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
@@ -869,12 +858,12 @@ module KitWindowTests =
                     withKitWindow (kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert) (fun window ->
                         match expected with
                         | ControlOffered ->
-                            Assert.Equal("Copy experiments from another kit…", boxLabelOf window ConstructorUiId.kitCopyExperimentsButton)
+                            Assert.Equal("Copy experiments from another kit…", captionOf window ConstructorUiId.kitCopyExperimentsButton)
                         | ControlWithheld ->
-                            Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton)
-                            Assert.Equal("Show in Explorer", boxLabelOf window ConstructorUiId.kitShowInExplorerButton)
+                            Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyExperimentsButton)
+                            Assert.Equal("Show in Explorer", captionOf window ConstructorUiId.kitShowInExplorerButton)
                         for id in copyPanelIds do
-                            Assert.Equal<Control option>(None, tryControlById window id))
+                            Assert.Equal<Control option>(None, tryFindControl window id))
                 finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
             assertOffered ReadOnlyKitAccess ControlWithheld
             assertOffered ReadWriteKitAccess ControlOffered)
@@ -890,12 +879,12 @@ module KitWindowTests =
                 try
                     window.Show()
                     Dispatcher.UIThread.RunJobs()
-                    Assert.Equal("Send kit…", boxLabelOf window ConstructorUiId.sendKitButton)
+                    Assert.Equal("Send kit…", captionOf window ConstructorUiId.sendKitButton)
                     match expected with
                     | ControlOffered ->
-                        Assert.Equal("Copy experiments from another kit…", boxLabelOf window ConstructorUiId.kitCopyExperimentsButton)
+                        Assert.Equal("Copy experiments from another kit…", captionOf window ConstructorUiId.kitCopyExperimentsButton)
                     | ControlWithheld ->
-                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton)
+                        Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyExperimentsButton)
                 finally
                     window.Close()
                     Dispatcher.UIThread.RunJobs()
@@ -919,20 +908,20 @@ module KitWindowTests =
                     }
                 withKitWindow (kitWindowModel ctx opened ForwardConstructor shell) (fun window ->
                     for id in copyPanelIds do
-                        Assert.Equal<Control option>(None, tryControlById window id)
-                    pressBox window ConstructorUiId.kitCopyExperimentsButton
-                    Assert.True((controlById window ConstructorUiId.kitCopySourceText).IsEffectivelyVisible, "the chosen kit must open the copy panel")
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyExperimentsButton)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyChosenButton)
+                        Assert.Equal<Control option>(None, tryFindControl window id)
+                    clickOn window ConstructorUiId.kitCopyExperimentsButton
+                    Assert.True((findControl window ConstructorUiId.kitCopySourceText).IsEffectivelyVisible, "the chosen kit must open the copy panel")
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyExperimentsButton)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyChosenButton)
                     let toggleId = ConstructorUiId.kitCopyExperimentToggle e2.id
                     pressAtCentre window (copyToggleOf window e2.id) toggleId.value
                     Assert.Equal(System.Nullable true, (copyToggleOf window e2.id).IsChecked)
                     Assert.False(File.Exists copiedFile, "choosing an experiment must copy nothing yet")
-                    pressBox window ConstructorUiId.kitCopyChosenButton
+                    clickOn window ConstructorUiId.kitCopyChosenButton
                     for id in copyPanelIds do
-                        Assert.Equal<Control option>(None, tryControlById window id)
+                        Assert.Equal<Control option>(None, tryFindControl window id)
                     Assert.StartsWith("Copied 1 experiment(s)", textOf window ConstructorUiId.kitStatus)
-                    Assert.Equal("Copy experiments from another kit…", boxLabelOf window ConstructorUiId.kitCopyExperimentsButton))
+                    Assert.Equal("Copy experiments from another kit…", captionOf window ConstructorUiId.kitCopyExperimentsButton))
                 Assert.True(File.Exists copiedFile, "Copy must leave E2.experiment-json in the window's kit folder")
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
@@ -1104,10 +1093,6 @@ module KitWindowTests =
             reopened
         finally later.close () |> SceneTestFixture.kitSuccess
 
-    /// The fill of the choice box carrying `id`: the chosen one is on `positiveBackground`.
-    let private fillOf (window : Window) (id : ConstructorUiId) : Color =
-        Assert.IsType<SolidColorBrush>(Assert.IsType<Border>(controlById window id).Background).Color
-
     /// Every control carrying a mapping choice's id.
     let private choiceBoxesIn (window : Window) : Control list =
         window.GetVisualDescendants()
@@ -1168,32 +1153,38 @@ module KitWindowTests =
                     let qzAdd = ConstructorUiId.kitCopyItemChoice sourceQz.id AddCopiedItem
                     let qzUse = ConstructorUiId.kitCopyItemChoice sourceQz.id (MapOntoKitItem ownLaser600.id)
                     withKitWindow chosen (fun window ->
-                        let list = Assert.IsType<ScrollViewer>(controlById window ConstructorUiId.kitCopyExperimentList)
+                        // Spec 0051 `.manual/003` 4.4: the mapping is a section of its own beside the experiments, in its
+                        // own bounded scroller.
+                        let list = Assert.IsType<ScrollViewer>(findControl window ConstructorUiId.kitCopyExperimentList)
                         let intro = Assert.Single(mappingIntrosIn window)
-                        Assert.Contains<Visual>(list, intro.GetVisualAncestors())
-                        let table = Assert.IsType<StackPanel>(controlById window ConstructorUiId.kitCopyItemList)
-                        Assert.Contains<Visual>(list, table.GetVisualAncestors())
+                        Assert.DoesNotContain<Visual>(list, intro.GetVisualAncestors())
+                        let table = Assert.IsType<StackPanel>(findControl window ConstructorUiId.kitCopyItemList)
+                        Assert.DoesNotContain<Visual>(list, table.GetVisualAncestors())
+                        let ownScroller = table.GetVisualAncestors() |> Seq.pick (function :? ScrollViewer as viewer -> Some viewer | _ -> None)
+                        Assert.Equal(160.0, ownScroller.MaxHeight)
                         Assert.Equal(2, table.Children.Count)
                         let lineOf (index : int) : string =
                             Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(table.Children[index]).Children[0]).Text
-                        let laserModel = (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.sourcePresetItemModelId).versionId.entryReference
-                        let plateModel = (BuiltinCatalogue.itemModel ItemModels.ItemModelIds.stackSampleItemModelId).versionId.entryReference
-                        Assert.Equal($"Laser600 — {laserModel.describe}", lineOf 0)
-                        Assert.Equal($"QZ — {plateModel.describe}", lineOf 1)
+                        // Each item by its model's name and version, never its id (spec 0051 `.manual/003` 4.4; 005).
+                        let laserModel = BuiltinCatalogue.itemModel ItemModels.ItemModelIds.sourcePresetItemModelId
+                        let plateModel = BuiltinCatalogue.itemModel ItemModels.ItemModelIds.stackSampleItemModelId
+                        Assert.Equal($"Laser600 — {laserModel.entry.name.value} v{laserModel.version.value}", lineOf 0)
+                        Assert.Equal($"QZ — {plateModel.entry.name.value} v{plateModel.version.value}", lineOf 1)
                         for id, label, block in [ laserAdd, "Add", 0; laserUse, "Use Laser600", 0; qzAdd, "Add", 1; qzUse, "Use Laser600", 1 ] do
-                            Assert.Equal(label, boxLabelOf window id)
-                            Assert.Contains<Visual>(table.Children[block], (controlById window id).GetVisualAncestors())
-                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window laserUse)
-                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window laserAdd)
-                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window qzAdd)
-                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window qzUse)
+                            Assert.Equal(label, captionOf window id)
+                            Assert.Contains<Visual>(table.Children[block], (findControl window id).GetVisualAncestors())
+                        Assert.Equal(PositiveCommand.fill, fillOf window laserUse)
+                        Assert.NotEqual(PositiveCommand.fill, fillOf window laserAdd)
+                        Assert.Equal(PositiveCommand.fill, fillOf window qzAdd)
+                        Assert.NotEqual(PositiveCommand.fill, fillOf window qzUse)
                         let boxes = choiceBoxesIn window
                         Assert.Equal(4, List.length boxes)
+                        // Spec 0051 `.manual/003` 4.4: the choices are the mapping's own, beside the experiments.
                         for box in boxes do
-                            Assert.Contains<Visual>(list, box.GetVisualAncestors())
-                        Assert.Equal<Control option>(None, tryControlById window (ConstructorUiId.kitCopyItemChoice spareLaser600.id AddCopiedItem)))
+                            Assert.DoesNotContain<Visual>(list, box.GetVisualAncestors())
+                        Assert.Equal<Control option>(None, tryFindControl window (ConstructorUiId.kitCopyItemChoice spareLaser600.id AddCopiedItem)))
                     withKitWindow listed (fun window ->
-                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyItemList)
+                        Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyItemList)
                         Assert.Empty(choiceBoxesIn window)
                         Assert.Empty(mappingIntrosIn window))
                 finally listed.closeCopySource () |> ignore
@@ -1216,18 +1207,18 @@ module KitWindowTests =
                 let filesBefore = itemFilesIn opened.folder
                 try
                     withKitWindow (kitWindowModel ctx opened ForwardConstructor shell) (fun window ->
-                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyItemList)
-                        pressBox window ConstructorUiId.kitCopyExperimentsButton
+                        Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyItemList)
+                        clickOn window ConstructorUiId.kitCopyExperimentsButton
                         let toggleId = ConstructorUiId.kitCopyExperimentToggle itemE1.id
                         pressAtCentre window (copyToggleOf window itemE1.id) toggleId.value
-                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window byDefault)
-                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window pressed)
-                        pressBox window pressed
-                        Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window pressed)
-                        Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window byDefault)
+                        Assert.Equal(PositiveCommand.fill, fillOf window byDefault)
+                        Assert.NotEqual(PositiveCommand.fill, fillOf window pressed)
+                        clickOn window pressed
+                        Assert.Equal(PositiveCommand.fill, fillOf window pressed)
+                        Assert.NotEqual(PositiveCommand.fill, fillOf window byDefault)
                         Assert.Equal<string list>(filesBefore, itemFilesIn opened.folder)
-                        pressBox window ConstructorUiId.kitCopyChosenButton
-                        Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.kitCopyItemList)
+                        clickOn window ConstructorUiId.kitCopyChosenButton
+                        Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.kitCopyItemList)
                         Assert.StartsWith(told, textOf window ConstructorUiId.kitStatus))
                 finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
 
@@ -1282,13 +1273,8 @@ module KitWindowTests =
     /// The Experiments bay's pane, which carries its id as its `Name` (`Ribbon.ribbonView`).
     let private experimentsPane : ConstructorUiId = ConstructorUiId.ribbonPane BayNames.experiments.uiKey
 
-    /// The control carrying `id` as its `Name`, as the table's canvas and a ribbon pane do.
-    let private tryNamedControl (window : Window) (id : ConstructorUiId) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as control when control.Name = id.value -> Some control | _ -> None)
-
     let private namedControl (window : Window) (id : ConstructorUiId) : Control =
-        tryNamedControl window id
+        tryFindControl window id
         |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
 
     /// The control's rectangle in window coordinates.
@@ -1348,11 +1334,11 @@ module KitWindowTests =
                         | InverseConstructor ->
                             inverseFlowStepIds, [ "Items"; "Setups"; "Experiments"; "Data"; "Unknowns"; "Plan"; "Fit"; "Results"; "Publish" ]
                     withKitWindow (model |> updateTableAndElementRotation (ShowFlowStep step)) (fun window ->
-                        let strip = Assert.IsType<Border>(Assert.Single(controlsById window ConstructorUiId.flowStrip))
-                        let boxes = stripIds |> List.map (controlById window)
+                        let strip = (Assert.Single(controlsWithId window ConstructorUiId.flowStrip) : Control)
+                        let boxes = stripIds |> List.map (findControl window)
                         for box in boxes do
                             Assert.Contains<Visual>(strip, box.GetVisualAncestors())
-                        Assert.Equal<string list>(labels, stripIds |> List.map (boxLabelOf window))
+                        Assert.Equal<string list>(labels, stripIds |> List.map (captionOf window))
                         let rects = boxes |> List.map (windowRectOf window)
                         for upper, lower in List.pairwise rects do
                             Assert.True(upper.Bottom <= lower.Top, $"the strip's boxes must stand top to bottom: {upper} above {lower}")
@@ -1363,72 +1349,72 @@ module KitWindowTests =
                             Assert.True(rect.Right <= surfaceRect.Left, $"the strip's box {rect} must sit left of the surface {surfaceRect}")
                         for shown in steps do
                             if shown = step then
-                                Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window shown.flowUiId)
+                                Assert.Equal(PositiveCommand.fill, fillOf window shown.flowUiId)
                             else
-                                Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf window shown.flowUiId)
+                                Assert.NotEqual(PositiveCommand.fill, fillOf window shown.flowUiId)
                         check window)
                 let onStep : ConstructorFlowStep -> (Window -> Control) -> (Window -> unit) -> unit = onStepOf loaded
                 // Spec 0050 S9.3: measured data are the Inverse constructor's alone, so the Main strip has no Data box.
                 let noDataBox (window : Window) : unit =
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowDataStep)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowUnknownsStep)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowPlanStep)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowFitStep)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowResultsStep)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.flowPublishStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.flowDataStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.flowUnknownsStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.flowPlanStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.flowFitStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.flowResultsStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.flowPublishStep)
                 onStep SetupsFlowStep (fun window -> namedControl window ConstructorUiId.tableElementCanvas) (fun window ->
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
-                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window experimentsPane)
                     noDataBox window)
-                onStep ItemsFlowStep (fun window -> controlById window ConstructorUiId.itemsPanel) (fun window ->
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
+                onStep ItemsFlowStep (fun window -> findControl window ConstructorUiId.itemsPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryFindControl window experimentsPane)
                     noDataBox window)
                 onStep ExperimentsFlowStep (fun window -> namedControl window experimentsPane) (fun window ->
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel)
                     noDataBox window)
                 // The Inverse strip adds Data below Experiments, and its step shows the Data step alone.
                 onStepOf inverse ExperimentsFlowStep (fun window -> namedControl window experimentsPane) (fun window ->
-                    let experimentsBox = windowRectOf window (controlById window ConstructorUiId.flowExperimentsStep)
-                    let dataBox = windowRectOf window (controlById window ConstructorUiId.flowDataStep)
+                    let experimentsBox = windowRectOf window (findControl window ConstructorUiId.flowExperimentsStep)
+                    let dataBox = windowRectOf window (findControl window ConstructorUiId.flowDataStep)
                     Assert.True(experimentsBox.Bottom <= dataBox.Top, $"Data {dataBox} must stand below Experiments {experimentsBox}")
-                    let unknownsBox = windowRectOf window (controlById window ConstructorUiId.flowUnknownsStep)
+                    let unknownsBox = windowRectOf window (findControl window ConstructorUiId.flowUnknownsStep)
                     Assert.True(dataBox.Bottom <= unknownsBox.Top, $"Unknowns {unknownsBox} must stand below Data {dataBox}")
-                    let planBox = windowRectOf window (controlById window ConstructorUiId.flowPlanStep)
+                    let planBox = windowRectOf window (findControl window ConstructorUiId.flowPlanStep)
                     Assert.True(unknownsBox.Bottom <= planBox.Top, $"Plan {planBox} must stand below Unknowns {unknownsBox}")
-                    let fitBox = windowRectOf window (controlById window ConstructorUiId.flowFitStep)
+                    let fitBox = windowRectOf window (findControl window ConstructorUiId.flowFitStep)
                     Assert.True(planBox.Bottom <= fitBox.Top, $"Fit {fitBox} must stand below Plan {planBox}")
-                    let resultsBox = windowRectOf window (controlById window ConstructorUiId.flowResultsStep)
+                    let resultsBox = windowRectOf window (findControl window ConstructorUiId.flowResultsStep)
                     Assert.True(fitBox.Bottom <= resultsBox.Top, $"Results {resultsBox} must stand below Fit {fitBox}")
-                    let publishBox = windowRectOf window (controlById window ConstructorUiId.flowPublishStep)
+                    let publishBox = windowRectOf window (findControl window ConstructorUiId.flowPublishStep)
                     Assert.True(resultsBox.Bottom <= publishBox.Top, $"Publish {publishBox} must stand below Results {resultsBox}")
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel))
-                onStepOf inverse DataFlowStep (fun window -> controlById window ConstructorUiId.dataStepPanel) (fun window ->
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
-                onStepOf inverse UnknownsFlowStep (fun window -> controlById window ConstructorUiId.studyUnknownsPanel) (fun window ->
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
-                onStepOf inverse PlanFlowStep (fun window -> controlById window ConstructorUiId.planPanel) (fun window ->
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyUnknownsPanel)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyFitPanel)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
-                onStepOf inverse FitFlowStep (fun window -> controlById window ConstructorUiId.studyFitPanel) (fun window ->
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.planPanel)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyUnknownsPanel)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
-                onStepOf inverse ResultsFlowStep (fun window -> controlById window ConstructorUiId.studyResultsPanel) (fun window ->
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyFitPanel)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
-                onStepOf inverse PublishFlowStep (fun window -> controlById window ConstructorUiId.studyPublishPanel) (fun window ->
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyResultsPanel)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel))
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.dataStepPanel))
+                onStepOf inverse DataFlowStep (fun window -> findControl window ConstructorUiId.dataStepPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryFindControl window experimentsPane)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel))
+                onStepOf inverse UnknownsFlowStep (fun window -> findControl window ConstructorUiId.studyUnknownsPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.dataStepPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel))
+                onStepOf inverse PlanFlowStep (fun window -> findControl window ConstructorUiId.planPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.studyUnknownsPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.studyFitPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel))
+                onStepOf inverse FitFlowStep (fun window -> findControl window ConstructorUiId.studyFitPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.planPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.studyUnknownsPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel))
+                onStepOf inverse ResultsFlowStep (fun window -> findControl window ConstructorUiId.studyResultsPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.studyFitPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel))
+                onStepOf inverse PublishFlowStep (fun window -> findControl window ConstructorUiId.studyPublishPanel) (fun window ->
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.studyResultsPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
@@ -1441,28 +1427,28 @@ module KitWindowTests =
                 withKitWindow (kitWindowModel ctx opened ForwardConstructor KitWindowShell.inert) (fun window ->
                     let openingTable = namedControl window ConstructorUiId.tableElementCanvas
                     Assert.True(openingTable.IsEffectivelyVisible, "the window must open on the table")
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel)
 
-                    pressBox window ConstructorUiId.flowItemsStep
-                    Assert.True((controlById window ConstructorUiId.itemsPanel).IsEffectivelyVisible, "Items must show the Items panel")
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
-                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowItemsStep)
+                    clickOn window ConstructorUiId.flowItemsStep
+                    Assert.True((findControl window ConstructorUiId.itemsPanel).IsEffectivelyVisible, "Items must show the Items panel")
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
+                    Assert.Equal(PositiveCommand.fill, fillOf window ConstructorUiId.flowItemsStep)
 
-                    pressBox window ConstructorUiId.flowExperimentsStep
+                    clickOn window ConstructorUiId.flowExperimentsStep
                     Assert.True((namedControl window experimentsPane).IsEffectivelyVisible, "Experiments must show the Experiments bay")
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
-                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowExperimentsStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel)
+                    Assert.Equal(PositiveCommand.fill, fillOf window ConstructorUiId.flowExperimentsStep)
                     // Spec 0050 S7.2: leaving Items recreates the workbench; Setups ↔ Experiments keeps it.
                     let experimentsTable = namedControl window ConstructorUiId.tableElementCanvas
                     Assert.NotSame(openingTable, experimentsTable)
 
-                    pressBox window ConstructorUiId.flowSetupsStep
+                    clickOn window ConstructorUiId.flowSetupsStep
                     let setupsTable = namedControl window ConstructorUiId.tableElementCanvas
                     Assert.True(setupsTable.IsEffectivelyVisible, "Setups must show the table")
                     Assert.Same(experimentsTable, setupsTable)
-                    Assert.Equal<Control option>(None, tryNamedControl window experimentsPane)
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.itemsPanel)
-                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowSetupsStep))
+                    Assert.Equal<Control option>(None, tryFindControl window experimentsPane)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.itemsPanel)
+                    Assert.Equal(PositiveCommand.fill, fillOf window ConstructorUiId.flowSetupsStep))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     /// Spec 0050 S9.3: the Inverse constructor's Data step holds each experiment's data file and the split verb.
@@ -1480,21 +1466,21 @@ module KitWindowTests =
                 let model = kitWindowModel ctx opened InverseConstructor KitWindowShell.inert
                 Assert.Equal<Experiments.Experiment list>([ storedExperiment ], model.experimentCollection.experiments)
                 withKitWindow model (fun window ->
-                    Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.dataStepPanel)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.dataStepPanel)
 
-                    pressBox window ConstructorUiId.flowDataStep
-                    Assert.True((controlById window ConstructorUiId.dataStepPanel).IsEffectivelyVisible, "Data must show the Data step")
-                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window ConstructorUiId.flowDataStep)
-                    Assert.Equal<Control option>(None, tryNamedControl window ConstructorUiId.tableElementCanvas)
+                    clickOn window ConstructorUiId.flowDataStep
+                    Assert.True((findControl window ConstructorUiId.dataStepPanel).IsEffectivelyVisible, "Data must show the Data step")
+                    Assert.Equal(PositiveCommand.fill, fillOf window ConstructorUiId.flowDataStep)
+                    Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.tableElementCanvas)
                     let attachId = ConstructorUiId.attachDataFile storedExperiment.id
-                    let attach = controlById window attachId
+                    let attach = findControl window attachId
                     Assert.True(attach.IsEffectivelyVisible, $"{attachId.value} must show in the Data step")
                     Assert.True(attach.IsEnabled, $"{attachId.value} must be enabled over a read-write kit")
-                    Assert.Equal("Attach data file…", boxLabelOf window attachId)
-                    let split = controlById window ConstructorUiId.dataSplitFileButton
+                    Assert.Equal("Attach data file…", captionOf window attachId)
+                    let split = findControl window ConstructorUiId.dataSplitFileButton
                     Assert.True(split.IsEffectivelyVisible, "Split a file by key… must show in the Data step")
                     Assert.True(split.IsEnabled, "Split a file by key… must be enabled over a read-write kit")
-                    Assert.Equal("Split a file by key…", boxLabelOf window ConstructorUiId.dataSplitFileButton))
+                    Assert.Equal("Split a file by key…", captionOf window ConstructorUiId.dataSplitFileButton))
             finally opened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     /// The add form's offer of the shipped circular polarizer model, a standalone item model (spec 0050 S7.2).
@@ -1504,7 +1490,7 @@ module KitWindowTests =
     /// Presses the box carrying `id` at the centre of its part inside the window and every viewer around it, where a user
     /// reaches it: in the headless font an offer's caption makes its box wider than the window.
     let private pressShownPart (window : Window) (id : ConstructorUiId) : unit =
-        let pressed = Assert.IsType<Border>(controlById window id)
+        let pressed = (findControl window id : Control)
         Assert.True(pressed.IsEffectivelyVisible, $"{id.value} must be visible")
         pressed.BringIntoView() |> ignore
         Dispatcher.UIThread.RunJobs()
@@ -1525,8 +1511,8 @@ module KitWindowTests =
     /// The Items panel shows the row of `item`, under its model's caption.
     let private assertItemRowShown (window : Window) (item : Item) : unit =
         let id = ConstructorUiId.kitItemRow item.id
-        Assert.True((controlById window id).IsEffectivelyVisible, $"{id.value} must show in the Items panel")
-        Assert.Equal(cpl1RowCaption, boxLabelOf window id)
+        Assert.True((findControl window id).IsEffectivelyVisible, $"{id.value} must show in the Items panel")
+        Assert.Equal(cpl1RowCaption, captionOf window id)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -1540,14 +1526,14 @@ module KitWindowTests =
                 try
                     window.Show()
                     Dispatcher.UIThread.RunJobs()
-                    pressBox window ConstructorUiId.flowItemsStep
-                    pressBox window ConstructorUiId.addItemButton
+                    clickOn window ConstructorUiId.flowItemsStep
+                    clickOn window ConstructorUiId.addItemButton
                     pressShownPart window circularOffer
-                    Assert.Equal(MaterialsWindowView.positiveBackground, fillOf window circularOffer)
-                    let field = Assert.IsType<TextBox>(controlById window ConstructorUiId.newItemLabelField)
+                    Assert.Equal(PositiveCommand.fill, fillOf window circularOffer)
+                    let field = Assert.IsType<TextBox>(findControl window ConstructorUiId.newItemLabelField)
                     field.Text <- "CPL1"
                     Dispatcher.UIThread.RunJobs()
-                    pressBox window ConstructorUiId.addItemConfirmButton
+                    clickOn window ConstructorUiId.addItemConfirmButton
                     // Spec 0050 S7.2, step 239: the window mints with the system provider, so the kit names CPL1's id.
                     let added : Item = Assert.Single(opened.library.kit.proxy.readItems () |> SceneTestFixture.kitSuccess)
                     Assert.Equal<ItemLabel>(ItemLabel "CPL1", added.label)
@@ -1564,8 +1550,8 @@ module KitWindowTests =
             try
                 reopened.Show()
                 Dispatcher.UIThread.RunJobs()
-                Assert.Equal<Control option>(None, tryControlById reopened (ConstructorUiId.kitItemRow cpl1.id))
-                pressBox reopened ConstructorUiId.flowItemsStep
+                Assert.Equal<Control option>(None, tryFindControl reopened (ConstructorUiId.kitItemRow cpl1.id))
+                clickOn reopened ConstructorUiId.flowItemsStep
                 assertItemRowShown reopened cpl1
             finally
                 reopened.Close()
@@ -1672,17 +1658,22 @@ module KitWindowTests =
                         |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench"))
                         |> updateTableAndElementRotation CreateSetup
                         |> updateTableAndElementRotation (ExpChooseElement polarizer)
+                        // Spec 0051 `.manual/003` 3.8: the sample's add opened its chip; the bar starts with all closed.
+                        |> fun model ->
+                            match model.slotChipOpenOpt with
+                            | Some openId -> model |> updateTableAndElementRotation (ToggleSlotChip openId)
+                            | None -> model
                     Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, ready.flowStep)
                     Assert.Equal<SetupName option>(Some bench, ready.activeSetupOpt |> Option.map (fun setup -> setup.name))
                     withKitWindow ready (fun window ->
-                        pressBox window ConstructorUiId.recordExperimentButton
-                        pressBox window ConstructorUiId.recordExperimentButton
+                        clickOn window ConstructorUiId.recordExperimentButton
+                        clickOn window ConstructorUiId.recordExperimentButton
                         Assert.Equal("Recorded E2 over 'Bench' revision 1.", textOf window ConstructorUiId.kitStatus)
-                        pressBox window (ConstructorUiId.slotChip objectRole)
-                        pressBox window (ConstructorUiId.slotChipChoice objectRole held.qz2)
+                        clickOn window (ConstructorUiId.slotChip objectRole)
+                        clickOn window (ConstructorUiId.slotChipChoice objectRole held.qz2)
                         Assert.Equal("Created setup 'Bench (2)' by the swap.", textOf window ConstructorUiId.kitStatus)
-                        Assert.Equal("Obj 1: QZ2 @ 0° ▾", boxLabelOf window (ConstructorUiId.slotChip objectRole))
-                        pressBox window ConstructorUiId.recordExperimentButton
+                        Assert.Equal("Obj 1: QZ2 @ 0° ▾", captionOf window (ConstructorUiId.slotChip objectRole))
+                        clickOn window ConstructorUiId.recordExperimentButton
                         Assert.Equal("Recorded E3 over 'Bench (2)' revision 1.", textOf window ConstructorUiId.kitStatus))
                     held
                 finally opened.library.kit.close () |> SceneTestFixture.kitSuccess
@@ -1709,13 +1700,15 @@ module KitWindowTests =
                 Assert.Equal<SetupName list>([ bench; swappedBench ], reloaded.kitSetups |> List.map (fun setup -> setup.name))
                 Assert.Equal<Experiments.ExperimentId list>(
                     experimentIds, reloaded.experimentCollection.experiments |> List.map (fun experiment -> experiment.id))
-                withKitWindow (reloaded |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)) (fun window ->
+                // The saved setups are the Setups step's, the experiments the Experiments step's (spec 0051 `.manual/003` 3.2).
+                withKitWindow (reloaded |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)) (fun window ->
                     for name in [ bench; swappedBench ] do
                         let id = ConstructorUiId.savedSetup name
-                        Assert.True((controlById window id).IsEffectivelyVisible, $"{id.value} must show in the reopened window")
+                        Assert.True((findControl window id).IsEffectivelyVisible, $"{id.value} must show in the reopened window"))
+                withKitWindow (reloaded |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)) (fun window ->
                     for experimentId in experimentIds do
                         let id = ConstructorUiId.experimentEditButton experimentId.uiKey
-                        Assert.True((controlById window id).IsEffectivelyVisible, $"{id.value} must show in the reopened window"))
+                        Assert.True((findControl window id).IsEffectivelyVisible, $"{id.value} must show in the reopened window"))
             finally reopened.library.kit.close () |> SceneTestFixture.kitSuccess)
 
     /// Types `text` into the field carrying `id` as its `Name`, as the bay's committing fields do, and commits it with
@@ -1759,16 +1752,16 @@ module KitWindowTests =
                     Assert.Empty(bay.experimentCollection.experiments)
                     let candidate = ConstructorUiId.experimentCandidate sampleSlot.id.uiKey
                     withKitWindow bay (fun window ->
-                        pressBox window candidate
-                        pressBox window (ConstructorUiId.experimentVariable ExperimentControls.VaryR2.uiKey)
-                        pressBox window ConstructorUiId.experimentAddScanAxisButton
-                        pressBox window candidate
-                        pressBox window (ConstructorUiId.experimentVariable ExperimentControls.VaryR1.uiKey)
-                        pressBox window ConstructorUiId.experimentAddButton
-                        pressBox window (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey)
+                        clickOn window candidate
+                        clickOn window (ConstructorUiId.experimentVariable ExperimentControls.VaryR2.uiKey)
+                        clickOn window ConstructorUiId.experimentAddScanAxisButton
+                        clickOn window candidate
+                        clickOn window (ConstructorUiId.experimentVariable ExperimentControls.VaryR1.uiKey)
+                        clickOn window ConstructorUiId.experimentAddButton
+                        clickOn window (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey)
                         typeCommitted window ConstructorUiId.experimentSessionField "Day 1"
                         typeCommitted window ConstructorUiId.experimentNotesField "LR re-seated"
-                        match tryControlById window ConstructorUiId.kitStatus with
+                        match tryFindControl window ConstructorUiId.kitStatus with
                         | Some status -> Assert.Fail $"no kit write may be refused: {Assert.IsType<TextBlock>(status).Text}"
                         | None -> ()
                         Assert.Equal("no data", textOf window (ConstructorUiId.experimentRowBadge e1.uiKey)))
@@ -1854,9 +1847,9 @@ module KitWindowTests =
                 Assert.True(wizard.IsVisible, "the import wizard must show over the window")
                 Assert.Equal(ConstructorUiId.importWizardWindow.value, AutomationProperties.GetAutomationId wizard)
                 let phoneRoiChoice = ConstructorUiId.importWizardProfileChoice ImportProfileName.phoneRoiCsv.uiKey
-                pressAtCentre wizard (controlById wizard phoneRoiChoice) phoneRoiChoice.value
+                pressAtCentre wizard (findControl wizard phoneRoiChoice) phoneRoiChoice.value
                 Assert.True(wizard.IsVisible, "choosing a profile must keep the wizard open")
-                pressAtCentre wizard (controlById wizard ConstructorUiId.importWizardAttachButton) ConstructorUiId.importWizardAttachButton.value
+                pressAtCentre wizard (findControl wizard ConstructorUiId.importWizardAttachButton) ConstructorUiId.importWizardAttachButton.value
 
                 Assert.False(wizard.IsVisible, "Attach must close the wizard")
                 Assert.Empty host.OwnedWindows
@@ -1876,7 +1869,7 @@ module KitWindowTests =
                 Assert.Equal<Experiments.ExperimentId>(e1Id, storedE1.id)
                 Assert.Equal<MappedAttachment option>(Some expected, storedE1.dataOpt)
                 Assert.Equal("validated (2 points)", (model.dataBadgeOf e1).text)
-                Assert.Equal<ControlCaption option>(None, model.kitStatus)
+                Assert.Equal<ControlCaption option>(None, model.kitRefusalOpt)
             finally
                 for window in List.ofSeq host.OwnedWindows do
                     window.Close()
@@ -1984,7 +1977,7 @@ module KitWindowTests =
                     |> withOfferAdded (ControlCaption "QZ2") (plateOffer Library.SampleIds.glassPlate2mmId)
                     |> withOfferAdded (ControlCaption "Laser") (sourceOffer Library.PresetIds.heNe633)
                     |> withOfferAdded (ControlCaption "LPd") linearPolarizerOffer
-                Assert.Equal<ControlCaption option>(None, stocked.kitStatus)
+                Assert.Equal<ControlCaption option>(None, stocked.kitRefusalOpt)
                 Assert.Equal<ItemLabel list>(
                     [ "LP1"; "QZ"; "QZ2"; "Laser"; "LPd" ] |> List.map ItemLabel |> List.sort,
                     stocked.kitItems |> List.map (fun item -> item.label) |> List.sort)
@@ -2021,7 +2014,7 @@ module KitWindowTests =
                         DetectorSlotRole (SlotPosition 1), tableSlotIdOf Placement.Detector recorded
                     ],
                     SetupSlot.inLightOrder recorded.elements |> List.map (fun roled -> roled.role, roled.slot.id))
-                Assert.Equal<ControlCaption option>(None, recorded.kitStatus)
+                Assert.Equal<ControlCaption option>(None, recorded.kitRefusalOpt)
                 Assert.Equal<SetupReference list>([ e1Setup ], recorded.kitSetups |> List.map (fun setup -> setup.reference))
                 let recordedE1 = Assert.Single recorded.experimentCollection.experiments
                 Assert.Equal<Experiments.ExperimentId>(e1Id, recordedE1.id)
@@ -2050,16 +2043,16 @@ module KitWindowTests =
 
                 withDispatchingKitWindow recorded (fun mounted ->
                     let window = mounted.window
-                    pressBox window ConstructorUiId.flowDataStep
-                    let panel = controlById window ConstructorUiId.dataStepPanel
+                    clickOn window ConstructorUiId.flowDataStep
+                    let panel = findControl window ConstructorUiId.dataStepPanel
                     Assert.True(panel.IsEffectivelyVisible, "Data must show the Data step")
 
                     // Spec 0050 S9.3: what the split wizard's Split sends (step 321).
                     mounted.dispatch (SplitByColumn (labFile, ImportProfileName.phoneRoiCsv))
-                    let keyColumn = controlById window ConstructorUiId.dataSplitKeyColumn
+                    let keyColumn = findControl window ConstructorUiId.dataSplitKeyColumn
                     Assert.True(keyColumn.IsEffectivelyVisible, "the split must name its key column")
-                    pressBox window (ConstructorUiId.dataSplitOfferToggle createdKey)
-                    pressBox window ConstructorUiId.dataSplitApplyButton
+                    clickOn window (ConstructorUiId.dataSplitOfferToggle createdKey)
+                    clickOn window ConstructorUiId.dataSplitApplyButton
 
                     Assert.Equal(
                         $"Attached {leaf} to 2 experiment(s): 1 matched, 1 created with 1 new setup(s); 2 group(s) left unattached.",
@@ -2085,8 +2078,8 @@ module KitWindowTests =
                     Assert.Equal<MappedAttachment>(expectedCreated, mappedOf created)
 
                     // The matrix entry reviews E1: its two points, each in its row.
-                    pressBox window (ConstructorUiId.experimentMatrixEntry e1Id)
-                    let review = controlById window ConstructorUiId.dataReviewPanel
+                    clickOn window (ConstructorUiId.experimentMatrixEntry e1Id)
+                    let review = findControl window ConstructorUiId.dataReviewPanel
                     Assert.True(review.IsEffectivelyVisible, "the matrix entry must show the review panel")
                     let pointRowIds =
                         review.GetVisualDescendants()
@@ -2100,7 +2093,7 @@ module KitWindowTests =
                         pointRowIds)
 
                     mounted.dispatch (SetExclusionReason (ControlCaption "saturated"))
-                    pressBox window (ConstructorUiId.dataExcludePointButton (MappedPointNumber 2))
+                    clickOn window (ConstructorUiId.dataExcludePointButton (MappedPointNumber 2))
                     let expectedExcluded : MappedAttachment =
                         {
                             attached with
@@ -2115,11 +2108,11 @@ module KitWindowTests =
                     Assert.Equal<MappedAttachment>(expectedExcluded, mappedOf (storedNamed e1Name))
                     Assert.Equal(
                         $"{e1Name.value} · excluded points (1 excluded, 1 validated)",
-                        boxLabelOf window (ConstructorUiId.experimentMatrixEntry e1Id))
+                        captionOf window (ConstructorUiId.experimentMatrixEntry e1Id))
                     assertLabFileKept ()
 
                     mounted.dispatch (SetCorrectionNote (ControlCaption "QZ was at 0"))
-                    pressBox window (ConstructorUiId.dataCorrectSetupChoice createdSetup.name)
+                    clickOn window (ConstructorUiId.dataCorrectSetupChoice createdSetup.name)
                     let corrected = storedNamed e1Name
                     Assert.Equal<SetupReference>(createdSetup, corrected.setup)
                     let expectedCorrection : SetupCorrection =
@@ -2150,20 +2143,20 @@ module KitWindowTests =
             try
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
-                pressBox window ConstructorUiId.flowUnknownsStep
-                let nameField = Assert.IsType<TextBox>(controlById window ConstructorUiId.newStudyNameField)
+                clickOn window ConstructorUiId.flowUnknownsStep
+                let nameField = Assert.IsType<TextBox>(findControl window ConstructorUiId.newStudyNameField)
                 nameField.Text <- "Empty"
                 Dispatcher.UIThread.RunJobs()
-                pressBox window ConstructorUiId.createStudyButton
+                clickOn window ConstructorUiId.createStudyButton
                 Assert.Equal<string list>([ "Empty.study-json" ], kitFilesIn opened.folder "*.study-json")
 
-                pressBox window ConstructorUiId.flowFitStep
-                Assert.Equal<Control option>(None, tryControlById window ConstructorUiId.studyFitErrorText)
+                clickOn window ConstructorUiId.flowFitStep
+                Assert.Equal<Control option>(None, tryFindControl window ConstructorUiId.studyFitErrorText)
                 let timeout = System.TimeSpan.FromSeconds 10.0
                 let elapsed = System.Diagnostics.Stopwatch.StartNew()
-                pressBox window ConstructorUiId.studyRunFitButton
+                clickOn window ConstructorUiId.studyRunFitButton
                 let fitErrorText () : string option =
-                    match tryControlById window ConstructorUiId.studyFitErrorText with
+                    match tryFindControl window ConstructorUiId.studyFitErrorText with
                     | Some control ->
                         let text = Assert.IsType<TextBlock>(control).Text
                         if System.String.IsNullOrWhiteSpace text then None else Some text
@@ -2175,7 +2168,7 @@ module KitWindowTests =
                 | Some text ->
                     Assert.Contains("the stage has no run to fit", text)
                     Assert.Contains("'Empty'", text)
-                    Assert.True((controlById window ConstructorUiId.studyFitErrorText).IsEffectivelyVisible)
+                    Assert.True((findControl window ConstructorUiId.studyFitErrorText).IsEffectivelyVisible)
                 | None -> Assert.Fail "the real fit host must report its end in the Fit step within ten seconds"
                 Assert.Equal<string list>([ "Empty.study-json" ], kitFilesIn opened.folder "*.study-json")
                 Assert.Empty(kitFilesIn opened.folder "*.fitrun-json")
@@ -2200,7 +2193,7 @@ module KitWindowTests =
                 if Directory.Exists cache then Directory.GetFiles(cache, "*.candidate-json") |> Array.map Path.GetFileName |> List.ofArray
                 else []
             let shownText (id : ConstructorUiId) : string option =
-                match tryControlById window id with
+                match tryFindControl window id with
                 | Some control ->
                     let text = Assert.IsType<TextBlock>(control).Text
                     if System.String.IsNullOrWhiteSpace text then None else Some text
@@ -2209,11 +2202,11 @@ module KitWindowTests =
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 Assert.Empty(cachedCandidates ())
-                pressBox window ConstructorUiId.flowPlanStep
-                pressBox window (ConstructorUiId.studyChoice (StudyName "QZ"))
+                clickOn window ConstructorUiId.flowPlanStep
+                clickOn window (ConstructorUiId.studyChoice (StudyName "QZ"))
                 let timeout = System.TimeSpan.FromSeconds 30.0
                 let elapsed = System.Diagnostics.Stopwatch.StartNew()
-                pressBox window ConstructorUiId.planRunButton
+                clickOn window ConstructorUiId.planRunButton
                 while elapsed.Elapsed < timeout
                       && shownText ConstructorUiId.planRankText = None
                       && shownText ConstructorUiId.planErrorText = None do
@@ -2228,7 +2221,7 @@ module KitWindowTests =
                 Assert.All(cached, fun name -> Assert.Matches("^[0-9a-f]{64}\.candidate-json$", name))
 
                 // QZ-Z's two candidates, its transmitted and its reflected branch, ranked in the Plan step.
-                let rows = Assert.IsType<StackPanel>(controlById window ConstructorUiId.planCandidateList).Children |> List.ofSeq
+                let rows = Assert.IsType<StackPanel>(findControl window ConstructorUiId.planCandidateList).Children |> List.ofSeq
                 let rowIds =
                     rows |> List.map (fun (row : Control) -> AutomationProperties.GetAutomationId row |> Option.ofObj |> Option.defaultValue "")
                 // A row's id ends in the source's wavelength, after the branch.
@@ -2237,7 +2230,8 @@ module KitWindowTests =
                     rowIds |> List.map (fun rowId -> rowId.Substring(0, rowId.LastIndexOf('_') + 1)) |> List.sort)
                 rows
                 |> List.iteri (fun (index : int) (row : Control) ->
-                    let caption = Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(row).Children[0]).Text
+                    let docked = Assert.IsType<DockPanel>(row)
+                    let caption = Assert.IsType<TextBlock>(docked.Children[docked.Children.Count - 1]).Text
                     Assert.StartsWith($"{index + 1}. QZ-Z (z-cut plate), ", caption))
             finally
                 window.Close()

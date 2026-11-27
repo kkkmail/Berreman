@@ -18,6 +18,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0035 (016) — the shared dual-axis ScottPlot chart (`OpticalConstructor.Controls.EmbeddedChart`)
 /// embedded as the Material editor's live n/k preview AND the Materials view panel (replacing the
@@ -33,38 +34,6 @@ module EmbeddedChartTests =
     module MW = OpticalConstructor.Ui.MaterialsWindowView
 
     // -- semantic-tree probes (the MaterialEditorWindow / MainWorkbench precedent) ----------------
-
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
 
     // -- AvaPlot probes ---------------------------------------------------------------------------
 

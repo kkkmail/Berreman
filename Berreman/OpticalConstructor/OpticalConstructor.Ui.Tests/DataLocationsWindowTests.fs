@@ -19,6 +19,7 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.DataLocationsView
 open OpticalConstructor.Ui.WindowLauncher
+open OpticalConstructor.Ui.Tests.UiDriver.ById
 
 /// The Data locations screen mounted headless: its rows, their paths and Open folder (spec 0050 S5.3).
 module DataLocationsWindowTests =
@@ -51,42 +52,6 @@ module DataLocationsWindowTests =
         finally
             window.Close()
 
-    /// The control carrying `id` as its AutomationId.
-    let private tryFindControl (window : Window) (id : ConstructorUiId) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function
-            | :? Control as control when AutomationProperties.GetAutomationId control = id.value -> Some control
-            | _ -> None)
-
-    let private controlOf (window : Window) (id : ConstructorUiId) : Control =
-        tryFindControl window id |> Option.defaultWith (fun () -> failwith $"Missing control {id.value}.")
-
-    let private assertAbsent (window : Window) (id : ConstructorUiId) : unit =
-        match tryFindControl window id with
-        | Some _ -> Assert.Fail $"{id.value} must not be shown."
-        | None -> ()
-
-    /// The text of the TextBlock carrying `id`.
-    let private textOf (window : Window) (id : ConstructorUiId) : string =
-        match controlOf window id with
-        | :? TextBlock as text -> Option.ofObj text.Text |> Option.defaultValue ""
-        | other -> failwith $"{id.value} is a {other.GetType().Name}, not a TextBlock."
-
-    /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does.
-    let private pressAt (window : Window) (id : ConstructorUiId) : unit =
-        let target = controlOf window id
-        target.BringIntoView() |> ignore
-        Dispatcher.UIThread.RunJobs()
-
-        match target.TranslatePoint(Point(target.Bounds.Width / 2.0, target.Bounds.Height / 2.0), window) |> Option.ofNullable with
-        | Some centre ->
-            window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
-            if window.IsVisible then
-                window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-        | None -> Assert.Fail $"{id.value} has no on-screen position."
-
     [<Fact>]
     let ``the Data locations UiIds are the stable intent-named ids`` () : unit =
         Assert.Equal("DataLocationsStatusText", ConstructorUiId.dataLocationsStatusText.value)
@@ -101,12 +66,12 @@ module DataLocationsWindowTests =
 
             withDataLocationsScreen screen (fun window ->
                 for row in screen.rows do
-                    controlOf window (ConstructorUiId.dataLocationRow row.kind) |> ignore
+                    findControl window (ConstructorUiId.dataLocationRow row.kind) |> ignore
                     Assert.Equal(row.path.value, textOf window (ConstructorUiId.dataLocationPathText row.kind))
 
                 for kind in DataLocationKind.all do
-                    controlOf window (ConstructorUiId.dataLocationRow kind) |> ignore
-                    controlOf window (ConstructorUiId.dataLocationPathText kind) |> ignore
+                    findControl window (ConstructorUiId.dataLocationRow kind) |> ignore
+                    findControl window (ConstructorUiId.dataLocationPathText kind) |> ignore
 
                 Assert.Equal(testLocations.kitsFolder.value, textOf window (ConstructorUiId.dataLocationPathText KitsLocation))
                 Assert.Equal("In memory (Data Source=:memory:)", textOf window (ConstructorUiId.dataLocationPathText LibraryDatabaseLocation))
@@ -114,7 +79,7 @@ module DataLocationsWindowTests =
                 assertAbsent window (ConstructorUiId.dataLocationOpenFolderButton LibraryDatabaseLocation)
 
                 for kind in DataLocationKind.all |> List.filter (fun kind -> kind <> LibraryDatabaseLocation) do
-                    controlOf window (ConstructorUiId.dataLocationOpenFolderButton kind) |> ignore
+                    findControl window (ConstructorUiId.dataLocationOpenFolderButton kind) |> ignore
 
                 assertAbsent window ConstructorUiId.dataLocationsStatusText))
 
@@ -125,7 +90,7 @@ module DataLocationsWindowTests =
             let shown = ResizeArray<FolderName> ()
 
             withDataLocationsScreen (screenOver shown) (fun window ->
-                pressAt window (ConstructorUiId.dataLocationOpenFolderButton ExportsLocation)
+                clickOn window (ConstructorUiId.dataLocationOpenFolderButton ExportsLocation)
 
                 Assert.Equal<FolderName list>([ testLocations.exportsFolder ], List.ofSeq shown)
                 assertAbsent window ConstructorUiId.dataLocationsStatusText))

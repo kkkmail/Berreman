@@ -301,7 +301,7 @@ let private controlBar (model : ElementRotationModel) (dispatch : ElementRotatio
         StackPanel.children [
             RotationControls.view model.rotationState (rotationHandlers dispatch)
             TextBlock.create [
-                TextBlock.name ConstructorUiId.elemRotationReadout.value
+                ConstructorUiId.elemRotationReadout.automationAttribute<TextBlock> ()
                 TextBlock.text readout
             ]
             TextBlock.create [
@@ -322,7 +322,7 @@ type ElementRotationModel with
                 let highlight = if i = model.selected then ElementRenderer.ElementHighlighted else ElementRenderer.ElementNotHighlighted
                 e.testSceneViews model.view highlight)
         Canvas.create [
-            Canvas.name ConstructorUiId.elementRotationCanvas.value
+            yield! ConstructorUiId.elementRotationCanvas.surfaceAttributes<Canvas> ()
             Canvas.width TableScene.canvasWidth.value
             Canvas.height TableScene.canvasHeight.value
             Canvas.horizontalAlignment HorizontalAlignment.Left

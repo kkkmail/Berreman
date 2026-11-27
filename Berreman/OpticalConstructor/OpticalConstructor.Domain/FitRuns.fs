@@ -46,32 +46,6 @@ module FitRuns =
         /// Every stage in tag order (spec 0050 S11.3).
         static member all : FitStage list = [ JointStage; CalibrationStage; ObjectStage ]
 
-    /// Whether a `CalibratedParameter` is held at its value or freed with a prior of its value and sigma; its disk tag
-    /// is an int, 1 to 2 in case order (spec 0050 S11.3; 001 §L).
-    type CalibrationUse =
-        | CalibrationHeldFixed
-        | CalibrationAsPrior
-
-        member this.value : int =
-            match this with
-            | CalibrationHeldFixed -> 1
-            | CalibrationAsPrior -> 2
-
-        /// The use a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S11.3).
-        static member tryOfWire (tag : int) : CalibrationUse option =
-            match tag with
-            | 1 -> Some CalibrationHeldFixed
-            | 2 -> Some CalibrationAsPrior
-            | _ -> None
-
-        member this.text : string =
-            match this with
-            | CalibrationHeldFixed -> "fixed"
-            | CalibrationAsPrior -> "as priors"
-
-        /// Every use in tag order (spec 0050 S11.3).
-        static member all : CalibrationUse list = [ CalibrationHeldFixed; CalibrationAsPrior ]
-
     /// The engine the automatic choice took; its disk tag is an int, 1 to 2 in case order (spec 0050 S11.3; 001 §L).
     type StudyEngineKind =
         | LinearStudyEngine

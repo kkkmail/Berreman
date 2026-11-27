@@ -300,9 +300,9 @@ let private kitStartActionsRow (m : KitStartModel) (dispatch : KitStartMsg -> un
             []
         else
             [
-                MaterialsWindowView.verbButton ConstructorUiId.openKitZipButton (ControlCaption "Open kit from zip…") (fun () ->
+                CommandControls.verbCommand ConstructorUiId.openKitZipButton (ControlCaption "Open kit from zip…") (fun () ->
                     m.context.zipPicker.pickZipToOpenThen (fun zip ->
-                        m.context.picker.pickThen (fun target ->
+                        m.context.picker.pickThen ChooseUnpackFolder (fun target ->
                             let opening : KitZipOpening = { zip = zip; target = target }
                             dispatch (OpenKitZip opening))))
             ]
@@ -311,10 +311,10 @@ let private kitStartActionsRow (m : KitStartModel) (dispatch : KitStartMsg -> un
         StackPanel.orientation Orientation.Horizontal
         StackPanel.children (
             [
-                MaterialsWindowView.verbButton ConstructorUiId.newKitButton (ControlCaption "New kit…") (fun () ->
-                    m.context.picker.pickThen (CreateKit >> dispatch))
-                MaterialsWindowView.verbButton ConstructorUiId.openKitButton (ControlCaption "Open kit…") (fun () ->
-                    m.context.picker.pickThen (OpenKit >> dispatch))
+                CommandControls.verbCommand ConstructorUiId.newKitButton (ControlCaption "New kit…") (fun () ->
+                    m.context.picker.pickThen ChooseKitFolder (CreateKit >> dispatch))
+                CommandControls.verbCommand ConstructorUiId.openKitButton (ControlCaption "Open kit…") (fun () ->
+                    m.context.picker.pickThen ChooseKitFolder (OpenKit >> dispatch))
             ]
             @ openKitZip)
     ] :> IView
@@ -350,10 +350,10 @@ let private kitStartOfferBlock (offerKey : ConstructorUiKey) (question : Control
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.children [
                     accept
-                    MaterialsWindowView.actionButton
+                    CommandControls.actionCommand
                         ConstructorUiId.cancelKitStartOfferButton
                         (ControlCaption "Cancel")
-                        MaterialsWindowView.negativeBackground
+                        NegativeCommand
                         (fun () -> dispatch DismissKitStartOffer)
                 ]
             ]
@@ -370,19 +370,19 @@ let private kitStartOfferRows (m : KitStartModel) (dispatch : KitStartMsg -> uni
     | MakeKitOffer folder ->
         let offerKey = ConstructorUiKey $"MakeKitOffer_{folder.value.value}"
         let accept =
-            MaterialsWindowView.actionButton
+            CommandControls.actionCommand
                 ConstructorUiId.makeThisAKitButton
                 (ControlCaption "Make this a kit")
-                MaterialsWindowView.positiveBackground
+                PositiveCommand
                 (fun () -> dispatch (CreateKit folder))
         [ kitStartOfferBlock offerKey folder.notAKitCaption accept dispatch ]
     | ReadOnlyKitOffer (folder, holder) ->
         let offerKey = ConstructorUiKey $"ReadOnlyKitOffer_{folder.value.value}"
         let accept =
-            MaterialsWindowView.actionButton
+            CommandControls.actionCommand
                 ConstructorUiId.openKitReadOnlyButton
                 (ControlCaption "Open read-only")
-                MaterialsWindowView.positiveBackground
+                PositiveCommand
                 (fun () -> dispatch (OpenKitReadOnly folder))
         [ kitStartOfferBlock offerKey holder.openElsewhereCaption accept dispatch ]
 
@@ -390,7 +390,7 @@ let private kitStartOfferRows (m : KitStartModel) (dispatch : KitStartMsg -> uni
 /// `entriesMatching` trims the text (spec 0050 S5.2).
 let private kitHistoryFilterBox (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
     TextBox.create [
-        ConstructorUiId.kitHistoryFilter.automationAttribute<TextBox> ()
+        yield! ConstructorUiId.kitHistoryFilter.inputAttributes<TextBox> ()
         TextBox.placeHolderText "Filter kits by name or folder"
         TextBox.text m.filter.value
         TextBox.onTextChanged (Option.ofObj >> Option.map KitHistoryFilter >> Option.iter (FilterKitHistory >> dispatch))
@@ -403,19 +403,24 @@ let private kitHistoryRowView (m : KitStartModel) (dispatch : KitStartMsg -> uni
     let folder = row.entry.folder
     let starToggle = ConstructorUiId.kitHistoryStarToggle position
 
+    // The star is a choice, so UI Automation reads starred or not through its toggle state, not from the glyph.
     let star =
-        match row.entry.star with
-        | StarredKit -> MaterialsWindowView.verbButton starToggle (ControlCaption "★") (fun () -> dispatch (UnstarKit folder))
-        | UnstarredKit -> MaterialsWindowView.verbButton starToggle (ControlCaption "☆") (fun () -> dispatch (StarKit folder))
+        let glyph, mark, toggle =
+            match row.entry.star with
+            | StarredKit -> ControlCaption "★", ChosenChoice, UnstarKit folder
+            | UnstarredKit -> ControlCaption "☆", UnchosenChoice, StarKit folder
+        CommandControls.choiceToggleShowing starToggle (ControlCaption $"Star {row.entry.name.value}") glyph.wrappingText mark NeutralCommand ControlOffered
+            (fun () -> dispatch toggle)
+            [ ToggleButton.margin (Thickness(0.0, 0.0, 8.0, 4.0)) ]
 
     let missingVerbs =
         match row.presence with
         | KitFolderPresent -> []
         | KitFolderMissing ->
             [
-                MaterialsWindowView.verbButton (ConstructorUiId.kitHistoryLocateButton position) (ControlCaption "Locate…") (fun () ->
-                    m.context.picker.pickThen (fun found -> dispatch (LocateKit { missing = folder; found = found })))
-                MaterialsWindowView.verbButton (ConstructorUiId.kitHistoryRemoveButton position) (ControlCaption "Remove from history") (fun () ->
+                CommandControls.verbCommand (ConstructorUiId.kitHistoryLocateButton position) (ControlCaption "Locate…") (fun () ->
+                    m.context.picker.pickThen ChooseKitFolder (fun found -> dispatch (LocateKit { missing = folder; found = found })))
+                CommandControls.verbCommand (ConstructorUiId.kitHistoryRemoveButton position) (ControlCaption "Remove from history") (fun () ->
                     dispatch (ForgetKit folder))
             ]
 
@@ -426,36 +431,34 @@ let private kitHistoryRowView (m : KitStartModel) (dispatch : KitStartMsg -> uni
 
     let rowId = ConstructorUiId.kitHistoryRow position
 
+    let rowContent : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children [
+                TextBlock.create [
+                    TextBlock.fontWeight FontWeight.SemiBold
+                    TextBlock.text row.entry.name.value
+                ]
+                TextBlock.create [
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.text folder.value.value
+                ]
+                TextBlock.create [ TextBlock.text row.entry.lastOpenedCaption.value ]
+            ]
+        ] :> IView
+    // A present row opens its kit; a missing one is withheld. Its name says the folder, so two kits of one name differ.
     let rowBox =
-        Border.create [
-            rowId.automationAttribute<Border> ()
-            Border.background (MaterialsWindowView.brush Colors.Transparent)
-            Border.padding (Thickness(4.0, 2.0))
-            Border.opacity rowOpacity
-            Border.child (
-                StackPanel.create [
-                    StackPanel.orientation Orientation.Vertical
-                    StackPanel.children [
-                        TextBlock.create [
-                            TextBlock.fontWeight FontWeight.SemiBold
-                            TextBlock.text row.entry.name.value
-                        ]
-                        TextBlock.create [
-                            TextBlock.textWrapping TextWrapping.Wrap
-                            TextBlock.text folder.value.value
-                        ]
-                        TextBlock.create [ TextBlock.text row.entry.lastOpenedCaption.value ]
-                    ]
-                ])
-            Border.onPointerPressed (
-                (fun e ->
-                    e.Handled <- true
-                    match row.presence with
-                    | KitFolderPresent -> dispatch (OpenKit folder)
-                    | KitFolderMissing -> ()),
-                SubPatchOptions.Always)
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey rowId.value
+        let availability =
+            match row.presence with
+            | KitFolderPresent -> ControlOffered
+            | KitFolderMissing -> ControlWithheld
+        CommandControls.commandButtonShowing rowId (ControlCaption $"Open {row.entry.name.value} at {folder.value.value}") rowContent MenuCommand availability
+            (fun _ -> dispatch (OpenKit folder))
+            [ Button.padding (Thickness(4.0, 2.0))
+              Button.borderThickness 0.0
+              Button.opacity rowOpacity
+              Button.horizontalAlignment HorizontalAlignment.Stretch
+              Button.horizontalContentAlignment HorizontalAlignment.Left ]
 
     DockPanel.create [
         DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
@@ -473,7 +476,7 @@ let private kitHistoryRowView (m : KitStartModel) (dispatch : KitStartMsg -> uni
 /// The listed kits in display order, each row's ids over its place in the list (spec 0050 S5.2).
 let private kitHistoryListView (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
     StackPanel.create [
-        ConstructorUiId.kitHistoryList.automationAttribute<StackPanel> ()
+        yield! ConstructorUiId.kitHistoryList.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Vertical
         StackPanel.children (
             m.rows

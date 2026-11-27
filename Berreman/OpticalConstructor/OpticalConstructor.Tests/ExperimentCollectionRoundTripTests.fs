@@ -104,7 +104,6 @@ module ExperimentCollectionRoundTripTests =
     let private analyzerTurn (label : ElementLabel) : ScanAxis =
         {
             elementId = el "lp2"
-            label = label
             variable = VaryR1
             range = VariableRange.forVariable VaryR1
         }

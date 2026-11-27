@@ -142,3 +142,16 @@ module TableScene =
                 Ellipse.fill (brush c); Ellipse.stroke (brush edgeColor); Ellipse.strokeThickness 1.0
             ] :> IView
         [ line s d rayColor (StrokeWidth 2.0); marker s sourceColor; marker d detectorColor ]
+
+/// The table fitted to the scene's canvas (spec 0051 `.manual/003` 3.7).
+[<AutoOpen>]
+module TableSceneFit =
+
+    type OpticalTable with
+
+        /// The top-down view whose zoom fits the plate inside the canvas with a tenth to spare, within the wheel's
+        /// [0.2, 5] (spec 0051 `.manual/003` 3.7: the table fills its canvas when it opens).
+        member table.fittedView : TableViewState =
+            let alongBeam = TableScene.canvasWidth.value * 0.9 / (float table.length * TableScene.pixelsPerMeter.value)
+            let acrossBeam = TableScene.canvasHeight.value * 0.9 / (float table.width * TableScene.pixelsPerMeter.value)
+            { Table.defaultView with zoom = TableZoom (max 0.2 (min 5.0 (min alongBeam acrossBeam))) }

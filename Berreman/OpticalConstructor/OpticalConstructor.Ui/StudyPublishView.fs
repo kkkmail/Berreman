@@ -29,18 +29,19 @@ let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAnd
             TextBlock.margin (Thickness(0.0, 8.0, 0.0, 4.0))
         ] :> IView
     let action (id : ConstructorUiId) (caption : ControlCaption) (message : TableAndElementRotationMsg) : IView =
-        (MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground (fun () -> dispatch message) :?> IView<Border>)
-        |> View.withAttrs [
-            Border.horizontalAlignment HorizontalAlignment.Left
-            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
-        ]
-        :> IView
+        CommandControls.commandButton id caption PositiveCommand ControlOffered (fun () -> dispatch message)
+            [ Button.padding (Thickness(22.0, 6.0))
+              Button.margin (Thickness(0.0, 0.0, 10.0, 4.0))
+              Button.horizontalAlignment HorizontalAlignment.Left ]
     let selected : IView list =
         match model.selectedStudyOpt, model.selectedFitRunOpt with
         | Some study, Some run ->
             let preview = study.calibratedItemsWith run model.kitItems
             let previewRows : IView list =
                 match preview with
+                // Spec 0051 `.manual/003` 4.5: a published run says so once, as an outcome, not as a refusal beside it.
+                | Error (CalibrationAlreadyPublishedErr _) ->
+                    [ line (ControlCaption "Published: every item this fit run calibrates holds its values.") ]
                 | Error error ->
                     [ TextBlock.create [
                         TextBlock.text error.describe
@@ -85,10 +86,11 @@ let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAnd
                             | ControlWithheld -> []
                             | ControlOffered ->
                                 [ action (ConstructorUiId.promoteButton subject) (ControlCaption "Promote") (PromoteToLibrary (run.name, subject)) ]
-                        StackPanel.create [
-                            StackPanel.orientation Orientation.Horizontal
-                            StackPanel.spacing 8.0
-                            StackPanel.children (line caption :: promote)
+                        // Spec 0051 `.manual/003` 4.3: the row wraps at the page's width, so Promote never leaves the window.
+                        WrapPanel.create [
+                            WrapPanel.orientation Orientation.Horizontal
+                            WrapPanel.itemSpacing 8.0
+                            WrapPanel.children (line caption :: promote)
                         ] :> IView)
             [
                 StackPanel.create [
@@ -97,7 +99,7 @@ let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAnd
                             line (ControlCaption $"Fit run {run.name.value}")
                             heading (ControlCaption "Publish calibration")
                             StackPanel.create [
-                                ConstructorUiId.publishCalibrationPreview.automationAttribute<StackPanel> ()
+                                yield! ConstructorUiId.publishCalibrationPreview.groupAttributes<StackPanel> ()
                                 AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Calibration preview", ValueNone)
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.children previewRows
@@ -106,7 +108,7 @@ let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAnd
                             line (ControlCaption "Publishing writes each item's next revision; the values it replaces stay in the item's revision history.")
                             heading (ControlCaption "Promote to library")
                             StackPanel.create [
-                                ConstructorUiId.promotionList.automationAttribute<StackPanel> ()
+                                yield! ConstructorUiId.promotionList.groupAttributes<StackPanel> ()
                                 AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Promotion subjects", ValueNone)
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.children promotions
@@ -123,12 +125,17 @@ let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAnd
         AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
         ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so no page is wider than its window.
         ScrollViewer.content (
-            StackPanel.create [
-                ConstructorUiId.studyPublishPanel.automationAttribute<StackPanel> ()
-                AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study publication", ValueNone)
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.margin 8.0
-                StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+            MinWidthPanel.create [
+                (PanelMinWidth 520.0).minWidthPanelAttribute ()
+                MinWidthPanel.child (
+                    StackPanel.create [
+                        yield! ConstructorUiId.studyPublishPanel.groupAttributes<StackPanel> ()
+                        AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study publication", ValueNone)
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.margin 8.0
+                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+                    ])
             ])
     ] :> IView

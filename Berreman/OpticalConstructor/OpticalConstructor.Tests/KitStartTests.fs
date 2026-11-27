@@ -39,6 +39,7 @@ module KitStartTests =
             name = KitName $"Kit {kit}"
             lastOpened = ClockTime (firstOpen.AddMinutes minutes)
             star = star
+            lastSetupOpt = None
         }
 
     let private kitA : KitHistoryEntry = entryOf "a" "6f1c2b8e-4d37-4a95-8e02-b7d4c9a13f56" 5.0 UnstarredKit
@@ -94,7 +95,7 @@ module KitStartTests =
             kitIds = KitIdProvider.system
             author = kitStartAuthor
             imports = CatalogueImportContext.create stores.proxy
-            picker = { pickKitFolder = fun () -> async { return None } }
+            picker = { pickKitFolder = fun _ -> async { return None } }
             showKit = shown.Add
             activateKitWindow = fun _ -> NoKitWindowOpen
             zipPicker = KitZipPicker.none
@@ -153,6 +154,7 @@ module KitStartTests =
             name = KitName "Bench A"
             lastOpened = ClockTime (firstOpen.AddDays(-1.0))
             star = UnstarredKit
+            lastSetupOpt = None
         }
 
     /// Every file and folder under `folder`, as `Directory.GetFileSystemEntries` names them.
@@ -392,6 +394,7 @@ module KitStartTests =
                         name = KitName "Optics QZ"
                         lastOpened = bumpedAt
                         star = UnstarredKit
+                        lastSetupOpt = None
                     }
 
                 let bumped = { KitHistory.empty with entries = [ entry ] }

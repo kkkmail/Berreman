@@ -49,6 +49,6 @@ module EmbeddedChart =
             with _ ->
                 unavailable ()
         ContentControl.create [
-            hostId.automationAttribute<ContentControl> ()
+            yield! hostId.figureAttributes<ContentControl> ()
             ContentControl.content content
         ] :> IView

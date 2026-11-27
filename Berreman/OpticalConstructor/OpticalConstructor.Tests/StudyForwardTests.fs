@@ -46,7 +46,6 @@ module StudyForwardTests =
     let private polarizerTurn : ScanAxis =
         {
             elementId = polarizer
-            label = ElementLabel "Linear polarizer #1"
             variable = VaryR1
             range =
                 {
@@ -60,7 +59,6 @@ module StudyForwardTests =
     let private sampleIncidence : ScanAxis =
         {
             elementId = sample
-            label = ElementLabel "Sample #1"
             variable = VaryR2
             range =
                 {
@@ -74,7 +72,6 @@ module StudyForwardTests =
     let private dialTurn : ScanAxis =
         {
             elementId = dialPlate
-            label = ElementLabel "Sample #2"
             variable = VaryDialReading
             range = VariableRange.forVariable VaryDialReading
         }
@@ -442,7 +439,6 @@ module StudyForwardTests =
                 ExperimentScan.oneAxis
                     {
                         elementId = cplSlot.id
-                        label = ElementLabel "CPL1"
                         variable = VaryR1
                         range = VariableRange.forVariable VaryR1
                     }
@@ -1496,7 +1492,7 @@ module StudyForwardTests =
     let private prefitSetup : Setup = setupOf (SetupName "Malus") (malusSlots analyzer camera)
 
     /// LP2's R1 over 0…90° in 4 points.
-    let private lp2Turn : ScanAxis = { polarizerTurn with elementId = analyzerSlot.id; label = ElementLabel "LP2" }
+    let private lp2Turn : ScanAxis = { polarizerTurn with elementId = analyzerSlot.id }
 
     /// A run of that role over the Malus setup, turning LP2 over 0…90° in 4 points, with no data.
     let private prefitRun (id : ExperimentId) (name : ExperimentName) (role : ExperimentRole) : Experiment =
@@ -1872,7 +1868,7 @@ module StudyForwardTests =
     let private plateSetup : Setup = setupOf (SetupName "Plate") (crystalSlots polarimeter)
 
     /// QZ's incidence, which a Mueller observation's own configuration overrides.
-    let private plateTilt : ScanAxis = { sampleIncidence with elementId = sampleSlot.id; label = ElementLabel "QZ" }
+    let private plateTilt : ScanAxis = { sampleIncidence with elementId = sampleSlot.id }
 
     /// I1, a Science run of `Session 1` over the Malus setup, and K1, that session's Dark run.
     let private mixedI1 : Experiment = { prefitRun (ExperimentId 21) i1 ScienceRun with sessionOpt = Some session1 } |> attachingAt i1File

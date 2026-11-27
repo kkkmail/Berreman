@@ -21,6 +21,7 @@ open OpticalConstructor.Domain.ImportProfiles
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ImportWizardView
 open OpticalConstructor.Ui.ImportWizardOpening
+open OpticalConstructor.Ui.Tests.UiDriver.ById
 
 /// Spec 0050 S9.2 (001 §K): the column-mapping wizard changes only its own state until Attach hands the kit window
 /// the profile to attach by and any new one to save.
@@ -83,8 +84,13 @@ module ImportWizardTests =
     /// The class's target: the picked file attached to `E1` (spec 0050 S9.3).
     let private attachToE1 : ImportWizardTarget = AttachWizardTarget (ExperimentId 1)
 
-    /// The class's request over that target, recording every read and every call the wizard makes.
-    let private observeTargeted (target : ImportWizardTarget) (read : FileName -> Result<LabFileSource, KitError>) : WizardObservation =
+    /// The class's request over that target, opening on that profile and those rows, recording every read and every call
+    /// the wizard makes.
+    let private observeOpening
+        (target : ImportWizardTarget)
+        (opening : MappedAttachment option)
+        (read : FileName -> Result<LabFileSource, KitError>)
+        : WizardObservation =
         let reads = ResizeArray<FileName>()
         let calls = ResizeArray<WizardCall>()
 
@@ -98,7 +104,14 @@ module ImportWizardTests =
                 file = labFile
                 readPickedFile = readPickedFile
                 kitProfiles = [ labScanProfile ]
-                defaultProfile = intensitySeries
+                defaultProfile =
+                    match opening with
+                    | Some data -> data.profile
+                    | None -> intensitySeries
+                defaultRows =
+                    match opening with
+                    | Some data -> data.rows
+                    | None -> AllDataRows
             }
 
         let context : ImportWizardContext =
@@ -109,6 +122,9 @@ module ImportWizardTests =
             }
 
         { context = context; reads = reads; calls = calls }
+
+    let private observeTargeted (target : ImportWizardTarget) (read : FileName -> Result<LabFileSource, KitError>) : WizardObservation =
+        observeOpening target None read
 
     let private observeWizard (read : FileName -> Result<LabFileSource, KitError>) : WizardObservation = observeTargeted attachToE1 read
 
@@ -155,34 +171,12 @@ module ImportWizardTests =
         |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
         |> Seq.toList
 
-    let private fillOf (control : Control) : Color =
-        match control with
-        | :? Border as box ->
-            match box.Background with
-            | :? SolidColorBrush as fill -> fill.Color
-            | _ -> failwith $"{AutomationProperties.GetAutomationId control} has no solid fill."
-        | _ -> failwith $"{AutomationProperties.GetAutomationId control} is not a box."
+    let private fillOf (control : Control) : Color = UiDriver.fillOfControl control
 
     let private topLeftOf (window : Window) (control : Control) : Point =
         match control.TranslatePoint(Point(0.0, 0.0), window) |> Option.ofNullable with
         | Some point -> point
         | None -> failwith $"{AutomationProperties.GetAutomationId control} has no position in its window."
-
-    /// Presses the box carrying `id` at its centre, as `ImportDialogTests` presses one: a press that closes the window
-    /// releases nothing.
-    let private pressControl (window : Window) (id : ConstructorUiId) : unit =
-        let control = controlOf window id
-        control.BringIntoView() |> ignore
-        Dispatcher.UIThread.RunJobs()
-        match control.TranslatePoint(Point(control.Bounds.Width / 2.0, control.Bounds.Height / 2.0), window) |> Option.ofNullable with
-        | Some centre ->
-            window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
-
-            if window.IsVisible then
-                window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-        | None -> Assert.Fail $"{id.value} has no position in its window."
 
     /// Picks the item shown as `caption` in the list carrying `id`, as a user's pick sets it.
     let private pickIn (window : Window) (id : ConstructorUiId) (caption : string) : unit =
@@ -322,6 +316,7 @@ module ImportWizardTests =
                 file = labFile
                 profile = phoneRoiCsv
                 savedOpt = None
+                rows = AllDataRows
             }
 
         Assert.Equal<WizardCall list>([ AppliedCall expected; CloseCall ], List.ofSeq observed.calls)
@@ -365,6 +360,7 @@ module ImportWizardTests =
                 file = labFile
                 profile = profileName
                 savedOpt = Some saved
+                rows = AllDataRows
             }
 
         Assert.Equal<WizardCall list>([ AppliedCall expected; CloseCall ], List.ofSeq observed.calls)
@@ -483,22 +479,22 @@ module ImportWizardTests =
 
             let delimiterBox (delimiter : DataDelimiter) : Control = controlOf window (ConstructorUiId.importWizardDelimiterChoice delimiter.uiKey)
             let headerBox (header : HeaderRowChoice) : Control = controlOf window (ConstructorUiId.importWizardHeaderChoice header.uiKey)
-            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (delimiterBox CommaDelimiter))
+            Assert.Equal(PositiveCommand.fill, fillOf (delimiterBox CommaDelimiter))
             Assert.Equal<string list>([ "Comma" ], textsUnder (delimiterBox CommaDelimiter))
 
             for other in [ SemicolonDelimiter; TabDelimiter ] do
-                Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf (delimiterBox other))
+                Assert.NotEqual(PositiveCommand.fill, fillOf (delimiterBox other))
 
-            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (headerBox HeaderOnFirstRow))
-            Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf (headerBox NoHeaderRow))
+            Assert.Equal(PositiveCommand.fill, fillOf (headerBox HeaderOnFirstRow))
+            Assert.NotEqual(PositiveCommand.fill, fillOf (headerBox NoHeaderRow))
             Assert.Equal("Byte-order mark: yes", (controlOf window ConstructorUiId.importWizardBomText :?> TextBlock).Text)
 
             for name in ImportProfileName.builtIns @ [ labScanProfile.name ] do
                 Assert.Equal<string list>([ name.value ], textsUnder (controlOf window (ConstructorUiId.importWizardProfileChoice name.uiKey)))
 
-            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (controlOf window (ConstructorUiId.importWizardProfileChoice intensitySeries.uiKey)))
+            Assert.Equal(PositiveCommand.fill, fillOf (controlOf window (ConstructorUiId.importWizardProfileChoice intensitySeries.uiKey)))
             Assert.Equal<string list>([ "New column mapping" ], textsUnder (controlOf window ConstructorUiId.importWizardNewMappingButton))
-            Assert.NotEqual(MaterialsWindowView.positiveBackground, fillOf (controlOf window ConstructorUiId.importWizardNewMappingButton))
+            Assert.NotEqual(PositiveCommand.fill, fillOf (controlOf window ConstructorUiId.importWizardNewMappingButton))
 
             let grid = controlOf window ConstructorUiId.importWizardPreviewGrid :?> Grid
             Assert.Equal(5, grid.ColumnDefinitions.Count)
@@ -516,8 +512,8 @@ module ImportWizardTests =
 
             let attach = controlOf window ConstructorUiId.importWizardAttachButton
             let cancel = controlOf window ConstructorUiId.importWizardCancelButton
-            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf attach)
-            Assert.Equal(MaterialsWindowView.negativeBackground, fillOf cancel)
+            Assert.Equal(PositiveCommand.fill, fillOf attach)
+            Assert.Equal(NegativeCommand.fill, fillOf cancel)
             Assert.Equal((topLeftOf window attach).Y, (topLeftOf window cancel).Y)
             Assert.True((topLeftOf window cancel).X > (topLeftOf window attach).X + attach.Bounds.Width, "Cancel must be to the right of Attach with a gap.")
             Assert.Empty sent)
@@ -536,7 +532,7 @@ module ImportWizardTests =
 
             assertAbsent window ConstructorUiId.importWizardProfileNameField
 
-            pressControl window ConstructorUiId.importWizardNewMappingButton
+            clickOn window ConstructorUiId.importWizardNewMappingButton
 
             let grid = controlOf window ConstructorUiId.importWizardPreviewGrid
 
@@ -552,7 +548,7 @@ module ImportWizardTests =
                 assertAbsent window (ConstructorUiId.importWizardColumnReadingChoice position)
 
             Assert.Equal("", (controlOf window ConstructorUiId.importWizardProfileNameField :?> TextBox).Text)
-            Assert.Equal(MaterialsWindowView.positiveBackground, fillOf (controlOf window ConstructorUiId.importWizardNewMappingButton))
+            Assert.Equal(PositiveCommand.fill, fillOf (controlOf window ConstructorUiId.importWizardNewMappingButton))
 
             pickIn window (ConstructorUiId.importWizardColumnRoleChoice column4) "scan variable"
 
@@ -579,10 +575,10 @@ module ImportWizardTests =
             Assert.Equal("scan variable", shownIn window (ConstructorUiId.importWizardColumnRoleChoice column4))
 
             // Leaving the mapping and coming back recreates the lists over the held roles and sends nothing.
-            pressControl window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
+            clickOn window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
             assertAbsent window (ConstructorUiId.importWizardColumnRoleChoice column4)
             assertAbsent window ConstructorUiId.importWizardProfileNameField
-            pressControl window ConstructorUiId.importWizardNewMappingButton
+            clickOn window ConstructorUiId.importWizardNewMappingButton
             Assert.Equal("scan variable", shownIn window (ConstructorUiId.importWizardColumnRoleChoice column4))
             Assert.Equal(RadianColumnUnit.text, shownIn window (ConstructorUiId.importWizardColumnUnitChoice column4))
             Assert.Equal("raw dial reading", shownIn window (ConstructorUiId.importWizardColumnReadingChoice column4))
@@ -608,8 +604,8 @@ module ImportWizardTests =
         withMountedWizard observed.context.initImportWizard (fun window sent ->
             assertAbsent window ConstructorUiId.importWizardMessage
 
-            pressControl window ConstructorUiId.importWizardNewMappingButton
-            pressControl window ConstructorUiId.importWizardAttachButton
+            clickOn window ConstructorUiId.importWizardNewMappingButton
+            clickOn window ConstructorUiId.importWizardAttachButton
 
             let message = controlOf window ConstructorUiId.importWizardMessage :?> TextBlock
             Assert.Contains("the import profile name is blank", message.Text)
@@ -620,14 +616,14 @@ module ImportWizardTests =
             Dispatcher.UIThread.RunJobs()
             assertAbsent window ConstructorUiId.importWizardMessage
 
-            pressControl window ConstructorUiId.importWizardAttachButton
+            clickOn window ConstructorUiId.importWizardAttachButton
             let unmappedRefusal = controlOf window ConstructorUiId.importWizardMessage :?> TextBlock
             Assert.Contains("a signal mapping needs exactly one signal column", unmappedRefusal.Text)
 
             // Leaving the mapping and coming back recreates the name field over the held name and sends nothing.
-            pressControl window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
+            clickOn window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
             assertAbsent window ConstructorUiId.importWizardMessage
-            pressControl window ConstructorUiId.importWizardNewMappingButton
+            clickOn window ConstructorUiId.importWizardNewMappingButton
             Assert.Equal("Bench A", (controlOf window ConstructorUiId.importWizardProfileNameField :?> TextBox).Text)
 
             Assert.Equal<ImportWizardMsg list>(
@@ -667,8 +663,8 @@ module ImportWizardTests =
             Assert.Equal<string list>([ "Split" ], textsUnder (controlOf window ConstructorUiId.importWizardAttachButton))
             Assert.Empty observed.calls
 
-            pressControl window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
-            pressControl window ConstructorUiId.importWizardAttachButton
+            clickOn window (ConstructorUiId.importWizardProfileChoice phoneRoiCsv.uiKey)
+            clickOn window ConstructorUiId.importWizardAttachButton
             Assert.Equal<ImportWizardMsg list>([ PickImportProfile phoneRoiCsv; ApplyImportWizard ], List.ofSeq sent))
 
         let expected : ImportWizardApplied =
@@ -677,6 +673,7 @@ module ImportWizardTests =
                 file = labFile
                 profile = phoneRoiCsv
                 savedOpt = None
+                rows = AllDataRows
             }
 
         Assert.Equal<WizardCall list>([ AppliedCall expected; CloseCall ], List.ofSeq observed.calls)
@@ -718,14 +715,14 @@ module ImportWizardTests =
                 Assert.Equal((topLeftOf wizard attach).Y, (topLeftOf wizard cancel).Y)
                 Assert.True((topLeftOf wizard cancel).X > (topLeftOf wizard attach).X + attach.Bounds.Width, "Cancel must be to the right of Attach with a gap.")
 
-                pressControl wizard (ConstructorUiId.importWizardProfileChoice ImportProfileName.phoneRoiCsv.uiKey)
+                clickOn wizard (ConstructorUiId.importWizardProfileChoice ImportProfileName.phoneRoiCsv.uiKey)
                 Assert.Empty dispatched
                 Assert.True(wizard.IsVisible)
 
-                pressControl wizard ConstructorUiId.importWizardAttachButton
+                clickOn wizard ConstructorUiId.importWizardAttachButton
 
                 Assert.Equal<TableAndElementRotationView.TableAndElementRotationMsg list>(
-                    [ TableAndElementRotationView.AttachDataFile (ExperimentId 1, labFile, ImportProfileName.phoneRoiCsv) ],
+                    [ TableAndElementRotationView.AttachDataFile { experiment = ExperimentId 1; file = labFile; profile = ImportProfileName.phoneRoiCsv; rows = AllDataRows } ],
                     List.ofSeq dispatched)
 
                 Assert.False(wizard.IsVisible)
@@ -738,3 +735,86 @@ module ImportWizardTests =
 
         Assert.Equal<FileName list>([ labFile ], List.ofSeq observed.reads)
         Assert.Empty observed.calls
+
+    // ======================== spec 0051 `.manual/003` 2.4: a re-attach keeps what the experiment had ========================
+
+    /// Two runs of one Phone ROI file, two captures and one capture.
+    let private twoRunSource : LabFileSource =
+        let text =
+            "experiment,capture_index,captured_at,description,avg_total
+"
+            + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,869.5
+"
+            + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,912.25
+"
+            + "LP1-(QZ#45)-LP2,0,2026-07-15T13:00:00+00:00,0,401.0
+"
+
+        {
+            file = labFile
+            content = FileByteContent (System.Text.Encoding.UTF8.GetBytes text)
+        }
+
+    /// The experiment's attachment the wizard re-opens over: Phone ROI CSV, the second run's rows.
+    let private secondRunData : MappedAttachment =
+        {
+            attachment =
+                {
+                    path = KitRelativePath "data/phone-roi.csv"
+                    contentHash = OpticalConstructor.Domain.LibraryEntryFiles.ContentHash "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                }
+            profile = phoneRoiCsv
+            rows = KeyedDataRows (DataRowKey "LP1-(QZ#45)-LP2")
+            exclusions = []
+        }
+
+    [<Fact>]
+    let ``a re-attach opens on the experiment's profile and rows, and Attach keeps them`` () : unit =
+        let observed = observeOpening attachToE1 (Some secondRunData) (fun _ -> Ok twoRunSource)
+        let opened = observed.context.initImportWizard
+        Assert.Equal(PickedImportProfile phoneRoiCsv, opened.choice)
+        Assert.Equal<DataRowKey list>([ DataRowKey "CPL-(AIR#0)-CPL"; DataRowKey "LP1-(QZ#45)-LP2" ], opened.keyGroups |> List.map _.key)
+        Assert.Equal(secondRunData.rows, opened.chosenRows)
+
+        opened |> updatedBy [ ApplyImportWizard ] |> ignore
+
+        let expected : ImportWizardApplied =
+            {
+                target = attachToE1
+                file = labFile
+                profile = phoneRoiCsv
+                savedOpt = None
+                rows = secondRunData.rows
+            }
+
+        Assert.Equal<WizardCall list>([ AppliedCall expected; CloseCall ], List.ofSeq observed.calls)
+
+    [<Fact>]
+    let ``the rows offered follow the profile, and a key the profile cannot read is every row`` () : unit =
+        let observed = observeOpening attachToE1 (Some secondRunData) (fun _ -> Ok twoRunSource)
+        let opened = observed.context.initImportWizard
+        // Intensity series has no key column: the rows are every row, and none is offered.
+        let series = opened |> updatedBy [ PickImportProfile intensitySeries ]
+        Assert.Empty(series.keyGroups)
+        Assert.Equal(AllDataRows, series.chosenRows)
+        // Back on Phone ROI CSV, the first run is picked, then every row.
+        let first = series |> updatedBy [ PickImportProfile phoneRoiCsv; PickImportRows (KeyedDataRows (DataRowKey "CPL-(AIR#0)-CPL")) ]
+        Assert.Equal(KeyedDataRows (DataRowKey "CPL-(AIR#0)-CPL"), first.chosenRows)
+        Assert.Equal(AllDataRows, (first |> updatedBy [ PickImportRows AllDataRows ]).chosenRows)
+        // A split takes the whole file, so it offers no rows.
+        let split = (observeOpening SplitWizardTarget None (fun _ -> Ok twoRunSource)).context.initImportWizard
+        Assert.Empty((split |> updatedBy [ PickImportProfile phoneRoiCsv ]).keyGroups)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the wizard shows the rows of each key as choices, the experiment's chosen`` () : unit =
+        let observed = observeOpening attachToE1 (Some secondRunData) (fun _ -> Ok twoRunSource)
+
+        withMountedWizard observed.context.initImportWizard (fun window sent ->
+            let second = ConstructorUiId.importWizardRowsChoice (DataRowKey "LP1-(QZ#45)-LP2")
+            Assert.True(UiDriver.isChecked (controlOf window second), "the experiment's rows must be the chosen choice")
+            Assert.False(UiDriver.isChecked (controlOf window ConstructorUiId.importWizardAllRowsChoice))
+            Assert.Equal("LP1-(QZ#45)-LP2 (1 points)", UiDriver.textOfControl (controlOf window second))
+            clickOn window ConstructorUiId.importWizardAllRowsChoice
+            Assert.Equal<ImportWizardMsg list>([ PickImportRows AllDataRows ], List.ofSeq sent)
+            Assert.True(UiDriver.isChecked (controlOf window ConstructorUiId.importWizardAllRowsChoice)))

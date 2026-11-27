@@ -458,6 +458,32 @@ module Studies =
                         sigmaFraction = SigmaFraction sigmaFraction
                     }
 
+    /// Whether a `CalibratedParameter` is held at its value or freed with a prior of its value and sigma; its disk tag
+    /// is an int, 1 to 2 in case order (spec 0050 S11.3; 001 §L).
+    type CalibrationUse =
+        | CalibrationHeldFixed
+        | CalibrationAsPrior
+
+        member this.value : int =
+            match this with
+            | CalibrationHeldFixed -> 1
+            | CalibrationAsPrior -> 2
+
+        /// The use a disk tag names; any other tag is `None`, the caller's typed error (spec 0050 S11.3).
+        static member tryOfWire (tag : int) : CalibrationUse option =
+            match tag with
+            | 1 -> Some CalibrationHeldFixed
+            | 2 -> Some CalibrationAsPrior
+            | _ -> None
+
+        member this.text : string =
+            match this with
+            | CalibrationHeldFixed -> "fixed"
+            | CalibrationAsPrior -> "as priors"
+
+        /// Every use in tag order (spec 0050 S11.3).
+        static member all : CalibrationUse list = [ CalibrationHeldFixed; CalibrationAsPrior ]
+
     /// A study's fit mode, its residual weights, the experiments it leaves out, its fit's start count and the
     /// thresholds that make a fitted parameter suspect (spec 0050 S11.1, S11.3, S11.4; 001 §L).
     type StudyFitSettings =
@@ -468,6 +494,7 @@ module Studies =
             disabled : ExperimentName list
             starts : FitStartCount
             suspect : SuspectThresholds
+            calibrationUse : CalibrationUse
         }
 
         /// A joint fit of one start with no weight set, nothing left out and the initial suspect thresholds
@@ -480,6 +507,7 @@ module Studies =
                 disabled = []
                 starts = FitStartCount.single
                 suspect = SuspectThresholds.initial
+                calibrationUse = CalibrationHeldFixed
             }
 
     /// Whether a study fits an experiment or leaves it out (ablation). Not stored: the study keeps its `disabled` list
@@ -874,6 +902,10 @@ module Studies =
         /// The study fitted jointly or in stages (spec 0050 S11.1, S11.3).
         member this.withFitMode (mode : FitMode) : Study = { this with settings = { this.settings with mode = mode } }
 
+        /// The study's stage 2 holding the calibration fixed or as priors (spec 0051 `.manual/003` 2.5).
+        member this.withCalibrationUse (calibrationUse : CalibrationUse) : Study =
+            { this with settings = { this.settings with calibrationUse = calibrationUse } }
+
         /// The study's fit making that many starts (spec 0050 S11.3).
         member this.withFitStarts (starts : FitStartCount) : Study = { this with settings = { this.settings with starts = starts } }
 
@@ -962,7 +994,7 @@ module Studies =
         }
 
         /// The only supported study file schema version (spec 0050 S11.1).
-        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 2
 
     type Study with
 
@@ -1165,6 +1197,8 @@ module Studies =
         | SetSessionGainModel of study : StudyName * setting : SessionGainSetting
         /// Set whether the study is fitted jointly or in stages (spec 0050 S12.1).
         | SetFitMode of study : StudyName * mode : FitMode
+        /// Set whether stage 2 holds the calibration fixed or as priors (spec 0051 `.manual/003` 2.5).
+        | SetCalibrationUse of study : StudyName * calibrationUse : CalibrationUse
 
         /// The study the message creates or changes through its pure update, which the caller records and replaces in its
         /// list; a refusal answers its error and changes nothing (spec 0050 S11.1, S11.5, S12.1; 001 §P).
@@ -1191,3 +1225,5 @@ module Studies =
                 studyNamed study |> Result.bind (fun held -> held.withSessionGainModel setting.session setting.model context.experiments)
             | SetFitMode (study, mode) ->
                 studyNamed study |> Result.map (fun held -> held.withFitMode mode)
+            | SetCalibrationUse (study, calibrationUse) ->
+                studyNamed study |> Result.map (fun held -> held.withCalibrationUse calibrationUse)

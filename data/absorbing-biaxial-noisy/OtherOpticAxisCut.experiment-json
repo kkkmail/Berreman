@@ -25,7 +25,6 @@
           "axes": [
             {
               "elementId": "sample",
-              "label": "Sample #2",
               "range": {
                 "max": 67.5,
                 "min": 0,
@@ -45,5 +44,5 @@
       "revision": 1
     }
   },
-  "schemaVersion": 1
+  "schemaVersion": 2
 }

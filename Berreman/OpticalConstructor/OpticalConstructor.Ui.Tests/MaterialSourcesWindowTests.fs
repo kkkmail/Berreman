@@ -15,6 +15,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.WindowLauncher
+open OpticalConstructor.Ui.Tests.UiDriver.ById
 
 /// The Online sources window mounted headless: its title and id, its source and snapshot, Search then Pull, and its
 /// single instance (spec 0050 S13.1).
@@ -39,42 +40,6 @@ module MaterialSourcesWindowTests =
             window.Close()
             Dispatcher.UIThread.RunJobs()
 
-    /// The control carrying `id` as its AutomationId.
-    let private tryFindControl (window : Window) (id : ConstructorUiId) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function
-            | :? Control as control when AutomationProperties.GetAutomationId control = id.value -> Some control
-            | _ -> None)
-
-    let private controlOf (window : Window) (id : ConstructorUiId) : Control =
-        tryFindControl window id |> Option.defaultWith (fun () -> failwith $"Missing control {id.value}.")
-
-    let private assertAbsent (window : Window) (id : ConstructorUiId) : unit =
-        match tryFindControl window id with
-        | Some _ -> Assert.Fail $"{id.value} must not be shown."
-        | None -> ()
-
-    /// The text of the TextBlock carrying `id`.
-    let private textOf (window : Window) (id : ConstructorUiId) : string =
-        match controlOf window id with
-        | :? TextBlock as text -> Option.ofObj text.Text |> Option.defaultValue ""
-        | other -> failwith $"{id.value} is a {other.GetType().Name}, not a TextBlock."
-
-    /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does.
-    let private pressAt (window : Window) (id : ConstructorUiId) : unit =
-        let target = controlOf window id
-        target.BringIntoView() |> ignore
-        Dispatcher.UIThread.RunJobs()
-
-        match target.TranslatePoint(Point(target.Bounds.Width / 2.0, target.Bounds.Height / 2.0), window) |> Option.ofNullable with
-        | Some centre ->
-            window.MouseDown(centre, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
-            if window.IsVisible then
-                window.MouseUp(centre, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-        | None -> Assert.Fail $"{id.value} has no on-screen position."
-
     [<Fact>]
     let ``the Online sources UiIds are the stable intent-named ids`` () : unit =
         Assert.Equal("MaterialSourcesWindow", ConstructorUiId.materialSourcesWindow.value)
@@ -98,7 +63,7 @@ module MaterialSourcesWindowTests =
                 Assert.Equal("Online sources", window.Title)
                 Assert.Equal(ConstructorUiId.materialSourcesWindow.value, window.Name)
                 Assert.Equal(ConstructorUiId.materialSourcesWindow.value, AutomationProperties.GetAutomationId window)
-                controlOf window (ConstructorUiId.materialSourceChoice MaterialSourcesWindowFixture.testSourceName) |> ignore
+                findControl window (ConstructorUiId.materialSourceChoice MaterialSourcesWindowFixture.testSourceName) |> ignore
                 Assert.Equal("Snapshot 2026-11-01", textOf window ConstructorUiId.materialSourceSnapshotText)))
 
     [<Fact>]
@@ -117,16 +82,16 @@ module MaterialSourcesWindowTests =
             let record = MaterialSourcesWindowFixture.siliconHit.record
 
             withSourcesWindow (siliconImports ()) applied (fun window ->
-                match controlOf window ConstructorUiId.materialSourceQueryBox with
+                match findControl window ConstructorUiId.materialSourceQueryBox with
                 | :? TextBox as queryBox -> queryBox.Text <- "silicon"
                 | other -> Assert.Fail $"the query box is a {other.GetType().Name}, not a TextBox"
                 Dispatcher.UIThread.RunJobs()
                 assertAbsent window (ConstructorUiId.materialSourceHitRow record)
 
-                pressAt window ConstructorUiId.materialSourceSearchButton
-                controlOf window (ConstructorUiId.materialSourceHitRow record) |> ignore
+                clickOn window ConstructorUiId.materialSourceSearchButton
+                findControl window (ConstructorUiId.materialSourceHitRow record) |> ignore
 
-                pressAt window (ConstructorUiId.materialSourcePullButton record)
+                clickOn window (ConstructorUiId.materialSourcePullButton record)
                 let pulled = "Pulled Si (Silicon), Aspnes as version 1."
                 Assert.Equal<ControlCaption list>([ ControlCaption pulled ], List.ofSeq applied)
                 Assert.Equal(pulled, textOf window ConstructorUiId.materialSourcesStatusText)))

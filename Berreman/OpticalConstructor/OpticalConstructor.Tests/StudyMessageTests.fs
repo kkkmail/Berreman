@@ -116,7 +116,6 @@ module StudyMessageTests =
         let axis : ScanAxis =
             {
                 elementId = cpl2SlotId
-                label = ElementLabel "CPL2"
                 variable = VaryR1
                 range = VariableRange.forVariable VaryR1
             }

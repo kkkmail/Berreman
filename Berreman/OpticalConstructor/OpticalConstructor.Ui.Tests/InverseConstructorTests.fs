@@ -139,7 +139,7 @@ module InverseConstructorTests =
     let ``attaching a valid intensity file records a typed Loaded status and the attachment`` () =
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
-        let m1 = m |> updateTableAndElementRotation (AttachDataFile (expId, FileName "measured.csv", ImportProfileName.intensitySeries))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "measured.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (ValidatedDataBadge (MeasuredData.MeasuredPointCount 3) as badge) ->
             Assert.Equal("Loaded — 3 point(s), schema-valid", badge.caption.value)
@@ -154,7 +154,7 @@ module InverseConstructorTests =
     let ``attaching a malformed intensity file records a typed parse-error status`` () =
         let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
-        let m1 = m |> updateTableAndElementRotation (AttachDataFile (expId, FileName "bad.csv", ImportProfileName.intensitySeries))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "bad.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (MappedDataBadge (Some problem) as badge) ->
             Assert.Contains("row 3", problem.caption.value)
@@ -166,7 +166,7 @@ module InverseConstructorTests =
         // The R2 experiment's range is 0…89°; an abscissa of 200 is a LOUD range mismatch.
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }
-        let m1 = m |> updateTableAndElementRotation (AttachDataFile (expId, FileName "oor.csv", ImportProfileName.intensitySeries))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "oor.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         match m1.experimentDataStatus |> Map.tryFind expId with
         | Some (OutOfRangeBadge problem as badge) ->
             Assert.Contains("outside the experiment range", problem.caption.value)
@@ -196,7 +196,7 @@ module InverseConstructorTests =
         match committed.slotsIn m1.kitSetups with
         | Ok slots -> Assert.Equal<Library.DetectorKind>(Library.Ellipsometer, ExperimentDataLoad.detectorKindOf m1.library slots)
         | Error error -> Assert.Fail($"the committed experiment's setup must be the window's: {error.describe}")
-        let m2 = m1 |> updateTableAndElementRotation (AttachDataFile (expId, FileName "ellipso.csv", ImportProfileName.ellipsometricSeries))
+        let m2 = m1 |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "ellipso.csv"; profile = ImportProfileName.ellipsometricSeries; rows = AllDataRows })
         match m2.experimentDataStatus |> Map.tryFind expId with
         | Some (ValidatedDataBadge (MeasuredData.MeasuredPointCount 2)) -> ()
         | other -> Assert.Fail($"expected ValidatedDataBadge (MeasuredData.MeasuredPointCount 2) from the ellipsometric path, got %A{other}")
@@ -218,7 +218,7 @@ module InverseConstructorTests =
                     readMapped = fun _ -> failwith "an attachment failure must not read data"
             }
         let model, expId = withIntensityExperiment { inverse () with experimentData = refusingProxy }
-        let failed = model |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
+        let failed = model |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = picked; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         let failedExperiment = List.head failed.experimentCollection.experiments
         Assert.Equal<MappedAttachment option>(None, failedExperiment.dataOpt)
         Assert.Equal(model.experimentCollection, failed.experimentCollection)
@@ -227,30 +227,30 @@ module InverseConstructorTests =
         Assert.Equal("No data", (failed.dataBadgeOf failedExperiment).caption.value)
         Assert.Equal<Map<Experiments.ExperimentId, ExperimentDataBadge>>(model.experimentDataStatus, failed.experimentDataStatus)
         let notAttached = ControlCaption $"Not attached — {attachError.describe}"
-        Assert.Equal<ControlCaption option>(Some notAttached, failed.kitStatus)
+        Assert.Equal<ControlCaption option>(Some notAttached, failed.kitStatusCaption)
 
         let attached =
             {
                 model with experimentData = readyProxy
             }
-            |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
+            |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = picked; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         let refusedReplacement =
             {
                 attached with experimentData = refusingProxy
             }
-            |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
+            |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = picked; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         Assert.Equal(attached.experimentCollection, refusedReplacement.experimentCollection)
         let attachedExperiment = List.head attached.experimentCollection.experiments
         Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredData.MeasuredPointCount 2), attached.dataBadgeOf attachedExperiment)
         Assert.Equal<ExperimentDataBadge>(attached.dataBadgeOf attachedExperiment, refusedReplacement.dataBadgeOf attachedExperiment)
-        Assert.Equal<ControlCaption option>(Some notAttached, refusedReplacement.kitStatus)
+        Assert.Equal<ControlCaption option>(Some notAttached, refusedReplacement.kitStatusCaption)
 
     [<Fact>]
     let ``committed experiments and their attachments are kept in the kit and reopen with it`` () =
         let folder = TestAppScope.freshKitFolder owner
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
         let mBuilt, expId = withIntensityExperiment { inverseIn folder with experimentData = proxy }
-        let mSaved = mBuilt |> updateTableAndElementRotation (AttachDataFile (expId, FileName "run.csv", ImportProfileName.intensitySeries))
+        let mSaved = mBuilt |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "run.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         Assert.Equal<Experiments.Experiment list>(mSaved.experimentCollection.experiments, mSaved.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
         let setupFile = FileName "Setup 1.setup-json"
         Assert.True(File.Exists((setupFile.combine folder.value).value), "the commit must record the table as the kit's 'Setup 1'")
@@ -272,7 +272,7 @@ module InverseConstructorTests =
         let picked = FileName "unchanged.csv"
         let saved =
             built
-            |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
+            |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = picked; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
             |> updateTableAndElementRotation ExpNew
             |> updateTableAndElementRotation (ExpChooseElement (theSample built).id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
@@ -335,7 +335,7 @@ module InverseConstructorTests =
         let secondPath = KitRelativePath "data/b.csv"
         let withSecond =
             built
-            |> updateTableAndElementRotation (AttachDataFile (firstId, firstFile, ImportProfileName.intensitySeries))
+            |> updateTableAndElementRotation (AttachDataFile { experiment = firstId; file = firstFile; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
             |> updateTableAndElementRotation ExpNew
             |> updateTableAndElementRotation (ExpChooseElement (theSample built).id)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
@@ -344,7 +344,7 @@ module InverseConstructorTests =
         Assert.NotEqual(firstId, secondId)
         let saved =
             withSecond
-            |> updateTableAndElementRotation (AttachDataFile (secondId, secondFile, ImportProfileName.intensitySeries))
+            |> updateTableAndElementRotation (AttachDataFile { experiment = secondId; file = secondFile; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         let attachments = saved.experimentCollection.experiments |> List.choose (fun experiment -> experiment.dataOpt |> Option.map (fun data -> data.attachment))
         Assert.Equal<KitRelativePath list>([ firstPath; secondPath ], attachments |> List.map (fun attachment -> attachment.path))
         let currentHash = ContentHash "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
@@ -404,7 +404,7 @@ module InverseConstructorTests =
         let picked = dataFile.combine folder.value
         File.WriteAllText(picked.value, "x,intensity\n0,1\n45,0.5\n89,0.2\n")
         let before = File.ReadAllText filePath.value
-        let attached = model |> updateTableAndElementRotation (AttachDataFile (expId, picked, ImportProfileName.intensitySeries))
+        let attached = model |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = picked; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         Assert.NotEqual<string>(before, File.ReadAllText filePath.value)
         let experiment = List.head attached.experimentCollection.experiments
         match experiment.dataOpt with
@@ -419,11 +419,12 @@ module InverseConstructorTests =
         let updated = edited |> updateTableAndElementRotation ExpCommit
         Assert.Equal<Experiments.Experiment list>(updated.experimentCollection.experiments, updated.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
         Assert.NotEqual<Experiments.Experiment list>(attached.experimentCollection.experiments, updated.experimentCollection.experiments)
-        let removed = updated |> updateTableAndElementRotation (ExpRemove expId)
+        let removedName = (updated.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = expId)).name
+        let removed = updated |> updateTableAndElementRotation (ExpRemove expId) |> updateTableAndElementRotation ExpConfirmRemove
         Assert.False(File.Exists filePath.value)
         Assert.Empty(removed.experimentCollection.experiments)
         Assert.Empty(removed.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
-        Assert.Equal<ControlCaption option>(None, removed.kitStatus)
+        Assert.Equal<ControlCaption option>(Some (ControlCaption $"Removed experiment '{removedName.value}' and its file."), removed.kitStatusCaption)
         removed.kit.close () |> SceneTestFixture.kitSuccess
 
     [<Fact>]
@@ -446,7 +447,7 @@ module InverseConstructorTests =
         let failed = draft |> updateTableAndElementRotation ExpCommit
         Assert.Equal(draft.experimentCollection, failed.experimentCollection)
         let refusal = KitReadOnlyErr "writeKindFile"
-        match failed.kitStatus with
+        match failed.kitStatusCaption with
         | Some status ->
             Assert.StartsWith("Not saved to the kit — ", status.value)
             Assert.Contains(refusal.describe, status.value)
@@ -455,7 +456,7 @@ module InverseConstructorTests =
 
         let data = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.5 ]))
         let committed, expId = withIntensityExperiment { initial with experimentData = data }
-        let attached = committed |> updateTableAndElementRotation (AttachDataFile (expId, FileName "original.csv", ImportProfileName.intensitySeries))
+        let attached = committed |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "original.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         let protectedModel =
             {
                 attached with
@@ -468,21 +469,21 @@ module InverseConstructorTests =
         let edited = protectedModel |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 7))
         let refusedEdit = edited |> updateTableAndElementRotation ExpCommit
         Assert.Equal(edited.experimentCollection, refusedEdit.experimentCollection)
-        let refusedAttach = protectedModel |> updateTableAndElementRotation (AttachDataFile (expId, FileName "replacement.csv", ImportProfileName.intensitySeries))
+        let refusedAttach = protectedModel |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "replacement.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
         Assert.Equal(protectedModel.experimentCollection, refusedAttach.experimentCollection)
         Assert.Equal<Map<Experiments.ExperimentId, ExperimentDataBadge>>(protectedModel.experimentDataStatus, refusedAttach.experimentDataStatus)
-        let refusedRemove = protectedModel |> updateTableAndElementRotation (ExpRemove expId)
+        let refusedRemove = protectedModel |> updateTableAndElementRotation (ExpRemove expId) |> updateTableAndElementRotation ExpConfirmRemove
         Assert.Equal(protectedModel.experimentCollection, refusedRemove.experimentCollection)
         for refused in [ refusedEdit; refusedAttach; refusedRemove ] do
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some status -> Assert.Contains("read-only", status.value)
             | None -> Assert.Fail("A refused kit write must show its reason.")
         Assert.Equal<Experiments.Experiment list>(attached.experimentCollection.experiments, initial.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
         let removed = attached.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = expId)
         initial.kit.proxy.deleteExperiment removed.name |> SceneTestFixture.kitSuccess
-        let missing = attached |> updateTableAndElementRotation (ExpRemove expId)
+        let missing = attached |> updateTableAndElementRotation (ExpRemove expId) |> updateTableAndElementRotation ExpConfirmRemove
         Assert.Empty(missing.experimentCollection.experiments)
-        Assert.Equal<ControlCaption option>(None, missing.kitStatus)
+        Assert.Equal<ControlCaption option>(Some (ControlCaption $"Removed experiment '{removed.name.value}' and its file."), missing.kitStatusCaption)
         initial.kit.close () |> SceneTestFixture.kitSuccess
 
     // ================================ copied physical items (spec 0050 S7.2) ================================
@@ -498,8 +499,8 @@ module InverseConstructorTests =
         let built, expId =
             initial
             |> updateTableAndElementRotation (BindValueIdTo (initialSample.id, plateEntry))
-            |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
-            |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
+            |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
             |> withIntensityExperiment
         let polarizers = built.elements |> List.filter (fun e -> e.placement.catalogueKind = Placement.LinearPolarizer)
         Assert.Equal<Placement.ElementValueId option list>(
@@ -583,9 +584,9 @@ module InverseConstructorTests =
             |> updateTableAndElementRotation (ExpEdit expId)
             |> updateTableAndElementRotation (ExpSetRangePoints (ExperimentControls.ExperimentPointCount 7))
             |> updateTableAndElementRotation (BindValueIdTo (sample.id, Placement.ElementValueId glassFilm200Id))
-            |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
             |> updateTableAndElementRotation ExpCommit
-        Assert.Equal<ControlCaption option>(None, recommitted.kitStatus)
+        Assert.Equal<ControlCaption option>(None, recommitted.kitRefusalOpt)
         let added = List.last recommitted.elements
         Assert.Equal<Placement.ElementValueId option>(Some PresetIds.polarizerLp, added.placement.valueId)
         recommitted.kit.close () |> SceneTestFixture.kitSuccess
@@ -627,7 +628,7 @@ module InverseConstructorTests =
             let expId = (List.head expId0Model.experimentCollection.experiments).id
             let seed =
                 expId0Model
-                |> updateTableAndElementRotation (AttachDataFile (expId, FileName "m.csv", ImportProfileName.intensitySeries))
+                |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "m.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let window = Window(Width = 1000.0, Height = 980.0)
             window.Content <- Component(fun _ -> mainView seed ignore)

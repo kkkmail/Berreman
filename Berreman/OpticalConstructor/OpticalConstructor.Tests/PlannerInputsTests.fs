@@ -819,7 +819,6 @@ module PlannerInputsTests =
     let sampleAxisOf (variable : VariableParameter) (range : VariableRange) : ScanAxis =
         {
             elementId = sampleSlot.id
-            label = ElementLabel "Sample #1"
             variable = variable
             range = range
         }

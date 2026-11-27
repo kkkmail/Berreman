@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "study": {
     "experiments": [
       "OpticAxisCut",
@@ -292,6 +292,7 @@
     "scopes": [],
     "sessionGains": [],
     "settings": {
+      "calibrationUse": 1,
       "detectorWeights": [],
       "disabled": [],
       "experimentWeights": [],

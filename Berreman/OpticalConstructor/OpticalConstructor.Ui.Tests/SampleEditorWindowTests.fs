@@ -22,6 +22,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.SampleEditorView
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0033 (022) — the SampleEditorWindow component (UICOMP_XDUO_0003): the Sample editor
 /// window in OpticalConstructor.Ui over the step-21 Domain `SampleStackEditor`.
@@ -37,50 +38,13 @@ open OpticalConstructor.Ui.SampleEditorView
 /// every Select return and window activation.
 module SampleEditorWindowTests =
 
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
-    /// stack rows / material options / steppers live in variable-membership lists, so they
-    /// carry an AutomationId — the SampleLibraryControls precedent).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                // A Save / Cancel click closes the window during the press — skip the release then.
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
-
     /// Click the centre of ANY control carrying `id` (not only a Border) — a CheckBox toggles and
     /// raises its Click on this pointer press/release exactly as a user interaction does (the
     /// emission R/T boxes, spec 0040 Part D.2 step 010).
     let private clickControl (window : Window) (id : string) : unit =
         let found =
             window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Control as c when matchesId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
+            |> Seq.tryPick (function :? Control as c when UiDriver.hasId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some c ->
@@ -109,18 +73,6 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
         | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail($"%s{id} was not found")
-
-    /// The display text under the control carrying `id` (the control itself when it is a
-    /// TextBlock, its first TextBlock descendant otherwise — a layer row's first block is its
-    /// material name).
-    let private textOf (window : Window) (id : string) : string =
-        match tryFindControl window id with
-        | None -> ""
-        | Some (:? TextBlock as t) -> (if isNull t.Text then "" else t.Text)
-        | Some c ->
-            c.GetVisualDescendants()
-            |> Seq.tryPick (function :? TextBlock as t when not (isNull t.Text) -> Some t.Text | _ -> None)
-            |> Option.defaultValue ""
 
     /// Commit `text` through the REAL faceted filter box of a Materials window (the control
     /// commits on Enter — the MaterialsWindowTests driving shape).
@@ -683,7 +635,7 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value window, "the window itself carries the SampleEditorWindow id")
+            Assert.True(UiDriver.hasId ConstructorUiId.sampleEditorWindow.value window, "the window itself carries the SampleEditorWindow id")
             for id in mandatedIds do
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted window")
             window.Close())
@@ -1040,7 +992,7 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
-            Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
             Assert.True(isPresent materialsWindow ConstructorUiId.materialsSelectButton.value, "the Select verb must render — the window is in Select state")
             Assert.Contains("sample layer", textOf materialsWindow ConstructorUiId.materialsSelectConstraint.value)
             // Pick the 1.75 glass: filter → highlight the leaf → Select. The TARGETED return
@@ -1290,7 +1242,7 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
-            Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
             Assert.True(isPresent materialsWindow ConstructorUiId.materialsSelectButton.value, "the Select verb must render — the window is in Select state")
             Assert.Contains("substrate", textOf materialsWindow ConstructorUiId.materialsSelectConstraint.value)
             // Pick the 1.75 glass: filter → highlight the leaf → Select. The TARGETED return sets

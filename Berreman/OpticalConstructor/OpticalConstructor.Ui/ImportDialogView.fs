@@ -39,7 +39,14 @@ type ImportDialogRequest =
         match this with
         | SettlePendingCatalogue pending ->
             ControlCaption $"Import from {pending.entry.folder.value}: {pending.decisions.Length} entries need a decision."
-        | ApplyDroppedEntries decisions -> ControlCaption $"Import {decisions.Length} dropped entry files."
+        // Spec 0051 `.manual/003` 5.4: one file's rows are headed by that file, a glass catalogue's as glasses.
+        | ApplyDroppedEntries decisions ->
+            let files = decisions |> List.choose (fun decision -> match decision.origin with DroppedFileOrigin file -> Some file.leafName | _ -> None) |> List.distinct
+            match files with
+            | [ file ] when file.value.EndsWith(".agf", System.StringComparison.OrdinalIgnoreCase) ->
+                ControlCaption $"Import {decisions.Length} glasses from {file.value}."
+            | [ file ] -> ControlCaption $"Import {decisions.Length} entries from {file.value}."
+            | _ -> ControlCaption $"Import {decisions.Length} entries from {files.Length} files."
         | ResolveKitSnapshot (kit, decisions) ->
             ControlCaption $"Open kit {kit.kit.kitFile.name.value}: {decisions.Length} library entries need a decision."
 
@@ -226,7 +233,7 @@ let private importDecisionView (imports : CatalogueImportContext) (diff : Import
         | DivergentContent (incoming, _) | NameCollision (incoming, _) -> incoming.content.version
     let rowId = ConstructorUiId.importDecisionRow entry
     StackPanel.create [
-        rowId.automationAttribute<StackPanel> ()
+        yield! rowId.groupAttributes<StackPanel> ()
         StackPanel.margin (Thickness(0.0, 0.0, 0.0, 16.0))
         StackPanel.children [
             TextBlock.create [
@@ -247,8 +254,7 @@ let private importDecisionView (imports : CatalogueImportContext) (diff : Import
                         let onClick () =
                             if action = decision.defaultAction then dispatch (DecideImportRow decision.entryId)
                             else dispatch (OverrideImportRow (decision.entryId, action))
-                        if action = choice.action then actionButton id label positiveBackground onClick
-                        else verbButton id label onClick))
+                        CommandControls.choiceCommand id label (if action = choice.action then ChosenChoice else UnchosenChoice) onClick))
             ]
             match choice.diffBase with
             | None -> ()
@@ -257,11 +263,11 @@ let private importDecisionView (imports : CatalogueImportContext) (diff : Import
                     match diff with
                     | ImportDiffShown id when id = decision.entryId -> ControlCaption "Hide diff"
                     | _ -> ControlCaption "Show diff"
-                verbButton (ConstructorUiId.importDiffToggle entry) label (fun () -> dispatch (ToggleImportDiff decision.entryId))
+                CommandControls.verbCommand (ConstructorUiId.importDiffToggle entry) label (fun () -> dispatch (ToggleImportDiff decision.entryId))
                 match diff with
                 | ImportDiffShown id when id = decision.entryId ->
                     StackPanel.create [
-                        (ConstructorUiId.importDiffPreview entry).automationAttribute<StackPanel> ()
+                        yield! (ConstructorUiId.importDiffPreview entry).groupAttributes<StackPanel> ()
                         StackPanel.children (importDiffLines imports incoming heldId heldVersion)
                     ]
                     |> View.withKey (ConstructorUiId.importDiffPreview entry).value
@@ -281,8 +287,8 @@ let importDialogView (m : ImportDialogModel) (dispatch : ImportDialogMsg -> unit
                 StackPanel.dock Dock.Bottom
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.children [
-                    actionButton ConstructorUiId.importApplyButton (ControlCaption "Apply") positiveBackground (fun () -> dispatch ApplyImportChoices)
-                    actionButton ConstructorUiId.importCancelButton (ControlCaption "Cancel") negativeBackground (fun () -> dispatch CancelImportDialog)
+                    CommandControls.actionCommand ConstructorUiId.importApplyButton (ControlCaption "Apply") PositiveCommand (fun () -> dispatch ApplyImportChoices)
+                    CommandControls.actionCommand ConstructorUiId.importCancelButton (ControlCaption "Cancel") NegativeCommand (fun () -> dispatch CancelImportDialog)
                 ]
             ]
             match m.lastError with
@@ -309,9 +315,28 @@ let importDialogView (m : ImportDialogModel) (dispatch : ImportDialogMsg -> unit
                 ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Disabled
                 ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
                 ScrollViewer.content (
+                    // Spec 0051 `.manual/003` 5.3 (D6): a row of one choice asks nothing; Apply applies it with the rest.
+                    let asked = m.choices |> List.filter (fun choice -> not (List.isEmpty choice.decision.alternatives))
+                    let unasked = m.choices.Length - asked.Length
+                    let summary : IView list =
+                        match unasked with
+                        | 0 -> []
+                        | count ->
+                            [
+                                TextBlock.create [
+                                    ConstructorUiId.importUnaskedSummary.automationAttribute<TextBlock> ()
+                                    TextBlock.textWrapping TextWrapping.Wrap
+                                    TextBlock.margin (Thickness(0.0, 0.0, 0.0, 8.0))
+                                    TextBlock.text (
+                                        match count with
+                                        | 1 -> "1 entry has one choice and is applied with Apply."
+                                        | many -> $"{many} entries have one choice and are applied with Apply.")
+                                ]
+                                :> IView
+                            ]
                     StackPanel.create [
-                        ConstructorUiId.importDecisionList.automationAttribute<StackPanel> ()
-                        StackPanel.children (m.choices |> List.map (importDecisionView m.context.imports m.diff dispatch))
+                        yield! ConstructorUiId.importDecisionList.groupAttributes<StackPanel> ()
+                        StackPanel.children (summary @ (asked |> List.map (importDecisionView m.context.imports m.diff dispatch)))
                     ])
             ]
         ]

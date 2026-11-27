@@ -58,6 +58,8 @@ type Drawable =
         zoom : BeamLayout.ElementZoom
         opticalSign : OpticalSign
         normals : NormalMarkers
+        /// The name drawn beside the element: its kit item's label, else its kind's code (spec 0051 `.manual/003` 3.7).
+        caption : ControlCaption
     }
 
     /// The value-binding cue (Spec 0038 step 030), so an unbound element reads as dashed-and-ghosted
@@ -304,7 +306,7 @@ let private codeLabel (project : Vector3 -> ScreenPoint) (highlight : ElementHig
     TextBlock.create [
         TextBlock.left (c.sx + 8.0)
         TextBlock.top (c.sy - 26.0)
-        TextBlock.text e.placement.catalogueKind.kindCode
+        TextBlock.text e.caption.value
         TextBlock.fontWeight (match highlight with ElementHighlighted -> FontWeight.Bold | ElementNotHighlighted -> FontWeight.SemiBold)
         TextBlock.foreground (brush codeColor)
     ] :> IView

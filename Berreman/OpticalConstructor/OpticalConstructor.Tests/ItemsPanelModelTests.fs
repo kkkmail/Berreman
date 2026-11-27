@@ -106,7 +106,7 @@ module ItemsPanelModelTests =
             Assert.Equal<ControlCaption>(ControlCaption "", form.labelText)
             Assert.Equal<ItemDial>(FixedMounting, form.dial)
             Assert.Equal<ItemDraft option>(None, form.itemDraftOpt)
-            Assert.Equal<ControlCaption option>(None, opened.kitStatus)
+            Assert.Equal<ControlCaption option>(None, opened.kitRefusalOpt)
             Assert.Equal<TableAndElementRotationModel>({ scene with addItemFormOpt = opened.addItemFormOpt }, opened)
 
             // The binding models are the shipped entries of step 210, never made here.
@@ -255,7 +255,7 @@ module ItemsPanelModelTests =
             Assert.Equal<Item list>([ cpl1Item ], added.kitItems)
             Assert.Equal<ItemId option>(Some firstItemId, added.selectedItemOpt)
             Assert.Equal<AddItemForm option>(None, added.addItemFormOpt)
-            Assert.Equal<ControlCaption option>(None, added.kitStatus)
+            Assert.Equal<ControlCaption option>(None, added.kitRefusalOpt)
             Assert.Equal<Item list>([ cpl1Item ], added.kit.proxy.readItems () |> kitValue)
             Assert.Equal<LibraryEntryEnvelope list>([ circularEnvelope ], added.kit.proxy.listSnapshots () |> kitValue)
             Assert.Equal<VersionNumber>(VersionNumber.first, circularEnvelope.content.version)
@@ -291,7 +291,7 @@ module ItemsPanelModelTests =
                         label = ItemLabel "cpl1"
                 }
             let refused = added |> updateTableAndElementRotation (AddItem clash)
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("The item was not added — ", status.value)
                 Assert.Contains("already has an item of that label", status.value)
@@ -315,8 +315,8 @@ module ItemsPanelModelTests =
                 }
             let filled = filledForm readOnly
             let refused = filled |> updateTableAndElementRotation (AddItem cpl1Draft)
-            Assert.Equal<ControlCaption option>(readOnlyStatus, refused.kitStatus)
-            Assert.Equal<TableAndElementRotationModel>({ filled with kitStatus = readOnlyStatus }, refused)
+            Assert.Equal<ControlCaption option>(readOnlyStatus, refused.kitStatusCaption)
+            Assert.Equal<TableAndElementRotationModel>({ filled with kitStatus = readOnlyStatus |> Option.map KitStatusRefused }, refused)
             Assert.Empty(refused.kitItems)
             Assert.Equal<Item list>([], refused.kit.proxy.readItems () |> kitValue)
             Assert.Equal<Item list>([], scene.kit.proxy.readItems () |> kitValue)
@@ -385,7 +385,7 @@ module ItemsPanelModelTests =
         |> List.filter (fun path -> path.value.EndsWith(ItemKitFile.extension.value, StringComparison.Ordinal))
 
     let private statusOf (model : TableAndElementRotationModel) : string =
-        match model.kitStatus with
+        match model.kitStatusCaption with
         | Some status -> status.value
         | None -> failwith "A refusal must tell why."
 
@@ -410,7 +410,7 @@ module ItemsPanelModelTests =
                 cpl1Draft.toItem.parameters |> List.filter (fun parameter -> parameter.name <> retardance),
                 recorded.parameters |> List.filter (fun parameter -> parameter.name <> retardance))
             // The editor closes once the state is recorded; nothing else changes.
-            Assert.Equal<ControlCaption option>(None, set.kitStatus)
+            Assert.Equal<ControlCaption option>(None, set.kitRefusalOpt)
             Assert.Equal<TableAndElementRotationModel>({ editing with kitItems = set.kitItems; parameterEditOpt = None }, set))
 
     [<Fact>]
@@ -563,14 +563,14 @@ module ItemsPanelModelTests =
 
             let relabelled = added |> updateTableAndElementRotation (RelabelKitItem (firstItemId, ItemLabel "CPL 1"))
             let cpl1 = { cpl1Draft.toItem with label = ItemLabel "CPL 1" }
-            Assert.Equal<ControlCaption option>(None, relabelled.kitStatus)
+            Assert.Equal<ControlCaption option>(None, relabelled.kitRefusalOpt)
             Assert.Equal<Item list>([ cpl1 ], relabelled.kitItems)
             Assert.Equal<Item list>([ cpl1 ], relabelled.kit.proxy.readItems () |> kitValue)
             Assert.Equal<KitRelativePath list>([ KitRelativePath "CPL 1.item-json" ], itemFilesOf folder)
             Assert.Equal<TableAndElementRotationModel>({ added with kitItems = relabelled.kitItems }, relabelled)
 
             let withLp1 = relabelled |> updateTableAndElementRotation (AddItem lp1Draft)
-            Assert.Equal<ControlCaption option>(None, withLp1.kitStatus)
+            Assert.Equal<ControlCaption option>(None, withLp1.kitRefusalOpt)
             let files = itemFilesOf folder
             Assert.Equal<KitRelativePath list>([ KitRelativePath "CPL 1.item-json"; KitRelativePath "LP1.item-json" ], files)
 
@@ -583,7 +583,7 @@ module ItemsPanelModelTests =
 
             // A change of case alone renames the one file; an id the kit does not hold changes nothing.
             let recased = withLp1 |> updateTableAndElementRotation (RelabelKitItem (firstItemId, ItemLabel "cpl 1"))
-            Assert.Equal<ControlCaption option>(None, recased.kitStatus)
+            Assert.Equal<ControlCaption option>(None, recased.kitRefusalOpt)
             Assert.Equal<KitRelativePath list>([ KitRelativePath "LP1.item-json"; KitRelativePath "cpl 1.item-json" ], itemFilesOf folder)
             Assert.Equal<Item list>(recased.kitItems, recased.kit.proxy.readItems () |> kitValue)
             Assert.Equal<TableAndElementRotationModel>(recased, recased |> updateTableAndElementRotation (RelabelKitItem (strangerId, ItemLabel "QZ"))))
@@ -594,7 +594,7 @@ module ItemsPanelModelTests =
             let added = scene |> updateTableAndElementRotation (AddItem cpl1Draft)
             let noted = added |> updateTableAndElementRotation (SetKitItemNotes (firstItemId, ItemNotes "Mounted"))
             let notedItem = cpl1Draft.toItem.withNotes (ItemNotes "Mounted")
-            Assert.Equal<ControlCaption option>(None, noted.kitStatus)
+            Assert.Equal<ControlCaption option>(None, noted.kitRefusalOpt)
             Assert.Equal<Item list>([ notedItem ], noted.kitItems)
             Assert.Equal<Item list>([ notedItem ], noted.kit.proxy.readItems () |> kitValue)
             Assert.Equal<ItemNotes>(ItemNotes "Mounted", (List.exactlyOne (noted.kit.proxy.readItems () |> kitValue)).notes)
@@ -603,7 +603,7 @@ module ItemsPanelModelTests =
                 let photoPath = KitRelativePath "data/CPL1.jpg"
                 let photographed = noted |> updateTableAndElementRotation (SetKitItemPhoto (firstItemId, photo))
                 let photographedItem = notedItem.withPhoto (Some photoPath)
-                Assert.Equal<ControlCaption option>(None, photographed.kitStatus)
+                Assert.Equal<ControlCaption option>(None, photographed.kitRefusalOpt)
                 Assert.Equal<Item list>([ photographedItem ], photographed.kitItems)
                 Assert.Equal<Item list>([ photographedItem ], photographed.kit.proxy.readItems () |> kitValue)
                 Assert.Contains(photoPath, folder.paths ())
@@ -613,7 +613,7 @@ module ItemsPanelModelTests =
 
                 let paths = folder.paths ()
                 let removed = photographed |> updateTableAndElementRotation (RemoveKitItemPhoto firstItemId)
-                Assert.Equal<ControlCaption option>(None, removed.kitStatus)
+                Assert.Equal<ControlCaption option>(None, removed.kitRefusalOpt)
                 Assert.Equal<Item list>([ notedItem ], removed.kitItems)
                 Assert.Equal<Item list>([ notedItem ], removed.kit.proxy.readItems () |> kitValue)
                 Assert.Contains(photoPath, folder.paths ())
@@ -660,7 +660,7 @@ module ItemsPanelModelTests =
                     ]
                 for message in writes do
                     let refused = readOnly |> updateTableAndElementRotation message
-                    Assert.Equal<ControlCaption option>(readOnlyStatus, refused.kitStatus)
-                    Assert.Equal<TableAndElementRotationModel>({ readOnly with kitStatus = readOnlyStatus }, refused)
+                    Assert.Equal<ControlCaption option>(readOnlyStatus, refused.kitStatusCaption)
+                    Assert.Equal<TableAndElementRotationModel>({ readOnly with kitStatus = readOnlyStatus |> Option.map KitStatusRefused }, refused)
                     Assert.Equal<KitRelativePath list>(paths, folder.paths ())
                 Assert.Equal<Item list>([ cpl1Draft.toItem ], readOnlyProxy.readItems () |> kitValue)))

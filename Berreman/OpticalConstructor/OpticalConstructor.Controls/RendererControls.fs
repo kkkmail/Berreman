@@ -163,23 +163,9 @@ module RendererControls =
         }
 
     // ----- view helpers -----
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-
     let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (onClick : unit -> unit) : IView =
-        Border.create [
-            Border.name id.value
-            Border.background (brush idleBackground)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text caption.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box caption.value))
-        ] :> IView
+        CommandControls.commandButton id caption NeutralCommand ControlOffered onClick
+            [ Button.padding (Thickness(10.0, 5.0)); Button.margin (Thickness(0.0, 0.0, 8.0, 0.0)) ]
 
     /// One labelled knob: its label, the knob, and the knob's current value beside it.
     let private knobUnit (label : ControlCaption) (knob : IView) (value : ControlCaption) : IView list =
@@ -218,7 +204,7 @@ module RendererControls =
     /// A DISCRETE slider riding the INDEX of a preset list, snapping to whole ticks.
     let private presetSlider (knob : PresetKnob) (current : RendererPresetIndex) (onIndex : RendererPresetIndex -> unit) : IView =
         Slider.create [
-            Slider.name knob.id.value
+            yield! knob.id.inputAttributes<Slider> ()
             Slider.width knob.width
             Slider.minimum 0.0
             Slider.maximum (float (knob.presetCount - 1))
@@ -234,7 +220,7 @@ module RendererControls =
 
     let private circlesSlider (circles : CapCircles) (onCircles : CapCircles -> unit) : IView =
         Slider.create [
-            Slider.name ConstructorUiId.rendererCapCirclesSlider.value
+            yield! ConstructorUiId.rendererCapCirclesSlider.inputAttributes<Slider> ()
             Slider.width 120.0
             Slider.minimum (float CapCircles.fewest.value)
             Slider.maximum (float CapCircles.most.value)
@@ -250,7 +236,7 @@ module RendererControls =
 
     let private opacitySlider (id : ConstructorUiId) (opacity : RendererOpacity) (onOpacity : RendererOpacity -> unit) : IView =
         Slider.create [
-            Slider.name id.value
+            yield! id.inputAttributes<Slider> ()
             Slider.width 110.0
             Slider.minimum 0.0
             Slider.maximum 1.0
@@ -269,7 +255,7 @@ module RendererControls =
             StackPanel.children [
                 row [
                     [ clickBox ConstructorUiId.rendererSwapButton (ControlCaption "Swap renderer") (fun () -> handlers.swap ())
-                      TextBlock.create [ TextBlock.name ConstructorUiId.rendererReadout.value; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: {state.kind.text}" ] ]
+                      TextBlock.create [ ConstructorUiId.rendererReadout.automationAttribute<TextBlock> (); TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: {state.kind.text}" ] ]
                     knobUnit (ControlCaption "Cylinder rails:") (presetSlider RailsKnob state.rails.presetIndex handlers.setRailsIndex) state.rails.valueCaption
                 ]
                 row [

@@ -34,6 +34,7 @@ open OpticalConstructor.App
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open global.Elmish
+open OpticalConstructor.Ui.Tests.UiDriver.ById
 
 module WireUiFinalCompositionTests =
 
@@ -157,15 +158,12 @@ module WireUiFinalCompositionTests =
         window.GetVisualDescendants()
         |> Seq.tryPick (function :? Control as control when matchesUiId id control -> Some control | _ -> None)
 
-    let private controlOf (window : Window) (id : ConstructorUiId) : Control =
-        tryControlOf window id |> Option.defaultWith (fun () -> failwith $"{id.value} must be in the window")
-
     /// Presses the box carrying `id` at its centre, as `LibraryWindowTests.clickOn` does; a press that closes the window
     /// gets no release.
     let private pressBoxIn (window : Window) (id : ConstructorUiId) : unit =
         let box =
             window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as border when matchesUiId id border -> Some border | _ -> None)
+            |> Seq.tryPick (function :? Control as border when matchesUiId id border -> Some border | _ -> None)
             |> Option.defaultWith (fun () -> failwith $"{id.value} must be a box in the window")
         Assert.True(box.IsEffectivelyVisible, $"{id.value} must be visible")
         box.BringIntoView() |> ignore
@@ -195,7 +193,7 @@ module WireUiFinalCompositionTests =
     /// Raises `Click` on the launcher's button `id` and returns every window it opens.
     let private clickLauncherButton (launcher : LauncherWindow) (id : ConstructorUiId) : Window list =
         windowsOpenedBy (fun () ->
-            let button = Assert.IsType<Button>(controlOf launcher id)
+            let button = Assert.IsType<Button>(findControl launcher id)
             button.RaiseEvent(RoutedEventArgs(Button.ClickEvent)))
 
     /// The surface each flow-strip step shows (spec 0050 S7.2, S9.3, S11.5, S14.2).
@@ -218,11 +216,11 @@ module WireUiFinalCompositionTests =
         Assert.Equal<Scene.ConstructorFlowStep list>(Scene.ConstructorFlowStep.all, flowSurfaces |> List.map fst)
         let steps = Scene.ConstructorFlowStep.stepsOf mode
         let stepIds = Scene.ConstructorFlowStep.all |> List.map (fun step -> step.flowUiId.value)
-        let strip = controlOf window ConstructorUiId.flowStrip
+        let strip = findControl window ConstructorUiId.flowStrip
         let boxIds =
             strip.GetVisualDescendants()
             |> Seq.choose (function
-                | :? Border as border when List.contains (AutomationProperties.GetAutomationId border) stepIds ->
+                | :? Control as border when List.contains (AutomationProperties.GetAutomationId border) stepIds ->
                     Some (AutomationProperties.GetAutomationId border)
                 | _ -> None)
             |> List.ofSeq
@@ -235,7 +233,7 @@ module WireUiFinalCompositionTests =
             | false, Some _ -> Assert.Fail $"the flow strip must not hold {step.flowUiId.value}"
         for step, surface in flowSurfaces |> List.filter (fun (step, _) -> List.contains step steps) do
             pressBoxIn window step.flowUiId
-            let shown = controlOf window surface
+            let shown = findControl window surface
             Assert.True(shown.IsEffectivelyVisible, $"{step.caption.value} must show {surface.value}")
 
     [<Fact>]
@@ -264,12 +262,10 @@ module WireUiFinalCompositionTests =
                     | :? Window as window when not (obj.ReferenceEquals(window, launcher)) -> opened.Add window
                     | _ -> ())
             try
-                // Spec 0050 §3.7: a new library's start-up import awaits confirmation, which the launcher asks for on its first open.
+                // Spec 0051 `.manual/003` 5.3 (D6): a new library takes the shipped catalogue on start, without a dialog.
                 launcher.Show()
                 Dispatcher.UIThread.RunJobs()
-                let review = Assert.IsType<ImportDialogWindow>(Assert.Single opened)
-                pressBoxIn review ConstructorUiId.importApplyButton
-                Assert.False(review.IsVisible, "Apply must close the start-up import dialog")
+                Assert.Empty opened
                 Assert.Equal<Result<MaterialEntry option, MaterialError>>(
                     Ok (Some (BuiltinCatalogue.material MaterialIds.silicon)), ctx.materials.tryGetMaterial MaterialIds.silicon)
 
@@ -303,9 +299,9 @@ module WireUiFinalCompositionTests =
 
                 let dataLocations =
                     Assert.IsType<DataLocationsWindow>(Assert.Single(clickLauncherButton launcher ConstructorUiId.launcherDataLocationsLink))
-                let libraryPath = Assert.IsType<TextBlock>(controlOf dataLocations (ConstructorUiId.dataLocationPathText LibraryDatabaseLocation))
+                let libraryPath = Assert.IsType<TextBlock>(findControl dataLocations (ConstructorUiId.dataLocationPathText LibraryDatabaseLocation))
                 Assert.Equal(libraryFile.value, libraryPath.Text)
-                let kitsPath = Assert.IsType<TextBlock>(controlOf dataLocations (ConstructorUiId.dataLocationPathText KitsLocation))
+                let kitsPath = Assert.IsType<TextBlock>(findControl dataLocations (ConstructorUiId.dataLocationPathText KitsLocation))
                 Assert.Equal(locations.kitsFolder.value, kitsPath.Text)
             finally
                 // Every window the fact opened closes, so no window registry key outlives it.
@@ -330,7 +326,7 @@ module WireUiFinalCompositionTests =
                 try
                     window.Show()
                     Dispatcher.UIThread.RunJobs()
-                    let caption = Assert.IsType<TextBlock>(controlOf window ConstructorUiId.kitCaptionText)
+                    let caption = Assert.IsType<TextBlock>(findControl window ConstructorUiId.kitCaptionText)
                     Assert.Contains(" (read-only)", caption.Text)
                     pressEveryFlowStep window Scene.InverseConstructor
                 finally

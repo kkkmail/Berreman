@@ -180,7 +180,6 @@ module OutOfBandDiagnosticTests =
         let sourceSweep (lo : float) (hi : float) : ScanAxis =
             {
                 elementId = OpticalConstructor.Domain.Library.ElementId "src"
-                label = ElementLabel "Light source #1"
                 variable = VaryWaveLength
                 range = { min = OpticalConstructor.Domain.Propagation.SweptValue lo; max = OpticalConstructor.Domain.Propagation.SweptValue hi; points = OpticalConstructor.Domain.Propagation.CurvePointCount 91 }
             }
@@ -208,7 +207,6 @@ module OutOfBandDiagnosticTests =
         let analyzerTurn : ScanAxis =
             {
                 elementId = OpticalConstructor.Domain.Library.ElementId "lp"
-                label = ElementLabel "Linear polarizer #2"
                 variable = VaryR1
                 range = VariableRange.forVariable VaryR1
             }

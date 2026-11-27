@@ -19,6 +19,7 @@ open Avalonia.Threading
 open Xunit
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
+open OpticalConstructor.Ui.UserEnvironment
 open OpticalConstructor.App
 
 module SmokeTests =
@@ -35,7 +36,7 @@ module SmokeTests =
             //    Application carries before Initialize runs.
             let sessionApp = Application.Current :?> App
             let expectedVariant =
-                (UserEnvironment.EnvironmentSettings.load (UserEnvironment.settingsPath ())).theme.themeVariant
+                (UserEnvironment.EnvironmentSettings.load (snd (AppConfig.loadWorkbenchSettings ())).environmentFile).theme.themeVariant
             Assert.Equal(expectedVariant, sessionApp.RequestedThemeVariant)
 
             // 2) Drive framework-init through the REAL App lifetime. The session app's

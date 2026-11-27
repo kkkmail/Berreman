@@ -167,7 +167,6 @@ module ExperimentDataProxyTests =
     let private sweepOver (lo : float) (hi : float) : ScanAxis =
         {
             elementId = Library.ElementId "src"
-            label = ElementLabel "Light source #1"
             variable = VaryWaveLength
             range =
                 {
@@ -210,7 +209,6 @@ module ExperimentDataProxyTests =
         let analyzerTurn : ScanAxis =
             {
                 elementId = Library.ElementId "lp"
-                label = ElementLabel "Linear polarizer #2"
                 variable = VaryR1
                 range = VariableRange.forVariable VaryR1
             }
@@ -259,7 +257,6 @@ module ExperimentDataProxyTests =
         let analyzerQuarterTurn : ScanAxis =
             {
                 elementId = Library.ElementId "lp"
-                label = ElementLabel "Linear polarizer #2"
                 variable = VaryR1
                 range =
                     {

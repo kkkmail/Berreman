@@ -15,6 +15,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.MeasuredData
 open OpticalConstructor.Domain.ImportProfiles
+open OpticalConstructor.Domain.DataSplits
 open OpticalConstructor.Storage.LabFileImport
 open OpticalConstructor.Ui.MaterialsWindowView
 
@@ -37,8 +38,11 @@ type ImportWizardRequest =
         readPickedFile : FileName -> Result<LabFileSource, KitError>
         /// The kit's own import profiles, in the kit's order.
         kitProfiles : ImportProfile list
-        /// The profile the experiment's detector reads by, chosen when the wizard opens.
+        /// The profile chosen when the wizard opens: the experiment's own when it has data, else its detector's (spec 0051
+        /// `.manual/003` 2.4).
         defaultProfile : ImportProfileName
+        /// The rows chosen when the wizard opens: the experiment's own when it has data, else every row.
+        defaultRows : DataRowSelection
     }
 
 /// What Attach or Split chose: the request's target, the profile to map the file by, and the new profile to save first.
@@ -52,6 +56,8 @@ type ImportWizardApplied =
         profile : ImportProfileName
         /// The new column mapping, saved in the kit before the file is mapped by it.
         savedOpt : ImportProfile option
+        /// The experiment's rows of the file; every row for a split (spec 0051 `.manual/003` 2.4).
+        rows : DataRowSelection
     }
 
 /// The kit window's request and callbacks, in the shape of step 107's `ImportDialogContext`.
@@ -92,6 +98,8 @@ type ImportWizardModel =
         columns : ColumnChoice list
         /// The new mapping's profile name as typed.
         profileName : ControlCaption
+        /// The rows last chosen; `chosenRows` says which of them Attach maps.
+        rows : DataRowSelection
         /// The latest Attach refusal, kept until the next change.
         lastError : ImportProfileError option
     }
@@ -101,6 +109,43 @@ type ImportWizardModel =
         match this.source with
         | Ok source -> source.content.kitFileText.previewWith this.delimiter this.header
         | Error error -> Error (MalformedDataFileErr error.describe)
+
+    /// The profile Attach would map by: a picked one, or the wizard's column roles while they are complete. A new mapping
+    /// is named only to be read here; Attach names it from the typed name.
+    member this.mappingOpt : ChosenImportProfile option =
+        match this.choice with
+        | PickedImportProfile name -> ChosenImportProfile.tryOfName this.context.request.kitProfiles name
+        | NewColumnMapping ->
+            match ColumnRoles.tryOfChoices this.columns with
+            | Ok roles ->
+                let profile : ImportProfile =
+                    {
+                        name = ImportProfileName "New column mapping"
+                        delimiter = this.delimiter
+                        header = this.header
+                        bom = this.bom
+                        roles = roles
+                    }
+                Some (KitProfileChoice profile)
+            | Error _ -> None
+
+    /// The file's key groups under the mapping, offered as the rows to attach; none for a split, a mapping without a key
+    /// column, or a file that does not read through it (spec 0051 `.manual/003` 2.4).
+    member this.keyGroups : KeyedGroup list =
+        match this.context.request.target, this.source, this.mappingOpt with
+        | AttachWizardTarget _, Ok source, Some mapping ->
+            match mapping.splitKeyOpt with
+            | Some _ -> mapping.mapText source.content.kitFileText |> Result.bind _.splitGroups |> Result.defaultValue []
+            | None -> []
+        | AttachWizardTarget _, _, _
+        | SplitWizardTarget, _, _ -> []
+
+    /// The rows Attach maps: the chosen key while the file holds it under the mapping, else every row.
+    member this.chosenRows : DataRowSelection =
+        match this.rows with
+        | KeyedDataRows key when this.keyGroups |> List.exists (fun group -> group.key = key) -> this.rows
+        | KeyedDataRows _
+        | AllDataRows -> AllDataRows
 
 /// Semantic actions shared by the controls and model tests.
 type ImportWizardMsg =
@@ -116,6 +161,8 @@ type ImportWizardMsg =
     | SetColumnRole of DataColumnNumber * ColumnRoleChoice
     /// Names the new mapping's profile.
     | SetImportProfileName of ControlCaption
+    /// Attaches every row, or those holding a key (spec 0051 `.manual/003` 2.4).
+    | PickImportRows of DataRowSelection
     /// Hands the kit window the chosen profile and any new one to save, then closes.
     | ApplyImportWizard
     /// Closes without attaching or saving anything.
@@ -143,14 +190,18 @@ let private wizardColumnsOver (held : ColumnChoice list) (preview : Result<LabFi
 type ImportWizardContext with
 
     /// Opens on the picked file's one read and its sniffed layout (an unread file: comma, a header row, no mark), the
-    /// detector's profile chosen, one unmapped column per preview column, no name and no error (spec 0050 S9.2).
+    /// request's profile and rows chosen, a kit profile's own layout, one unmapped column per preview column, no name and
+    /// no error (spec 0050 S9.2; 0051 `.manual/003` 2.4).
     member this.initImportWizard : ImportWizardModel =
         let source = this.request.readPickedFile this.request.file
 
         let layout : LabFileSniff =
-            match source with
-            | Ok read -> read.sniffedLayout
-            | Error _ -> { bom = ByteOrderMarkAbsent; delimiter = CommaDelimiter; header = HeaderOnFirstRow }
+            match ChosenImportProfile.tryOfName this.request.kitProfiles this.request.defaultProfile, source with
+            | Some (KitProfileChoice profile), _ -> { bom = profile.bom; delimiter = profile.delimiter; header = profile.header }
+            | Some (BuiltInProfileChoice _), Ok read
+            | None, Ok read -> read.sniffedLayout
+            | Some (BuiltInProfileChoice _), Error _
+            | None, Error _ -> { bom = ByteOrderMarkAbsent; delimiter = CommaDelimiter; header = HeaderOnFirstRow }
 
         let opened : ImportWizardModel =
             {
@@ -162,6 +213,7 @@ type ImportWizardContext with
                 choice = PickedImportProfile this.request.defaultProfile
                 columns = []
                 profileName = ControlCaption ""
+                rows = this.request.defaultRows
                 lastError = None
             }
 
@@ -182,6 +234,7 @@ let updateImportWizard (msg : ImportWizardMsg) (m : ImportWizardModel) : ImportW
                 file = request.file
                 profile = profile
                 savedOpt = savedOpt
+                rows = m.chosenRows
             }
 
         m.context.onApplied chosen
@@ -217,6 +270,7 @@ let updateImportWizard (msg : ImportWizardMsg) (m : ImportWizardModel) : ImportW
         else
             m
     | SetImportProfileName name -> { m with profileName = name; lastError = None }
+    | PickImportRows rows -> { m with rows = rows; lastError = None }
     | ApplyImportWizard ->
         match m.source, m.choice with
         | Error _, _ -> m
@@ -269,10 +323,9 @@ let private wizardRoleChoices : ColumnRoleChoice list =
 /// The wizard over `m`: the file, its layout and mark, every profile, the preview with a role per column under a new
 /// mapping, the refusal, and Attach beside Cancel (spec 0050 S9.2; .spec-md §10.5).
 let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit) : IView =
-    // The chosen box of a group is filled. `actionButton` keeps its first press handler, safe as a box's message never changes.
+    // The chosen box of a group is a chosen choice.
     let choiceBox (chosen : ConstructorUiId) (id : ConstructorUiId) (label : ControlCaption) (msg : ImportWizardMsg) : IView =
-        if id = chosen then actionButton id label positiveBackground (fun () -> dispatch msg)
-        else verbButton id label (fun () -> dispatch msg)
+        CommandControls.choiceCommand id label (if id = chosen then ChosenChoice else UnchosenChoice) (fun () -> dispatch msg)
 
     // A label docked beside its wrapping boxes (AGENTS.md: never a WrapPanel in a horizontal StackPanel).
     let labelled (label : ControlCaption) (children : IView list) : IView =
@@ -296,7 +349,7 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
     // Resubscribed on every patch, so a unit or reading pick keeps the column's current other half.
     let choiceList (id : ConstructorUiId) (captions : ControlCaption list) (shown : int) (msgAt : int -> ImportWizardMsg option) : IView =
         ComboBox.create [
-            id.automationAttribute<ComboBox> ()
+            yield! id.inputAttributes<ComboBox> ()
             ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
             ComboBox.dataItems (captions |> List.map _.value)
             ComboBox.selectedIndex shown
@@ -388,7 +441,7 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
                 |> List.concat
 
             Grid.create [
-                ConstructorUiId.importWizardPreviewGrid.automationAttribute<Grid> ()
+                yield! ConstructorUiId.importWizardPreviewGrid.groupAttributes<Grid> ()
                 Grid.columnDefinitions (List.replicate (max width 1) "Auto" |> String.concat ",")
                 Grid.rowDefinitions (List.replicate (firstDataRow + shown.rows.Length) "Auto" |> String.concat ",")
                 Grid.children ((shown.columnNames |> List.mapi (cell 0 FontWeight.SemiBold)) @ roleCells @ dataCells)
@@ -425,7 +478,7 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
             | SplitWizardTarget -> ControlCaption "Split"
 
         match m.source with
-        | Ok _ -> [ actionButton ConstructorUiId.importWizardAttachButton caption positiveBackground (fun () -> dispatch ApplyImportWizard) ]
+        | Ok _ -> [ CommandControls.actionCommand ConstructorUiId.importWizardAttachButton caption PositiveCommand (fun () -> dispatch ApplyImportWizard) ]
         | Error _ -> []
 
     let layoutBlock : IView =
@@ -465,6 +518,26 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
         let newMapping = choiceBox chosen ConstructorUiId.importWizardNewMappingButton (ControlCaption "New column mapping") StartColumnMapping
         labelled (ControlCaption "Profile:") (profileBoxes @ [ newMapping ])
 
+    // Spec 0051 `.manual/003` 2.4: a mapping with a key column offers its keys, as Split groups them.
+    let rowsBlock : IView list =
+        match m.keyGroups with
+        | [] -> []
+        | groups ->
+            let chosen =
+                match m.chosenRows with
+                | AllDataRows -> ConstructorUiId.importWizardAllRowsChoice
+                | KeyedDataRows key -> ConstructorUiId.importWizardRowsChoice key
+
+            let every = choiceBox chosen ConstructorUiId.importWizardAllRowsChoice (ControlCaption "Every row") (PickImportRows AllDataRows)
+
+            let keyed =
+                groups
+                |> List.map (fun group ->
+                    let caption = ControlCaption $"{group.key.value} ({group.points.value} points)"
+                    choiceBox chosen (ConstructorUiId.importWizardRowsChoice group.key) caption (PickImportRows (KeyedDataRows group.key)))
+
+            [ labelled (ControlCaption "Rows:") (every :: keyed) ]
+
     let profileNameRow : IView list =
         match m.choice with
         | NewColumnMapping ->
@@ -479,7 +552,7 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
                             TextBlock.text "Profile name:"
                         ]
                         TextBox.create [
-                            ConstructorUiId.importWizardProfileNameField.automationAttribute<TextBox> ()
+                            yield! ConstructorUiId.importWizardProfileNameField.inputAttributes<TextBox> ()
                             TextBox.text m.profileName.value
                             TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetImportProfileName >> dispatch))
                         ]
@@ -507,7 +580,7 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
         |> View.withKey ConstructorUiId.importWizardHeading.value
         :> IView
 
-    let cancel = actionButton ConstructorUiId.importWizardCancelButton (ControlCaption "Cancel") negativeBackground (fun () -> dispatch CancelImportWizard)
+    let cancel = CommandControls.actionCommand ConstructorUiId.importWizardCancelButton (ControlCaption "Cancel") NegativeCommand (fun () -> dispatch CancelImportWizard)
 
     let actions : IView =
         StackPanel.create [
@@ -520,11 +593,12 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
         StackPanel.create [
             StackPanel.dock Dock.Top
             StackPanel.orientation Orientation.Vertical
-            StackPanel.children ([ heading; layoutBlock; profileBlock ] @ profileNameRow)
+            StackPanel.children ([ heading; layoutBlock; profileBlock ] @ profileNameRow @ rowsBlock)
         ] :> IView
 
     let previewScroll : IView =
         ScrollViewer.create [
+            ConstructorUiId.importWizardPreviewScroller.automationAttribute<ScrollViewer> ()
             ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
             ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
             ScrollViewer.content preview

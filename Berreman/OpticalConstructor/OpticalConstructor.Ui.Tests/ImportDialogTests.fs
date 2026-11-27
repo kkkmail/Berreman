@@ -35,6 +35,7 @@ open OpticalConstructor.Storage.KitFolderStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ImportDialogView
+open OpticalConstructor.Ui.Tests.UiDriver.ById
 
 /// Spec 0050 S3.2, S4.2: import choices stay pending until Apply, including in the mounted MVU view.
 module ImportDialogTests =
@@ -251,18 +252,6 @@ module ImportDialogTests =
         |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
         |> Seq.toList
 
-    let private pressControl (window : Window) (id : ConstructorUiId) : unit =
-        let control = controlOf window id
-        control.BringIntoView() |> ignore
-        Dispatcher.UIThread.RunJobs()
-        let point = control.TranslatePoint(Point(control.Bounds.Width / 2.0, control.Bounds.Height / 2.0), window)
-        Assert.True(point.HasValue, $"{id.value} must be on screen.")
-        window.MouseDown(point.Value, MouseButton.Left, RawInputModifiers.None)
-        Dispatcher.UIThread.RunJobs()
-        if window.IsVisible then
-            window.MouseUp(point.Value, MouseButton.Left, RawInputModifiers.None)
-            Dispatcher.UIThread.RunJobs()
-
     let private mountDialog (context : ImportDialogContext) : HostWindow =
         let window = HostWindow(Width = 900.0, Height = 760.0)
         Program.mkSimple (fun () -> context.initImportDialog) updateImportDialog importDialogView
@@ -448,7 +437,7 @@ module ImportDialogTests =
             model.choices |> List.map (fun choice -> choice.decision.entryId))
         Assert.Equal(NoImportDiffShown, model.diff)
         Assert.Equal<CatalogueImportError option>(None, model.lastError)
-        Assert.Equal("Import 3 dropped entry files.", observed.context.request.heading.value)
+        Assert.Equal("Import 3 entries from 3 files.", observed.context.request.heading.value)
         Assert.Equal<HeldEntry option>(None, fixture.imports.proxy.tryHeldEntry fixture.newMaterial.content.id |> importOk)
         Assert.Empty fixture.writes
         Assert.Empty observed.applied
@@ -630,14 +619,14 @@ module ImportDialogTests =
                 let heading = controlOf window ConstructorUiId.importDialogHeading :?> TextBlock
                 Assert.Contains("Nothing is imported until you press Apply.", heading.Text)
                 Assert.Equal(3, (controlOf window ConstructorUiId.importDecisionList :?> StackPanel).Children.Count)
-                let apply = controlOf window ConstructorUiId.importApplyButton :?> Border
-                let cancel = controlOf window ConstructorUiId.importCancelButton :?> Border
+                let apply = controlOf window ConstructorUiId.importApplyButton
+                let cancel = controlOf window ConstructorUiId.importCancelButton
                 Assert.Same(apply.Parent, cancel.Parent)
-                Assert.NotEqual((apply.Background :?> SolidColorBrush).Color, (cancel.Background :?> SolidColorBrush).Color)
+                Assert.NotEqual(UiDriver.fillOfControl apply, UiDriver.fillOfControl cancel)
                 let skip = SkipIncomingEntry
                 let skipId = ConstructorUiId.importActionOption collision.entryId.uiKey skip.uiKey
-                pressControl window skipId
-                Assert.Equal(OpticalConstructor.Ui.MaterialsWindowView.positiveBackground, ((controlOf window skipId :?> Border).Background :?> SolidColorBrush).Color)
+                clickOn window skipId
+                Assert.Equal(PositiveCommand.fill, UiDriver.ById.fillOf window skipId)
                 Assert.Empty fixture.writes
             finally window.Close())
 
@@ -652,7 +641,7 @@ module ImportDialogTests =
                 let toggle = ConstructorUiId.importDiffToggle entry.uiKey
                 let preview = ConstructorUiId.importDiffPreview entry.uiKey
                 Assert.Equal<Control option>(None, tryControl window preview)
-                pressControl window toggle
+                clickOn window toggle
                 let lines = textsUnder (controlOf window preview)
                 let description (envelope : LibraryEntryEnvelope) : string =
                     match envelope.content.descriptionOpt with
@@ -661,7 +650,7 @@ module ImportDialogTests =
                 Assert.Contains(lines, fun line -> line.StartsWith("- ", StringComparison.Ordinal) && line.Contains(description fixture.heldSilicon))
                 Assert.Contains(lines, fun line -> line.StartsWith("+ ", StringComparison.Ordinal) && line.Contains(description fixture.nextSilicon))
                 Assert.Contains("Hide diff", textsUnder (controlOf window toggle))
-                pressControl window toggle
+                clickOn window toggle
                 Assert.Equal<Control option>(None, tryControl window preview)
                 Assert.Contains("Show diff", textsUnder (controlOf window toggle))
                 Assert.Empty fixture.writes
@@ -765,7 +754,9 @@ module ImportDialogTests =
         HeadlessSession.run (fun () ->
             let window = mountDialog reuseObserved.context
             try
-                Assert.Equal(fixture.snapshots.Length, (controlOf window ConstructorUiId.importDecisionList :?> StackPanel).Children.Count)
+                // Spec 0051 `.manual/003` 5.3: rows of one choice are counted, not listed.
+                Assert.Equal(1, (controlOf window ConstructorUiId.importDecisionList :?> StackPanel).Children.Count)
+                Assert.Equal($"{fixture.snapshots.Length} entries have one choice and are applied with Apply.", UiDriver.ById.textOf window ConstructorUiId.importUnaskedSummary)
                 Assert.Empty reuseObserved.applied
                 Assert.Empty reuseObserved.closes
             finally window.Close())
@@ -865,7 +856,7 @@ module ImportDialogTests =
                 Assert.Empty fixture.writes
                 Assert.Empty applied
                 Assert.Empty closed
-                pressControl window ConstructorUiId.importApplyButton
+                clickOn window ConstructorUiId.importApplyButton
                 let result = Assert.Single applied
                 Assert.Equal(request, result.request)
                 Assert.Equal<ImportChoice list>(decisions |> List.map _.byDefault, result.choices)

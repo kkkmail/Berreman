@@ -137,7 +137,7 @@ module internal StudyPublishViewFixture =
                 dial = FixedMounting
             }
         let added = model |> TestAppScope.withStudyMaterial |> updateTableAndElementRotation (AddItem draft)
-        Assert.Equal<ControlCaption option>(None, added.kitStatus)
+        Assert.Equal<ControlCaption option>(None, added.kitRefusalOpt)
         let material = List.exactlyOne (List.exactlyOne added.kitStudies).materials
         let n1 = ParameterName "n1"
         let materialParameter = material.parameters |> List.find (fun parameter -> parameter.name = n1)
@@ -272,8 +272,40 @@ module ScrollExtentTests =
                 | true -> None
                 | false -> Some $"%s{corner} of %s{labelOf c} %A{c.Bounds}"))
 
-    /// Assert the law for a freshly built window at every small-screen size.
-    let private assertReachable (name : string) (makeWindow : unit -> Window) : unit =
+    /// Assert the law for a freshly built window at every small-screen size, and the automation contract on it
+    /// (spec 0051 `.manual/003` 1.4: every window this file builds is the contract's catalogue too).
+    /// The window's page scrollers, those inside no other, whose content is wider than their view: at 1000 × 540 only an
+    /// inner scroller, a grid's or a matrix's own, may scroll sideways (spec 0051 `.manual/003` 4.3).
+    let private widerPages (window : Window) : string list =
+        // A control's own template scroller (a text box's) scrolls its own content, never the page.
+        // A named inner scroller (`…Scroller`) is a grid's own, which the window holds beside its page.
+        let isPage (viewer : ScrollViewer) : bool =
+            isNull viewer.TemplatedParent
+            && not ((UiDriver.idOf viewer |> string).EndsWith "Scroller")
+            && not (viewer.GetVisualAncestors() |> Seq.exists (fun ancestor -> ancestor :? ScrollViewer))
+        // The widest of the page's controls, named, so a failure says what to wrap.
+        let widest (viewer : ScrollViewer) : string =
+            viewer.GetVisualDescendants()
+            |> Seq.choose (function
+                | :? Control as control when control.IsEffectivelyVisible ->
+                    control.TranslatePoint(Point(control.Bounds.Width, 0.0), viewer)
+                    |> Option.ofNullable
+                    |> Option.map (fun right -> right.X, control)
+                | _ -> None)
+            |> Seq.filter (fun (right, _) -> right > viewer.Viewport.Width + 1.0)
+            |> Seq.sortBy (fun (_, control) -> -(control.GetVisualAncestors() |> Seq.length))
+            |> Seq.truncate 2
+            |> Seq.map (fun (right, control) -> $"{labelOf control} to %.0f{right}")
+            |> String.concat ", "
+        window.GetVisualDescendants()
+        |> Seq.choose (function
+            | :? ScrollViewer as viewer when isPage viewer -> Some viewer
+            | _ -> None)
+        |> Seq.filter (fun viewer -> viewer.IsEffectivelyVisible && viewer.Extent.Width > viewer.Viewport.Width + 1.0)
+        |> Seq.map (fun viewer -> $"page '{UiDriver.idOf viewer}' %.0f{viewer.Extent.Width} wide in %.0f{viewer.Viewport.Width}: {widest viewer}")
+        |> List.ofSeq
+
+    let internal assertReachable (name : string) (makeWindow : unit -> Window) : unit =
         HeadlessSession.run (fun () ->
             for w, h in smallScreens do
                 let window = makeWindow ()
@@ -281,18 +313,23 @@ module ScrollExtentTests =
                 window.Height <- h
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
-                let found = try unreachable window finally window.Close()
+                let found, breaches, wider =
+                    try unreachable window, AutomationContract.violations window, (if w >= 1000.0 then widerPages window else [])
+                    finally window.Close()
                 let firstFew = found |> List.truncate 8 |> String.concat "; "
-                Assert.True(List.isEmpty found, $"%s{name} at %g{w}×%g{h}: %d{List.length found} unreachable — %s{firstFew}"))
+                Assert.True(List.isEmpty found, $"%s{name} at %g{w}×%g{h}: %d{List.length found} unreachable — %s{firstFew}")
+                Assert.True(List.isEmpty wider, $"""%s{name} at %g{w}×%g{h}: wider than its window — {String.concat "; " wider}""")
+                let firstBreaches = breaches |> List.truncate 12 |> String.concat "; "
+                Assert.True(List.isEmpty breaches, $"%s{name}: %d{List.length breaches} automation-contract breaches — %s{firstBreaches}"))
 
-    let private stores () : MaterialProxy * SampleProxy * CategoryProxy * LibraryProxy =
+    let internal stores () : MaterialProxy * SampleProxy * CategoryProxy * LibraryProxy =
         let samples = BuiltinCatalogue.sampleStore ()
         let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories, Library.liveLibrary (BuiltinCatalogue.library ()) samples (SourceProxy.createInMemory ())
 
     /// Hosts `view` over `model0` in a FuncUI window: the workbench's `mainView`, or the kit window over it.
-    let private viewWindow
+    let internal viewWindow
         (view : TableAndElementRotationModel -> (TableAndElementRotationMsg -> unit) -> Avalonia.FuncUI.Types.IView)
         (model0 : TableAndElementRotationModel)
         : Window =
@@ -300,11 +337,11 @@ module ScrollExtentTests =
         Program.mkSimple (fun () -> model0) updateTableAndElementRotation view |> Program.withHost window |> Program.run
         window :> Window
 
-    let private constructorWindow (model0 : TableAndElementRotationModel) : Window = viewWindow mainView model0
+    let internal constructorWindow (model0 : TableAndElementRotationModel) : Window = viewWindow mainView model0
 
     /// Main with a polarizer whose R1 run is collected AND being edited — the tallest Experiments bay (editor,
     /// chart, description, collection row, export, collection builder) above the table.
-    let private filledExperiments () : TableAndElementRotationModel =
+    let internal filledExperiments () : TableAndElementRotationModel =
         let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
         let pid = (List.item 2 m.elements).id
         m |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation (SelectBay BayNames.experiments)
@@ -413,6 +450,7 @@ module ScrollExtentTests =
             readPickedFile = readPickedFile
             kitProfiles = []
             defaultProfile = ImportProfileName.intensitySeries
+            defaultRows = AllDataRows
         }
 
     [<Fact>]
@@ -483,6 +521,7 @@ module ScrollExtentTests =
                     match index % 7 with
                     | 0 -> StarredKit
                     | _ -> UnstarredKit
+                lastSetupOpt = None
             }
         let indices = [ 1 .. 40 ]
         let present = indices |> List.filter (fun index -> index % 5 <> 0) |> List.map folderOf
@@ -503,7 +542,7 @@ module ScrollExtentTests =
     /// longest and Show in Explorer is offered, a running send, an open copy source of forty experiments, all chosen,
     /// whose twenty items each have a row offering Add and the kit's three items, three files offered for reload and a
     /// status (spec 0050 S5.3, S6, S7.2).
-    let private tallestKitBar () : TableAndElementRotationModel =
+    let internal tallestKitBar () : TableAndElementRotationModel =
         let filled = filledExperiments ()
         let readOnlyKit =
             {
@@ -557,6 +596,7 @@ module ScrollExtentTests =
                 items = sourceItems
                 setups = filled.kitSetups
                 itemRows = sourceItems |> List.mapi rowOf
+                sourceItemModels = filled.itemModels
             }
         let handle : KitArchiveJobHandle =
             {
@@ -575,7 +615,7 @@ module ScrollExtentTests =
                 kitCopyOpt = Some copySource
                 kitItems = kitItems
                 kitChanges =[ FileName ".kit-json"; FileName "E1.experiment-json"; FileName "E2.experiment-json" ]
-                kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")
+                kitStatus = Some (KitStatusRefused (ControlCaption "The kit is open read-only: nothing is saved."))
         }
 
     [<Fact>]
@@ -584,7 +624,7 @@ module ScrollExtentTests =
 
     /// The kit window on its Items step: three circular polarizers added through `AddItem`, the second selected with
     /// its first parameter's editor open as unknown, and the add form open (spec 0050 S7.2).
-    let private itemsStepKitWindow () : Window =
+    let internal itemsStepKitWindow () : Window =
         let update (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
             updateTableAndElementRotation msg model
         let circular : ItemModelChoice =
@@ -669,7 +709,7 @@ module ScrollExtentTests =
                 let run = StudyFitViewFixture.fitViewRunOf study stamp
                 model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
             let loaded = model |> updateTableAndElementRotation ReloadKitChanges
-            Assert.Equal<ControlCaption option>(None, loaded.kitStatus)
+            Assert.Equal<ControlCaption option>(None, loaded.kitRefusalOpt)
             Assert.Equal(3, loaded.studyFitRuns.Length)
             let mutable started = false
             let host : StudyFitJobHost =
@@ -692,7 +732,7 @@ module ScrollExtentTests =
                 {
                     study = study.name
                     stage = JointStage
-                    calibrationUse = ready.studySurface.calibrationUse
+                    calibrationUse = study.settings.calibrationUse
                 }
             let progress : JobProgress =
                 {
@@ -816,7 +856,7 @@ module ScrollExtentTests =
                 |> updateTableAndElementRotation ReloadKitChanges
                 |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep)
                 |> updateTableAndElementRotation (ShowResultsTab CorrelationResultsTab)
-            Assert.Equal<ControlCaption option>(None, shown.kitStatus)
+            Assert.Equal<ControlCaption option>(None, shown.kitRefusalOpt)
             Assert.Equal<FitRun option>(Some run, shown.selectedFitRunOpt)
             let window = viewWindow KitWindowView.kitWindowView shown
             window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
@@ -1044,8 +1084,8 @@ module ScrollExtentTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             try
-                let viewer = window.GetVisualDescendants() |> Seq.pick (function :? ScrollViewer as s when s.Name = ConstructorUiId.tableElementScrollViewer.value -> Some s | _ -> None)
-                let canvas = window.GetVisualDescendants() |> Seq.pick (function :? Canvas as c when c.Name = ConstructorUiId.tableElementCanvas.value -> Some c | _ -> None)
+                let viewer = window.GetVisualDescendants() |> Seq.pick (function :? ScrollViewer as s when UiDriver.hasId ConstructorUiId.tableElementScrollViewer.value s -> Some s | _ -> None)
+                let canvas = window.GetVisualDescendants() |> Seq.pick (function :? Canvas as c when UiDriver.hasId ConstructorUiId.tableElementCanvas.value c -> Some c | _ -> None)
                 let tableBottomInWindow () : float =
                     match canvas.TranslatePoint(Point(0.0, canvas.Bounds.Height), window) |> Option.ofNullable with
                     | Some p -> p.Y

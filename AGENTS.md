@@ -42,6 +42,8 @@ dotnet build Berreman.slnx -c Release
 cd Berreman/BerremanTests && dotnet test --no-build -c Release                        # solver
 cd Berreman/OpticalConstructor/OpticalConstructor.Tests && dotnet test --no-build -c Release
 cd Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests && dotnet test --no-build -c Release --filter-trait "Category=ui-smoke"
+# The real app on a real desktop (FlaUI); every fact skips in session 0, where the gates run
+cd Berreman/OpticalConstructor/OpticalConstructor.Desktop.Tests && dotnet test --no-build -c Release --filter-trait "Category=desktop"
 
 # One class, or one test with all its theory rows (xUnit v3 filters, never VSTest's --filter)
 dotnet test --no-build -c Release --filter-method "BerremanTests.SolverTests.*" --filter-method "BerremanTests.SolverTests"
@@ -161,6 +163,7 @@ Berreman/                              # solution root (Berreman.slnx, x64)
     OpticalConstructor.App            # composition root that hosts the FuncUI shell
     OpticalConstructor.Tests          # domain/logic tests
     OpticalConstructor.Ui.Tests       # Avalonia.Headless UI smoke/structure tests
+    OpticalConstructor.Desktop.Tests  # FlaUI tests of the real app on a real desktop, by id (spec 0051 .manual/003 1.6)
 MathNetNumerics/                       # customized MathNet.Numerics built FROM SOURCE (referenced, not a NuGet)
 Elevation/                             # the ELEV gate driver and its known-findings list (not a project)
 data/                                  # the committed reference experiment kits, read-only to tests
@@ -451,6 +454,10 @@ click harder.
   - *Avalonia:* set `AutomationProperties.AutomationId` and
     `AutomationProperties.Name` on every interactive/test-relevant control.
   - *WinForms:* set a stable `Name` plus `AccessibleName` / `AccessibleRole`.
+  - An id counts only on a control UI Automation exposes. Never put a press handler on a `Border` or a panel; build
+    every pressable control with `CommandControls` (`CommandButton`, `ChoiceToggle`), and expose a container that
+    carries an id through `ConstructorUiId.groupAttributes` / `surfaceAttributes` / `figureAttributes`.
+    `AutomationContractTests` is the law (spec 0051 `.manual/003` 1.7).
 - **Centralize IDs on one elevated id type** (spec 0048 `.manual/002` R1; STL's
   `Vnc/ViewerCore/VncViewerUiIds.fs`):
   - a single-case union over the string with `.value`;

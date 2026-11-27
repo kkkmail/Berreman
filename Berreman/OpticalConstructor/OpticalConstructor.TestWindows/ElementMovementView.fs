@@ -119,7 +119,7 @@ type ElementMovementModel with
 
     member internal model.tableCanvas : IView =
         Canvas.create [
-            Canvas.name ConstructorUiId.elementMovementCanvas.value
+            yield! ConstructorUiId.elementMovementCanvas.surfaceAttributes<Canvas> ()
             Canvas.width TableScene.canvasWidth.value
             Canvas.height TableScene.canvasHeight.value
             Canvas.horizontalAlignment HorizontalAlignment.Left

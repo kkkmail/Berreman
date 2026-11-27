@@ -87,38 +87,17 @@ module RayPositionControls =
     let stepMeters (modifiers : KeyModifiers) : BarMeters =
         if modifiers.HasFlag KeyModifiers.Shift then BarMeters 0.20 else BarMeters 0.05
 
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
-
-    /// A small clickable, button-styled Border, matching `RotationControls`, its id set as the
-    /// `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`):
-    /// the bar's boxes are regenerable per host re-render, and Avalonia forbids renaming a styled control
-    /// (the `MaterialsControls` precedent). `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
-    /// invocation so one click is one action.
-    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : PointerPressedEventArgs -> unit) : IView =
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.isEnabled availability.isEnabled
-            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.background (brush idleBackground)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 5.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text caption.value; TextBlock.foreground (brush textForeground) ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
-        ] :> IView
+    /// One of the bar's buttons, matching `RotationControls`.
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : CommandButton -> unit) : IView =
+        CommandControls.commandButtonOn id caption NeutralCommand availability onClick [ Button.padding (Thickness(10.0, 5.0)) ]
 
     let private stepButton (handlers : RayPositionControlsHandlers) (direction : StepDirection) (availability : ControlAvailability) : IView =
         let id, caption =
             match direction with
             | StepDecrease -> ConstructorUiId.rayPositionMinusButton, ControlCaption "−"
             | StepIncrease -> ConstructorUiId.rayPositionPlusButton, ControlCaption "+"
-        clickBox id caption availability (fun e ->
-            handlers.moveBy ((stepMeters e.KeyModifiers).inDirection direction))
+        clickBox id caption availability (fun button ->
+            handlers.moveBy ((stepMeters button.pressModifiers).inDirection direction))
 
     let private field (handlers : RayPositionControlsHandlers) (value : BarMeters) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
@@ -126,7 +105,7 @@ module RayPositionControls =
             | :? TextBox as tb when not (isNull tb.Text) -> BarMeters.tryCreate tb.Text |> Option.iter handlers.setPosition
             | _ -> ()
         TextBox.create [
-            TextBox.name ConstructorUiId.rayPositionField.value
+            yield! ConstructorUiId.rayPositionField.inputAttributes<TextBox> ()
             TextBox.width 80.0
             TextBox.isEnabled availability.isEnabled
             TextBox.text value.signedText
@@ -151,7 +130,7 @@ module RayPositionControls =
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "m" ]
                 clickBox ConstructorUiId.rayPositionResetButton (ControlCaption "Reset position") state.availability (fun _ -> handlers.reset ())
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.rayPositionReadout.value
+                    ConstructorUiId.rayPositionReadout.automationAttribute<TextBlock> ()
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(10.0, 0.0, 0.0, 0.0))
                     TextBlock.text state.readoutText

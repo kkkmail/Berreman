@@ -45,7 +45,7 @@ type ControlCaption with
 /// A vertical list carrying `id`, one wrapping line per caption (spec 0050 S14.2).
 let private planLines (id : ConstructorUiId) (captions : ControlCaption list) : IView =
     StackPanel.create [
-        id.automationAttribute<StackPanel> ()
+        yield! id.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Vertical
         StackPanel.children (captions |> List.map _.planLine)
     ] :> IView
@@ -131,7 +131,7 @@ let private boundsGrid (report : PlanReport) (bounds : TargetBound list) : IView
         [ ControlCaption "Target"; ControlCaption "Value"; ControlCaption "σ"; ControlCaption "σ / value" ]
         |> List.mapi (fun column caption -> cell 0 column FontWeight.SemiBold caption)
     Grid.create [
-        ConstructorUiId.planBoundsGrid.automationAttribute<Grid> ()
+        yield! ConstructorUiId.planBoundsGrid.groupAttributes<Grid> ()
         Grid.margin (Thickness(0.0, 4.0, 0.0, 2.0))
         Grid.columnDefinitions "Auto,Auto,Auto,Auto"
         Grid.rowDefinitions (List.replicate (bounds.Length + 1) "Auto" |> String.concat ",")
@@ -212,6 +212,7 @@ let private planCandidateRows
             | CandidateInKit name, _ ->
                 [
                     TextBlock.create [
+                        TextBlock.dock Dock.Right
                         TextBlock.verticalAlignment VerticalAlignment.Center
                         TextBlock.margin (Thickness(0.0, 0.0, 0.0, 4.0))
                         TextBlock.text $"In the kit as {name.value}."
@@ -219,20 +220,27 @@ let private planCandidateRows
                 ]
             | CandidateNotInKit, ControlOffered ->
                 [
-                    MaterialsWindowView.actionButton (ConstructorUiId.addPlanCandidateButton candidate) (ControlCaption "Add to kit")
-                        MaterialsWindowView.positiveBackground (fun () -> dispatch (AddPlannedExperiment candidate))
+                    Border.create [
+                        Border.dock Dock.Right
+                        Border.verticalAlignment VerticalAlignment.Center
+                        Border.child (
+                            CommandControls.actionCommand (ConstructorUiId.addPlanCandidateButton candidate) (ControlCaption "Add to kit")
+                                PositiveCommand (fun () -> dispatch (AddPlannedExperiment candidate)))
+                    ]
                 ]
             | CandidateNotInKit, ControlWithheld -> []
         let caption : IView =
             TextBlock.create [
                 TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.margin (Thickness(0.0, 0.0, 10.0, 4.0))
                 TextBlock.text $"{index + 1}. {(step.planStepCaption report.criterion).value}"
             ]
-        StackPanel.create [
-            id.automationAttribute<StackPanel> ()
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.children (caption :: ending)
+        // Spec 0051 `.manual/003` 4.3: the caption wraps beside its verb, which stays in reach at the page's width.
+        DockPanel.create [
+            yield! id.groupAttributes<DockPanel> ()
+            DockPanel.lastChildFill true
+            DockPanel.children (ending @ [ caption ])
         ]
         |> View.withKey id.value
         :> IView
@@ -247,7 +255,7 @@ let private planCandidateRows
     [
         (ControlCaption "Next experiments, in the order the plan adds them:").planHeading
         StackPanel.create [
-            ConstructorUiId.planCandidateList.automationAttribute<StackPanel> ()
+            yield! ConstructorUiId.planCandidateList.groupAttributes<StackPanel> ()
             StackPanel.orientation Orientation.Vertical
             StackPanel.children (held @ ranked)
         ]
@@ -272,10 +280,7 @@ let private chosenStudyRows
                         let id = ConstructorUiId.planMaterialChoice material.version
                         let caption = ControlCaption $"{material.name.value} v{material.version.version.value}"
                         let choose () = dispatch (SetPlanMaterial material.version)
-                        if model.planMaterialOpt = Some material.version then
-                            MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground choose
-                        else
-                            MaterialsWindowView.verbButton id caption choose))
+                        CommandControls.choiceCommand id caption (if model.planMaterialOpt = Some material.version then ChosenChoice else UnchosenChoice) choose))
             ] :> IView
     let criterionRow : IView =
         WrapPanel.create [
@@ -287,10 +292,7 @@ let private chosenStudyRows
                 |> List.map (fun (criterion, id) ->
                     let caption = ControlCaption criterion.text
                     let choose () = dispatch (SetPlanCriterion criterion)
-                    if model.planSurface.criterion = criterion then
-                        MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground choose
-                    else
-                        MaterialsWindowView.verbButton id caption choose))
+                    CommandControls.choiceCommand id caption (if model.planSurface.criterion = criterion then ChosenChoice else UnchosenChoice) choose))
         ] :> IView
     let run : IView list =
         match model.planMaterialOpt with
@@ -302,16 +304,17 @@ let private chosenStudyRows
                     material = material
                     criterion = model.planSurface.criterion
                 }
-            let button =
-                MaterialsWindowView.actionButton ConstructorUiId.planRunButton (ControlCaption "Run plan")
-                    MaterialsWindowView.positiveBackground (fun () -> dispatch (StudyPlan (RunPlan request)))
-                :?> IView<Border>
-            [ button |> View.withAttrs [ Border.isEnabled (not job.isRunning) ] :> IView ]
+            // A running plan withholds a second Run.
+            let availability = if job.isRunning then ControlWithheld else ControlOffered
+            [
+                CommandControls.actionCommandWhen availability ConstructorUiId.planRunButton (ControlCaption "Run plan") PositiveCommand
+                    (fun () -> dispatch (StudyPlan (RunPlan request)))
+            ]
     let running : IView list =
         if job.isRunning then
             [
-                MaterialsWindowView.actionButton ConstructorUiId.planCancelButton (ControlCaption "Cancel")
-                    MaterialsWindowView.negativeBackground (fun () -> dispatch (StudyPlan CancelPlan))
+                CommandControls.actionCommand ConstructorUiId.planCancelButton (ControlCaption "Cancel")
+                    NegativeCommand (fun () -> dispatch (StudyPlan CancelPlan))
                 ProgressBar.create [
                     ConstructorUiId.planProgressBar.automationAttribute<ProgressBar> ()
                     ProgressBar.width 160.0
@@ -344,10 +347,11 @@ let private chosenStudyRows
         | [] -> []
         | children ->
             [
-                StackPanel.create [
-                    StackPanel.orientation Orientation.Horizontal
-                    StackPanel.margin (Thickness(0.0, 6.0, 0.0, 0.0))
-                    StackPanel.children children
+                // Spec 0051 `.manual/003` 4.3: the run's row wraps at the page's width.
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.margin (Thickness(0.0, 6.0, 0.0, 0.0))
+                    WrapPanel.children children
                 ]
                 |> View.withKey runKey
                 :> IView
@@ -390,11 +394,16 @@ let planView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
         AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
         ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so no page is wider than its window.
         ScrollViewer.content (
-            StackPanel.create [
-                ConstructorUiId.planPanel.automationAttribute<StackPanel> ()
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.margin 8.0
-                StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+            MinWidthPanel.create [
+                (PanelMinWidth 520.0).minWidthPanelAttribute ()
+                MinWidthPanel.child (
+                    StackPanel.create [
+                        yield! ConstructorUiId.planPanel.groupAttributes<StackPanel> ()
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.margin 8.0
+                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+                    ])
             ])
     ] :> IView

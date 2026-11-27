@@ -110,7 +110,7 @@ module TestAppScope =
     /// Answers the folder picker immediately with the supplied test kit (spec 0050 S4.3).
     let kitPickerOf (folder : KitFolder) : KitFolderPicker =
         {
-            pickKitFolder = fun () -> async { return Some folder }
+            pickKitFolder = fun _ -> async { return Some folder }
         }
 
     /// Opens a fresh read-write test kit, failing the calling fact with its error (spec 0050 .spec-md §3.10).
@@ -417,7 +417,6 @@ module TestAppScope =
                 let axis : ScanAxis =
                     {
                         elementId = analyzerId
-                        label = ElementLabel "CPL2"
                         variable = VaryR1
                         range =
                             {
@@ -459,7 +458,7 @@ module TestAppScope =
             |> Result.defaultWith (fun error -> failwith error.describe)
         let studyName = StudyName "QZ-LR"
         let model = inverseModelOver context reopened |> updateTableAndElementRotation (StudyCommand (CreateStudy (studyName, names)))
-        match model.kitStatus with
+        match model.kitStatusCaption with
         | None -> model
         | Some error ->
             model.kit.close () |> SceneTestFixture.kitSuccess
@@ -497,7 +496,7 @@ module TestAppScope =
         let study = model.selectedStudyOpt |> Option.defaultWith (fun () -> failwith "The fixture must have a selected study")
         let version = MaterialVersionId.firstOf entry.id
         let opened = model |> updateTableAndElementRotation (StudyCommand (OpenMaterial (study.name, version)))
-        match opened.kitStatus with
+        match opened.kitRefusalOpt with
         | None -> opened
         | Some error -> failwith error.value
 
@@ -569,7 +568,7 @@ module TestAppScope =
         let study = StudyName "QZ"
         let checkedAfter (message : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
             let next = model |> updateTableAndElementRotation message
-            match next.kitStatus with
+            match next.kitStatusCaption with
             | None -> next
             | Some error ->
                 next.kit.close () |> SceneTestFixture.kitSuccess

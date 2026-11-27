@@ -89,7 +89,6 @@ module PrefitCheckTests =
                 ExperimentScan.oneAxis
                     {
                         elementId = lp.id
-                        label = ElementLabel "Linear polarizer #1"
                         variable = VaryR1
                         range = { min = SweptValue 0.0; max = SweptValue 90.0; points = CurvePointCount 4 }
                     }

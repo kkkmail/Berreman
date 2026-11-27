@@ -96,7 +96,7 @@ module RendererTestTests =
             Dispatcher.UIThread.RunJobs()
             let names =
                 window.GetVisualDescendants()
-                |> Seq.choose (function :? Control as c when not (isNull c.Name) -> Some c.Name | _ -> None)
+                |> Seq.choose (function :? Control as c when not (System.String.IsNullOrEmpty (UiDriver.idOf c)) -> Some (UiDriver.idOf c) | _ -> None)
                 |> Set.ofSeq
             window.Close()
             for id in [ ConstructorUiId.rendererSwapButton.value; ConstructorUiId.rendererRailsSlider.value

@@ -652,6 +652,13 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
                         entryExportStatus = None
                         lastError = Some (LibraryExportRefusedErr error)
                 }
+    // Spec 0051 `.manual/003` 5.4: a library holding only the shipped catalogue says so, and writes nothing.
+    | ExportMyLibrary _ when (match m.context.catalogueImports.proxy.heldUserEntries () with Ok [] -> true | Ok _ | Error _ -> false) ->
+        {
+            m with
+                entryExportStatus = Some (ControlCaption "Your library holds no entries of its own, only the shipped catalogue's: there is nothing to export.")
+                lastError = None
+        }
     | ExportShownLibraryEntries target
     | ExportMyLibrary target ->
         let result =
@@ -1291,55 +1298,7 @@ let libraryFacetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeCo
 // ---------------------------------------------------------------------------
 
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 let private messageColor = Color.FromRgb(178uy, 34uy, 34uy)
-// The positive/negative action pair backgrounds (the Save/Cancel precedent, SampleEditorView).
-let private positiveBackground = Color.FromRgb(186uy, 224uy, 186uy)
-let private negativeBackground = Color.FromRgb(236uy, 202uy, 202uy)
-
-/// A clickable verb box (the shared workbench button look), KEYED by its id so membership
-/// changes recreate a shifted box; `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
-/// pass. The verbs, confirm row, message and panel all have variable membership, so every id is
-/// an AutomationId, never `StyledElement.Name` (the `FacetedTreeControls` discipline).
-let private libraryVerbButtonWithBackground (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onPressed : PointerPressedEventArgs -> unit) : IView =
-    let keyedBox =
-        Border.create [
-            id.automationAttribute<Border> ()
-            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onPressed e), SubPatchOptions.OnChangeOf (box id.value))
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey id.value
-    keyedBox :> IView
-
-/// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
-/// `MaterialsWindowView.verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
-/// membership: the pair exists only in Select state).
-let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    let keyedBox =
-        Border.create [
-            id.automationAttribute<Border> ()
-            AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(22.0, 6.0))
-            Border.margin (Thickness(0.0, 0.0, 10.0, 4.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey id.value
-    keyedBox :> IView
 
 type SelectionTarget with
 
@@ -1362,8 +1321,8 @@ let private selectModeRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
-                  actionButton ConstructorUiId.librarySelectButton (ControlCaption "Select") positiveBackground (fun () -> dispatch ConfirmLibrarySelect)
-                  actionButton ConstructorUiId.librarySelectCloseButton (ControlCaption "Close") negativeBackground (fun () -> dispatch CancelLibrarySelect)
+                  CommandControls.actionCommand ConstructorUiId.librarySelectButton (ControlCaption "Select") PositiveCommand (fun () -> dispatch ConfirmLibrarySelect)
+                  CommandControls.actionCommand ConstructorUiId.librarySelectCloseButton (ControlCaption "Close") NegativeCommand (fun () -> dispatch CancelLibrarySelect)
               ]
           ] :> IView
           (TextBlock.create [
@@ -1378,9 +1337,9 @@ let private selectModeRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg
 /// One lifecycle verb box (spec 0038 step 023), by its action.
 let private lifecycleButton (dispatch : LibraryWindowMsg -> unit) (action : MaterialsWindowView.LifecycleAction) : IView =
     match action with
-    | MaterialsWindowView.MarkInactiveAction -> MaterialsWindowView.verbButton ConstructorUiId.libraryMarkInactiveButton (ControlCaption "Mark inactive") (fun () -> dispatch RequestMarkSampleInactive)
-    | MaterialsWindowView.MarkActiveAction -> MaterialsWindowView.verbButton ConstructorUiId.libraryMarkActiveButton (ControlCaption "Mark active") (fun () -> dispatch RequestMarkSampleActive)
-    | MaterialsWindowView.SupersedeAction -> MaterialsWindowView.verbButton ConstructorUiId.librarySupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersedeSample)
+    | MaterialsWindowView.MarkInactiveAction -> CommandControls.verbCommand ConstructorUiId.libraryMarkInactiveButton (ControlCaption "Mark inactive") (fun () -> dispatch RequestMarkSampleInactive)
+    | MaterialsWindowView.MarkActiveAction -> CommandControls.verbCommand ConstructorUiId.libraryMarkActiveButton (ControlCaption "Mark active") (fun () -> dispatch RequestMarkSampleActive)
+    | MaterialsWindowView.SupersedeAction -> CommandControls.verbCommand ConstructorUiId.librarySupersedeButton (ControlCaption "Supersede…") (fun () -> dispatch RequestSupersedeSample)
 
 /// The verbs row: Add sample, Make multilayer and (spec 0046) Add source always; Edit only for a
 /// SAMPLE or USER-SOURCE selection (a preset has no editor — the verb is removed, not greyed); Remove
@@ -1393,68 +1352,70 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
             [
-                MaterialsWindowView.verbButton ConstructorUiId.libraryAddSampleButton (ControlCaption "Add sample") (fun () -> dispatch AddSample)
-                MaterialsWindowView.verbButton ConstructorUiId.libraryMakeMultilayerButton (ControlCaption "Make multilayer") (fun () -> dispatch MakeMultilayer)
-                MaterialsWindowView.verbButton ConstructorUiId.libraryAddSourceButton (ControlCaption "Add source") (fun () -> dispatch AddSource)
+                CommandControls.verbCommand ConstructorUiId.libraryAddSampleButton (ControlCaption "Add sample") (fun () -> dispatch AddSample)
+                CommandControls.verbCommand ConstructorUiId.libraryMakeMultilayerButton (ControlCaption "Make multilayer") (fun () -> dispatch MakeMultilayer)
+                CommandControls.verbCommand ConstructorUiId.libraryAddSourceButton (ControlCaption "Add source") (fun () -> dispatch AddSource)
             ]
             @ (match m.editableSample, m.editableSource with
-               | Some _, _ | None, Some _ -> [ MaterialsWindowView.verbButton ConstructorUiId.libraryEditButton (ControlCaption "Edit") (fun () -> dispatch EditSelectedEntry) ]
+               | Some _, _ | None, Some _ -> [ CommandControls.verbCommand ConstructorUiId.libraryEditButton (ControlCaption "Edit") (fun () -> dispatch EditSelectedEntry) ]
                | None, None -> [])
             @ (match m.selectedEntry with
-               | Some _ -> [ MaterialsWindowView.verbButton ConstructorUiId.libraryRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelectedEntry) ]
+               | Some _ -> [ CommandControls.verbCommand ConstructorUiId.libraryRemoveButton (ControlCaption "Remove") (fun () -> dispatch RequestRemoveSelectedEntry) ]
                | None -> [])
             @ (m.offeredLifecycleActions |> List.map (lifecycleButton dispatch))
             @ [
-                MaterialsWindowView.verbButtonOn ConstructorUiId.libraryRegisterCatalogueFolderButton (ControlCaption "Register catalogue folder…") (fun e ->
-                    match e.Source with
-                    | :? Visual as source ->
-                        match TopLevel.GetTopLevel source with
-                        | :? Window as owner -> MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Register catalogue folder") None (RegisterCatalogueFolder >> dispatch)
-                        | _ -> ()
-                    | _ -> ())
+                CommandControls.verbCommandOn ConstructorUiId.libraryRegisterCatalogueFolderButton (ControlCaption "Register catalogue folder…") (fun pressed ->
+                    match TopLevel.GetTopLevel pressed with
+                        // Spec 0051 `.manual/003` 5.2: it starts in the Catalogues location, never on the desktop.
+                        | :? Window as owner ->
+                            MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Register catalogue folder") m.context.catalogueImports.exportFolderOpt (RegisterCatalogueFolder >> dispatch)
+                        | _ -> ())
             ]
             @ (match m.pendingImports with
                | [] -> []
-               | _ -> [ MaterialsWindowView.verbButton ConstructorUiId.libraryReviewImportsButton (ControlCaption "Review imports…") (fun () -> dispatch ReviewPendingImports) ])
+               | pending ->
+                   // Spec 0051 `.manual/003` 5.3: entries waiting for a decision are said to wait, not shown as missing.
+                   let count = pending |> List.sumBy (fun waiting -> waiting.decisions.Length)
+                   [
+                       TextBlock.create [
+                           ConstructorUiId.libraryPendingImportsText.automationAttribute<TextBlock> ()
+                           TextBlock.textWrapping TextWrapping.Wrap
+                           TextBlock.margin (Thickness(0.0, 4.0, 8.0, 4.0))
+                           TextBlock.text $"{count} catalogue entries wait for an import decision and show once it is made."
+                       ]
+                       :> IView
+                       CommandControls.verbCommand ConstructorUiId.libraryReviewImportsButton (ControlCaption "Review imports…") (fun () -> dispatch ReviewPendingImports)
+                   ])
             @ (match m.mode with
                | Select _ -> []
                | Browse ->
                    (match m.exportableSelection with
                     | None -> []
                     | Some envelope ->
-                        [ MaterialsWindowView.verbButtonOn ConstructorUiId.libraryExportButton (ControlCaption "Export…") (fun e ->
-                              match e.Source with
-                              | :? Visual as source ->
-                                  match TopLevel.GetTopLevel source with
+                        [ CommandControls.verbCommandOn ConstructorUiId.libraryExportButton (ControlCaption "Export…") (fun pressed ->
+                              match TopLevel.GetTopLevel pressed with
                                   | :? Window as owner ->
                                       MaterialsWindowView.pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
                                           (ExportSelectedLibraryEntry >> dispatch)
-                                  | _ -> ()
-                              | _ -> ()) ])
+                                  | _ -> ()) ])
                    @ (match m.filteredEntries with
                       | [] -> []
                       | _ ->
-                          [ MaterialsWindowView.verbButtonOn ConstructorUiId.libraryExportShownButton (ControlCaption "Export shown to catalogue…") (fun e ->
-                                match e.Source with
-                                | :? Visual as source ->
-                                    match TopLevel.GetTopLevel source with
+                          [ CommandControls.verbCommandOn ConstructorUiId.libraryExportShownButton (ControlCaption "Export shown to catalogue…") (fun pressed ->
+                                match TopLevel.GetTopLevel pressed with
                                     | :? Window as owner ->
                                         MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
                                             (CatalogueExportTarget.ofFolder >> ExportShownLibraryEntries >> dispatch)
-                                    | _ -> ()
-                                | _ -> ()) ])
-                   @ [ MaterialsWindowView.verbButtonOn ConstructorUiId.libraryExportMyLibraryButton (ControlCaption "Export my library…") (fun e ->
-                           match e.Source with
-                           | :? Visual as source ->
-                               match TopLevel.GetTopLevel source with
+                                    | _ -> ()) ])
+                   @ [ CommandControls.verbCommandOn ConstructorUiId.libraryExportMyLibraryButton (ControlCaption "Export my library…") (fun pressed ->
+                           match TopLevel.GetTopLevel pressed with
                                | :? Window as owner ->
                                    MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export my library to a catalogue folder") m.context.catalogueImports.exportFolderOpt
                                        (CatalogueExportTarget.ofFolder >> ExportMyLibrary >> dispatch)
-                               | _ -> ()
-                           | _ -> ()) ])
+                               | _ -> ()) ])
             @ [
-                MaterialsWindowView.verbButton ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
-                MaterialsWindowView.verbButton ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
+                CommandControls.verbCommand ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
+                CommandControls.verbCommand ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
             ])
     ] :> IView
 
@@ -1463,7 +1424,7 @@ let private catalogueFolderRows (m : LibraryWindowModel) (dispatch : LibraryWind
     | Error _ | Ok [] -> []
     | Ok entries ->
         [ StackPanel.create [
-              ConstructorUiId.libraryCatalogueFoldersPanel.automationAttribute<StackPanel> ()
+              yield! ConstructorUiId.libraryCatalogueFoldersPanel.groupAttributes<StackPanel> ()
               AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Catalogue folders", ValueNone)
               StackPanel.spacing 6.0
               StackPanel.children (
@@ -1472,14 +1433,14 @@ let private catalogueFolderRows (m : LibraryWindowModel) (dispatch : LibraryWind
                       let id = ConstructorUiId.libraryCatalogueFolderRow entry.catalogueId.uiKey
                       let importedAt = entry.importedAt.value.ToString("yyyy-MM-dd HH:mm", Globalization.CultureInfo.InvariantCulture)
                       StackPanel.create [
-                          id.automationAttribute<StackPanel> ()
+                          yield! id.groupAttributes<StackPanel> ()
                           AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, entry.folder.value, ValueNone)
                           StackPanel.spacing 4.0
                           StackPanel.children [
                               TextBlock.create [ TextBlock.text entry.folder.value; TextBlock.textWrapping TextWrapping.Wrap ]
                               TextBlock.create [ TextBlock.text $"imported {importedAt} UTC" ]
                               TextBlock.create [ TextBlock.text $"{entry.entryCount.value} entries" ]
-                              MaterialsWindowView.verbButton (ConstructorUiId.libraryUnregisterCatalogueButton entry.catalogueId.uiKey) (ControlCaption "Unregister") (fun () -> dispatch (UnregisterCatalogueFolder entry.catalogueId))
+                              CommandControls.verbCommand (ConstructorUiId.libraryUnregisterCatalogueButton entry.catalogueId.uiKey) (ControlCaption "Unregister") (fun () -> dispatch (UnregisterCatalogueFolder entry.catalogueId))
                           ]
                       ]
                       |> Avalonia.FuncUI.DSL.View.withKey id.value
@@ -1492,7 +1453,7 @@ let private libraryRestoreRows (m : LibraryWindowModel) (dispatch : LibraryWindo
     | PendingLibraryRestore (backups, pickedOpt) ->
         let prompt = ControlCaption "Restore the whole library from a backup. The current library is backed up first."
         [ StackPanel.create [
-              ConstructorUiId.libraryRestorePanel.automationAttribute<StackPanel> ()
+              yield! ConstructorUiId.libraryRestorePanel.groupAttributes<StackPanel> ()
               AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, prompt.value, ValueNone)
               StackPanel.spacing 6.0
               StackPanel.children (
@@ -1504,13 +1465,12 @@ let private libraryRestoreRows (m : LibraryWindowModel) (dispatch : LibraryWindo
                      | [] -> [ TextBlock.create [ TextBlock.text "No backup yet." ] :> IView ]
                      | names ->
                          names |> List.map (fun name ->
-                             let background = if pickedOpt = Some name then positiveBackground else idleBackground
-                             libraryVerbButtonWithBackground (ConstructorUiId.libraryBackupRow name.uiKey) name.caption background (fun _ -> dispatch (PickLibraryBackup name))))
+                             CommandControls.choiceCommand (ConstructorUiId.libraryBackupRow name.uiKey) name.caption (if pickedOpt = Some name then ChosenChoice else UnchosenChoice) (fun () -> dispatch (PickLibraryBackup name))))
                   @ [ WrapPanel.create [
                           WrapPanel.orientation Orientation.Horizontal
                           WrapPanel.children [
-                              actionButton ConstructorUiId.libraryRestoreConfirmButton (ControlCaption "Restore") positiveBackground (fun () -> dispatch ConfirmLibraryRestore)
-                              actionButton ConstructorUiId.libraryRestoreCancelButton (ControlCaption "Cancel") negativeBackground (fun () -> dispatch CancelLibraryRestore)
+                              CommandControls.actionCommand ConstructorUiId.libraryRestoreConfirmButton (ControlCaption "Restore") PositiveCommand (fun () -> dispatch ConfirmLibraryRestore)
+                              CommandControls.actionCommand ConstructorUiId.libraryRestoreCancelButton (ControlCaption "Cancel") NegativeCommand (fun () -> dispatch CancelLibraryRestore)
                           ]
                       ] :> IView ])
           ] :> IView ]
@@ -1562,7 +1522,7 @@ let private toggleRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
             match m.showInactive with
             | ActiveOnly -> ControlCaption $"Show inactive (%d{n.value})"
             | IncludeInactive -> ControlCaption $"Hide inactive (%d{n.value})"
-        [ MaterialsWindowView.verbButton ConstructorUiId.libraryShowInactiveToggle label (fun () -> dispatch ToggleShowInactiveEntries) ]
+        [ CommandControls.verbCommand ConstructorUiId.libraryShowInactiveToggle label (fun () -> dispatch ToggleShowInactiveEntries) ]
 
 /// The inline remove confirmation — present only while a sample or source remove is armed.
 let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
@@ -1588,8 +1548,8 @@ let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> 
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  MaterialsWindowView.verbButton ConstructorUiId.libraryRemoveConfirmButton (ControlCaption "Remove") (fun () -> dispatch ConfirmEntryRemove)
-                  MaterialsWindowView.verbButton ConstructorUiId.libraryRemoveCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelEntryRemove)
+                  CommandControls.verbCommand ConstructorUiId.libraryRemoveConfirmButton (ControlCaption "Remove") (fun () -> dispatch ConfirmEntryRemove)
+                  CommandControls.verbCommand ConstructorUiId.libraryRemoveCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelEntryRemove)
               ]
           ] :> IView ]
 
@@ -1617,8 +1577,8 @@ let private lifecycleConfirmRow (m : LibraryWindowModel) (dispatch : LibraryWind
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  MaterialsWindowView.verbButton ConstructorUiId.libraryLifecycleConfirmButton (ControlCaption "Confirm") (fun () -> dispatch ConfirmSampleLifecycle)
-                  MaterialsWindowView.verbButton ConstructorUiId.libraryLifecycleCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelSampleLifecycle)
+                  CommandControls.verbCommand ConstructorUiId.libraryLifecycleConfirmButton (ControlCaption "Confirm") (fun () -> dispatch ConfirmSampleLifecycle)
+                  CommandControls.verbCommand ConstructorUiId.libraryLifecycleCancelButton (ControlCaption "Cancel") (fun () -> dispatch CancelSampleLifecycle)
               ]
           ] :> IView ]
 
@@ -1645,7 +1605,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
     | [] | [ _ ] -> []
     | _ ->
         [ StackPanel.create [
-              ConstructorUiId.libraryVersionsPanel.automationAttribute<StackPanel> ()
+              yield! ConstructorUiId.libraryVersionsPanel.groupAttributes<StackPanel> ()
               StackPanel.orientation Orientation.Horizontal
               StackPanel.spacing 0.0
               StackPanel.children (
@@ -1658,7 +1618,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
                       |> List.map (fun (version, _) ->
                           let marker = if version = shown then "▸ " else ""
                           let latestTag = if version = latest then " (latest)" else ""
-                          MaterialsWindowView.verbButton (ConstructorUiId.libraryVersionRow version) (ControlCaption $"%s{marker}v%d{version.value}%s{latestTag}") (fun () -> dispatch (ViewSampleVersion version)))))
+                          CommandControls.verbCommand (ConstructorUiId.libraryVersionRow version) (ControlCaption $"%s{marker}v%d{version.value}%s{latestTag}") (fun () -> dispatch (ViewSampleVersion version)))))
           ] :> IView ]
 
 /// The view panel: the selected entry's kind, protection state and FULL description (the
@@ -1699,14 +1659,14 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
             if viewingOlder then
                 [ TextBlock.create [
                       ConstructorUiId.libraryViewOnlyNote.automationAttribute<TextBlock> ()
-                      TextBlock.foreground (brush idleBorder)
+                      TextBlock.foreground (brush NeutralCommand.outline)
                       TextBlock.textWrapping TextWrapping.Wrap
                       TextBlock.maxWidth 380.0
                       TextBlock.text $"Viewing version %d{shownVersion.value} (view-only) — the library edits the latest, version %d{latestVersion.value}."
                   ] :> IView ]
             else []
         [ Border.create [
-              ConstructorUiId.libraryViewPanel.automationAttribute<Border> ()
+              yield! ConstructorUiId.libraryViewPanel.groupAttributes<Border> ()
               Border.child (
                   StackPanel.create [
                       StackPanel.orientation Orientation.Vertical
@@ -1766,7 +1726,7 @@ let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                     ])
             ]
             Border.create [
-                ConstructorUiId.libraryFacetTreeHost.automationAttribute<Border> ()
+                yield! ConstructorUiId.libraryFacetTreeHost.groupAttributes<Border> ()
                 Border.padding (Thickness 8.0)
                 Border.child (FacetedTreeControls.facetedTreeControlsView (libraryFacetedState m) (libraryFacetedHandlers dispatch))
             ]

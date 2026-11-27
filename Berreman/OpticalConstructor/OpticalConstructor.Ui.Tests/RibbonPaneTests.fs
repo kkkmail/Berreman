@@ -43,7 +43,7 @@ module RibbonPaneTests =
     /// Every non-empty control `Name` realized anywhere in the window's visual tree.
     let private realizedNames (window : Window) : Set<string> =
         window.GetVisualDescendants()
-        |> Seq.choose (function :? Control as c when not (isNull c.Name) -> Some c.Name | _ -> None)
+        |> Seq.choose (function :? Control as c when not (System.String.IsNullOrEmpty (UiDriver.idOf c)) -> Some (UiDriver.idOf c) | _ -> None)
         |> Set.ofSeq
 
     /// Click the centre of the (always-present, visible) ribbon tab for `bayName`, driving the live
@@ -53,7 +53,7 @@ module RibbonPaneTests =
         let id = (ConstructorUiId.ribbonTab (ConstructorUiKey bayName)).value
         let found =
             window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Control as c when c.Name = id && c.IsEffectivelyVisible -> Some c | _ -> None)
+            |> Seq.tryPick (function :? Control as c when UiDriver.hasId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
         match found with
         | None -> Assert.Fail($"ribbon tab %s{bayName} was not found (or not visible)")
         | Some b ->

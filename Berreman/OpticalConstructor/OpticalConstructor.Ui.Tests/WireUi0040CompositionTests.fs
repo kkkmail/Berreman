@@ -24,6 +24,7 @@ open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Storage.CatalogueImportStore
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Headless
 open Avalonia.Media
 open Avalonia.Threading
@@ -36,6 +37,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.Tests.UiDriver
 
 module WireUi0040CompositionTests =
 
@@ -46,52 +48,13 @@ module WireUi0040CompositionTests =
 
     // ============================ shared driving helpers ============================
 
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the tree
-    /// rows / verbs live in variable-membership lists, so they carry an AutomationId — the
-    /// FacetedTreeControls / WireUiCompositionTests discipline).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    /// Present anywhere in the visual tree (visible or not) — the "is it listed" probe.
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId). A Save /
-    /// Select click can close the window during the press, so the release is skipped when the
-    /// window is already gone.
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
-
     /// Click the centre of ANY control carrying `id` (not only a Border) — a CheckBox toggles and
     /// raises its Click on this pointer press/release exactly as a user interaction does (the
     /// emission R/T boxes, spec 0040 step 010).
     let private clickControl (window : Window) (id : string) : unit =
         let found =
             window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Control as c when matchesId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
+            |> Seq.tryPick (function :? Control as c when UiDriver.hasId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some c ->
@@ -110,17 +73,6 @@ module WireUi0040CompositionTests =
         | Some (:? CheckBox as cb) -> cb
         | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a CheckBox"
         | None -> failwith $"%s{id} was not found"
-
-    /// The display text under the control carrying `id` (the control itself when it is a
-    /// TextBlock, its first TextBlock descendant otherwise).
-    let private textOf (window : Window) (id : string) : string =
-        match tryFindControl window id with
-        | None -> ""
-        | Some (:? TextBlock as t) -> (if isNull t.Text then "" else t.Text)
-        | Some c ->
-            c.GetVisualDescendants()
-            |> Seq.tryPick (function :? TextBlock as t when not (isNull t.Text) -> Some t.Text | _ -> None)
-            |> Option.defaultValue ""
 
     /// Commit `text` through the REAL faceted filter box (the Materials / Library windows commit on
     /// Enter/LostFocus only — never per keystroke — so a bare text set dispatches nothing).
@@ -146,16 +98,13 @@ module WireUi0040CompositionTests =
 
     /// The clickable label Border of the tree row carrying `id` (the chevron carries a DISTINCT id,
     /// so this is unambiguously the label box).
-    let private labelBorderOf (window : Window) (id : string) : Border =
-        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+    let private labelBorderOf (window : Window) (id : string) : TemplatedControl =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? TemplatedControl as b when UiDriver.hasId id b -> Some b | _ -> None) with
         | Some b -> b
         | None -> failwith $"%s{id} label border was not found"
 
     /// A Border's solid fill colour (None when it carries a non-solid brush).
-    let private backgroundColorOf (b : Border) : Color option =
-        match b.Background with
-        | :? SolidColorBrush as s -> Some s.Color
-        | _ -> None
+    let private backgroundColorOf (b : TemplatedControl) : Color option = Some (UiDriver.fillOfControl b)
 
     // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
     let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
@@ -192,7 +141,7 @@ module WireUi0040CompositionTests =
         clickOn root ConstructorUiId.openMaterialsWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
+        Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
         Assert.True(opened.[0].IsVisible, "the Materials window must be shown")
         opened.[0]
 
@@ -205,7 +154,7 @@ module WireUi0040CompositionTests =
         clickOn root ConstructorUiId.openLibraryWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
+        Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
         Assert.True(opened.[0].IsVisible, "the Library window must be shown")
         opened.[0]
 
@@ -330,7 +279,7 @@ module WireUi0040CompositionTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
-            Assert.True(matchesId ConstructorUiId.materialsWindow.value materialsWindow, "the substrate Set… verb must open the Materials window")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value materialsWindow, "the substrate Set… verb must open the Materials window")
             Assert.True(isPresent materialsWindow ConstructorUiId.materialsSelectButton.value, "the Materials window must be in Select state")
             Assert.Contains("substrate", textOf materialsWindow ConstructorUiId.materialsSelectConstraint.value)
             // Pick BuiltinCatalogue.material's 1.75 glass: filter → expand → select.

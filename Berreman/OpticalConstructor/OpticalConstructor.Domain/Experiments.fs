@@ -251,28 +251,32 @@ module Experiments =
         /// `E<n>`: the name an experiment takes when the template cannot name its setup (spec 0050 S9.1).
         member this.defaultName : ExperimentName = ExperimentName $"E{this.value}"
 
-    /// An element's human label as an experiment captures it ("<kind> #<n>"), so a row outlives the element.
+    /// An element's name as a slot of its setup shows it ("Analyzer 1: LP2"); derived from the setup whenever it is
+    /// shown, never stored (spec 0051 `.manual/003` 3.5, D3).
     type ElementLabel =
         | ElementLabel of string
 
         member this.value = let (ElementLabel l) = this in l
 
-        /// No element chosen yet (a fresh draft, a dark line).
-        static member blank : ElementLabel = ElementLabel ""
+    /// A scan's text, as a row, a readout or a chart describes an experiment (spec 0050 S9.1; 0051 `.manual/003` 3.5).
+    type ScanDescription =
+        | ScanDescription of string
 
-    /// One quantity of one slot over its range, the slot's label as the experiment captured it (spec 0050 S9.1).
+        member this.value : string = let (ScanDescription text) = this in text
+
+    /// One quantity of one slot over its range (spec 0050 S9.1); the slot is named from the setup it scans (spec 0051
+    /// `.manual/003` 3.5, D3).
     type ScanAxis =
         {
             elementId : ElementId
-            label : ElementLabel
             variable : VariableParameter
             range : VariableRange
         }
 
-        /// `<label>: vary <variable> over <min>…<max> <unit> (<points> pts)`: an experiment description's varied text
-        /// (spec 0050 S9.1).
-        member this.describe : string =
-            $"%s{this.label.value}: vary %s{this.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{this.variable.unitLabel} (%d{this.range.points.value} pts)"
+        /// `<label>: vary <variable> over <min>…<max> <unit> (<points> pts)`: an experiment description's varied text,
+        /// the slot named `label` (spec 0050 S9.1).
+        member this.describeAs (label : ElementLabel) : ScanDescription =
+            ScanDescription $"%s{label.value}: vary %s{this.variable.label} over %g{this.range.min.value}…%g{this.range.max.value} %s{this.variable.unitLabel} (%d{this.range.points.value} pts)"
 
     /// One axis of a scan at one of its values (spec 0050 S9.1).
     type ScanSetting =
@@ -368,19 +372,19 @@ module Experiments =
         }
 
         /// The collection row's and readout's text: one block of no axis is a dark line on its setup revision; otherwise
-        /// the blocks' texts joined by `; `, each its axes' `describe`s joined by ` × ` and its capture (spec 0050 S8.2,
-        /// S9.1).
-        member this.description : string =
+        /// the blocks' texts joined by `; `, each its axes' `describeAs`s joined by ` × ` and its capture, every slot named
+        /// by `labelOf` (spec 0050 S8.2, S9.1; 0051 `.manual/003` 3.5).
+        member this.describeWith (labelOf : ElementId -> ElementLabel) : ScanDescription =
             let blockText (block : ScanBlock) : string =
                 match block.axes with
                 | [] -> $"Dark line, capture %s{block.capture.label}"
                 | axes ->
-                    let varied = axes |> List.map (fun (axis : ScanAxis) -> axis.describe) |> String.concat " × "
+                    let varied = axes |> List.map (fun (axis : ScanAxis) -> (axis.describeAs (labelOf axis.elementId)).value) |> String.concat " × "
                     $"%s{varied}, capture %s{block.capture.label}"
 
             match this.scan.blocks with
-            | [ block ] when List.isEmpty block.axes -> $"Dark line on setup %s{this.setup.describe}, capture %s{block.capture.label}"
-            | blocks -> blocks |> List.map blockText |> String.concat "; "
+            | [ block ] when List.isEmpty block.axes -> ScanDescription $"Dark line on setup %s{this.setup.describe}, capture %s{block.capture.label}"
+            | blocks -> blocks |> List.map blockText |> String.concat "; " |> ScanDescription
 
         /// Copies into a kit holding `taken`, in order: a free id is kept, a clash takes the next of the highest id
         /// taken, incoming or given so far; only `id` changes (spec 0050 S6).
@@ -450,7 +454,7 @@ module Experiments =
         }
 
         /// The only supported experiment file schema version (spec 0050 S4.3).
-        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
+        static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 2
 
     type Experiment with
 
@@ -461,13 +465,12 @@ module Experiments =
                 experiment = this
             }
 
-    /// The in-progress experiment being built or edited (spec 028): the edited axis is `elementId`, `elementLabel`,
+    /// The in-progress experiment being built or edited (spec 028): the edited axis is `elementId`,
     /// `variable` and `range`, unset until chosen. With `editingId` the next `commit` UPDATES that experiment, otherwise
     /// it APPENDS one (spec 0050 S9.1).
     type ExperimentDraft =
         {
             elementId : ElementId option
-            elementLabel : ElementLabel
             variable : VariableParameter option
             measurement : MeasurementMode
             range : VariableRange
@@ -483,7 +486,6 @@ module Experiments =
         static member empty : ExperimentDraft =
             {
                 elementId = None
-                elementLabel = ElementLabel.blank
                 variable = None
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1
@@ -500,7 +502,6 @@ module Experiments =
                 let axis : ScanAxis =
                     {
                         elementId = elementId
-                        label = this.elementLabel
                         variable = variable
                         range = this.range
                     }
@@ -576,7 +577,6 @@ module Experiments =
                                 this.draft with
                                     outerAxes = this.draft.outerAxes @ [ axis ]
                                     elementId = None
-                                    elementLabel = ElementLabel.blank
                                     variable = None
                                     range = VariableRange.forVariable VaryR1
                             }
@@ -611,7 +611,6 @@ module Experiments =
     /// to that variable's default. The draft's earlier axes and blocks stay (spec 0050 S9.1).
     let chooseElement
         (id : ElementId)
-        (label : ElementLabel)
         (allowed : VariableParameter list)
         (defaultMeasurement : MeasurementMode)
         (c : ExperimentCollection) : ExperimentCollection =
@@ -621,7 +620,6 @@ module Experiments =
             draft =
                 { c.draft with
                     elementId = Some id
-                    elementLabel = label
                     variable = variable
                     measurement = defaultMeasurement
                     range = range } }
@@ -757,7 +755,6 @@ module Experiments =
                             current with
                                 outerAxes = List.rev outer
                                 elementId = Some edited.elementId
-                                elementLabel = edited.label
                                 variable = Some edited.variable
                                 range = edited.range
                         }

@@ -21,6 +21,8 @@
         <Compile Include="..\OpticalConstructor.Tests\SceneTestFixture.fs" Link="SceneTestFixture.fs" />
         <Compile Include="TestApp.fs" />
         <Compile Include="TestAppScope.fs" />
+        <Compile Include="UiDriver.fs" />
+        <Compile Include="AutomationContract.fs" />
         <!-- Spec 0026 Part I (slice 003): pure localization logic tests (no headless
              session needed); runs under the `ui-tests` gate (Category!=ui-smoke). -->
         <Compile Include="LocalizationTests.fs" />
@@ -208,6 +210,7 @@
         <Compile Include="WorkbenchInfoAndCaptureTests.fs" />
         <!-- Spec 0046: every window's scroll extent holds all of its content (nothing unreachable). -->
         <Compile Include="ScrollExtentTests.fs" />
+        <Compile Include="AutomationContractTests.fs" />
         <!-- The inverse constructor keeps experiments and measured-data attachments in the kit (spec 0050 S4.3). -->
         <Compile Include="InverseConstructorTests.fs" />
         <Compile Include="SetupSaveLoadTests.fs" />
@@ -254,6 +257,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
         <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="FsCheck" />
         <!-- Headless Avalonia (spec 0024 §U1.7): the smoke/view tests render frames on
              the Avalonia.Headless platform via HeadlessUnitTestSession. This dependency
              lives ONLY here, never in the pure OpticalConstructor.Tests project. The

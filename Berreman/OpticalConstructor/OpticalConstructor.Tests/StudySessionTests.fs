@@ -22,7 +22,6 @@ module StudySessionTests =
                 ExperimentScan.oneAxis
                     {
                         elementId = ElementId "lp2"
-                        label = ElementLabel "Linear polarizer #4"
                         variable = VaryR1
                         range = VariableRange.forVariable VaryR1
                     }

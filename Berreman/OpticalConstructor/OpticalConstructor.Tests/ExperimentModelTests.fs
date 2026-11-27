@@ -65,14 +65,14 @@ module ExperimentModelTests =
         let scene = initMain () |> kitValue
         try
             let stocked = scene.loadKit opened |> updateTableAndElementRotation (AddItem qzDraft)
-            Assert.Equal<ControlCaption option>(None, stocked.kitStatus)
+            Assert.Equal<ControlCaption option>(None, stocked.kitRefusalOpt)
             let slotOfKind (model : TableAndElementRotationModel) (kind : CatalogueKind) : Library.ElementId =
                 (model.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)).id
             let withPolarizer = stocked |> updateTableAndElementRotation (AddElement LinearPolarizer)
             let withSample = withPolarizer |> updateTableAndElementRotation (AddElement Sample)
             let sample = slotOfKind withSample Sample
             let table = withSample |> updateTableAndElementRotation (AssignSlot (sample, Some qzDraft.id))
-            Assert.Equal<ControlCaption option>(None, table.kitStatus)
+            Assert.Equal<ControlCaption option>(None, table.kitRefusalOpt)
             Assert.Equal<CatalogueKind list>(
                 [ LightSource; LinearPolarizer; Sample; Detector ],
                 table.elements |> List.map (fun slot -> slot.placement.catalogueKind) |> List.sort)
@@ -132,7 +132,7 @@ module ExperimentModelTests =
                 scan.table
                 |> varying scan.sample ExperimentControls.VaryR2 incidenceRange
                 |> updateTableAndElementRotation ExpCommit
-            Assert.Equal<ControlCaption option>(None, committed.kitStatus)
+            Assert.Equal<ControlCaption option>(None, committed.kitRefusalOpt)
             let e1 : Experiments.Experiment = Assert.Single(committed.kit.proxy.readExperiments () |> kitValue)
             Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 1, e1.id)
             Assert.Equal<Experiments.Experiment list>([ e1 ], committed.experimentCollection.experiments)
@@ -178,11 +178,11 @@ module ExperimentModelTests =
                     |> updateTableAndElementRotation ExpNew
                     |> varying scan.polarizer ExperimentControls.VaryR1 azimuthRange
                     |> updateTableAndElementRotation ExpCommit
-                Assert.Equal<ControlCaption option>(None, committed.kitStatus)
+                Assert.Equal<ControlCaption option>(None, committed.kitRefusalOpt)
                 let attached =
                     committed
-                    |> updateTableAndElementRotation (AttachDataFile (Experiments.ExperimentId 1, labFile, ImportProfileName.intensitySeries))
-                Assert.Equal<ControlCaption option>(None, attached.kitStatus)
+                    |> updateTableAndElementRotation (AttachDataFile { experiment = Experiments.ExperimentId 1; file = labFile; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
+                Assert.Equal<ControlCaption option>(None, attached.kitRefusalOpt)
                 match attached.experimentCollection.experiments with
                 | [ e1; e2 ] ->
                     Assert.Equal<Experiments.ExperimentName list>(
@@ -242,12 +242,11 @@ module ExperimentModelTests =
             let incidenceExpected : Experiments.ScanAxis =
                 {
                     elementId = scan.sample
-                    label = incidence.label
                     variable = Experiments.VaryR2
                     range = incidenceRange
                 }
             Assert.Equal<Experiments.ScanAxis>(incidenceExpected, incidence)
-            Assert.NotEqual<Experiments.ElementLabel>(Experiments.ExperimentDraft.empty.elementLabel, incidence.label)
+            Assert.NotEqual<Experiments.ElementLabel>(Experiments.ElementLabel "", incidenceDraft.tableLabelOf incidence.elementId)
 
             let outer = incidenceDraft |> updateTableAndElementRotation ExpAddScanAxis
             Assert.Equal<Experiments.ScanAxis list>([ incidence ], outer.experimentCollection.draft.outerAxes)
@@ -298,15 +297,14 @@ module ExperimentModelTests =
             let analyzerExpected : Experiments.ScanAxis =
                 {
                     elementId = scan.polarizer
-                    label = analyzer.label
                     variable = Experiments.VaryR1
                     range = analyzerRange
                 }
             Assert.Equal<Experiments.ScanAxis>(analyzerExpected, analyzer)
-            Assert.NotEqual<Experiments.ElementLabel>(incidence.label, analyzer.label)
+            Assert.NotEqual<Experiments.ElementLabel>(analyzerDraft.tableLabelOf incidence.elementId, analyzerDraft.tableLabelOf analyzer.elementId)
 
             let committed = analyzerDraft |> updateTableAndElementRotation ExpCommit
-            Assert.Equal<ControlCaption option>(None, committed.kitStatus)
+            Assert.Equal<ControlCaption option>(None, committed.kitRefusalOpt)
             let stored : Experiments.Experiment = Assert.Single(committed.kit.proxy.readExperiments () |> kitValue)
             Assert.Equal<string list>([ $"{stored.name.value}.experiment-json" ], experimentFilesIn folder)
             let analyzerBlock : Experiments.ScanBlock =
@@ -352,7 +350,7 @@ module ExperimentModelTests =
                 |> updateTableAndElementRotation (SetExperimentRole (e1.id, Experiments.CalibrationRun))
                 |> updateTableAndElementRotation (SetExperimentSession (e1.id, ControlCaption "Day 1"))
                 |> updateTableAndElementRotation (SetExperimentNotes (e1.id, ControlCaption "LR re-seated before this run"))
-            Assert.Equal<ControlCaption option>(None, changed.kitStatus)
+            Assert.Equal<ControlCaption option>(None, changed.kitRefusalOpt)
 
             // Only the role, the session and the notes change: the scan, setup, name and data stay, the draft too.
             let expected : Experiments.Experiment =
@@ -387,7 +385,7 @@ module ExperimentModelTests =
             let sessionedStored : Experiments.Experiment = Assert.Single(inSession.kit.proxy.readExperiments () |> kitValue)
             Assert.Equal<Experiments.SessionName option>(Some (Experiments.SessionName "Day 1"), sessionedStored.sessionOpt)
             let cleared = inSession |> updateTableAndElementRotation (SetExperimentSession (e1.id, ControlCaption "  "))
-            Assert.Equal<ControlCaption option>(None, cleared.kitStatus)
+            Assert.Equal<ControlCaption option>(None, cleared.kitRefusalOpt)
             let clearedHeld : Experiments.Experiment = Assert.Single(cleared.experimentCollection.experiments)
             Assert.Equal<Experiments.SessionName option>(None, clearedHeld.sessionOpt)
             Assert.Equal<Experiments.Experiment>(e1, clearedHeld)
@@ -428,7 +426,7 @@ module ExperimentModelTests =
             let excluded =
                 reviewed
                 |> updateTableAndElementRotation (ExcludePoint (kit.e1.id, MappedPointNumber 2, ControlCaption "beam blocked"))
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Excluded point 2 of E1: beam blocked."), excluded.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Excluded point 2 of E1: beam blocked."), excluded.kitStatusCaption)
             threePointsOf excluded
             Assert.Equal<ReviewedData option>(reviewed.reviewedDataOpt, excluded.reviewedDataOpt)
 
@@ -464,7 +462,7 @@ module ExperimentModelTests =
             let excluded =
                 typed
                 |> updateTableAndElementRotation (ExcludePoint (kit.e1.id, MappedPointNumber 2, typed.dataDraft.exclusionReason))
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Excluded point 2 of E1: beam blocked."), excluded.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Excluded point 2 of E1: beam blocked."), excluded.kitStatusCaption)
             let exclusion : PointExclusion =
                 {
                     point = MappedPointNumber 2
@@ -497,7 +495,7 @@ module ExperimentModelTests =
             Assert.Equal<byte>(labBefore, File.ReadAllBytes kit.labFile.value)
 
             let included = excluded |> updateTableAndElementRotation (IncludePoint (kit.e1.id, MappedPointNumber 2))
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Included point 2 of E1 again."), included.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Included point 2 of E1 again."), included.kitStatusCaption)
             let heldIncluded = heldExperiment included kit.e1.id
             Assert.Equal<Experiments.Experiment>(kit.e1, heldIncluded)
             Assert.Equal<Experiments.Experiment>(kit.e1, storedExperiment included kit.e1.id)
@@ -521,7 +519,7 @@ module ExperimentModelTests =
             let before = everyFileBytes folder kit
             let refusedWith (status : string) (message : TableAndElementRotationMsg) : unit =
                 let answer = kit.model |> updateTableAndElementRotation message
-                Assert.Equal<ControlCaption option>(Some (ControlCaption status), answer.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption status), answer.kitStatusCaption)
                 Assert.Equal<TableAndElementRotationModel>(
                     {
                         kit.model with kitStatus = answer.kitStatus
@@ -559,7 +557,7 @@ module ExperimentModelTests =
                 |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, BarDegrees 30.0))
                 |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench B"))
                 |> updateTableAndElementRotation CreateSetup
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench B'."), created.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench B'."), created.kitStatusCaption)
             match created.kitSetups with
             | [ benchB; setup1 ] ->
                 Assert.Equal<SetupReference>({ name = SetupName "Bench B"; revision = SetupRevision.first }, benchB.reference)
@@ -601,7 +599,7 @@ module ExperimentModelTests =
                 |> updateTableAndElementRotation (CorrectSetup (Experiments.ExperimentId 1, benchB.reference, typed.dataDraft.correctionNote))
             Assert.Equal<ControlCaption option>(
                 Some (ControlCaption "Corrected E1: 'Setup 1' revision 1 → 'Bench B' revision 1 (LP1 was at 30)."),
-                corrected.kitStatus)
+                corrected.kitStatusCaption)
             let correction : Experiments.SetupCorrection =
                 {
                     previous = setup1Revision1
@@ -641,7 +639,7 @@ module ExperimentModelTests =
             let before = everyFileBytes folder kit
             let refusedWith (status : string) (message : TableAndElementRotationMsg) : unit =
                 let answer = kit.model |> updateTableAndElementRotation message
-                Assert.Equal<ControlCaption option>(Some (ControlCaption status), answer.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption status), answer.kitStatusCaption)
                 Assert.Equal<TableAndElementRotationModel>(
                     {
                         kit.model with kitStatus = answer.kitStatus

@@ -765,12 +765,9 @@ module MeasurementPlanner =
             let axisOn (slot : SetupSlot) (variable : VariableParameter) (range : VariableRange) : ScanAxis =
                 {
                     elementId = slot.id
-                    label = ElementLabel.blank
                     variable = variable
                     range = range
                 }
-
-            let unlabelled (axis : ScanAxis) : ScanAxis = { axis with label = ElementLabel.blank }
 
             let heldBy (experiment : Experiment) : ExperimentName option =
                 match experiment.slotsIn setups, experiment.scan with
@@ -785,7 +782,7 @@ module MeasurementPlanner =
                             ]
 
                         objectOne.slot.content.itemOpt = Some this.plate.item
-                        && (block.axes |> List.map unlabelled) = swept)
+                        && block.axes = swept)
                     |> Option.map (fun _ -> experiment.name)
                 | Ok _, _
                 | Error _, _ -> None

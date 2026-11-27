@@ -309,7 +309,6 @@ module ImportProfileTests =
     let private plateAzimuths : ScanAxis =
         {
             elementId = sample
-            label = ElementLabel "Sample #1"
             variable = VaryR1
             range =
                 {
@@ -372,7 +371,6 @@ module ImportProfileTests =
         let azimuth : ScanQuantity =
             {
                 elementId = sample
-                label = ElementLabel "Sample #1"
                 variable = VaryR1
                 ranges = [ plateAzimuths.range; plateAzimuthPair.range ]
             }
@@ -392,7 +390,6 @@ module ImportProfileTests =
             {
                 plateAzimuthPair with
                     elementId = Library.ElementId "analyzer"
-                    label = ElementLabel "Linear polarizer #2"
             }
 
         let relabelled : ExperimentScan =
@@ -401,7 +398,7 @@ module ImportProfileTests =
                     blocks =
                         [
                             { axes = [ plateAzimuths ]; capture = CaptureTransmitted }
-                            { axes = [ { plateAzimuthPair with label = ElementLabel "Plate" }; analyzerTurn ]; capture = CaptureTransmitted }
+                            { axes = [ plateAzimuthPair; analyzerTurn ]; capture = CaptureTransmitted }
                         ]
             }
 
@@ -409,7 +406,6 @@ module ImportProfileTests =
             {
                 azimuth with
                     elementId = analyzerTurn.elementId
-                    label = analyzerTurn.label
                     ranges = [ analyzerTurn.range ]
             }
 
@@ -441,7 +437,7 @@ module ImportProfileTests =
         assertValidation (Ok captures) (captures.validatedFor Library.Intensity darkLine)
 
         assertValidation
-            (Error (DataRangeMismatchErr "a description 45° lies outside every range of Sample #1 Rotation R1"))
+            (Error (DataRangeMismatchErr "a description 45° lies outside every range of slot 'sample' Rotation R1"))
             (captures.validatedFor Library.Intensity upTo40)
 
         assertValidation
@@ -479,7 +475,6 @@ module ImportProfileTests =
             scanOf
                 {
                     elementId = Library.ElementId "source"
-                    label = ElementLabel "Light source #1"
                     variable = VaryWaveLength
                     range = VariableRange.forVariable VaryWaveLength
                 }
@@ -492,8 +487,8 @@ module ImportProfileTests =
             | other -> Assert.Fail($"{quantity}: expected DataUnitsMismatchErr, got %A{other}")
 
         assertValidation (Ok labScan) (labScan.validatedFor Library.Intensity turnScan)
-        assertUnitsMismatch dialScan labScan "Sample #1 Dial reading"
-        assertUnitsMismatch waveLengthScan labScan "Light source #1 Wavelength"
+        assertUnitsMismatch dialScan labScan "slot 'sample' Dial reading"
+        assertUnitsMismatch waveLengthScan labScan "slot 'source' Wavelength"
 
         assertValidation
             (Error (DataUnitsMismatchErr "the import profile maps 1 scan column(s), and the scan varies 2"))
@@ -507,20 +502,20 @@ module ImportProfileTests =
         let rawDial = labScanIn DegreeColumnUnit RawDialReading
         let nanometres = labScanIn NanometerColumnUnit PhysicalScanValue
         assertValidation (Ok rawDial) (rawDial.validatedFor Library.Intensity dialScan)
-        assertUnitsMismatch turnScan rawDial "Sample #1 Rotation R1"
-        assertUnitsMismatch turnScan nanometres "Sample #1 Rotation R1"
+        assertUnitsMismatch turnScan rawDial "slot 'sample' Rotation R1"
+        assertUnitsMismatch turnScan nanometres "slot 'sample' Rotation R1"
         assertValidation (Ok labScan) (labScan.validatedFor Library.Intensity upTo40)
 
         match nanometres.validatedFor Library.Intensity waveLengthScan with
         | Error (DataRangeMismatchErr reason) ->
             Assert.Contains("0 nm", reason)
-            Assert.Contains("Light source #1 Wavelength", reason)
+            Assert.Contains("slot 'source' Wavelength", reason)
         | other -> Assert.Fail($"0 nm: expected DataRangeMismatchErr, got %A{other}")
 
         match labScan.validatedFor Library.Intensity (scanOf plateIncidence) with
         | Error (DataRangeMismatchErr reason) ->
             Assert.Contains("0 °", reason)
-            Assert.Contains("Sample #1 Incidence R2", reason)
+            Assert.Contains("slot 'sample' Incidence R2", reason)
         | other -> Assert.Fail($"0° below 20…60°: expected DataRangeMismatchErr, got %A{other}")
 
         // Keyed observations carry their own configurations and pass as read.

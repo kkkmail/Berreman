@@ -222,7 +222,7 @@ module ElementRotationTests =
                 withMouseHarness (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ConstructorUiId.rotationR2PlusButton.value -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Control as b when UiDriver.hasId (ConstructorUiId.rotationR2PlusButton.value) b -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->

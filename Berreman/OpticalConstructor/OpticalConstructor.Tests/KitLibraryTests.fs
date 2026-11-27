@@ -113,6 +113,7 @@ module StudyFileFixtures =
                 disabled = [ e2 ]
                 starts = FitStartCount.single
                 suspect = SuspectThresholds.initial
+                calibrationUse = CalibrationHeldFixed
             }
         {
             name = StudyName "QZ-LR"

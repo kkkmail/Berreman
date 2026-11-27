@@ -12,6 +12,7 @@ open System
 open System.Globalization
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
@@ -236,45 +237,13 @@ let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorM
 // ---------------------------------------------------------------------------
 
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
-let private saveBackground = Color.FromRgb(186uy, 224uy, 186uy)
-let private cancelBackground = Color.FromRgb(236uy, 202uy, 202uy)
-let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 let private hintColor = Color.FromRgb(110uy, 110uy, 110uy)
 let private errorColor = Color.FromRgb(165uy, 40uy, 40uy)
 
-/// A clickable box (keyed by its id; highlighted when chosen).
-let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(10.0, 4.0))
-        Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, label.value, background)))
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey id.value
-    :> IView
-
-let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(22.0, 6.0))
-        Border.margin (Thickness(0.0, 0.0, 10.0, 0.0))
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey id.value
-    :> IView
+/// An option box, a choice chosen while it is the current one.
+let private clickBox (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (onClick : unit -> unit) : IView =
+    CommandControls.choiceToggle id label mark ChosenCommand ControlOffered onClick
+        [ ToggleButton.padding (Thickness(10.0, 4.0)); ToggleButton.margin (Thickness(0.0, 0.0, 6.0, 0.0)) ]
 
 type ControlCaption with
 
@@ -289,7 +258,7 @@ let private nameRow (m : LightSourceEditorModel) (dispatch : LightSourceEditorMs
         StackPanel.children [
             (ControlCaption "Name:").lightSourceEditorLabel
             TextBox.create [
-                TextBox.name ConstructorUiId.sourceNameBox.value
+                yield! ConstructorUiId.sourceNameBox.inputAttributes<TextBox> ()
                 TextBox.width 320.0
                 TextBox.text m.name.value
                 TextBox.onTextChanged (EntryName >> SetLightSourceName >> dispatch)
@@ -306,8 +275,8 @@ let private tuningRows (m : LightSourceEditorModel) (dispatch : LightSourceEdito
           StackPanel.spacing 6.0
           StackPanel.children [
               (ControlCaption "Tuning:").lightSourceEditorLabel
-              clickBox ConstructorUiId.sourceTuningFixed (ControlCaption "Fixed line") (if tunable then idleBackground else chosenBackground) (fun () -> dispatch (SetTuning FixedChoice))
-              clickBox ConstructorUiId.sourceTuningTunable (ControlCaption "Tunable") (if tunable then chosenBackground else idleBackground) (fun () -> dispatch (SetTuning TunableChoice))
+              clickBox ConstructorUiId.sourceTuningFixed (ControlCaption "Fixed line") (if tunable then UnchosenChoice else ChosenChoice) (fun () -> dispatch (SetTuning FixedChoice))
+              clickBox ConstructorUiId.sourceTuningTunable (ControlCaption "Tunable") (if tunable then ChosenChoice else UnchosenChoice) (fun () -> dispatch (SetTuning TunableChoice))
           ]
       ] :> IView
       StackPanel.create [
@@ -317,14 +286,14 @@ let private tuningRows (m : LightSourceEditorModel) (dispatch : LightSourceEdito
           StackPanel.children [
               (ControlCaption "Limits:").lightSourceEditorLabel
               TextBox.create [
-                  TextBox.name ConstructorUiId.sourceTunableMinimumBox.value
+                  yield! ConstructorUiId.sourceTunableMinimumBox.inputAttributes<TextBox> ()
                   TextBox.width 110.0
                   TextBox.text m.minimumText.value
                   TextBox.onTextChanged (ControlCaption >> SetMinimumText >> dispatch)
               ] :> IView
               TextBlock.create [ TextBlock.text "to"; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
               TextBox.create [
-                  TextBox.name ConstructorUiId.sourceTunableMaximumBox.value
+                  yield! ConstructorUiId.sourceTunableMaximumBox.inputAttributes<TextBox> ()
                   TextBox.width 110.0
                   TextBox.text m.maximumText.value
                   TextBox.onTextChanged (ControlCaption >> SetMaximumText >> dispatch)
@@ -342,21 +311,21 @@ let private waveLengthRow (m : LightSourceEditorModel) (dispatch : LightSourceEd
                | TunableChoice -> ControlCaption "Setting:"
                | FixedChoice -> ControlCaption "Wavelength:").lightSourceEditorLabel
               TextBox.create [
-                  TextBox.name ConstructorUiId.sourceWaveLengthBox.value
+                  yield! ConstructorUiId.sourceWaveLengthBox.inputAttributes<TextBox> ()
                   TextBox.width 110.0
                   TextBox.text m.waveLengthText.value
                   TextBox.onTextChanged (ControlCaption >> SetWaveLengthText >> dispatch)
               ] :> IView ]
             @ (waveLengthUnits
                |> List.map (fun u ->
-                   clickBox (ConstructorUiId.sourceWaveLengthUnit u.uiKey) u.caption (if u = m.unit then chosenBackground else idleBackground) (fun () -> dispatch (SetUnit u)))))
+                   clickBox (ConstructorUiId.sourceWaveLengthUnit u.uiKey) u.caption (if u = m.unit then ChosenChoice else UnchosenChoice) (fun () -> dispatch (SetUnit u)))))
     ] :> IView
 
 type LightSourceEditorModel with
 
     member internal this.readoutRow : IView =
         TextBlock.create [
-            TextBlock.name ConstructorUiId.sourceWaveLengthReadout.value
+            ConstructorUiId.sourceWaveLengthReadout.automationAttribute<TextBlock> ()
             TextBlock.margin (Thickness(96.0, 0.0, 0.0, 0.0))
             TextBlock.text this.readoutCaption.value
         ] :> IView
@@ -372,7 +341,7 @@ let private noteRow () : IView =
 
 let private statusRow (m : LightSourceEditorModel) : IView =
     TextBlock.create [
-        TextBlock.name ConstructorUiId.sourceEditorStatus.value
+        ConstructorUiId.sourceEditorStatus.automationAttribute<TextBlock> ()
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
@@ -386,13 +355,13 @@ let private actionsRow (m : LightSourceEditorModel) (dispatch : LightSourceEdito
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
-                actionButton ConstructorUiId.sourceSaveButton (ControlCaption "Save") saveBackground (fun () -> dispatch LightSourceSaveClicked)
-                actionButton ConstructorUiId.sourceCancelButton (ControlCaption "Cancel") cancelBackground (fun () -> dispatch LightSourceCancelClicked)
+                CommandControls.actionCommand ConstructorUiId.sourceSaveButton (ControlCaption "Save") PositiveCommand (fun () -> dispatch LightSourceSaveClicked)
+                CommandControls.actionCommand ConstructorUiId.sourceCancelButton (ControlCaption "Cancel") NegativeCommand (fun () -> dispatch LightSourceCancelClicked)
             ]
         ] :> IView
     | LightSourceConfirmingDiscard ->
         StackPanel.create [
-            ConstructorUiId.sourceExitConfirm.automationAttribute<StackPanel> ()
+            yield! ConstructorUiId.sourceExitConfirm.groupAttributes<StackPanel> ()
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
                 TextBlock.create [
@@ -401,8 +370,8 @@ let private actionsRow (m : LightSourceEditorModel) (dispatch : LightSourceEdito
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(0.0, 0.0, 12.0, 0.0))
                 ] :> IView
-                actionButton ConstructorUiId.sourceDiscardButton (ControlCaption "Discard changes") cancelBackground (fun () -> dispatch LightSourceDiscardConfirmed)
-                actionButton ConstructorUiId.sourceKeepEditingButton (ControlCaption "Keep editing") saveBackground (fun () -> dispatch LightSourceKeepEditing)
+                CommandControls.actionCommand ConstructorUiId.sourceDiscardButton (ControlCaption "Discard changes") NegativeCommand (fun () -> dispatch LightSourceDiscardConfirmed)
+                CommandControls.actionCommand ConstructorUiId.sourceKeepEditingButton (ControlCaption "Keep editing") PositiveCommand (fun () -> dispatch LightSourceKeepEditing)
             ]
         ] :> IView
 

@@ -37,7 +37,6 @@
           "axes": [
             {
               "elementId": "97b4178c-8eee-42f9-8f2d-23499a64f3eb",
-              "label": "Linear polarizer #6",
               "range": {
                 "max": 360,
                 "min": 0,
@@ -57,5 +56,5 @@
       "revision": 1
     }
   },
-  "schemaVersion": 1
+  "schemaVersion": 2
 }

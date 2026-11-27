@@ -2,6 +2,7 @@ namespace OpticalConstructor.Controls
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
@@ -194,50 +195,25 @@ module FacetedTreeControls =
             applyManualRange : ConstructorUiKey -> ControlCaption -> unit
         }
 
-    // -- The button look, identical to the other bars' idle/chosen boxes (so they MATCH). --
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-    // A SELECTED tree row (spec 0040 step 003) reads with the `chosenBackground` fill AND a
-    // thicker border — a non-hue, colourblind-safe cue that survives when the hue is imperceptible,
-    // so the selection never rests on colour alone.
+    // A SELECTED tree row (spec 0040 step 003) reads chosen AND with a thicker border — a non-hue, colourblind-safe cue
+    // that survives when the hue is imperceptible, so the selection never rests on colour alone.
     let private idleBorderThickness = Thickness 1.0
     let private selectedBorderThickness = Thickness 3.0
 
-    /// The chosen fill for the box keyed `key` when it is the `chosen` one, the idle fill otherwise.
-    let private boxBackground (chosen : ConstructorUiKey option) (key : ConstructorUiKey) : Color =
-        if chosen = Some key then chosenBackground else idleBackground
+    /// The box keyed `key` is chosen while it is the `chosen` one.
+    let private boxMark (chosen : ConstructorUiKey option) (key : ConstructorUiKey) : ChoiceMark =
+        if chosen = Some key then ChosenChoice else UnchosenChoice
 
-    // Every id below is an AutomationId, never `StyledElement.Name`: every list here has variable
-    // membership (the host rewrites chips, offers, and rows on each constraint change, and the tree
-    // body swaps with the Show/Search button), so a sibling can shift onto a reused control's slot —
-    // Avalonia forbids renaming a styled control, and an AutomationId survives that reuse (the
-    // `MaterialsControls` / `ExperimentControls` precedent, spec 0038 Part A).
+    /// An action box (a chip, an offered value, or the Show/Search button), keyed by its id so a membership change
+    /// recreates a shifted box instead of patching another item's control in place.
+    let private clickBox (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (onClick : unit -> unit) : IView =
+        CommandControls.commandButton id label emphasis ControlOffered onClick
+            [ Button.padding (Thickness(10.0, 4.0)); Button.margin (Thickness(0.0, 0.0, 6.0, 4.0)) ]
 
-    /// A clickable, styled box (a chip, an offered value, a representation option, or the
-    /// Show/Search button) on its `background`, KEYED by its id (`View.withKey`) so a
-    /// membership change recreates a shifted box instead of patching another item's styled control
-    /// in place. `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe
-    /// when the id or the highlight changes so a reused box can't keep a stale handler.
-    let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-        let keyedBox =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(10.0, 4.0))
-                Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, background)))
-            ]
-            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
-            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        keyedBox :> IView
+    /// A representation option, chosen while it is the active one.
+    let private choiceBox (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (onClick : unit -> unit) : IView =
+        CommandControls.choiceToggle id label mark ChosenCommand ControlOffered onClick
+            [ ToggleButton.padding (Thickness(10.0, 4.0)); ToggleButton.margin (Thickness(0.0, 0.0, 6.0, 4.0)) ]
 
     /// Dispatch `commit` with the event source's CURRENT text. The boxes below subscribe this on
     /// Enter and LostFocus ONLY — no text-change handler exists anywhere in this control, so
@@ -265,7 +241,7 @@ module FacetedTreeControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Filter:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    ConstructorUiId.facetFilterBox.automationAttribute<TextBox> ()
+                    yield! ConstructorUiId.facetFilterBox.inputAttributes<TextBox> ()
                     TextBox.width 220.0
                     TextBox.text state.filterDraft.value
                     TextBox.onKeyDown (commitOnEnter handlers.commitTextFilter)
@@ -283,15 +259,15 @@ module FacetedTreeControls =
             DockPanel.children [
                 TextBlock.create [ TextBlock.dock Dock.Left; TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0)); TextBlock.text "View by:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 WrapPanel.create [
-                    ConstructorUiId.facetRepresentationPicker.automationAttribute<WrapPanel> ()
+                    yield! ConstructorUiId.facetRepresentationPicker.groupAttributes<WrapPanel> ()
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         state.representations
                         |> List.map (fun r ->
-                            clickBox
+                            choiceBox
                                 (ConstructorUiId.facetRepresentationOption r.code)
                                 r.label
-                                (boxBackground state.activeRepresentationOpt r.code)
+                                (boxMark state.activeRepresentationOpt r.code)
                                 (fun () -> handlers.chooseRepresentation r.code)))
                 ]
             ]
@@ -302,7 +278,7 @@ module FacetedTreeControls =
     /// highlighted (they are applied state, not offers).
     let private breadcrumbStripView (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         WrapPanel.create [
-            ConstructorUiId.facetBreadcrumbStrip.automationAttribute<WrapPanel> ()
+            yield! ConstructorUiId.facetBreadcrumbStrip.groupAttributes<WrapPanel> ()
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (
                 state.breadcrumbs
@@ -310,7 +286,7 @@ module FacetedTreeControls =
                     clickBox
                         (ConstructorUiId.facetBreadcrumbChip chip.code)
                         (ControlCaption $"%s{chip.label.value} (%d{chip.afterCount.value}) ×")
-                        chosenBackground
+                        ChosenCommand
                         (fun () -> handlers.removeConstraint chip.code)))
         ] :> IView
 
@@ -324,7 +300,7 @@ module FacetedTreeControls =
             | ManualRangeOffered ->
                 [
                     (TextBox.create [
-                        (ConstructorUiId.facetManualRangeBox group.code).automationAttribute<TextBox> ()
+                        yield! (ConstructorUiId.facetManualRangeBox group.code).inputAttributes<TextBox> ()
                         TextBox.width 110.0
                         TextBox.onKeyDown (commitOnEnter (handlers.applyManualRange group.code))
                         TextBox.onLostFocus (fun e -> commitFrom (handlers.applyManualRange group.code) e.Source)
@@ -335,7 +311,7 @@ module FacetedTreeControls =
         // the window's width instead of running off its right edge.
         let keyedGroup =
             DockPanel.create [
-                (ConstructorUiId.facetOfferGroup group.code).automationAttribute<DockPanel> ()
+                yield! (ConstructorUiId.facetOfferGroup group.code).groupAttributes<DockPanel> ()
                 DockPanel.children [
                     TextBlock.create [ TextBlock.dock Dock.Left; TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0)); TextBlock.text (group.title.value + ":"); TextBlock.verticalAlignment VerticalAlignment.Center ]
                     WrapPanel.create [
@@ -346,7 +322,7 @@ module FacetedTreeControls =
                                  clickBox
                                      (ConstructorUiId.facetOfferedValue group.code v.code)
                                      (ControlCaption $"%s{v.label.value} (%d{v.previewCount.value})")
-                                     idleBackground
+                                     NeutralCommand
                                      (fun () -> handlers.applyConstraint group.code v.code)))
                             @ rangeBox)
                     ]
@@ -358,7 +334,7 @@ module FacetedTreeControls =
     /// The offers panel: one row per offer group, facets in display order.
     let private offersPanelView (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         StackPanel.create [
-            ConstructorUiId.facetOffersPanel.automationAttribute<StackPanel> ()
+            yield! ConstructorUiId.facetOffersPanel.groupAttributes<StackPanel> ()
             StackPanel.orientation Orientation.Vertical
             StackPanel.children (state.offers |> List.map (offerGroupView handlers))
         ] :> IView
@@ -371,26 +347,17 @@ module FacetedTreeControls =
     /// (and the chevron and label within it) is keyed by its (tree-unique) node code.
     ///
     /// The row whose code matches `selectedCodeOpt` (the host's tracked selection, spec 0040 step 003)
-    /// paints its label with `chosenBackground` AND a thicker border (a non-hue, colourblind-safe
+    /// paints its label chosen AND with a thicker border (a non-hue, colourblind-safe
     /// cue) so exactly that row reads distinct while every other stays idle. Re-subscribe the
     /// pointer handler when the code OR the selection flag changes so a reused, restyled box cannot
     /// keep a stale handler (the `clickBox` discipline).
     let rec private nodeRows (handlers : FacetedTreeControlsHandlers) (selectedCodeOpt : ConstructorUiKey option) (depth : FacetTreeDepth) (node : TreeNode) : IView list =
         let isSelected = selectedCodeOpt = Some node.code
         let label =
-            Border.create [
-                (ConstructorUiId.facetTreeNode node.code).automationAttribute<Border> ()
-                Border.background (brush (boxBackground selectedCodeOpt node.code))
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness (if isSelected then selectedBorderThickness else idleBorderThickness)
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(10.0, 3.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text node.rowText.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.selectNode node.code), SubPatchOptions.OnChangeOf (box (node.code.value, isSelected)))
-            ]
-            |> Avalonia.FuncUI.DSL.View.withKey (ConstructorUiId.facetTreeNode node.code).value
-            :> IView
+            CommandControls.choiceToggle (ConstructorUiId.facetTreeNode node.code) node.rowText (boxMark selectedCodeOpt node.code) ChosenCommand ControlOffered
+                (fun () -> handlers.selectNode node.code)
+                [ ToggleButton.borderThickness (if isSelected then selectedBorderThickness else idleBorderThickness)
+                  ToggleButton.padding (Thickness(10.0, 3.0)) ]
         // A per-parent disclosure chevron (▾ expanded, ▸ collapsed): a node with no children shows
         // none. `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when
         // the code or the glyph changes so a reused box can't keep a stale handler (the `clickBox`
@@ -404,20 +371,8 @@ module FacetedTreeControls =
                     | ExpandedNode -> "▾"
                     | CollapsedNode -> "▸"
                 let chevronId = ConstructorUiId.facetTreeChevron node.code
-                [ Border.create [
-                      chevronId.automationAttribute<Border> ()
-                      Border.background (brush idleBackground)
-                      Border.borderBrush (brush idleBorder)
-                      Border.borderThickness 1.0
-                      Border.cornerRadius (CornerRadius 3.0)
-                      Border.padding (Thickness(6.0, 3.0))
-                      Border.margin (Thickness(0.0, 0.0, 4.0, 0.0))
-                      Border.verticalAlignment VerticalAlignment.Center
-                      Border.child (TextBlock.create [ TextBlock.text glyph ])
-                      Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.toggleNode node.code), SubPatchOptions.OnChangeOf (box (node.code.value, glyph)))
-                  ]
-                  |> Avalonia.FuncUI.DSL.View.withKey chevronId.value
-                  :> IView ]
+                [ CommandControls.commandButton chevronId (ControlCaption glyph) NeutralCommand ControlOffered (fun () -> handlers.toggleNode node.code)
+                      [ Button.padding (Thickness(6.0, 3.0)); Button.margin (Thickness(0.0, 0.0, 4.0, 0.0)) ] ]
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -437,11 +392,11 @@ module FacetedTreeControls =
     let private treeArea (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         match state.materialization with
         | TreeGated ->
-            clickBox ConstructorUiId.facetShowTreeButton (ControlCaption "Show / Search") idleBackground (fun () -> handlers.requestBuild ())
+            clickBox ConstructorUiId.facetShowTreeButton (ControlCaption "Show / Search") NeutralCommand (fun () -> handlers.requestBuild ())
         | TreeMaterialized ->
             let keyedTree =
                 StackPanel.create [
-                    ConstructorUiId.facetTree.automationAttribute<StackPanel> ()
+                    yield! ConstructorUiId.facetTree.groupAttributes<StackPanel> ()
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.tree |> List.collect (nodeRows handlers state.selectedCodeOpt (FacetTreeDepth 0)))
                 ]

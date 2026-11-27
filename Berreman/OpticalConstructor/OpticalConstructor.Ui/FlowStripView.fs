@@ -16,12 +16,9 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 let flowStripView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let stepBox (step : ConstructorFlowStep) : IView =
         let show () = dispatch (ShowFlowStep step)
-        if step = model.flowStep then
-            MaterialsWindowView.actionButton step.flowUiId step.caption MaterialsWindowView.positiveBackground show
-        else
-            MaterialsWindowView.verbButton step.flowUiId step.caption show
+        CommandControls.choiceCommand step.flowUiId step.caption (if step = model.flowStep then ChosenChoice else UnchosenChoice) show
     Border.create [
-        ConstructorUiId.flowStrip.automationAttribute<Border> ()
+        yield! ConstructorUiId.flowStrip.groupAttributes<Border> ()
         Border.margin (Thickness(8.0, 4.0, 0.0, 4.0))
         Border.child (
             StackPanel.create [

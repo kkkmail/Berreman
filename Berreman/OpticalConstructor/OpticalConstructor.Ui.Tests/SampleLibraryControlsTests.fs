@@ -8,6 +8,7 @@ open Avalonia.VisualTree
 open Avalonia.FuncUI
 open Xunit
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0033 (016) — the SampleLibraryControls component (UICOMP_XDUO_0002): the samples-workbench
 /// list surface. Covers the pure control contract (empty state, the stable intent-named UiIds, the
@@ -16,12 +17,6 @@ open OpticalConstructor.Controls
 /// (the functional-proxy seam — the control never touches a proxy). Wiring into a parent view is a
 /// later step; these tests mount the component alone (the step-015 MaterialsControls precedent).
 module SampleLibraryControlsTests =
-
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the verb /
-    /// row / facet-option boxes carry an AutomationId — a mutable attached property — so they
-    /// survive membership changes when the host's filter rewrites the rows; see the control).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
 
     /// A known flattened row set the host's search produced: a plate, a multilayer thin film, and
     /// a wedge (one per domain `SubstrateKind`, as the host would flatten them).
@@ -115,26 +110,6 @@ module SampleLibraryControlsTests =
             ConstructorUiId.viewSampleButton.value
             ConstructorUiId.makeMultilayerButton.value
         ]
-
-    let private isPresent (window : Window) (id : string) : bool =
-        window.GetVisualDescendants()
-        |> Seq.exists (function :? Control as c -> matchesId id c | _ -> false)
-
-    /// Click the centre of the control carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

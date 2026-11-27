@@ -33,6 +33,7 @@ open OpticalConstructor.Domain.FitRuns
 open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Domain.BeamLayout
@@ -257,6 +258,11 @@ type KitWindowShell =
         kitPicker : KitFolderPicker
         /// Opens the column-mapping wizard over the request (spec 0050 S9.2, step 311).
         openImportWizard : ImportWizardRequest -> unit
+        /// The environment file the file dialogs remember their folders in; none in the test scenes, which remember
+        /// nothing (spec 0051 `.manual/003` 5.2, 5.7).
+        environmentFileOpt : FileName option
+        /// Where a chart's exports start (spec 0051 `.manual/003` 5.8).
+        exportsFolderOpt : FolderName option
     }
 
     /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip or kit and runs no job; its
@@ -272,9 +278,11 @@ type KitWindowShell =
             planRuns = PlanJobHost.inert
             kitPicker =
                 {
-                    pickKitFolder = fun () -> async { return None }
+                    pickKitFolder = fun _ -> async { return None }
                 }
             openImportWizard = ignore
+            environmentFileOpt = None
+            exportsFolderOpt = None
         }
 
 /// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
@@ -327,7 +335,24 @@ type KitCopySource =
         setups : Setups.Setup list
         /// The mapping table: one row per item the chosen experiments use, with its choice (spec 0050 S7.2).
         itemRows : ItemCopyRow list
+        /// The window's item models over the source's snapshots, so a source item is named by its model's name and
+        /// version on any machine (spec 0051 `.manual/003` 4.4).
+        sourceItemModels : ItemModels.ItemModelProxy
     }
+
+    /// A source item's model by its name and version through the source's snapshots, never its id, whichever way the
+    /// item binds it (spec 0051 `.manual/003` 4.4; 005).
+    member this.modelCaptionOf (item : Item) : ControlCaption =
+        match this.sourceItemModels.resolveItemModelVersion item.model.itemModel with
+        | Ok (Some held) -> ControlCaption $"{held.entry.name.value} v{held.version.value}"
+        | Ok None
+        | Error _ -> ControlCaption "(model in neither kit's library)"
+
+    /// A source experiment's text, its slots named from the source's own setups and items (spec 0051 `.manual/003` 3.5).
+    member this.describe (experiment : Experiments.Experiment) : Experiments.ScanDescription =
+        match experiment.slotsIn this.setups with
+        | Ok slots -> experiment.describeWith (Setups.SetupSlot.elementLabelIn slots this.items)
+        | Error _ -> experiment.describeWith (Setups.SetupSlot.elementLabelIn [] this.items)
 
     /// Chooses the experiment, or unchooses it when chosen, keeping the source's order; an id the source does not
     /// hold is never chosen (spec 0050 S6).
@@ -634,7 +659,6 @@ type StudySurfaceState =
         studyOpt : StudyName option
         fitRunOpt : FitRunName option
         resultsTab : FitResultsTab
-        calibrationUse : CalibrationUse
         newStudyName : ControlCaption
         newStudyExperiments : Experiments.ExperimentName list
     }
@@ -645,7 +669,6 @@ type StudySurfaceState =
             studyOpt = None
             fitRunOpt = None
             resultsTab = ValuesResultsTab
-            calibrationUse = CalibrationHeldFixed
             newStudyName = ControlCaption ""
             newStudyExperiments = []
         }
@@ -669,6 +692,16 @@ type ElementIdProvider =
         {
             mintElementId = fun () -> System.Guid.NewGuid().ToString() |> Library.ElementId
         }
+
+/// What the kit bar last told: a step done, drawn neutral, or a refusal, drawn firebrick (spec 0051 `.manual/003` 5.1).
+type KitStatus =
+    | KitStatusDone of ControlCaption
+    | KitStatusRefused of ControlCaption
+
+    member this.caption : ControlCaption =
+        match this with
+        | KitStatusDone caption
+        | KitStatusRefused caption -> caption
 
 type TableAndElementRotationModel =
     {
@@ -770,8 +803,15 @@ type TableAndElementRotationModel =
         kitSend : KitArchiveJob.KitArchiveJobState
         /// The kit open to copy experiments from, `None` while no copy is being chosen (spec 0050 S6).
         kitCopyOpt : KitCopySource option
-        /// The last kit read or write that needs telling (spec 0050 S4.3).
-        kitStatus : ControlCaption option
+        /// The last kit read or write that needs telling, done or refused (spec 0050 S4.3; 0051 `.manual/003` 5.1).
+        kitStatus : KitStatus option
+        /// The kit's last active setup as this machine remembers it, which the window opens on (spec 0051 `.manual/003`
+        /// 3.1, D2).
+        setupMemory : KitSetupMemory
+        /// The collected experiment whose Remove waits for its Yes or No (spec 0051 `.manual/003` 2.3).
+        experimentRemovalOpt : Experiments.ExperimentId option
+        /// The note Record experiment writes into the template's `{note}`, as typed beside it (spec 0051 `.manual/003` 3.9).
+        recordNote : ControlCaption
         /// The naming template being typed, the kit file's wherever the window takes one (spec 0050 S8.3).
         namingTemplateText : ControlCaption
         /// The setup name being typed, validated when the setup is created (spec 0050 S8.2).
@@ -967,6 +1007,9 @@ let initWith
         kitSend = KitArchiveJob.KitArchiveJobState.idle
         kitCopyOpt = None
         kitStatus = None
+        setupMemory = KitSetupMemory.inert
+        experimentRemovalOpt = None
+        recordNote = ControlCaption ""
         namingTemplateText = kit.kitFile.namingTemplate.caption
         setupName = ControlCaption ""
         kitSetups = []
@@ -1135,6 +1178,15 @@ let initMain () : Result<TableAndElementRotationModel, KitError> =
                 itemModels = stores.itemModels
         })
 
+/// The lab file Attach maps into an experiment, by that profile and those rows (spec 0050 S9.2; 0051 `.manual/003` 2.4).
+type DataFileAttachParam =
+    {
+        experiment : Experiments.ExperimentId
+        file : FileName
+        profile : ImportProfileName
+        rows : DataRowSelection
+    }
+
 type TableAndElementRotationMsg =
     /// Applies and records a study verb, shared by the surfaces and their tests (spec 0050 S11.5).
     | StudyCommand of StudyMsg
@@ -1159,7 +1211,6 @@ type TableAndElementRotationMsg =
     /// Chooses the stored results category without writing to the kit (spec 0050 S11.5).
     | ShowResultsTab of FitResultsTab
     /// Chooses how stage two holds the calibration without writing (spec 0050 S11.5).
-    | SetStudyCalibrationUse of CalibrationUse
     /// Sets the New study form's typed name without writing (spec 0050 S11.5).
     | SetNewStudyName of ControlCaption
     /// Toggles an experiment in the New study form without writing (spec 0050 S11.5).
@@ -1194,6 +1245,8 @@ type TableAndElementRotationMsg =
     /// CPL / CPR pair shares the UNCHANGED CircularPolarizer kind and differs only here.
     | AddElementBoundTo of CatalogueKind * ElementValueId option
     | RemoveSelectedElement
+    /// Selects the table's element of that id, as a click on it does (spec 0051 `.manual/003` 3.6: the Select bay's list).
+    | SelectTableElement of Library.ElementId
     /// Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate
     /// (spec 0046: a detector is not clamped).
     | SlideSelectedBy of BarMeters
@@ -1296,14 +1349,21 @@ type TableAndElementRotationMsg =
     | ExpNew
     | ExpEdit of Experiments.ExperimentId
     | ExpRemove of Experiments.ExperimentId
+    /// The note beside Record experiment, as typed (spec 0051 `.manual/003` 3.9).
+    | SetRecordNote of ControlCaption
+    /// The Yes of the pending removal (spec 0051 `.manual/003` 2.3).
+    | ExpConfirmRemove
+    /// The No of the pending removal.
+    | ExpCancelRemove
     /// Spec 0027 (026): open the pop-out interactive chart window for the current DRAFT (double-click on the
     /// inline chart, or the "Open chart" button).
     | OpenExperimentChartWindow
     /// Spec 0027 (030 follow-up): open the chart window for a COLLECTED experiment by id (the per-row "View"
     /// button, and a double-click on the experiment row).
     | ViewExperiment of Experiments.ExperimentId
-    /// Attaches the picked file through the kit and maps it by that profile, every row the run's (spec 0050 S4.2, S9.2).
-    | AttachDataFile of Experiments.ExperimentId * FileName * ImportProfileName
+    /// Attaches the picked file through the kit and maps it by the wizard's profile and rows (spec 0050 S4.2, S9.2; 0051
+    /// `.manual/003` 2.4).
+    | AttachDataFile of DataFileAttachParam
     /// The Attach data file… button's message after its file dialog: opens the wizard over the picked file (spec 0050 S9.2).
     | OpenImportWizard of Experiments.ExperimentId * FileName
     /// The wizard's new column mapping, saved into the kit file (spec 0050 S9.2; 001 §K).
@@ -1436,7 +1496,14 @@ type ImportWizardApplied with
     member this.messages : TableAndElementRotationMsg list =
         let apply =
             match this.target with
-            | AttachWizardTarget experimentId -> AttachDataFile (experimentId, this.file, this.profile)
+            | AttachWizardTarget experimentId ->
+                AttachDataFile
+                    {
+                        experiment = experimentId
+                        file = this.file
+                        profile = this.profile
+                        rows = this.rows
+                    }
             | SplitWizardTarget -> SplitByColumn (this.file, this.profile)
 
         match this.savedOpt with
@@ -2000,7 +2067,7 @@ let private exportDraftRun (model : TableAndElementRotationModel) : TableAndElem
 
 /// Spec 0027 (030 follow-up): the side-effecting "open the chart window for a COLLECTED experiment (by id)"
 /// action — the per-row "View" button and a row double-click both invoke it. Same forward-reference seam.
-let mutable private viewExperimentHook : TableAndElementRotationModel -> Experiments.ExperimentId -> unit = fun _ _ -> ()
+let mutable private viewExperimentHook : TableAndElementRotationModel -> Experiments.ExperimentId -> ControlCaption option = fun _ _ -> None
 
 // Spec 0027 (028): the Controls-layer ⇄ domain mirror maps for the experiment variable / measurement DUs
 // (the bay is domain-free, so it mirrors the domain cases and the host maps them back).
@@ -2038,11 +2105,6 @@ type Experiments.MeasurementMode with
         | Experiments.CaptureTransmitted -> ExperimentControls.CaptureT
         | Experiments.CaptureReflected -> ExperimentControls.CaptureR
         | Experiments.CaptureBoth -> ExperimentControls.CaptureBoth
-
-type WaveLength with
-
-    /// The wavelength in nanometres.
-    member private w.nanometers : float = w.value / nmToMeter / oneNanometer
 
 type TableAndElementRotationModel with
 
@@ -2133,14 +2195,6 @@ type TableAndElementRotationModel with
 let availableCaptures (model : TableAndElementRotationModel) (varied : Library.ElementId) : Experiments.MeasurementMode list =
     BeamLayout.capturesFor (BeamLayout.detectedBranches model.sceneLayout model.detectorIds varied model.objectIds)
 
-/// Spec 0027 (028): the human label of a present element ("<kind> #<n>", 1-based, in scene order), captured
-/// onto an experiment so its collection row survives the element's removal.
-let private experimentElementLabel (model : TableAndElementRotationModel) (id : Library.ElementId) : Experiments.ElementLabel =
-    model.indexedElements
-    |> List.tryFind (fun (_, e) -> e.id = id)
-    |> Option.map (fun (i, e) -> Experiments.ElementLabel $"{e.placement.catalogueKind.kindName} #{i.value + 1}")
-    |> Option.defaultValue (Experiments.ElementLabel "(element)")
-
 type TableAndElementRotationModel with
 
     /// Spec 0046 (task 5): the capture the DRAFT actually runs with — its requested capture coerced to what
@@ -2227,11 +2281,13 @@ type TableAndElementRotationModel with
         | None -> ExperimentDataBadge.ofCheck experiment.dataOpt None None
 
     /// Loads the opened kit's content and rechecks every recorded data attachment (spec 0050 S4.3, S6, S11.5; 001 §E).
+    /// Spec 0051 `.manual/003` 3.7: a kit window opens with its table fitted to the canvas.
     member model.loadKit (opened : OpenedKit) : TableAndElementRotationModel =
         {
             model with
                 kitFolderOpt = Some opened.folder
                 experimentData = opened.experimentData
+                view = model.table.fittedView
         }
         |> withKitContent opened.library.kit opened.experiments opened.items opened.studies opened.fitRuns opened.setups
 
@@ -2441,12 +2497,16 @@ type TableAndElementRotationModel with
                     caption = combination.caption model.elements model.kitItems
                     mark = mark
                 }
-            let generateAvailability =
+            let generateReasonOpt : ControlCaption option =
                 match model.kitWrites, grid.axes, ticked with
-                | ControlOffered, _ :: _, _ :: _ -> ControlOffered
-                | ControlOffered, [], _
-                | ControlOffered, _, []
-                | ControlWithheld, _, _ -> ControlWithheld
+                | ControlOffered, _ :: _, _ :: _ -> None
+                | ControlWithheld, _, _ -> Some (ControlCaption "The kit is open read-only: nothing is generated.")
+                | ControlOffered, [], _ -> Some (ControlCaption "Try another item or angle in a slot first.")
+                | ControlOffered, _, [] -> Some (ControlCaption "Tick a combination to generate.")
+            let generateAvailability =
+                match generateReasonOpt with
+                | Some _ -> ControlWithheld
+                | None -> ControlOffered
             {
                 grid = grid
                 slots =
@@ -2459,6 +2519,7 @@ type TableAndElementRotationModel with
                         })
                 rows = grid.combinations |> List.map rowOf
                 generateAvailability = generateAvailability
+                generateReasonOpt = generateReasonOpt
             })
 
     /// The name the window's stores give the item's model: its resolved version's `<name> v<n>`, after a preset's
@@ -2495,7 +2556,7 @@ let private guardKitWrite (model : TableAndElementRotationModel) (write : unit -
     | ControlOffered -> write ()
     | ControlWithheld ->
         {
-            model with kitStatus = Some (ControlCaption "The kit is open read-only: nothing is saved.")
+            model with kitStatus = Some (KitStatusRefused (ControlCaption "The kit is open read-only: nothing is saved."))
         }
 
 /// Resolves the named run and its study only after the kit's write guard allows publishing (spec 0050 S11.5).
@@ -2516,7 +2577,7 @@ let private withPublishingRun
         | Some (study, run) -> publish study run
         | None ->
             {
-                model with kitStatus = Some (ControlCaption $"The kit holds no fit run {name.value}.")
+                model with kitStatus = Some (KitStatusRefused (ControlCaption $"The kit holds no fit run {name.value}."))
             })
 
 /// Runs a step of the reload offer only for a kit with a folder: nothing outside the app changes a scratch kit (spec 0050 S5.3).
@@ -2528,14 +2589,41 @@ let private guardKitFolder (model : TableAndElementRotationModel) (step : unit -
 /// Tells why the kit could not be checked for outside changes, keeping the model and its offer (spec 0050 S5.3).
 let private withKitCheckFailure (error : KitError) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     {
-        model with kitStatus = Some (ControlCaption $"The kit could not be checked for changes — {error.describe}")
+        model with kitStatus = Some (KitStatusRefused (ControlCaption $"The kit could not be checked for changes — {error.describe}"))
     }
 
 type TableAndElementRotationModel with
 
     /// The table's slots as a setup records them, so a dial-mounted item keeps its raw reading (spec 0050 S8.2).
+    /// The typed note as the name's `{note}`, none while blank (spec 0051 `.manual/003` 3.9).
+    member model.recordNoteOpt : NamePart option =
+        match model.recordNote.value.Trim() with
+        | "" -> None
+        | note -> Some (NamePart note)
+
+    /// The kit bar's text, done or refused alike (spec 0051 `.manual/003` 5.1).
+    member model.kitStatusCaption : ControlCaption option = model.kitStatus |> Option.map _.caption
+
+    /// The kit bar's text while it reports a refusal, none after a step done (spec 0051 `.manual/003` 5.1).
+    member model.kitRefusalOpt : ControlCaption option =
+        match model.kitStatus with
+        | Some (KitStatusRefused caption) -> Some caption
+        | Some (KitStatusDone _)
+        | None -> None
+
     member model.recordedSlots : Setups.SetupSlot list =
         model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
+
+    /// A table slot's name, as the slot bar's chip names it (spec 0051 `.manual/003` 3.5).
+    member model.tableLabelOf (id : Library.ElementId) : Experiments.ElementLabel =
+        Setups.SetupSlot.elementLabelIn model.elements model.kitItems id
+
+    /// An experiment's text, its slots named from its own setup revision, else from the table (spec 0051 `.manual/003`
+    /// 3.5, D3).
+    member model.experimentDescription (experiment : Experiments.Experiment) : Experiments.ScanDescription =
+        match experiment.slotsIn model.kitSetups with
+        | Ok slots -> experiment.describeWith (Setups.SetupSlot.elementLabelIn slots model.kitItems)
+        | Error _ -> experiment.describeWith model.tableLabelOf
 
     /// The slot bar: a chip per slot in light order, read as recorded so an object shows the angle a name writes, listing
     /// `slotChipItems`; the open chip; and Record experiment while the kit takes writes (spec 0050 S8.3, S8.4).
@@ -2551,12 +2639,28 @@ type TableAndElementRotationModel with
                     })
             openOpt = model.slotChipOpenOpt
             recordAvailability = model.kitWrites
+            recordNote = model.recordNote
         }
 
     /// `active` with the table written over it, minting its next revision when an experiment references the current
-    /// one (spec 0050 S8.2).
+    /// one (spec 0050 S8.2). A table that is `active` as the table draws it changes nothing: a dial-mounted slot's angle
+    /// is re-derived from its reading through the item's current zero, so the stored slot is compared drawn and recorded
+    /// alike (spec 0051 `.manual/003` 2.1).
     member model.tableWrittenOver (active : Setups.Setup) : Setups.Setup =
-        active.revisedWith model.recordedSlots (active.pinFor model.experimentCollection.experiments)
+        let recorded = model.recordedSlots
+        let activeAsDrawn = active.slots |> List.map (fun slot -> (slot.drawnWith model.kitItems).recordedWith model.kitItems)
+        if recorded = activeAsDrawn then active
+        else active.revisedWith recorded (active.pinFor model.experimentCollection.experiments)
+
+    /// The edited experiment while the table is its own setup revision as drawn, which Update experiment keeps instead of
+    /// writing the table over the setup (spec 0051 `.manual/003` 3.3).
+    member model.editedOnItsRevisionOpt : Experiments.Experiment option =
+        model.experimentCollection.draft.editingId
+        |> Option.bind (fun id -> model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id))
+        |> Option.filter (fun edited ->
+            match edited.slotsIn model.kitSetups with
+            | Ok slots -> slots |> List.map (fun slot -> (slot.drawnWith model.kitItems).recordedWith model.kitItems) = model.recordedSlots
+            | Error _ -> false)
 
     /// The table as the setup it is recorded as: the active one written over, else a new setup under the kit's template
     /// name of the table or S8.2's first free `Setup <n>`, made free among the held setups (spec 0050 S8.2, S8.3).
@@ -2664,7 +2768,7 @@ let private recordKitItemEdit
             match edit held with
             | Error error ->
                 {
-                    model with kitStatus = Some error.caption
+                    model with kitStatus = Some (KitStatusRefused error.caption)
                 }
             | Ok edited ->
                 let library : KitLibraryContext =
@@ -2681,11 +2785,10 @@ let private recordKitItemEdit
                         {
                             model with
                                 kitItems = model.kitItemsWith edited
-                                kitStatus = None
                         }
                 | Error error ->
                     {
-                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     })
 
 /// The session name type itself: qualified as `Experiments.SessionName`, F# resolves its union case and finds no
@@ -2703,7 +2806,7 @@ type ControlCaption with
 /// The model kept, telling `status`: a refused Data step write's answer, which writes nothing (spec 0050 S9.3).
 let private refusedWith (status : ControlCaption) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     {
-        model with kitStatus = Some status
+        model with kitStatus = Some (KitStatusRefused status)
     }
 
 /// The model once `changed` is recorded in its kit file and takes its id's place in the collection, `onRecorded`
@@ -2724,11 +2827,10 @@ let private withExperimentRecorded
             {
                 model with
                     experimentCollection = model.experimentCollection.withStoredExperiment changed
-                    kitStatus = None
             }
     | Error error ->
         {
-            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+            model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
         }
 
 /// Records the collection's experiment of that id changed, after step 185's read-only guard: an id the collection lacks
@@ -2772,7 +2874,7 @@ let private withExperimentDataRecorded
             recorded with
                 experimentDataStatus = recorded.experimentDataStatus |> Map.add changed.id (checkExperimentData recorded changed)
                 reviewedDataOpt = reviewedDataOpt
-                kitStatus = Some told
+                kitStatus = Some (KitStatusDone told)
         })
 
 /// The table's slot of that id holding the kit's item of that id, or emptied; refused when the table lacks the slot,
@@ -2858,10 +2960,10 @@ let private appendedOver (held : Experiments.ExperimentCollection) (committed : 
 
 /// The experiments to append over `setups`, named by the kit's template free of the collection's names, else `E<n>` of
 /// the id each takes (spec 0050 S9.1).
-let private experimentTargetsOver (setups : Setups.Setup list) (model : TableAndElementRotationModel) : Experiments.ExperimentTarget list =
+let private experimentTargetsOver (noteOpt : NamePart option) (setups : Setups.Setup list) (model : TableAndElementRotationModel) : Experiments.ExperimentTarget list =
     let collection = model.experimentCollection
     let taken = collection.experiments |> List.map (fun experiment -> experiment.name)
-    model.kit.kitFile.namingTemplate.experimentTargets setups model.kitItems taken collection.nextId
+    model.kit.kitFile.namingTemplate.experimentTargets setups model.kitItems noteOpt taken collection.nextId
 
 /// The distinct setups among `setups` the kit does not hold, in order: those a grid's recording writes (spec 0050 S8.3).
 let private unheldSetups (model : TableAndElementRotationModel) (setups : Setups.Setup list) : Setups.Setup list =
@@ -2880,7 +2982,7 @@ let private withGridRecorded
     | Error error ->
         Error
             {
-                model with kitStatus = Some (ControlCaption $"Not generated — {error.describe}")
+                model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not generated — {error.describe}"))
             }
     | Ok setups ->
         let library : KitLibraryContext =
@@ -2896,7 +2998,7 @@ let private withGridRecorded
             match committing.draftCapture with
             | Some capture ->
                 Experiments.chooseMeasurement capture collection
-                |> Experiments.commitOverSetups (experimentTargetsOver setups committing)
+                |> Experiments.commitOverSetups (experimentTargetsOver None setups committing)
             | None -> collection
         let appended = appendedOver collection committed |> List.map (fun experiment -> experiment.withRole role)
         let setupHeld (current : TableAndElementRotationModel) (setup : Setups.Setup) : TableAndElementRotationModel =
@@ -2911,7 +3013,7 @@ let private withGridRecorded
         | Error (written, error) ->
             Error
                 {
-                    written with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    written with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                 }
 
 /// One kit write of an applied split, in its groups' order (spec 0050 S9.3).
@@ -3026,7 +3128,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match study.calibratedItemsWith run model.kitItems with
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"Nothing was published — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Nothing was published — {error.describe}"))
                 }
             | Ok items ->
                 let library : KitLibraryContext =
@@ -3042,11 +3144,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 | Ok recorded ->
                     let labels = items |> List.map (fun item -> item.label.value) |> String.concat ", "
                     {
-                        recorded with kitStatus = Some (ControlCaption $"Published the calibration of {labels} from {run.name.value}.")
+                        recorded with kitStatus = Some (KitStatusDone (ControlCaption $"Published the calibration of {labels} from {run.name.value}."))
                     }
                 | Error (recorded, error) ->
                     {
-                        recorded with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        recorded with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     })
     | PromoteToLibrary (name, subject) ->
         withPublishingRun name model (fun study run ->
@@ -3055,17 +3157,17 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     kit = model.kit
                     imports = model.catalogueImports
                 }
-            let promotedStatus (result : Result<LibraryVersionRef, PublishError>) : ControlCaption =
+            let promotedStatus (result : Result<LibraryVersionRef, PublishError>) : KitStatus =
                 match result with
-                | Ok version -> ControlCaption $"Promoted to the library as {version.describe}."
-                | Error error -> ControlCaption $"Not promoted — {error.describe}"
+                | Ok version -> KitStatusDone (ControlCaption $"Promoted to the library as {version.describe}.")
+                | Error error -> KitStatusRefused (ControlCaption $"Not promoted — {error.describe}")
             let caption =
                 match subject with
                 | MaterialPromotion version ->
                     match model.materials.resolveVersion version with
                     | Ok (Some entry) -> library.promoteMaterial study run version entry |> promotedStatus
                     | Ok None
-                    | Error _ -> ControlCaption "The material version could not be read."
+                    | Error _ -> KitStatusRefused (ControlCaption "The material version could not be read.")
                 | BlackBoxPromotion id ->
                     let promotionOpt =
                         model.kitItems
@@ -3073,7 +3175,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         |> Option.bind (fun item -> model.tryItemModelChoice item |> Option.map (library.promoteBlackBox run item))
                     match promotionOpt with
                     | Some result -> promotedStatus result
-                    | None -> ControlCaption "The item or its model is not in the kit."
+                    | None -> KitStatusRefused (ControlCaption "The item or its model is not in the kit.")
             {
                 model with kitStatus = Some caption
             })
@@ -3128,7 +3230,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match message.applyTo model.studyContext with
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"The study was not changed — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"The study was not changed — {error.describe}"))
                 }
             | Ok study ->
                 let context : KitLibraryContext =
@@ -3139,7 +3241,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 match context.recordStudy study with
                 | Error error ->
                     {
-                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     }
                 | Ok () ->
                     let surface =
@@ -3160,7 +3262,6 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                 {
                                     surface with studyOpt = Some study.name
                                 }
-                            kitStatus = None
                     })
     | SelectStudy name ->
         match model.kitStudies |> List.tryFind (fun study -> study.name = name) with
@@ -3197,14 +3298,6 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 studySurface =
                     {
                         model.studySurface with resultsTab = tab
-                    }
-        }
-    | SetStudyCalibrationUse calibrationUse ->
-        {
-            model with
-                studySurface =
-                    {
-                        model.studySurface with calibrationUse = calibrationUse
                     }
         }
     | SetNewStudyName name ->
@@ -3258,7 +3351,16 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         // Spec 0038 (018): the plain add CONVERGES on the pre-binding arm below with the kind's
         // seeded default — every new table element except a sample lands pre-bound.
         updateTableAndElementRotation (AddElementBoundTo (kind, kind.defaultSeedEntry)) model
-    | AddElementBoundTo (kind, prebind) -> addElement kind prebind model
+    // Spec 0051 `.manual/003` 3.8 (D7): in a kit window a new element is an empty slot whose chip opens, so a kit item
+    // fills it, never a library preset bound behind the user's back.
+    | AddElementBoundTo (kind, prebind) ->
+        match model.kitFolderOpt with
+        | Some _ ->
+            let added = addElement kind None model
+            match added.elements |> List.tryFind (fun slot -> not (model.elements |> List.exists (fun held -> held.id = slot.id))) with
+            | Some fresh -> { added with slotChipOpenOpt = Some fresh.id }
+            | None -> added
+        | None -> addElement kind prebind model
     | RemoveSelectedElement -> model.withSelectedRemoved
     | SlideSelectedBy dx -> moveSelectedBy TableX dx model
     | SlideSelectedTo x -> moveSelectedTo TableX x model
@@ -3314,7 +3416,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             {
                 model with
                     addItemFormOpt = Some form
-                    kitStatus = Some (ControlCaption $"The item models could not be listed — {error.describe}")
+                    kitStatus = Some (KitStatusRefused (ControlCaption $"The item models could not be listed — {error.describe}"))
             }
     | ChooseNewItemModel choice ->
         match model.addItemFormOpt with
@@ -3334,7 +3436,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match draft.addTo model.kitItems with
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"The item was not added — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"The item was not added — {error.describe}"))
                 }
             | Ok item ->
                 let library : KitLibraryContext =
@@ -3349,11 +3451,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             kitItems = model.kitItemsWith item
                             selectedItemOpt = Some item.id
                             addItemFormOpt = None
-                            kitStatus = None
+                            kitStatus = Some (KitStatusDone (ControlCaption $"Added the item '{item.label.value}' to the kit."))
                     }
                 | Error error ->
                     {
-                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     })
     | SetParameterState (itemId, name, state) ->
         model
@@ -3497,8 +3599,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             let defaultMeasurement =
                 BeamLayout.effectiveCapture (availableCaptures model e.id) Experiments.CaptureBoth
                 |> Option.defaultValue (Experiments.MeasurementMode.ofEmission e.placement.emission)
-            let label = experimentElementLabel model e.id
-            let chosen = Experiments.chooseElement e.id label allowed defaultMeasurement model.experimentCollection
+            let chosen = Experiments.chooseElement e.id allowed defaultMeasurement model.experimentCollection
             let ranged =
                 match chosen.draft.variable with
                 | Some Experiments.VaryWaveLength -> Experiments.setRange model.wavelengthRange chosen
@@ -3549,15 +3650,26 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             | Some capture ->
                 let notSaved (error : KitLibraryError) : TableAndElementRotationModel =
                     {
-                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     }
-                match model.tableSetup with
-                | Error error -> notSaved error
-                | Ok setup ->
-                    let collection = Experiments.chooseMeasurement capture model.experimentCollection
+                let collection = Experiments.chooseMeasurement capture model.experimentCollection
+                match model.editedOnItsRevisionOpt, model.tableSetup with
+                | Some edited, _ ->
+                    // Spec 0051 `.manual/003` 3.3: the experiment keeps its own revision, and no setup is written.
+                    let committed = Experiments.commit { setup = edited.setup; name = edited.name } collection
+                    if committed = model.experimentCollection then model
+                    else
+                        match committed.experiments |> List.tryFind (fun experiment -> experiment.id = edited.id) with
+                        | Some experiment ->
+                            match withExperimentsRecorded committed [ experiment ] model with
+                            | Ok written -> written
+                            | Error (_, error) -> notSaved error
+                        | None -> model
+                | None, Error error -> notSaved error
+                | None, Ok setup ->
                     // Spec 0050 S9.1: an append is named by the template over the setup; an edit keeps its name.
                     let committed =
-                        match experimentTargetsOver [ setup ] model with
+                        match experimentTargetsOver None [ setup ] model with
                         | [ target ] -> Experiments.commit target collection
                         | _ -> model.experimentCollection
                     if committed = model.experimentCollection then model
@@ -3568,33 +3680,74 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                 withTableRecorded setup model
                                 |> Result.bind (fun tabled -> withExperimentsRecorded committed [ experiment ] tabled |> Result.mapError snd)
                             match recorded with
-                            | Ok written ->
-                                {
-                                    written with kitStatus = None
-                                }
+                            | Ok written -> written
                             | Error error -> notSaved error
                         | None -> model
             | None -> model)
     | ExpNew -> { model with experimentCollection = model.experimentCollection.newDraft }
-    | ExpEdit id -> { model with experimentCollection = Experiments.edit id model.experimentCollection }
-    | ExpRemove id ->
-        guardKitWrite model (fun () ->
-            // Spec 0050 S9.1: the file is the experiment's name's; an id the collection lacks has none to delete.
-            let deleted =
-                match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) with
-                | Some experiment -> model.kit.proxy.deleteExperiment experiment.name
-                | None -> Ok ()
-            match deleted with
-            | Ok () | Error (MissingKitFileErr _) ->
+    | SelectTableElement id ->
+        match model.indexedElements |> List.tryFind (fun (_, element) -> element.id = id) with
+        | Some (index, _) -> { model with selection = ElementSelected index; drag = NotPressed; elementMenu = None }
+        | None -> model
+    // Spec 0051 `.manual/003` 3.3: a row's experiment is drawn on its own setup revision, never the latest of its name.
+    | ExpEdit id ->
+        let edited = { model with experimentCollection = Experiments.edit id model.experimentCollection }
+        match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) with
+        | None -> edited
+        | Some experiment ->
+            match model.kitSetups |> List.tryFind (fun setup -> setup.name = experiment.setup.name), experiment.slotsIn model.kitSetups with
+            | Some setup, Ok slots ->
+                let shown =
+                    if experiment.setup.revision = setup.revision then
+                        $"Loaded {experiment.name.value} on its setup '{setup.name.value}'."
+                    else
+                        $"Loaded {experiment.name.value} on its setup '{setup.name.value}', revision {experiment.setup.revision.value} of {setup.revision.value}."
                 {
-                    model with
-                        experimentCollection = Experiments.remove id model.experimentCollection
-                        kitStatus = None
+                    edited with
+                        elements = slots |> List.map (fun slot -> slot.drawnWith model.kitItems)
+                        activeSetupOpt = Some setup
+                        selection = TableSelected
+                        drag = NotPressed
+                        elementMenu = None
+                        kitStatus = Some (KitStatusDone (ControlCaption shown))
                 }
-            | Error error ->
-                {
-                    model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
-                })
+            | _, Error error -> { edited with kitStatus = Some (KitStatusRefused (ControlCaption $"Not drawn — {error.describe}")) }
+            | None, Ok _ -> edited
+    // Spec 0051 `.manual/003` 2.3: Remove arms an inline Yes / No; only the Yes deletes the experiment and its file.
+    | ExpRemove id when model.experimentCollection.experiments |> List.exists (fun experiment -> experiment.id = id) ->
+        { model with experimentRemovalOpt = Some id }
+    | ExpRemove _ -> model
+    | ExpCancelRemove -> { model with experimentRemovalOpt = None }
+    | SetRecordNote note -> { model with recordNote = note }
+    | ExpConfirmRemove ->
+        match model.experimentRemovalOpt with
+        | None -> model
+        | Some id ->
+            guardKitWrite { model with experimentRemovalOpt = None } (fun () ->
+                // Spec 0050 S9.1: the file is the experiment's name's; an id the collection lacks has none to delete.
+                let removing = model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id)
+                let deleted =
+                    match removing with
+                    | Some experiment -> model.kit.proxy.deleteExperiment experiment.name
+                    | None -> Ok ()
+                match deleted with
+                | Ok () | Error (MissingKitFileErr _) ->
+                    let removed =
+                        match removing with
+                        | Some experiment -> ControlCaption $"Removed experiment '{experiment.name.value}' and its file."
+                        | None -> ControlCaption "Removed the experiment."
+                    {
+                        model with
+                            experimentCollection = Experiments.remove id model.experimentCollection
+                            experimentRemovalOpt = None
+                            kitStatus = Some (KitStatusDone removed)
+                    }
+                | Error error ->
+                    {
+                        model with
+                            experimentRemovalOpt = None
+                            kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
+                    })
     | OpenExperimentChartWindow ->
         // Spec 0027 (026) Part 3: a double-click on the inline chart opens the pop-out interactive ScottPlot
         // window for the current experiment chart. Opening a `Window` is a side effect, matching the existing
@@ -3605,25 +3758,28 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ViewExperiment id ->
         // Spec 0027 (030 follow-up): open the chart window for the collected experiment `id` (the "View"
         // button / a row double-click). Same side-effecting seam as OpenExperimentChartWindow.
-        viewExperimentHook model id
-        model
-    | AttachDataFile (experimentId, file, profile) ->
+        // Spec 0051 `.manual/003` 3.4: a View that opens no chart says why.
+        match viewExperimentHook model id with
+        | Some reason -> { model with kitStatus = Some (KitStatusRefused reason) }
+        | None -> model
+    | AttachDataFile attach ->
+        let experimentId = attach.experiment
         guardKitWrite model (fun () ->
-            match model.experimentData.attachDataFile file with
+            match model.experimentData.attachDataFile attach.file with
             | Error error ->
                 // Spec 0050 S9.1: a refused attach keeps the experiment's data and badge.
                 {
-                    model with kitStatus = Some (ControlCaption $"Not attached — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not attached — {error.describe}"))
                 }
             | Ok attachment ->
                 // Spec 0038 Part L (037); spec 0050 S4.2: keep a successful attachment even when parsing or validation fails.
-                // Spec 0050 S9.2: it is read through the profile the wizard chose, every row the run's; S9.3: a new
-                // mapping numbers its points anew, so it starts with no exclusion.
+                // Spec 0050 S9.2: it is read through the profile and rows the wizard chose; S9.3: a new mapping numbers
+                // its points anew, so it starts with no exclusion.
                 let data : MappedAttachment =
                     {
                         attachment = attachment
-                        profile = profile
-                        rows = AllDataRows
+                        profile = attach.profile
+                        rows = attach.rows
                         exclusions = []
                     }
                 let collection = Experiments.attachDataFile experimentId data model.experimentCollection
@@ -3640,11 +3796,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             model with
                                 experimentCollection = collection
                                 experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (checkExperimentData model experiment)
-                                kitStatus = None
                         }
                     | Error error ->
                         {
-                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                            model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                         }
                 | None -> model)
     // Spec 0050 S9.2: the wizard reads the file and attaches nothing itself; its Attach returns as `messages`.
@@ -3653,13 +3808,21 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
             | Some held ->
                 let slots = held.slotsIn model.kitSetups |> Result.defaultValue []
+                // Spec 0051 `.manual/003` 2.4: a re-attach opens on what the experiment had.
                 let request : ImportWizardRequest =
                     {
                         target = AttachWizardTarget experimentId
                         file = file
                         readPickedFile = model.experimentData.readPickedFile
                         kitProfiles = model.kit.kitFile.importProfiles
-                        defaultProfile = (ExperimentDataLoad.detectorKindOf model.library slots).builtInProfile
+                        defaultProfile =
+                            match held.dataOpt with
+                            | Some data -> data.profile
+                            | None -> (ExperimentDataLoad.detectorKindOf model.library slots).builtInProfile
+                        defaultRows =
+                            match held.dataOpt with
+                            | Some data -> data.rows
+                            | None -> AllDataRows
                     }
                 model.kitShell.openImportWizard request
                 model
@@ -3674,6 +3837,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     readPickedFile = model.experimentData.readPickedFile
                     kitProfiles = model.kit.kitFile.importProfiles
                     defaultProfile = ImportProfileName.phoneRoiCsv
+                    defaultRows = AllDataRows
                 }
             model.kitShell.openImportWizard request
             model)
@@ -3683,7 +3847,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match model.kit.kitFile.withImportProfile profile with
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"Not saved — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved — {error.describe}"))
                 }
             | Ok kitFile ->
                 match model.kit.saveKitFile kitFile with
@@ -3691,11 +3855,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with
                             kit = kit
-                            kitStatus = Some (ControlCaption $"Saved the import profile '{profile.name.value}'.")
+                            kitStatus = Some (KitStatusDone (ControlCaption $"Saved the import profile '{profile.name.value}'."))
                     }
                 | Error error ->
                     {
-                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     })
     // Spec 0050 S9.3 (.spec-md §10.3 identify → confirm): the split is only held; nothing is attached or created until
     // it is applied, and a refusal keeps the held split.
@@ -3734,14 +3898,14 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match splitOutcome with
             | Error reason ->
                 {
-                    model with kitStatus = Some (ControlCaption $"Not split — {reason.value}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not split — {reason.value}"))
                 }
             | Ok held ->
                 let counts = $"{held.split.matched.Length} matched, {held.split.offered.Length} offered, {held.split.unmatched.Length} unmatched"
                 {
                     model with
                         dataSplitOpt = Some held
-                        kitStatus = Some (ControlCaption $"Split {file.leafName.value} by '{held.key.value}': {counts}.")
+                        kitStatus = Some (KitStatusDone (ControlCaption $"Split {file.leafName.value} by '{held.key.value}': {counts}."))
                 })
     // Spec 0050 S9.3: only an offered group is ticked for creation.
     | ToggleSplitOffer key ->
@@ -3828,13 +3992,15 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                     dataSplitOpt = None
                                     kitStatus =
                                         Some (
-                                            ControlCaption
-                                                $"Attached {held.file.leafName.value} to {experiments.Length} experiment(s): {counts}; {left} group(s) left unattached."
+                                            KitStatusDone (
+                                                ControlCaption
+                                                    $"Attached {held.file.leafName.value} to {experiments.Length} experiment(s): {counts}; {left} group(s) left unattached."
+                                            )
                                         )
                             }
                         | Error (written, error) ->
                             {
-                                written with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                                written with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                             })
     | SetExperimentRole (experimentId, role) -> model |> recordExperimentEdit experimentId (fun held -> held.withRole role)
     | SetExperimentSession (experimentId, text) ->
@@ -3872,7 +4038,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             {
                                 held with dataOpt = Some (data.withExclusion exclusion)
                             }
-                        model |> withExperimentDataRecorded excluded (ControlCaption $"Excluded point {point.value} of {name}: {why.value}."))
+                        // Spec 0051 `.manual/003` 4.2: a recorded exclusion clears its reason, so the next asks for its own.
+                        let recorded = model |> withExperimentDataRecorded excluded (ControlCaption $"Excluded point {point.value} of {name}: {why.value}.")
+                        if recorded.experimentCollection = model.experimentCollection then recorded
+                        else { recorded with dataDraft = { recorded.dataDraft with exclusionReason = ControlCaption "" } })
     | IncludePoint (experimentId, point) ->
         guardKitWrite model (fun () ->
             match model.experimentCollection.experiments |> List.tryFind (fun held -> held.id = experimentId) with
@@ -3917,7 +4086,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match created with
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"Not created — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not created — {error.describe}"))
                 }
             | Ok setup ->
                 let library : KitLibraryContext =
@@ -3928,11 +4097,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 match library.recordSetup setup with
                 | Ok () ->
                     {
-                        model.withSetupRecorded setup with kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}'.")
+                        model.withSetupRecorded setup with kitStatus = Some (KitStatusDone (ControlCaption $"Created setup '{setup.name.value}'."))
                     }
                 | Error error ->
                     {
-                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     })
     // Spec 0050 S8.2: in place until an experiment references the active revision, then as the next; an unchanged
     // table writes nothing.
@@ -3941,13 +4110,13 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match model.activeSetupOpt with
             | None ->
                 {
-                    model with kitStatus = Some (ControlCaption "No setup is active: create one first.")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption "No setup is active: create one first."))
                 }
             | Some active ->
                 let revised = model.tableWrittenOver active
                 if revised = active then
                     {
-                        model with kitStatus = Some (ControlCaption $"Setup '{active.name.value}' is unchanged.")
+                        model with kitStatus = Some (KitStatusDone (ControlCaption $"Setup '{active.name.value}' is unchanged."))
                     }
                 else
                     let library : KitLibraryContext =
@@ -3959,11 +4128,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     | Ok () ->
                         let saved = ControlCaption $"Saved setup '{revised.name.value}', revision {revised.revision.value}."
                         {
-                            model.withSetupRecorded revised with kitStatus = Some saved
+                            model.withSetupRecorded revised with kitStatus = Some (KitStatusDone saved)
                         }
                     | Error error ->
                         {
-                            model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                            model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                         })
     // Spec 0050 S8.2: it writes nothing, so a read-only kit loads setups; the view, snap mode and pivot are the window's.
     | ActivateSetup name ->
@@ -3976,12 +4145,12 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     selection = TableSelected
                     drag = NotPressed
                     elementMenu = None
-                    kitStatus = Some (ControlCaption $"Loaded setup '{setup.name.value}'.")
+                    kitStatus = Some (KitStatusDone (ControlCaption $"Loaded setup '{setup.name.value}'."))
             }
         | None ->
             let unknown = UnknownSetupErr $"'{name.value}'"
             {
-                model with kitStatus = Some (ControlCaption $"Load failed — {unknown.describe}")
+                model with kitStatus = Some (KitStatusRefused (ControlCaption $"Load failed — {unknown.describe}"))
             }
     // Spec 0050 S8.2: it writes nothing, so a read-only kit assigns too; the setup records the slot at the next
     // CreateSetup, SaveSetup or commit.
@@ -3991,11 +4160,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             {
                 model with
                     elements = withSlotFilled filled model.elements
-                    kitStatus = None
             }
         | Error error ->
             {
-                model with kitStatus = Some (ControlCaption $"Not assigned — {error.describe}")
+                model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not assigned — {error.describe}"))
             }
     // Spec 0050 S8.2: a held setup is switched to by ActivateSetup, writing nothing, so a read-only kit takes it; only a
     // new setup is written, behind the read-only guard, and never the setup swapped from. S8.4: every outcome closes the
@@ -4005,7 +4173,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match slotAssigned model slotId (Some itemId) with
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"Not swapped — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not swapped — {error.describe}"))
                 }
             | Ok filled ->
                 let swapped = withSlotFilled filled model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
@@ -4030,11 +4198,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             {
                                 model.withSetupRecorded setup with
                                     elements = swapped
-                                    kitStatus = Some (ControlCaption $"Created setup '{setup.name.value}' by the swap.")
+                                    kitStatus = Some (KitStatusDone (ControlCaption $"Created setup '{setup.name.value}' by the swap."))
                             }
                         | Error error ->
                             {
-                                model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                                model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                             })
         {
             answered with slotChipOpenOpt = None
@@ -4049,7 +4217,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 let fresh = unheldSetups model setups
                 {
                     generated with
-                        kitStatus = Some (ControlCaption $"Generated {made} setups ({fresh.Length} new) and {appended.Length} experiments.")
+                        kitStatus = Some (KitStatusDone (ControlCaption $"Generated {made} setups ({fresh.Length} new) and {appended.Length} experiments."))
                 }
             | Error refused -> refused)
     // Spec 0050 S14.2: the plate goes into Object 1 through the grid's recording, its scan the one block `coverageIn`
@@ -4058,7 +4226,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         guardKitWrite model (fun () ->
             let refused (caption : ControlCaption) : TableAndElementRotationModel =
                 {
-                    model with kitStatus = Some caption
+                    model with kitStatus = Some (KitStatusRefused caption)
                 }
             let objectOneOpt =
                 Setups.SetupSlot.inLightOrder model.elements
@@ -4097,15 +4265,14 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     match whyNotOpt with
                     | Some error -> refused (ControlCaption $"Not generated — {error.describe}")
                     | None ->
-                        let label = experimentElementLabel model slotId
                         let planned =
                             {
                                 model.experimentCollection with draft = Experiments.ExperimentDraft.empty
                             }
-                            |> Experiments.chooseElement slotId label [ Experiments.VaryR2 ] candidate.capture
+                            |> Experiments.chooseElement slotId [ Experiments.VaryR2 ] candidate.capture
                             |> Experiments.setRange MeasurementPlanner.PlanCandidate.incidenceRange
                             |> _.addScanAxis
-                            |> Experiments.chooseElement slotId label [ Experiments.VaryR1 ] candidate.capture
+                            |> Experiments.chooseElement slotId [ Experiments.VaryR1 ] candidate.capture
                             |> Experiments.setRange MeasurementPlanner.PlanCandidate.azimuthRange
                             |> Experiments.chooseMeasurement candidate.capture
                         let withDraftBack (written : TableAndElementRotationModel) : TableAndElementRotationModel =
@@ -4121,7 +4288,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             let names = appended |> List.map (fun experiment -> experiment.name.value) |> String.concat ", "
                             let references = setups |> List.map (fun setup -> setup.reference.describe) |> String.concat ", "
                             {
-                                withDraftBack written with kitStatus = Some (ControlCaption $"Planned {names} over {references}.")
+                                withDraftBack written with kitStatus = Some (KitStatusDone (ControlCaption $"Planned {names} over {references}."))
                             }
                         | Error failed -> withDraftBack failed)
     // Spec 0050 S8.4: the table is recorded as ExpCommit records it, then the draft is appended over that setup, never
@@ -4130,18 +4297,18 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         guardKitWrite model (fun () ->
             let notSaved (error : KitLibraryError) (kept : TableAndElementRotationModel) : TableAndElementRotationModel =
                 {
-                    kept with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                    kept with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                 }
             if not model.experimentCollection.canCommit then
                 {
                     model with
-                        kitStatus = Some (ControlCaption "Not recorded — choose the element and the variable to vary in the Experiments bay first.")
+                        kitStatus = Some (KitStatusRefused (ControlCaption "Not recorded — choose the element and the variable to vary in the Experiments bay first."))
                 }
             else
                 match model.draftCapture with
                 | None ->
                     {
-                        model with kitStatus = Some (ControlCaption "Not recorded — no detector captures this table.")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption "Not recorded — no detector captures this table."))
                     }
                 | Some capture ->
                     match model.tableSetup |> Result.bind (fun setup -> withTableRecorded setup model |> Result.map (fun tabled -> tabled, setup)) with
@@ -4149,13 +4316,16 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     | Ok (tabled, setup) ->
                         let committed =
                             Experiments.chooseMeasurement capture tabled.experimentCollection
-                            |> Experiments.commitOverSetups (experimentTargetsOver [ setup ] tabled)
+                            |> Experiments.commitOverSetups (experimentTargetsOver model.recordNoteOpt [ setup ] tabled)
                         let appended = appendedOver tabled.experimentCollection committed
                         match withExperimentsRecorded committed appended tabled with
                         | Ok recorded ->
                             let names = appended |> List.map (fun experiment -> experiment.name.value) |> String.concat ", "
+                            // Spec 0051 `.manual/003` 3.9: the note named this record; the next takes its own.
                             {
-                                recorded with kitStatus = Some (ControlCaption $"Recorded {names} over {setup.reference.describe}.")
+                                recorded with
+                                    kitStatus = Some (KitStatusDone (ControlCaption $"Recorded {names} over {setup.reference.describe}."))
+                                    recordNote = ControlCaption ""
                             }
                         | Error (kept, error) -> notSaved error kept)
     // Spec 0050 S8.4: it writes nothing, so a read-only kit takes it; an id the table lacks changes nothing.
@@ -4204,7 +4374,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             | Ok () -> model
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"The kit folder could not be shown — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"The kit folder could not be shown — {error.describe}"))
                 }
         | None -> model
     | CloseKit ->
@@ -4221,7 +4391,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with
                             kitChanges = []
-                            kitStatus = Some (ControlCaption "No kit file changed outside the app.")
+                            kitStatus = Some (KitStatusDone (ControlCaption "No kit file changed outside the app."))
                     }
                 | KitCheckOnActivation ->
                     {
@@ -4253,11 +4423,18 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                                 model.kit with kitFile = kitFile
                                             }
                                         withKitContent kit experiments items studies fitRuns setups model))))))
+            // Spec 0051 `.manual/003` 5.1: a reload says what it read again.
             match reloaded with
-            | Ok reloadedModel -> reloadedModel
+            | Ok reloadedModel ->
+                // A reload with nothing offered says nothing new and keeps the last message.
+                match model.kitChanges with
+                | [] -> { reloadedModel with kitStatus = model.kitStatus }
+                | files ->
+                    let told = ControlCaption $"""Reloaded {files |> List.map (fun file -> file.value) |> String.concat ", "} from the kit."""
+                    { reloadedModel with kitStatus = Some (KitStatusDone told) }
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"The kit could not be reloaded — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"The kit could not be reloaded — {error.describe}"))
                 })
     | KeepMyKitChanges ->
         guardKitFolder model (fun () ->
@@ -4278,11 +4455,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match NamingTemplate.tryCreate model.namingTemplateText.value with
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"Not saved — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved — {error.describe}"))
                 }
             | Ok template when template = model.kit.kitFile.namingTemplate ->
                 {
-                    model with kitStatus = Some (ControlCaption "The naming template is unchanged.")
+                    model with kitStatus = Some (KitStatusDone (ControlCaption "The naming template is unchanged."))
                 }
             | Ok template ->
                 let revised =
@@ -4294,11 +4471,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with
                             kit = kit
-                            kitStatus = Some (ControlCaption "Saved the naming template.")
+                            kitStatus = Some (KitStatusDone (ControlCaption "Saved the naming template."))
                     }
                 | Error error ->
                     {
-                        model with kitStatus = Some (ControlCaption $"Not saved to the kit — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     })
     // Spec 0050 S6: a send writes no kit file, so it is not behind `guardKitWrite`: a kit opened read-only is sent as
     // it is, which is how a reviewer returns a kit (001 §E 'Review round-trip'). One archive job runs per window.
@@ -4306,7 +4483,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         match model.kitFolderOpt with
         | None ->
             {
-                model with kitStatus = Some (ControlCaption "A kit with no folder cannot be sent.")
+                model with kitStatus = Some (KitStatusRefused (ControlCaption "A kit with no folder cannot be sent."))
             }
         | Some folder ->
             if model.kitSend.job.isRunning then
@@ -4318,7 +4495,6 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 {
                     model with
                         kitSend = model.kitSend.started handle
-                        kitStatus = None
                 }
     | SendKitProgressed progress ->
         {
@@ -4327,13 +4503,13 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | SendKitEnded result ->
         let told =
             match result with
-            | Ok (KitArchiveFinished files) -> $"The kit was sent: {files.value} file(s) zipped."
-            | Ok KitArchiveCancelled -> "Send kit was cancelled: no zip was written."
-            | Error error -> $"The kit could not be sent — {error.describe}"
+            | Ok (KitArchiveFinished files) -> KitStatusDone (ControlCaption $"The kit was sent: {files.value} file(s) zipped.")
+            | Ok KitArchiveCancelled -> KitStatusDone (ControlCaption "Send kit was cancelled: no zip was written.")
+            | Error error -> KitStatusRefused (ControlCaption $"The kit could not be sent — {error.describe}")
         {
             model with
                 kitSend = KitArchiveJob.KitArchiveJobState.idle
-                kitStatus = Some (ControlCaption told)
+                kitStatus = Some told
         }
     | CancelSendKit ->
         model.kitSend.cancel ()
@@ -4344,7 +4520,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match model.kitFolderOpt with
             | Some own when own.canonical = folder.canonical ->
                 {
-                    model with kitStatus = Some (ControlCaption "A kit cannot copy experiments from itself.")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption "A kit cannot copy experiments from itself."))
                 }
             | _ ->
                 let closed = model.closeCopySource ()
@@ -4352,6 +4528,15 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 let opened =
                     KitContext.openKit (KitProxy.create folder) ReadOnlyKitAccess model.kit.clock
                     |> Result.bind (fun source ->
+                        let sourceLibrary : KitLibraryContext =
+                            {
+                                kit = source
+                                imports = model.catalogueImports
+                            }
+                        let sourceItemModels =
+                            match sourceLibrary.openOverlay [] with
+                            | Ok overlay -> model.itemModels.overlaidWith overlay
+                            | Error _ -> model.itemModels
                         let unread : KitCopySource =
                             {
                                 source = source
@@ -4360,6 +4545,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                 items = []
                                 setups = []
                                 itemRows = []
+                                sourceItemModels = sourceItemModels
                             }
                         // Spec 0050 S7.2, S8.2: the items, then the setups, are read after the experiments; no row shows until
                         // an experiment is chosen.
@@ -4385,11 +4571,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         closed with
                             kitCopyOpt = Some copySource
-                            kitStatus = None
                     }
                 | Error error ->
                     {
-                        closed with kitStatus = Some (ControlCaption $"The kit could not be opened to copy from — {error.describe}")
+                        closed with kitStatus = Some (KitStatusRefused (ControlCaption $"The kit could not be opened to copy from — {error.describe}"))
                     })
     | ToggleCopiedExperiment id ->
         match model.kitCopyOpt with
@@ -4410,7 +4595,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 }
             | Error error ->
                 {
-                    model with kitStatus = Some (ControlCaption $"The experiment could not be chosen to copy — {error.describe}")
+                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"The experiment could not be chosen to copy — {error.describe}"))
                 }
         | None -> model
     | ChooseCopiedItem (id, choice) ->
@@ -4456,7 +4641,26 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         {
                             model.kit with kitFile = report.kitFile
                         }
-                    let shown = withKitContent copiedKit experiments items model.kitStudies model.kitFitRuns setups model
+                    // Spec 0051 `.manual/003` 4.4: the copy wrote snapshots, so the stores take the kit's overlay anew and a
+                    // copied item resolves at once.
+                    let refreshed =
+                        let copiedLibrary : KitLibraryContext =
+                            {
+                                kit = copiedKit
+                                imports = model.catalogueImports
+                            }
+                        match copiedLibrary.openOverlay [] with
+                        | Ok overlay ->
+                            {
+                                model with
+                                    itemModels = model.itemModels.overlaidWith overlay
+                                    library = model.library.overlaidWith overlay
+                                    materials = model.materials.overlaidWith overlay
+                                    samples = model.samples.overlaidWith overlay
+                                    categories = model.categories.overlaidWith overlay
+                            }
+                        | Error _ -> model
+                    let shown = withKitContent copiedKit experiments items model.kitStudies model.kitFitRuns setups refreshed
                     let copiedCount = List.length report.experiments
                     let sourceName = copySource.source.kitFile.name
                     let told =
@@ -4464,11 +4668,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         | [] -> $"Copied {copiedCount} experiment(s) from {sourceName.value}."
                         | added -> $"Copied {copiedCount} experiment(s) and added {List.length added} item(s) from {sourceName.value}."
                     {
-                        shown.closeCopySource () with kitStatus = Some (ControlCaption told)
+                        shown.closeCopySource () with kitStatus = Some (KitStatusDone (ControlCaption told))
                     }
                 | Error error ->
                     {
-                        model with kitStatus = Some (ControlCaption $"The experiments could not be copied — {error.describe}")
+                        model with kitStatus = Some (KitStatusRefused (ControlCaption $"The experiments could not be copied — {error.describe}"))
                     }
             | _ -> model)
     | CloseCopySource -> model.closeCopySource ()
@@ -4537,6 +4741,37 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | ZoomElementsAll -> zoomAllElements notches model
         | ZoomTable -> { model with view = TableScene.zoomViewBy notches model.view }
         | NoWheelAction -> model
+
+type TableAndElementRotationModel with
+
+    /// The setup a kit window opens on: the one last active in this kit on this machine while the kit holds it, else the
+    /// setup of the kit's last experiment, else none (spec 0051 `.manual/003` 3.1, D2).
+    member model.openingSetupOpt : Setups.Setup option =
+        let held (name : SetupName) : Setups.Setup option = model.kitSetups |> List.tryFind (fun setup -> setup.name = name)
+        match model.setupMemory.recallSetup () |> Option.bind held with
+        | Some setup -> Some setup
+        | None -> model.experimentCollection.experiments |> List.tryLast |> Option.bind (fun experiment -> held experiment.setup.name)
+
+    /// The loaded kit drawn on its opening setup, or, for a kit without one, the default table and a status naming where
+    /// a setup is made (spec 0051 `.manual/003` 3.1).
+    member model.openedOnSetup : TableAndElementRotationModel =
+        match model.openingSetupOpt with
+        | Some setup -> model |> updateTableAndElementRotation (ActivateSetup setup.name)
+        | None ->
+            match model.kitSetups with
+            | [] ->
+                {
+                    model with kitStatus = Some (KitStatusDone (ControlCaption "This kit has no setup yet: build the table, then press Create setup in the Setups step."))
+                }
+            | _ :: _ -> model
+
+    /// Remembers the active setup when `previous` had another, so the kit reopens on it; the memory's answer is the
+    /// caller's to log, as it decides only where the kit opens (spec 0051 `.manual/003` 3.1).
+    member model.rememberSetupSince (previous : TableAndElementRotationModel) : Result<unit, KitHistoryError> =
+        match model.activeSetupOpt, previous.activeSetupOpt with
+        | Some active, Some earlier when active.name = earlier.name -> Ok ()
+        | Some active, _ -> model.setupMemory.rememberSetup active.name
+        | None, _ -> Ok ()
 
 // ---------------------------------------------------------------------------
 // Colours + the FuncUI view.
@@ -4661,10 +4896,16 @@ type TableAndElementRotationModel with
             | None -> nothing
         | NothingSelected -> nothing
 
+    /// The name the canvas draws beside a slot: its kit item's label, else its kind's code (spec 0051 `.manual/003` 3.7).
+    member model.drawnCaptionOf (slot : Setups.SetupSlot) : ControlCaption =
+        match slot.content.itemOpt |> Option.bind (fun held -> model.kitItems |> List.tryFind (fun item -> item.id = held)) with
+        | Some item -> item.label.caption
+        | None -> ControlCaption slot.placement.catalogueKind.kindCode
+
     member internal model.readoutText : string =
         match model.selection with
         | TableSelected ->
-            $"Selected: TABLE   R1 %.0f{model.view.r1.degrees}°   R2 %.0f{model.view.r2.degrees}°   R3 %.0f{model.view.r3.degrees}°   zoom %.2f{model.view.zoom.value}×"
+            $"Selected: TABLE   R1 {model.view.r1.turnCaption.value}   R2 {model.view.r2.turnCaption.value}   R3 {model.view.r3.turnCaption.value}   zoom %.2f{model.view.zoom.value}×"
         | ElementSelected i ->
             let e = List.item i.value model.elements
             let p = e.placement
@@ -4683,7 +4924,8 @@ type TableAndElementRotationModel with
                         if p.r3Locked = RotationLocked then "R3" ] with
                 | [] -> "rotations free"
                 | locked -> (String.concat " " locked) + " locked"
-            $"""Selected: Element %d{i.value + 1} (%s{p.catalogueKind.kindName})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{lockText})   zoom %.1f{e.zoom.value}×   bound: %s{boundName}"""
+            // Spec 0051 `.manual/003` 3.7: the slot's name, turns shown in [0°, 360°), and the element's own drawing scale.
+            $"""Selected: %s{(model.tableLabelOf e.id).value} (%s{p.catalogueKind.kindName})   R1 {p.r1.turnCaption.value}   R2 {p.r2.turnCaption.value}   R3 {p.r3.turnCaption.value} (%s{lockText})   drawn %.1f{e.zoom.value}× size   bound: %s{boundName}"""
         | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
     /// Spec 0038 (018): the palette buttons the model's catalogue palette EXPANDS to. The
@@ -4717,7 +4959,7 @@ type TableAndElementRotationModel with
             | TableSelected -> PlateSelected
             | ElementSelected _ | NothingSelected -> PlateNotSelected
         Canvas.create [
-            Canvas.name ConstructorUiId.tableElementCanvas.value
+            yield! ConstructorUiId.tableElementCanvas.surfaceAttributes<Canvas> ()
             Canvas.width tableAndElementRotationCanvasWidth
             Canvas.height tableAndElementRotationCanvasHeight
             Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -4743,7 +4985,7 @@ let private controlBar (model : TableAndElementRotationModel) (dispatch : TableA
         StackPanel.children
             (addRemoveBar model dispatch
              @ [ RotationControls.view model.rotationState (rotationHandlers dispatch)
-                 TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.text model.readoutText ]
+                 TextBlock.create [ ConstructorUiId.teReadout.automationAttribute<TextBlock> (); TextBlock.text model.readoutText ]
                  TextBlock.create [
                      TextBlock.foreground (brush (Color.FromRgb(100uy, 100uy, 100uy)))
                      TextBlock.text "click TABLE or an element to select it (rotation acts on the selection) · drag = pan · wheel = zoom table · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
@@ -4841,7 +5083,14 @@ type TableAndElementRotationModel with
                 | ElementSelected s when s = i -> ElementRenderer.ElementHighlighted, ElementRenderer.ShowNormals
                 | _ -> ElementRenderer.ElementNotHighlighted, ElementRenderer.HideNormals
             renderer.draw project highlight
-                { placement = placement; centre = nodes.[i].position; zoom = e.zoom; opticalSign = e.placement.catalogueKind.opticalSign; normals = normals })
+                {
+                    placement = placement
+                    centre = nodes.[i].position
+                    zoom = e.zoom
+                    opticalSign = e.placement.catalogueKind.opticalSign
+                    normals = normals
+                    caption = model.drawnCaptionOf e
+                })
 
     /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is
     /// selected). The clamp is the host's: ±half the plate, none for a detector (spec 0046).
@@ -5072,8 +5321,10 @@ type TableAndElementRotationModel with
     /// One present element as a candidate-to-vary — its serializable id plus a human-readable label
     /// ("<kind> #<n>", 1-based, in scene order).
     member internal model.sweepCandidates : ExperimentControls.SweepCandidate list =
+        // Spec 0051 `.manual/003` 3.6: only an element with something to vary is offered.
         model.indexedElements
-        |> List.map (fun (i, e) -> { ExperimentControls.SweepCandidate.elementId = e.id.uiKey; label = ControlCaption $"{e.placement.catalogueKind.kindName} #{i.value + 1}" })
+        |> List.filter (fun (_, e) -> not (List.isEmpty (variablesOfElement model e)))
+        |> List.map (fun (_, e) -> { ExperimentControls.SweepCandidate.elementId = e.id.uiKey; label = (model.tableLabelOf e.id).caption })
 
     /// The current draft experiment's readout (spec 028), or none when the draft is incomplete / its element
     /// is no longer present.
@@ -5081,7 +5332,7 @@ type TableAndElementRotationModel with
         let draft = model.experimentCollection.draft
         match draft.elementId, draft.variable with
         | Some id, Some v when model.elements |> List.exists (fun e -> e.id = id) ->
-            Some (ControlCaption $"Experiment: %s{draft.elementLabel.value} — vary %s{v.label} over %g{draft.range.min.value}…%g{draft.range.max.value} %s{v.unitLabel} (%d{draft.range.points.value} pts), capture %s{draft.measurement.label}")
+            Some (ControlCaption $"Experiment: %s{(model.tableLabelOf id).value} — vary %s{v.label} over %g{draft.range.min.value}…%g{draft.range.max.value} %s{v.unitLabel} (%d{draft.range.points.value} pts), capture %s{draft.measurement.label}")
         | _ -> None
 
 // ---------------------------------------------------------------------------
@@ -5488,7 +5739,7 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                         |> List.map (fun (tag, j) -> $"{tag.value}: {(model.detectorKindAt j).readsText}")
                         |> String.concat ", "
                     ControlCaption
-                        $"%s{sourceText}; varied element: %s{xAxis.label.value}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
+                        $"%s{sourceText}; varied element: %s{(model.tableLabelOf xAxis.elementId).value}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
                 // The rotate-R1 intensity run needs polarized light: with no polarizer on the path there is nothing a
                 // rotation could change — the typed status, never a synthesized curve (spec 0038 step 018). A polarizer
                 // slot holding an item is a polarizer (spec 0050 S8.2).
@@ -5526,7 +5777,7 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                         let settingTexts =
                             List.map2
                                 (fun (axis : Experiments.ScanAxis) (setting : Experiments.ScanSetting) ->
-                                    $"%s{axis.label.value}: %s{axis.variable.label} %g{setting.value.value}%s{axis.variable.unitLabel}")
+                                    $"%s{(model.tableLabelOf axis.elementId).value}: %s{axis.variable.label} %g{setting.value.value}%s{axis.variable.unitLabel}")
                                 outer
                                 group
                         match settingTexts @ blockTags with
@@ -5627,7 +5878,7 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                         match List.contains Experiments.VaryWaveLength (scan.axes |> List.map (fun axis -> axis.variable)) with
                         | true -> "Source swept"
                         | false -> $"Source %g{w0.nanometers} nm"
-                    ControlCaption $"%s{sourceText}; %s{named.description}."
+                    ControlCaption $"%s{sourceText}; %s{(named.describeWith model.tableLabelOf).value}."
             {
                 ExperimentChart.ExperimentChart.series = drawn |> List.collect (fun block -> block.blockSeries)
                 xLabel = ControlCaption (variables |> List.map xLabelOf |> String.concat " / ")
@@ -5671,11 +5922,30 @@ type TableAndElementRotationModel with
                 | None -> ExperimentChart.emptyExperimentChart
             | None -> ExperimentChart.emptyExperimentChart
 
-/// The chart of a COLLECTED experiment, the per-row "View" action (spec 0038 Part I, Part L 037): its scan over its setup
-/// revision's slots (spec 0050 S8.2, S9.1); EMPTY while the inverse chart surface is gated off.
+/// The chart of a COLLECTED experiment, the per-row "View" action (spec 0038 Part I, Part L 037): its scan over the slots
+/// of its own setup revision, in both constructors, whatever the table shows; a revision the kit lacks is an empty chart
+/// saying why (spec 0050 S8.2, S9.1; 0051 `.manual/003` 3.4).
 let chartForExperiment (model : TableAndElementRotationModel) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
-    if not model.experimentChartVisible then ExperimentChart.emptyExperimentChart
-    else chartForRun model exp.scan
+    match exp.slotsIn model.kitSetups with
+    | Ok slots -> chartForRun { model with elements = slots |> List.map (fun slot -> slot.drawnWith model.kitItems) } exp.scan
+    | Error error -> { ExperimentChart.emptyExperimentChart with description = ControlCaption $"its setup is not in the kit: {error.describe}" }
+
+type TableAndElementRotationModel with
+
+    /// The experiment's kept points as a series, or none while it has no data that reads (spec 0051 `.manual/003` 3.4).
+    member model.measuredSeriesOpt (exp : Experiments.Experiment) : ExperimentControls.ChartSeries option =
+        match exp.dataOpt with
+        | Some data ->
+            match model.experimentData.readMapped data with
+            | Ok points ->
+                let series : ExperimentControls.ChartSeries =
+                    {
+                        name = ControlCaption $"Measured — {exp.name.value}"
+                        points = (points.keptBy data.exclusions).chartPoints
+                    }
+                Some series
+            | Error _ -> None
+        | None -> None
 
 // Spec 0027: wire the forward-referenced hooks (defined once `experimentResult` exists) so a double-click /
 // "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
@@ -5686,15 +5956,30 @@ draftChartHook <- fun model -> model.experimentResult
 openChartWindowHook <-
     fun model ->
         let chart = model.experimentResult
-        if not (List.isEmpty chart.series) then ChartWindow(chart).Show()
+        if not (List.isEmpty chart.series) then ChartWindow(chart, ChartStyle.defaultChartStyleState chart, model.kitShell.exportsFolderOpt).Show()
 
+// Spec 0051 `.manual/003` 3.4: the measured points join the model's series on the right axis, in their own units.
 viewExperimentHook <-
     fun model id ->
         match model.experimentCollection.experiments |> List.tryFind (fun e -> e.id = id) with
         | Some exp ->
             let chart = chartForExperiment model exp
-            if not (List.isEmpty chart.series) then ChartWindow(chart).Show()
-        | None -> ()
+            match chart.series, model.measuredSeriesOpt exp with
+            | [], _ ->
+                let reason =
+                    match chart.description.value with
+                    | "" -> "its setup gives no point to chart"
+                    | text -> text
+                Some (ControlCaption $"No chart for {exp.name.value}: {reason}.")
+            | modelled, Some measured ->
+                let shown = { chart with series = modelled @ [ measured ] }
+                let measuredIndex = ChartStyle.ChartSeriesIndex (List.length modelled)
+                ChartWindow(shown, ChartStyle.setSeriesAxisSide measuredIndex ChartStyle.RightAxis (ChartStyle.defaultChartStyleState shown), model.kitShell.exportsFolderOpt).Show()
+                None
+            | _, None ->
+                ChartWindow(chart, ChartStyle.defaultChartStyleState chart, model.kitShell.exportsFolderOpt).Show()
+                None
+        | None -> None
 
 type TableAndElementRotationModel with
 
@@ -5724,7 +6009,7 @@ type TableAndElementRotationModel with
         let capture = model.draftCapture
         // Spec 0050 S9.1: step 288's texts — a closed block's axes and capture, the current block's held axes.
         let axesText (axes : Experiments.ScanAxis list) : string =
-            axes |> List.map (fun (axis : Experiments.ScanAxis) -> axis.describe) |> String.concat " × "
+            axes |> List.map (fun (axis : Experiments.ScanAxis) -> (axis.describeAs (model.tableLabelOf axis.elementId)).value) |> String.concat " × "
         let blockLines =
             draft.closedBlocks
             |> List.mapi (fun index (block : Experiments.ScanBlock) ->
@@ -5737,13 +6022,20 @@ type TableAndElementRotationModel with
             | axes -> [ ControlCaption $"This block: {axesText axes}" ]
         let editedOpt =
             draft.editingId |> Option.bind (fun id -> col.experiments |> List.tryFind (fun experiment -> experiment.id = id))
+        // Spec 0051 `.manual/003` 3.6: a withheld Add says why.
+        let addReasonOpt : ControlCaption option =
+            match model.kitWrites, draft.elementId, draft.variable, col.canCommit, capture with
+            | ControlWithheld, _, _, _, _ -> Some (ControlCaption "The kit is open read-only: nothing is added.")
+            | ControlOffered, None, _, _, _ -> Some (ControlCaption "Choose the element to vary first.")
+            | ControlOffered, Some _, None, _, _ -> Some (ControlCaption "The chosen element has nothing to vary.")
+            | ControlOffered, Some _, Some _, true, None ->
+                Some (ControlCaption "No detector captures the light this element leaves by: put a detector on its ray.")
+            | ControlOffered, Some _, Some _, false, _ -> Some (ControlCaption "Choose what to vary first.")
+            | ControlOffered, Some _, Some _, true, Some _ -> None
         let addAvailability =
-            match model.kitWrites with
-            | ControlWithheld -> ControlWithheld
-            | ControlOffered ->
-                match col.canCommit, capture with
-                | true, Some _ -> ControlOffered
-                | true, None | false, _ -> ControlWithheld
+            match addReasonOpt with
+            | Some _ -> ControlWithheld
+            | None -> ControlOffered
         {
             candidates = model.sweepCandidates
             chosenId = draft.elementId |> Option.map (fun id -> id.uiKey)
@@ -5771,9 +6063,11 @@ type TableAndElementRotationModel with
             rangePoints = draft.range.points.pointCount
             rangeUnitLabel = ControlCaption (match draft.variable with Some v -> v.unitLabel | None -> "°")
             addAvailability = addAvailability
+            addReasonOpt = addReasonOpt
             scanLines = blockLines @ heldLines
             scanAvailability = addAvailability
             removalAvailability = model.kitWrites
+            removalPendingOpt = model.experimentRemovalOpt |> Option.map (fun id -> id.uiKey)
             editorMode =
                 match draft.editingId with
                 | Some _ -> ExperimentControls.EditorUpdatesExisting
@@ -5806,7 +6100,7 @@ type TableAndElementRotationModel with
                 |> List.map (fun e ->
                     {
                         ExperimentControls.ExperimentRow.id = e.id.uiKey
-                        description = ControlCaption $"{e.name.value} [{e.role.text}] — {e.description}"
+                        description = ControlCaption $"{e.name.value} [{e.role.text}] — {(model.experimentDescription e).value}"
                         badge = ControlCaption (model.dataBadgeOf e).text
                         focus = if draft.editingId = Some e.id then ExperimentControls.LoadedInEditor else ExperimentControls.NotLoadedInEditor
                     })
@@ -5849,6 +6143,8 @@ let private experimentHandlers (model : TableAndElementRotationModel) (dispatch 
         setNotes = fun text -> edited |> Option.iter (fun id -> dispatch (SetExperimentNotes (id, text)))
         editExperiment = withExperiment ExpEdit
         removeExperiment = withExperiment ExpRemove
+        confirmRemoval = fun () -> dispatch ExpConfirmRemove
+        cancelRemoval = fun () -> dispatch ExpCancelRemove
         viewExperiment = withExperiment ViewExperiment
         openChartWindow = fun () -> dispatch OpenExperimentChartWindow
     }
@@ -5866,6 +6162,7 @@ let private slotBarHandlers (model : TableAndElementRotationModel) (dispatch : T
                 |> Option.bind (fun slot -> slot.pickedByLetter letter (model.slotChipItems slot))
                 |> Option.iter (fun picked -> dispatch (SwapSlot (slotId, picked.id)))
         recordExperiment = fun () -> dispatch RecordExperiment
+        setRecordNote = fun note -> dispatch (SetRecordNote note)
         openSetupGrid = fun () -> dispatch OpenSetupGrid
     }
 
@@ -6081,24 +6378,10 @@ type TableAndElementRotationModel with
 /// A small clickable verb box for the host-added strip buttons and the Data step's split verb (the MaterialsControls
 /// button look). The strip buttons live in a variable-membership row, so they carry AutomationIds. Withheld, it is
 /// disabled and dimmed, never hidden (spec 0050 S5.3, S9.3).
-let internal availableWorkbenchButton (availability : ControlAvailability) (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
-        Border.isEnabled availability.isEnabled
-        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-        Border.background (brush (Color.FromRgb(232uy, 232uy, 232uy)))
-        Border.borderBrush (brush (Color.FromRgb(120uy, 120uy, 120uy)))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(12.0, 5.0))
-        Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf id.value)
-    ] :> IView
+let internal availableWorkbenchButton (availability : ControlAvailability) (id : ConstructorUiId) (label : ControlCaption) (onClick : CommandButton -> unit) : IView =
+    CommandControls.commandButtonOn id label NeutralCommand availability onClick [ Button.margin (Thickness(0.0, 0.0, 8.0, 4.0)) ]
 
-let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onClick : PointerPressedEventArgs -> unit) : IView =
+let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onClick : CommandButton -> unit) : IView =
     availableWorkbenchButton ControlOffered id label onClick
 
 // ---------------------------------------------------------------------------
@@ -6141,34 +6424,57 @@ let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch :
 /// handler for the new element and a bind never leaves a stale one behind. The owner window
 /// for a modal Select open is resolved from the click's own visual tree at dispatch time.
 let private selectorChooseButton (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) : IView =
-    Border.create [
-        ConstructorUiId.selectorChooseButton.automationAttribute<Border> ()
-        Border.background (brush (Color.FromRgb(232uy, 232uy, 232uy)))
-        Border.borderBrush (brush (Color.FromRgb(120uy, 120uy, 120uy)))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(12.0, 5.0))
-        Border.margin (Thickness(0.0, 2.0, 8.0, 4.0))
-        Border.horizontalAlignment HorizontalAlignment.Left
-        Border.child (TextBlock.create [ TextBlock.text "Choose…" ])
-        Border.onPointerPressed ((fun e ->
-            e.Handled <- true
-            match e.Source with
-            | :? Visual as source ->
-                match TopLevel.GetTopLevel source with
-                | :? Window as owner -> chooseFromLibrary model dispatch element owner
-                | _ -> ()
-            | _ -> ()), SubPatchOptions.OnChangeOf element.id.value)
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.selectorChooseButton.value
-    :> IView
+    CommandControls.commandButtonOn ConstructorUiId.selectorChooseButton (ControlCaption "Choose…") NeutralCommand ControlOffered
+        (fun pressed ->
+            match TopLevel.GetTopLevel pressed with
+            | :? Window as owner -> chooseFromLibrary model dispatch element owner
+            | _ -> ())
+        [ Button.margin (Thickness(0.0, 2.0, 8.0, 4.0)); Button.horizontalAlignment HorizontalAlignment.Left ]
+
+/// The table's elements as a list, one item per element named as its slot, selecting without the canvas: automation's
+/// semantic path to the table (spec 0051 `.manual/003` 1.2, 3.6).
+let private tableElementList (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    let selectedIndex =
+        match model.selection with
+        | ElementSelected index -> index.value
+        | TableSelected
+        | NothingSelected -> -1
+    let items : IView list =
+        model.indexedElements
+        |> List.map (fun (_, element) ->
+            let id = ConstructorUiId.tableElementListItem element.id.uiKey
+            let label = model.tableLabelOf element.id
+            ListBoxItem.create [
+                id.automationAttribute<ListBoxItem> ()
+                AttrBuilder<ListBoxItem>.CreateProperty<string>(AutomationProperties.NameProperty, label.value, ValueNone)
+                ListBoxItem.content label.value
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey id.value
+            :> IView)
+    ListBox.create [
+        ConstructorUiId.tableElementList.automationAttribute<ListBox> ()
+        AttrBuilder<ListBox>.CreateProperty<string>(AutomationProperties.NameProperty, "Table elements", ValueNone)
+        // A tab stop itself, so the keyboard reaches the list and the arrows walk its items.
+        ListBox.focusable true
+        ListBox.maxHeight 160.0
+        ListBox.margin (Thickness(0.0, 0.0, 0.0, 6.0))
+        ListBox.viewItems items
+        ListBox.selectedIndex selectedIndex
+        ListBox.onSelectedIndexChanged (
+            (fun index ->
+                match model.indexedElements |> List.tryItem index with
+                | Some (_, element) when index <> selectedIndex -> dispatch (SelectTableElement element.id)
+                | Some _
+                | None -> ()),
+            SubPatchOptions.Always)
+    ] :> IView
 
 /// The Select bay content (spec 0038 step 017). No element selected → today's disabled
 /// prompt (the empty LibraryControls bay). An element selected → the Choose… verb, and BELOW
 /// the threshold also the inline quick-pick strip — the unchanged LibraryControls surface
 /// (kind label, bound readout, kind-constrained rows, confirm panel) wrapped in a keyed,
 /// AutomationId'd box so the headless gating proofs address it as one unit.
-let private selectorBayContent (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+let private selectorChoice (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     match model.selectorOffer, model.selection with
     | (QuickPickAndChoose | ChooseAlone) as offer, ElementSelected i ->
         let element = List.item i.value model.elements
@@ -6176,7 +6482,7 @@ let private selectorBayContent (model : TableAndElementRotationModel) (dispatch 
             match offer with
             | QuickPickAndChoose ->
                 [ Border.create [
-                      ConstructorUiId.selectorQuickPickStrip.automationAttribute<Border> ()
+                      yield! ConstructorUiId.selectorQuickPickStrip.groupAttributes<Border> ()
                       Border.child (LibraryControls.libraryControlsView model.libraryState (libraryHandlers model dispatch))
                   ]
                   |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.selectorQuickPickStrip.value
@@ -6189,6 +6495,14 @@ let private selectorBayContent (model : TableAndElementRotationModel) (dispatch 
         ] :> IView
     | _, (TableSelected | NothingSelected | ElementSelected _) ->
         LibraryControls.libraryControlsView LibraryControls.empty (libraryHandlers model dispatch)
+
+/// The Select bay: the table's elements as a list, then the selected element's choice (spec 0038 step 017; 0051
+/// `.manual/003` 3.6).
+let private selectorBayContent (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.children [ tableElementList model dispatch; selectorChoice model dispatch ]
+    ] :> IView
 
 // ---------------------------------------------------------------------------
 // Experiments are kept in the kit (spec 0050 S4.3); their data files are the Data step's, `DataStepView` (S9.3).
@@ -6211,18 +6525,52 @@ let buildDataFilePickerOptions
     | None -> ()
     options
 
-/// Picks a lab file under `title` and remembers its folder, as the Data step's verbs and the Items panel's photo do;
-/// cancellation leaves settings unchanged (spec 0038 Part L steps 037/038; spec 0050 S4.2, S7.2, S9.3).
-let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName -> unit) : unit =
+/// What a kit window's file dialog picks: a lab data file or an item's photo, each with its own remembered folder and
+/// the files it lists (spec 0051 `.manual/003` 5.2).
+type PickedFileKind =
+    | PickedLabFile
+    | PickedPhotoFile
+
+    member this.purpose : UserEnvironment.PickerPurpose =
+        match this with
+        | PickedLabFile -> UserEnvironment.measuredDataFolderKey
+        | PickedPhotoFile -> UserEnvironment.itemPhotoFolderKey
+
+    /// The file types the dialog lists, the kind's own first.
+    member this.fileTypes : Avalonia.Platform.Storage.FilePickerFileType list =
+        let allFiles = Avalonia.Platform.Storage.FilePickerFileType("All files", Patterns = [ "*" ])
+        match this with
+        | PickedLabFile -> [ Avalonia.Platform.Storage.FilePickerFileType("Lab data (*.csv, *.txt, *.tsv)", Patterns = [ "*.csv"; "*.txt"; "*.tsv" ]); allFiles ]
+        | PickedPhotoFile ->
+            [ Avalonia.Platform.Storage.FilePickerFileType("Images (*.png, *.jpg, *.jpeg, *.bmp, *.gif)", Patterns = [ "*.png"; "*.jpg"; "*.jpeg"; "*.bmp"; "*.gif" ]) ]
+
+type TableAndElementRotationModel with
+
+    /// Where a file dialog of that kind starts when it remembers no folder: the kit's `data/` for a lab file, the kit's
+    /// folder for a photo (spec 0051 `.manual/003` 5.2).
+    member model.fileStartOpt (kind : PickedFileKind) : FolderName option =
+        match model.kitFolderOpt, kind with
+        | Some folder, PickedLabFile -> Some (FolderName (System.IO.Path.Combine(folder.value.value, "data")))
+        | Some folder, PickedPhotoFile -> Some folder.value
+        | None, _ -> None
+
+/// Picks a file of `kind` under `title`, starting in the folder its purpose last confirmed, else in the model's start
+/// folder for it, and remembers the confirmed folder; cancellation leaves settings unchanged (spec 0038 Part L steps
+/// 037/038; spec 0050 S4.2, S7.2, S9.3; 0051 `.manual/003` 5.2).
+let pickDataFile (owner : Window) (model : TableAndElementRotationModel) (kind : PickedFileKind) (title : ControlCaption) (onPicked : FileName -> unit) : unit =
     try
-        let settingsPath = UserEnvironment.settingsPath ()
-        let settings = UserEnvironment.EnvironmentSettings.load settingsPath
+        let settingsOpt =
+            model.kitShell.environmentFileOpt |> Option.map (fun file -> file, UserEnvironment.EnvironmentSettings.load file)
         let picked =
             async {
-                // Resolve the persisted folder to an `IStorageFolder` through the provider (`None` when
-                // unset, unresolvable, or on a headless host) — the picker's `SuggestedStartLocation`.
+                // Resolve the start folder to an `IStorageFolder` through the provider (`None` when unset, unresolvable,
+                // or on a headless host) — the picker's `SuggestedStartLocation`.
+                let startOpt =
+                    match settingsOpt |> Option.bind (fun (_, settings) -> UserEnvironment.lastFolder kind.purpose settings) with
+                    | Some folder -> Some folder
+                    | None -> model.fileStartOpt kind
                 let! suggested =
-                    match UserEnvironment.lastFolder UserEnvironment.measuredDataFolderKey settings with
+                    match startOpt with
                     | Some folder ->
                         async {
                             let! resolved =
@@ -6233,6 +6581,7 @@ let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName 
                     | None -> async { return None }
                 let options = buildDataFilePickerOptions suggested
                 options.Title <- title.value
+                options.FileTypeFilter <- kind.fileTypes
                 let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
                 let pick =
                     match List.ofSeq files with
@@ -6241,8 +6590,11 @@ let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName 
                 // Fold the outcome into the environment and persist ONLY when a confirmed selection
                 // actually changed the folder (best-effort — a save failure must not sink the attach);
                 // a cancel leaves `settings` unchanged, so nothing is written.
-                let updated = UserEnvironment.applyPick UserEnvironment.measuredDataFolderKey pick settings
-                if updated <> settings then updated.save settingsPath |> ignore
+                match settingsOpt with
+                | Some (file, settings) ->
+                    let updated = UserEnvironment.applyPick kind.purpose pick settings
+                    if updated <> settings then updated.save file |> ignore
+                | None -> ()
                 match pick with
                 | UserEnvironment.FilePicked dataFile -> onPicked dataFile
                 | UserEnvironment.PickCancelled -> ()
@@ -6250,9 +6602,10 @@ let pickDataFile (owner : Window) (title : ControlCaption) (onPicked : FileName 
         Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate picked)
     with _ -> ()
 
-/// Names the active setup, creates, saves and loads the kit's setups; the data files are the Data step's (spec 0050
-/// S4.3, S8.2, S9.3). The kit status is the kit bar's, so one control carries `kitStatus` (spec 0050 S5.3).
-let private collectionBuilderView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+/// Names the active setup, creates, saves and loads the kit's setups, at the top of the Setups step; the data files are
+/// the Data step's (spec 0050 S4.3, S8.2, S9.3; 0051 `.manual/003` 3.2). The kit status is the kit bar's, so one control
+/// carries `kitStatus` (spec 0050 S5.3).
+let private setupSectionView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let sectionHeading (text : string) : IView =
         TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
     let commitName (source : obj) : unit =
@@ -6261,20 +6614,17 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
             let name = ControlCaption field.Text
             dispatch (SetSetupName name)
         | _ -> ()
-    let createSetup (event : PointerPressedEventArgs) : unit =
-        // Spec 0050 S4.3: the verb box does not blur the field; commit its live text before creating.
-        match event.Source with
-        | :? Visual as source ->
-            match TopLevel.GetTopLevel source with
-            | :? Window as owner ->
-                owner.GetVisualDescendants()
-                |> Seq.tryPick (function
-                    | :? TextBox as field when AutomationProperties.GetAutomationId field = ConstructorUiId.setupNameField.value -> Some field
-                    | _ -> None)
-                |> Option.iter (fun field ->
-                    commitName field
-                    dispatch CreateSetup)
-            | _ -> ()
+    let createSetup (pressed : CommandButton) : unit =
+        // Spec 0050 S4.3: commit the field's live text before creating, whether or not the press blurred it.
+        match TopLevel.GetTopLevel pressed with
+        | :? Window as owner ->
+            owner.GetVisualDescendants()
+            |> Seq.tryPick (function
+                | :? TextBox as field when AutomationProperties.GetAutomationId field = ConstructorUiId.setupNameField.value -> Some field
+                | _ -> None)
+            |> Option.iter (fun field ->
+                commitName field
+                dispatch CreateSetup)
         | _ -> ()
     // Spec 0050 S8.2: outside the horizontal row, so the line wraps (AGENTS.md).
     let activeSetupLine : IView =
@@ -6319,12 +6669,18 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
                   // Spec 0050 S4.3: FuncUI conflates Name with AutomationProperties.Name;
                   // initialize the write-once control name outside its property diff.
                   WrapPanel.init (fun (panel : WrapPanel) -> panel.Name <- ConstructorUiId.savedSetups.value)
-                  ConstructorUiId.savedSetups.automationAttribute<WrapPanel> ()
+                  yield! ConstructorUiId.savedSetups.groupAttributes<WrapPanel> ()
                   AttrBuilder<WrapPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Saved setups", ValueNone)
                   WrapPanel.orientation Orientation.Horizontal
                   WrapPanel.children (
                       setups |> List.map (fun setup ->
-                          workbenchButton (ConstructorUiId.savedSetup setup.name) setup.name.caption (fun _ -> dispatch (ActivateSetup setup.name))))
+                          // Spec 0051 `.manual/003` 3.2: the active setup is the chosen one.
+                          let mark =
+                              match model.activeSetupOpt with
+                              | Some active when active.name = setup.name -> ChosenChoice
+                              | Some _
+                              | None -> UnchosenChoice
+                          CommandControls.choiceCommand (ConstructorUiId.savedSetup setup.name) setup.name.caption mark (fun () -> dispatch (ActivateSetup setup.name))))
                ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.savedSetups.value) :> IView ]
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
@@ -6332,8 +6688,8 @@ let private collectionBuilderView (model : TableAndElementRotationModel) (dispat
         StackPanel.children ([ sectionHeading "Setup:"; activeSetupLine; setupRow ] @ savedSetupSection)
     ] :> IView
 
-/// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment
-/// editor + chart, then the Ui-layer collection builder stacked below it.
+/// The Experiments bay content (spec 0038 Part L, 037): the Controls-layer experiment editor and chart, then Export
+/// data; the setups moved to the Setups step (spec 0051 `.manual/003` 3.2).
 let private experimentsBayContent (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     // Spec 0046: Export data — the draft's computed run through the export seam, with its status line.
     let exportRow =
@@ -6343,7 +6699,7 @@ let private experimentsBayContent (model : TableAndElementRotationModel) (dispat
             StackPanel.children [
                 workbenchButton ConstructorUiId.experimentExportButton (ControlCaption "Export data") (fun _ -> dispatch ExportExperimentData)
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.experimentExportStatus.value
+                    ConstructorUiId.experimentExportStatus.automationAttribute<TextBlock> ()
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.text (model.exportStatus |> Option.map (fun status -> status.value) |> Option.defaultValue "")
                 ]
@@ -6355,7 +6711,6 @@ let private experimentsBayContent (model : TableAndElementRotationModel) (dispat
         StackPanel.children [
             ExperimentControls.experimentControlsView model.experimentState (experimentHandlers model dispatch)
             exportRow
-            collectionBuilderView model dispatch
         ]
     ] :> IView
 
@@ -6404,30 +6759,17 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : TableAndElementRota
         StackPanel.spacing 4.0
         StackPanel.children (
             [
-                // The tab-strip row: the ribbon fills it; the right-aligned "Materials…" (spec 0038
-                // step 013) and "Library…" (step 015) buttons ride its right edge, TOP-aligned
-                // beside the tab strip, each opening its single-instance window through the launcher
-                // seam. Docked-right FIRST so the ribbon (the fill child) can never push them
-                // off-screen; Materials… docks first and therefore sits rightmost (its step-013
-                // position), Library… lands immediately left of it.
-                DockPanel.create [
-                    DockPanel.children [
-                        Border.create [
-                            Border.dock Dock.Right
-                            Border.verticalAlignment VerticalAlignment.Top
-                            Border.margin (Thickness(0.0, 8.0, 8.0, 0.0))
-                            Border.child (workbenchButton ConstructorUiId.openMaterialsWindowButton (ControlCaption "Materials…") (fun _ -> dispatch OpenMaterialsWindow))
-                        ]
-                        Border.create [
-                            Border.dock Dock.Right
-                            Border.verticalAlignment VerticalAlignment.Top
-                            Border.margin (Thickness(0.0, 8.0, 0.0, 0.0))
-                            Border.child (workbenchButton ConstructorUiId.openLibraryWindowButton (ControlCaption "Library…") (fun _ -> dispatch OpenLibraryWindow))
-                        ]
-                        Ribbon.ribbonView { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
+                // The tab strip, then "Library…" (spec 0038 step 015) and "Materials…" (step 013), each opening its
+                // single-instance window through the launcher seam. They wrap with the tabs, so a narrow window keeps
+                // them on screen (spec 0051 `.manual/003` 4.3).
+                Ribbon.ribbonViewWith
+                    [
+                        workbenchButton ConstructorUiId.openLibraryWindowButton (ControlCaption "Library…") (fun _ -> dispatch OpenLibraryWindow)
+                        workbenchButton ConstructorUiId.openMaterialsWindowButton (ControlCaption "Materials…") (fun _ -> dispatch OpenMaterialsWindow)
                     ]
-                ] :> IView
-                TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text model.readoutText ] :> IView
+                    { bays = bays; selected = model.ribbon }
+                    (fun name -> dispatch (SelectBay name))
+                TextBlock.create [ ConstructorUiId.teReadout.automationAttribute<TextBlock> (); TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text model.readoutText ] :> IView
             ]
             // Spec 0038 (016): the staleness status line — present only while a status is set.
             @ model.selectStatusRow)
@@ -6454,43 +6796,26 @@ type private ElementMenuLine =
 
 /// One clickable element-menu row (greyed and inert when withheld), keyed and AutomationId'd by `id`.
 let private elementMenuItem (id : ConstructorUiId) (label : ControlCaption) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.isEnabled availability.isEnabled
-        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.45)
-        Border.background (brush (Color.FromRgb(255uy, 255uy, 255uy)))
-        Border.padding (Thickness(10.0, 4.0))
-        Border.child (TextBlock.create [ TextBlock.text label.value; TextBlock.textWrapping TextWrapping.Wrap ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, label.value, availability.isEnabled)))
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey id.value
-    :> IView
+    CommandControls.commandButton id label MenuCommand availability onClick
+        [ Button.padding (Thickness(10.0, 4.0)); Button.borderThickness 0.0; Button.horizontalAlignment HorizontalAlignment.Stretch
+          Button.horizontalContentAlignment HorizontalAlignment.Left ]
 
 /// Spec 0046: the menu's Choose… row — the Select bay's Choose… verb (`chooseFromLibrary`) for the
 /// element the menu serves, which then closes the menu. Like the Select bay's button, the owner window for a
 /// modal Select open is resolved from the click's own visual tree, and the subscription re-patches on the
 /// element's id (the closure's only render-varying capture).
 let private elementMenuChooseItem (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) : IView =
-    Border.create [
-        ConstructorUiId.elementMenuChoose.automationAttribute<Border> ()
-        Border.background (brush (Color.FromRgb(255uy, 255uy, 255uy)))
-        Border.padding (Thickness(10.0, 4.0))
-        Border.child (TextBlock.create [ TextBlock.text "Choose…" ])
-        Border.onPointerPressed ((fun e ->
-            e.Handled <- true
+    CommandControls.commandButtonOn ConstructorUiId.elementMenuChoose (ControlCaption "Choose…") MenuCommand ControlOffered
+        (fun pressed ->
             // Resolve the owner BEFORE closing the menu: closing re-renders it out of the visual tree.
             let ownerOpt =
-                match e.Source with
-                | :? Visual as source ->
-                    match TopLevel.GetTopLevel source with
-                    | :? Window as owner -> Some owner
-                    | _ -> None
+                match TopLevel.GetTopLevel pressed with
+                | :? Window as owner -> Some owner
                 | _ -> None
             dispatch CloseElementMenu
-            ownerOpt |> Option.iter (chooseFromLibrary model dispatch element)), SubPatchOptions.OnChangeOf element.id.value)
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.elementMenuChoose.value
-    :> IView
+            ownerOpt |> Option.iter (chooseFromLibrary model dispatch element))
+        [ Button.padding (Thickness(10.0, 4.0)); Button.borderThickness 0.0; Button.horizontalAlignment HorizontalAlignment.Stretch
+          Button.horizontalContentAlignment HorizontalAlignment.Left ]
 
 /// A non-clickable element-menu line — a section heading, or a greyed explanatory note.
 let private elementMenuNote (text : ControlCaption) (line : ElementMenuLine) : IView =
@@ -6580,7 +6905,7 @@ let private elementMenuOverlay (model : TableAndElementRotationModel) (dispatch 
                 let left = max 0.0 (min (tableAndElementRotationCanvasWidth - elementMenuMaxWidth.value) (menu.at.sx + 6.0))
                 let top = max 0.0 (min (tableAndElementRotationCanvasHeight - estimatedHeight) (menu.at.sy + 6.0))
                 [ Border.create [
-                      ConstructorUiId.elementMenu.automationAttribute<Border> ()
+                      yield! ConstructorUiId.elementMenu.groupAttributes<Border> ()
                       Canvas.left left
                       Canvas.top top
                       Border.minWidth elementMenuMinWidth.value
@@ -6649,13 +6974,13 @@ let private pageScrollOf (source : obj) : PageScroll option =
         let viewerOpt =
             Avalonia.VisualTree.VisualExtensions.GetVisualAncestors v
             |> Seq.tryPick (function
-                | :? ScrollViewer as s when s.Name = ConstructorUiId.tableElementScrollViewer.value -> Some s
+                | :? ScrollViewer as s when ConstructorUiId.tableElementScrollViewer.isCarriedBy s -> Some s
                 | _ -> None)
         match viewerOpt with
         | Some viewer ->
             Avalonia.VisualTree.VisualExtensions.GetVisualDescendants viewer
             |> Seq.tryPick (function
-                | :? Canvas as c when c.Name = ConstructorUiId.tableElementCanvas.value -> Some c
+                | :? Canvas as c when ConstructorUiId.tableElementCanvas.isCarriedBy c -> Some c
                 | _ -> None)
             |> Option.bind (fun canvas ->
                 canvas.TranslatePoint(Point(0.0, 0.0), viewer)
@@ -6686,7 +7011,7 @@ type TableAndElementRotationModel with
                 let c = TableScene.projectOnScene model.view centre
                 let info = elementInfo model i
                 [ Ellipse.create [
-                      (ConstructorUiId.elementHover e.id).automationAttribute<Ellipse> ()
+                      yield! (ConstructorUiId.elementHover e.id).figureAttributes<Ellipse> ()
                       (ControlCaption $"{info.heading.value}\n{info.detail.value}").toolTipAttribute<Ellipse> ()
                       Ellipse.left (c.sx - radius)
                       Ellipse.top (c.sy - radius)
@@ -6700,7 +7025,7 @@ type TableAndElementRotationModel with
 
     member internal model.mainTableCanvas : IView =
         Canvas.create [
-            Canvas.name ConstructorUiId.tableElementCanvas.value
+            yield! ConstructorUiId.tableElementCanvas.surfaceAttributes<Canvas> ()
             Canvas.width tableAndElementRotationCanvasWidth
             Canvas.height tableAndElementRotationCanvasHeight
             Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -6737,36 +7062,43 @@ let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (SlotBarView.slotBarView model.slotBarState (slotBarHandlers model dispatch) :: setupGridPanel)
                 ]
-                Panel.create [
-                    Panel.children [
-                        Border.create [
-                            Border.background (brush (Color.FromRgb(250uy, 250uy, 250uy)))
-                            Border.onPointerPressed (fun e ->
-                                e.Handled <- true
-                                match e.GetCurrentPoint(null).Properties.IsRightButtonPressed with
-                                | true -> ()
-                                | false -> dispatch (PointerDown (toScreen e)))
-                            Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-                            Border.onPointerReleased (fun e ->
-                                e.Handled <- true
-                                match e.InitialPressMouseButton with
-                                | MouseButton.Right -> dispatch (OpenElementMenuAt (toScreen e))
-                                | _ -> dispatch (PointerUp (toScreen e)))
-                            // Spec 0046: a plain wheel scrolls the PAGE until the table is fully in view (left
-                            // unhandled, it bubbles to the page's ScrollViewer); then — and always with a modifier —
-                            // it is the table's gesture.
-                            Border.onPointerWheelChanged (fun e ->
-                                let mods = wheelModifiers e.KeyModifiers
-                                let notches = WheelNotches (if e.Delta.Y >= 0.0 then 1 else -1)
-                                match wheelTarget mods (pageScrollOf e.Source) notches with
-                                | WheelToPage -> ()
-                                | WheelToTable ->
-                                    e.Handled <- true
-                                    dispatch (Wheel (mods, notches)))
-                            Border.child model.mainTableCanvas
-                        ]
-                        elementMenuOverlay model dispatch
-                    ]
+                // Spec 0051 `.manual/003` 4.3: the fixed-size canvas scrolls sideways in its own scroller, so the page
+                // fits a narrower window, a kit window's beside its flow strip included.
+                ScrollViewer.create [
+                    ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+                    ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+                    ScrollViewer.content (
+                        Panel.create [
+                            Panel.children [
+                                Border.create [
+                                    Border.background (brush (Color.FromRgb(250uy, 250uy, 250uy)))
+                                    Border.onPointerPressed (fun e ->
+                                        e.Handled <- true
+                                        match e.GetCurrentPoint(null).Properties.IsRightButtonPressed with
+                                        | true -> ()
+                                        | false -> dispatch (PointerDown (toScreen e)))
+                                    Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
+                                    Border.onPointerReleased (fun e ->
+                                        e.Handled <- true
+                                        match e.InitialPressMouseButton with
+                                        | MouseButton.Right -> dispatch (OpenElementMenuAt (toScreen e))
+                                        | _ -> dispatch (PointerUp (toScreen e)))
+                                    // Spec 0046: a plain wheel scrolls the PAGE until the table is fully in view (left
+                                    // unhandled, it bubbles to the page's ScrollViewer); then — and always with a modifier —
+                                    // it is the table's gesture.
+                                    Border.onPointerWheelChanged (fun e ->
+                                        let mods = wheelModifiers e.KeyModifiers
+                                        let notches = WheelNotches (if e.Delta.Y >= 0.0 then 1 else -1)
+                                        match wheelTarget mods (pageScrollOf e.Source) notches with
+                                        | WheelToPage -> ()
+                                        | WheelToTable ->
+                                            e.Handled <- true
+                                            dispatch (Wheel (mods, notches)))
+                                    Border.child model.mainTableCanvas
+                                ]
+                                elementMenuOverlay model dispatch
+                            ]
+                    ])
                 ]
             ]
         ] :> IView
@@ -6797,19 +7129,42 @@ let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
     // buttons stay on its right edge) but never narrower than the table, and its height is the content's
     // height at that width, so the extent is exactly bars + table. A plain wheel over the table scrolls
     // the page until the table is fully in view (`wheelTarget`), then zooms it.
+    // Spec 0051 `.manual/003` 3.2: the Setups step opens on its setups, above the ribbon. The slot is always there, empty
+    // in the other steps, so Setups ↔ Experiments patches the workbench in place instead of recreating its table.
+    let setupSection : IView list =
+        let content : IView list =
+            match model.flowStep with
+            | SetupsFlowStep -> [ setupSectionView model dispatch ]
+            | ItemsFlowStep
+            | ExperimentsFlowStep
+            | DataFlowStep
+            | UnknownsFlowStep
+            | PlanFlowStep
+            | FitFlowStep
+            | ResultsFlowStep
+            | PublishFlowStep -> []
+        [
+            StackPanel.create [
+                StackPanel.dock Dock.Top
+                StackPanel.margin (match content with [] -> Thickness 0.0 | _ :: _ -> Thickness(8.0, 4.0, 8.0, 6.0))
+                StackPanel.children content
+            ]
+        ]
     ScrollViewer.create [
-        ScrollViewer.name ConstructorUiId.tableElementScrollViewer.value
+        ConstructorUiId.tableElementScrollViewer.automationAttribute<ScrollViewer> ()
         ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         ScrollViewer.content (
             MinWidthPanel.create [
-                (PanelMinWidth tableAndElementRotationCanvasWidth).minWidthPanelAttribute ()
+                (PanelMinWidth 520.0).minWidthPanelAttribute ()
                 MinWidthPanel.child (
                     DockPanel.create [
-                        DockPanel.children [
-                            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
-                            belowStrip
-                        ]
+                        DockPanel.children (
+                            setupSection
+                            @ [
+                                Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
+                                belowStrip
+                            ])
                     ])
             ])
     ] :> IView

@@ -14,6 +14,7 @@ open OpticalConstructor.Domain.Library
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// WIRE_UI acceptance drives real Main, Materials, Library and editor windows over `AppContext.create`,
 /// which fills empty stores from the Built-in catalogue (spec 0033 (026); 0035 (019); 0038 (006, 013, 015); 0050 §3.4).
@@ -25,43 +26,6 @@ module WireUiCompositionTests =
     module MW = OpticalConstructor.Ui.MaterialsWindowView
     module LW = OpticalConstructor.Ui.LibraryWindowView
 
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
-    /// workbench rows / verb buttons live in variable-membership lists, so they carry an
-    /// AutomationId — the MaterialsControls precedent).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    /// Present anywhere in the visual tree (visible or not) — the "is it listed" probe.
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
-
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// control's `onTextChanged` binds).
     let private setText (window : Window) (id : string) (text : string) : unit =
@@ -71,13 +35,6 @@ module WireUiCompositionTests =
             Dispatcher.UIThread.RunJobs()
         | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail($"%s{id} was not found")
-
-    /// The text of the TextBlock carrying `id`.
-    let private textOf (window : Window) (id : string) : string =
-        match tryFindControl window id with
-        | Some (:? TextBlock as tb) -> tb.Text
-        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
-        | None -> failwith $"%s{id} was not found in the visual tree"
 
     /// Commit `text` through the REAL faceted filter box (the Materials window's box commits on
     /// Enter/LostFocus only — never per keystroke — so `setText` alone dispatches nothing).
@@ -127,7 +84,7 @@ module WireUiCompositionTests =
         clickOn root ConstructorUiId.openMaterialsWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
+        Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
         Assert.True(opened.[0].IsVisible, "the Materials window must be shown")
         opened.[0]
 
@@ -141,7 +98,7 @@ module WireUiCompositionTests =
         clickOn root ConstructorUiId.openLibraryWindowButton.value
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(matchesId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
+        Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
         Assert.True(opened.[0].IsVisible, "the Library window must be shown")
         opened.[0]
 
@@ -204,7 +161,7 @@ module WireUiCompositionTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(opened.[0].IsVisible, "the Material editor window must be shown")
-            Assert.True(matchesId ConstructorUiId.materialEditorWindow.value opened.[0], "the opened window must be the Material editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.materialEditorWindow.value opened.[0], "the opened window must be the Material editor")
             opened.[0].Close()
             // Library window (spec 0038 step 015) → narrow, select the leaf, Edit: the REAL
             // step-022 Sample editor mounts, seeded with the picked sample.
@@ -212,7 +169,7 @@ module WireUiCompositionTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let libraryWindow = opened.[1]
-            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryWindow, "the strip button must open the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryWindow, "the strip button must open the Library window")
             commitFilter libraryWindow "n=1.75"
             clickOn libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             clickOn libraryWindow ((ConstructorUiId.libraryEntryNode SampleIds.glassFilm600Id.toElementValueId).value)
@@ -220,7 +177,7 @@ module WireUiCompositionTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             Assert.True(opened.[2].IsVisible, "the Sample editor window must be shown")
-            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value opened.[2], "the opened window must be the Sample editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.sampleEditorWindow.value opened.[2], "the opened window must be the Sample editor")
             Assert.Contains("Glass thin film", opened.[2].Title)
             opened.[2].Close()
             libraryWindow.Close()
@@ -261,7 +218,7 @@ module WireUiCompositionTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(opened.[0].IsVisible, "the Category editor window must be shown")
-            Assert.True(matchesId ConstructorUiId.categoryEditorWindow.value opened.[0], "the opened window must be the Category editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.categoryEditorWindow.value opened.[0], "the opened window must be the Category editor")
             opened.[0].Close()
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()

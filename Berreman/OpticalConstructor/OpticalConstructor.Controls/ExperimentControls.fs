@@ -2,6 +2,7 @@ namespace OpticalConstructor.Controls
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Controls.Shapes
 open Avalonia.Input
 open Avalonia.Layout
@@ -248,8 +249,13 @@ module ExperimentControls =
             scanLines : ControlCaption list
             /// Whether Add variable and Add block are offered (spec 0050 S9.1).
             scanAvailability : ControlAvailability
+            /// Why Add experiment, Add variable and Add block are withheld, or none while they are offered (spec 0051
+            /// `.manual/003` 3.6).
+            addReasonOpt : ControlCaption option
             /// Whether a collected experiment's Remove is offered (spec 0050 S5.3).
             removalAvailability : ControlAvailability
+            /// The row whose Remove waits for its Yes or No (spec 0051 `.manual/003` 2.3).
+            removalPendingOpt : ConstructorUiKey option
             editorMode : ExperimentEditorMode
             /// The loaded experiment's role boxes, in the roles' order (spec 0050 S9.1).
             roleOptions : ExperimentRoleOption list
@@ -293,7 +299,9 @@ module ExperimentControls =
             addAvailability = ControlWithheld
             scanLines = []
             scanAvailability = ControlWithheld
+            addReasonOpt = None
             removalAvailability = ControlOffered
+            removalPendingOpt = None
             editorMode = EditorAddsNew
             roleOptions = []
             sessionText = ControlCaption ""
@@ -338,8 +346,12 @@ module ExperimentControls =
             setNotes : ControlCaption -> unit
             /// Load an experiment (by id) into the editor for editing.
             editExperiment : ConstructorUiKey -> unit
-            /// Remove an experiment (by id) from the collection.
+            /// Ask to remove an experiment (by id) and its file; nothing is deleted until the Yes.
             removeExperiment : ConstructorUiKey -> unit
+            /// The Yes of the pending removal: the experiment and its file go (spec 0051 `.manual/003` 2.3).
+            confirmRemoval : unit -> unit
+            /// The No of the pending removal.
+            cancelRemoval : unit -> unit
             /// VIEW an experiment (by id): open the pop-out chart window for that collected experiment. The
             /// per-row "View" button and a double-click on the row both call this — the same testable action.
             viewExperiment : ConstructorUiKey -> unit
@@ -351,69 +363,31 @@ module ExperimentControls =
 
     // -- The button look, identical to the other bars' idle button (so they MATCH). --
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
-    let private editingBackground = Color.FromRgb(255uy, 224uy, 160uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+    let private idleBorder = NeutralCommand.outline
 
     /// Whether a control of the bay is shown, or kept at its stable slot but hidden.
     type private BayPresence =
         | ShownInBay
         | HiddenInBay
 
-    /// A clickable, styled Border, highlighted by `background` when it is the chosen option. `presence`
-    /// toggles the box in place (rather than adding / removing it from the list): a bounded selector whose
-    /// MEMBERS change (e.g. the variable set per element kind) keeps every box present at a STABLE slot and
-    /// only flips visibility, so the boxes' click subscriptions stay coherent across kind changes (and the
-    /// child-list length stays stable — see `rangeRow`). A hidden box is never enabled. The id is a
-    /// reuse-safe AutomationId (never a write-once `Name`: Avalonia forbids renaming a styled control).
-    let private optionBoxV (id : ConstructorUiId) (label : ControlCaption) (background : Color) (bay : ControlAvailability) (presence : BayPresence) (onClick : unit -> unit) : IView =
+    /// A choice of the bay. `presence` toggles it in place rather than adding or removing it: a bounded selector whose
+    /// members change (the variable set per element kind) keeps every choice at a STABLE slot and only flips its
+    /// visibility, so the choices' subscriptions stay coherent (see `rangeRow`). A hidden choice is never enabled.
+    let private optionBoxV (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (bay : ControlAvailability) (presence : BayPresence) (onClick : unit -> unit) : IView =
         let availability =
             match bay, presence with
             | ControlOffered, ShownInBay -> ControlOffered
             | ControlOffered, HiddenInBay | ControlWithheld, _ -> ControlWithheld
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.isVisible (match presence with ShownInBay -> true | HiddenInBay -> false)
-            Border.isEnabled availability.isEnabled
-            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
-            // highlight or the presence flips so a reused box can't keep a stale handler.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (background, presence)))
-        ] :> IView
+        CommandControls.choiceToggle id label mark ChosenCommand availability onClick
+            [ ToggleButton.isVisible (match presence with ShownInBay -> true | HiddenInBay -> false)
+              ToggleButton.padding (Thickness(10.0, 5.0))
+              ToggleButton.margin (Thickness(0.0, 0.0, 8.0, 6.0)) ]
 
-    /// A clickable option box for a REORDERABLE list (candidates, collection rows). Such a list shifts a
-    /// control onto a different item's slot when an item is removed, so the box carries a reuse-safe
-    /// AutomationId AND is KEYED by it (`View.withKey`) — a membership change recreates the box at the
-    /// shifted slot instead of patching another item's styled control in place.
-    let private idOptionBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        let keyedBox =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.isEnabled availability.isEnabled
-                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(10.0, 5.0))
-                Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, background)))
-            ]
-            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
-            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        keyedBox :> IView
+    /// A choice of a REORDERABLE list (the element candidates), keyed by its id, so a membership change recreates it at
+    /// the shifted slot instead of patching another item's control in place.
+    let private idOptionBox (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
+        CommandControls.choiceToggle id label mark ChosenCommand availability onClick
+            [ ToggleButton.padding (Thickness(10.0, 5.0)); ToggleButton.margin (Thickness(0.0, 0.0, 8.0, 6.0)) ]
 
     /// A section heading (the numbered step labels), shown only while `presence` says so (stable slot).
     let private heading (text : ControlCaption) (presence : BayPresence) : IView =
@@ -497,7 +471,7 @@ module ExperimentControls =
     /// One series as a coloured polyline; the FIRST series carries the stable chart automation id.
     let private seriesPolyline (window : PlotWindow) (stroke : Color) (s : ChartSeries) : IView =
         Polyline.create [
-            Polyline.name ConstructorUiId.experimentChart.value
+            yield! ConstructorUiId.experimentChart.figureAttributes<Polyline> ()
             Polyline.points (s.points |> List.map window.toScreen)
             Polyline.stroke (brush stroke)
             Polyline.strokeThickness 1.5
@@ -575,7 +549,7 @@ module ExperimentControls =
             | KeptPointMark ->
                 let dotId = ConstructorUiId.dataPointDot plotted.position
                 Ellipse.create [
-                    dotId.automationAttribute<Ellipse> ()
+                    yield! dotId.figureAttributes<Ellipse> ()
                     Ellipse.width 5.0
                     Ellipse.height 5.0
                     Ellipse.left (centre.X - 2.5)
@@ -587,7 +561,7 @@ module ExperimentControls =
             | ExcludedPointMark ->
                 let ringId = ConstructorUiId.dataExcludedPointMark plotted.position
                 Ellipse.create [
-                    ringId.automationAttribute<Ellipse> ()
+                    yield! ringId.figureAttributes<Ellipse> ()
                     Ellipse.width 9.0
                     Ellipse.height 9.0
                     Ellipse.left (centre.X - 4.5)
@@ -598,7 +572,7 @@ module ExperimentControls =
                 |> Avalonia.FuncUI.DSL.View.withKey ringId.value
                 :> IView
         Canvas.create [
-            id.automationAttribute<Canvas> ()
+            yield! id.surfaceAttributes<Canvas> ()
             Canvas.width chartFrame.Width
             Canvas.height chartFrame.Height
             Canvas.background (brush (Color.FromRgb(248uy, 248uy, 248uy)))
@@ -616,7 +590,7 @@ module ExperimentControls =
             | Some reading ->
                 let psiText =
                     TextBlock.create [
-                        TextBlock.name ConstructorUiId.ellipsometerReadout.value
+                        ConstructorUiId.ellipsometerReadout.automationAttribute<TextBlock> ()
                         TextBlock.text $"Ψ = {reading.psi.text}°   Δ = {reading.delta.text}°"
                     ]
                     |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.ellipsometerReadout.value
@@ -642,7 +616,7 @@ module ExperimentControls =
                     |> Avalonia.FuncUI.DSL.View.withKey "ExperimentChartBox"
                 let descriptionText =
                     TextBlock.create [
-                        TextBlock.name ConstructorUiId.experimentChartDescription.value
+                        ConstructorUiId.experimentChartDescription.automationAttribute<TextBlock> ()
                         TextBlock.text state.description.value
                         TextBlock.fontSize 11.0
                         TextBlock.textWrapping TextWrapping.Wrap
@@ -655,7 +629,7 @@ module ExperimentControls =
     /// The element-selection row (step 1 of the editor).
     let private elementRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         WrapPanel.create [
-            WrapPanel.name ConstructorUiId.experimentCandidates.value
+            yield! ConstructorUiId.experimentCandidates.groupAttributes<WrapPanel> ()
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (
                 state.candidates
@@ -663,7 +637,7 @@ module ExperimentControls =
                     idOptionBox
                         (ConstructorUiId.experimentCandidate c.elementId)
                         c.label
-                        (if state.chosenId = Some c.elementId then chosenBackground else idleBackground)
+                        (if state.chosenId = Some c.elementId then ChosenChoice else UnchosenChoice)
                         state.availability
                         (fun () -> handlers.chooseElement c.elementId)))
         ] :> IView
@@ -694,7 +668,7 @@ module ExperimentControls =
                             optionBoxV
                                 (ConstructorUiId.experimentVariable v.uiKey)
                                 v.caption
-                                (if state.chosenVariable = Some v then chosenBackground else idleBackground)
+                                (if state.chosenVariable = Some v then ChosenChoice else UnchosenChoice)
                                 state.availability
                                 (if List.contains v state.variableChoices then ShownInBay else HiddenInBay)
                                 (fun () -> handlers.chooseVariable v)))
@@ -714,7 +688,7 @@ module ExperimentControls =
             optionBoxV
                 (ConstructorUiId.experimentMeasurement m.uiKey)
                 (offer |> Option.map (fun o -> o.label) |> Option.defaultValue m.caption)
-                (if state.measurement = m then chosenBackground else idleBackground)
+                (if state.measurement = m then ChosenChoice else UnchosenChoice)
                 state.availability
                 (match offer with Some _ -> ShownInBay | None -> HiddenInBay)
                 (fun () -> handlers.chooseMeasurement m)
@@ -723,7 +697,7 @@ module ExperimentControls =
             StackPanel.isVisible hasVariable
             StackPanel.children [
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.experimentNoCapture.value
+                    ConstructorUiId.experimentNoCapture.automationAttribute<TextBlock> ()
                     TextBlock.text "(no detector captures this element's light — put a detector on its transmitted beam or on its reflected ray: right-click an element for its rays)"
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.maxWidth 420.0
@@ -741,7 +715,7 @@ module ExperimentControls =
     /// A text field of that width; commits on Enter / blur.
     let private committingField (id : ConstructorUiId) (width : IAttr<TextBox>) (text : ControlCaption) (availability : ControlAvailability) (commit : obj -> unit) : IView =
         TextBox.create [
-            TextBox.name id.value
+            yield! id.inputAttributes<TextBox> ()
             width
             TextBox.isEnabled availability.isEnabled
             TextBox.text text.value
@@ -801,34 +775,20 @@ module ExperimentControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Source wavelength:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 numberField ConstructorUiId.experimentSourceWaveLength valueText availability commit
-                TextBlock.create [ TextBlock.name ConstructorUiId.experimentSourceWaveLengthNote.value; TextBlock.text note.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                TextBlock.create [ ConstructorUiId.experimentSourceWaveLengthNote.automationAttribute<TextBlock> (); TextBlock.text note.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
             ]
         ] :> IView
 
-    // -- A plain action button (Add / Update / New). Regenerable (the Add label swaps to "Update
-    // experiment" in place), so it carries a reuse-safe AutomationId, never a write-once `Name`. --
-    let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.isEnabled availability.isEnabled
-            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, availability)))
-        ] :> IView
+    /// An action button (Add / Update / New); its caption swaps to "Update experiment" in place.
+    let private actionButton (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
+        CommandControls.commandButton id label emphasis availability onClick [ Button.margin (Thickness(0.0, 0.0, 8.0, 0.0)) ]
 
     type ExperimentControlsState with
 
         /// The draft's scan lines under the range: its closed blocks, then its current block's held axes (spec 0050 S9.1).
         member internal this.scanSummaryPanel : IView =
             StackPanel.create [
-                StackPanel.name ConstructorUiId.experimentScanSummary.value
+                yield! ConstructorUiId.experimentScanSummary.groupAttributes<StackPanel> ()
                 StackPanel.orientation Orientation.Vertical
                 StackPanel.children (
                     this.scanLines
@@ -846,14 +806,20 @@ module ExperimentControls =
             match state.editorMode with
             | EditorUpdatesExisting -> ControlCaption "Update experiment"
             | EditorAddsNew -> ControlCaption "Add experiment"
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.children [
-                actionButton ConstructorUiId.experimentAddButton addCaption chosenBackground state.addAvailability handlers.addOrUpdate
-                actionButton ConstructorUiId.experimentNewButton (ControlCaption "New") idleBackground state.availability handlers.newExperiment
-                actionButton ConstructorUiId.experimentAddScanAxisButton (ControlCaption "Add variable") idleBackground state.scanAvailability handlers.addScanAxis
-                actionButton ConstructorUiId.experimentAddScanBlockButton (ControlCaption "Add block") idleBackground state.scanAvailability handlers.addScanBlock
+        // Spec 0051 `.manual/003` 4.3: the verbs wrap at the bay's width.
+        let actions =
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children [
+                    actionButton ConstructorUiId.experimentAddButton addCaption ChosenCommand state.addAvailability handlers.addOrUpdate
+                    actionButton ConstructorUiId.experimentNewButton (ControlCaption "New") NeutralCommand state.availability handlers.newExperiment
+                    actionButton ConstructorUiId.experimentAddScanAxisButton (ControlCaption "Add variable") NeutralCommand state.scanAvailability handlers.addScanAxis
+                    actionButton ConstructorUiId.experimentAddScanBlockButton (ControlCaption "Add block") NeutralCommand state.scanAvailability handlers.addScanBlock
+                ]
             ]
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children ((actions :> IView) :: CommandControls.withheldReason ConstructorUiId.experimentAddReason state.addReasonOpt)
         ] :> IView
 
     /// The loaded experiment's role row and its Session and Notes fields, shown while `bookkeepingAvailability` is offered
@@ -876,8 +842,8 @@ module ExperimentControls =
                 (ConstructorUiId.experimentRoleChoice option.key)
                 option.caption
                 (match option.mark with
-                 | RoleChosen -> chosenBackground
-                 | RoleNotChosen -> idleBackground)
+                 | RoleChosen -> ChosenChoice
+                 | RoleNotChosen -> UnchosenChoice)
                 state.bookkeepingAvailability
                 ShownInBay
                 (fun () -> handlers.setRole option.key)
@@ -915,64 +881,82 @@ module ExperimentControls =
             |> Avalonia.FuncUI.DSL.View.withKey $"ExperimentBookkeeping_{loadedKey}"
         block :> IView
 
-    // A small row action button (View / Remove), styled to stand out (accent) or plain.
-    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.isEnabled availability.isEnabled
-            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 4.0))
-            Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, availability)))
-        ] :> IView
+    /// A row action button (View / Remove).
+    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
+        CommandControls.commandButton id label emphasis availability onClick
+            [ Button.padding (Thickness(10.0, 4.0)); Button.margin (Thickness(0.0, 0.0, 6.0, 0.0)) ]
 
     /// One collection row: the experiment description (single-click Edit, highlighted while editing;
     /// double-click = View), its data badge (spec 0050 S9.1), then a "View" action (open the chart window for this
     /// experiment) and a Remove.
     /// The row is KEYED by its experiment id, so removing an item recreates the rows that shift slots
     /// instead of patching one row's controls into another's.
-    let private collectionRow (removal : ControlAvailability) (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
+    let private collectionRow (removal : ControlAvailability) (pendingOpt : ConstructorUiKey option) (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
+        // Spec 0051 `.manual/003` 4.3: View and Remove wrap under the row's text at the bay's width.
         let row =
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.spacing 0.0
-                StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-                StackPanel.children [
-                    Border.create [
-                        (ConstructorUiId.experimentEditButton r.id).automationAttribute<Border> ()
-                        Border.background (brush (match r.focus with LoadedInEditor -> editingBackground | NotLoadedInEditor -> idleBackground))
-                        Border.borderBrush (brush idleBorder)
-                        Border.borderThickness 1.0
-                        Border.cornerRadius (CornerRadius 3.0)
-                        Border.padding (Thickness(10.0, 4.0))
-                        Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                        Border.maxWidth 300.0
-                        Border.child (TextBlock.create [ TextBlock.text r.description.value; TextBlock.textWrapping TextWrapping.Wrap ])
-                        // Single-click edits; double-click opens the chart window for this experiment (the same
-                        // "View" action as the button beside it — Avalonia's DoubleTapped gesture).
-                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.focus)))
-                        Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id.value))
-                    ] :> IView
-                    TextBlock.create [
-                        (ConstructorUiId.experimentRowBadge r.id).automationAttribute<TextBlock> ()
-                        TextBlock.text r.badge.value
-                        TextBlock.fontSize 11.0
-                        TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
-                        TextBlock.verticalAlignment VerticalAlignment.Center
-                        TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                    ] :> IView
-                    rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") chosenBackground ControlOffered (fun () -> handlers.viewExperiment r.id)
-                    rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") idleBackground removal (fun () -> handlers.removeExperiment r.id)
-                ]
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                WrapPanel.children (
+                    [
+                        // A single click loads the experiment into the editor (amber while it is loaded); a double click
+                        // opens its chart, as View beside it does.
+                        CommandControls.choiceToggle
+                            (ConstructorUiId.experimentEditButton r.id)
+                            r.description
+                            (match r.focus with LoadedInEditor -> ChosenChoice | NotLoadedInEditor -> UnchosenChoice)
+                            PendingCommand
+                            ControlOffered
+                            (fun () -> handlers.editExperiment r.id)
+                            [ ToggleButton.padding (Thickness(10.0, 4.0))
+                              ToggleButton.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                              ToggleButton.maxWidth 300.0
+                              ToggleButton.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id.value)) ]
+                        TextBlock.create [
+                            (ConstructorUiId.experimentRowBadge r.id).automationAttribute<TextBlock> ()
+                            TextBlock.text r.badge.value
+                            TextBlock.fontSize 11.0
+                            TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                            TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                        ] :> IView
+                        rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") ChosenCommand ControlOffered (fun () -> handlers.viewExperiment r.id)
+                    ]
+                    @ (match pendingOpt with
+                       | Some pending when pending = r.id -> []
+                       | Some _
+                       | None ->
+                           [ rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") NeutralCommand removal (fun () -> handlers.removeExperiment r.id) ])
+                )
             ]
-            |> Avalonia.FuncUI.DSL.View.withKey r.id.value
-        row :> IView
+        // Spec 0051 `.manual/003` 2.3: the question takes its own line, so the row keeps its width.
+        let question : IView list =
+            match pendingOpt with
+            | Some pending when pending = r.id ->
+                [
+                    WrapPanel.create [
+                        WrapPanel.orientation Orientation.Horizontal
+                        WrapPanel.margin (Thickness(12.0, 0.0, 0.0, 6.0))
+                        WrapPanel.children [
+                            TextBlock.create [
+                                ConstructorUiId.experimentRemovePrompt.automationAttribute<TextBlock> ()
+                                TextBlock.text "Remove this experiment and its file?"
+                                TextBlock.verticalAlignment VerticalAlignment.Center
+                                TextBlock.margin (Thickness(0.0, 0.0, 8.0, 0.0))
+                            ]
+                            rowActionButton ConstructorUiId.experimentRemoveConfirmButton (ControlCaption "Yes, remove") NegativeCommand removal handlers.confirmRemoval
+                            rowActionButton ConstructorUiId.experimentRemoveCancelButton (ControlCaption "No") NeutralCommand ControlOffered handlers.cancelRemoval
+                        ]
+                    ] :> IView
+                ]
+            | Some _
+            | None -> []
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children (row :> IView :: question)
+        ]
+        |> Avalonia.FuncUI.DSL.View.withKey r.id.value
+        :> IView
 
     /// The collection block: a heading and the added-experiment rows (or a hint when empty).
     let private collectionBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
@@ -982,9 +966,9 @@ module ExperimentControls =
              | [] -> TextBlock.create [ TextBlock.text "(none added yet — build one above and click Add)"; TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy))) ] :> IView
              | rows ->
                  StackPanel.create [
-                     StackPanel.name ConstructorUiId.experimentCollection.value
+                     yield! ConstructorUiId.experimentCollection.groupAttributes<StackPanel> ()
                      StackPanel.orientation Orientation.Vertical
-                     StackPanel.children (rows |> List.map (collectionRow state.removalAvailability handlers))
+                     StackPanel.children (rows |> List.map (collectionRow state.removalAvailability state.removalPendingOpt handlers))
                  ] :> IView)
         ]
 
@@ -1002,7 +986,7 @@ module ExperimentControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name ConstructorUiId.experimentReadout.value; TextBlock.text readoutText ] :> IView
+                    TextBlock.create [ ConstructorUiId.experimentReadout.automationAttribute<TextBlock> (); TextBlock.text readoutText ] :> IView
                     heading (ControlCaption "1. Element to vary:") ShownInBay
                     elementRow state handlers
                     heading (ControlCaption "2. Vary:") ShownInBay

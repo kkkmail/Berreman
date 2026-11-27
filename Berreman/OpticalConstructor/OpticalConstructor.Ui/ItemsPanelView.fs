@@ -42,8 +42,7 @@ let private itemsPanelChoice
     (caption : ControlCaption)
     (onChosen : unit -> unit)
     : IView =
-    if chosenOpt = Some id then MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground onChosen
-    else MaterialsWindowView.verbButton id caption onChosen
+    CommandControls.choiceCommand id caption (if chosenOpt = Some id then ChosenChoice else UnchosenChoice) onChosen
 
 /// A box of a vertical list at its caption's width, so a long caption never stretches a short one past the window's
 /// edge (spec 0050 S7.2).
@@ -70,7 +69,7 @@ let private itemsPanelField
                 TextBlock.text label.value
             ]
             TextBox.create [
-                id.automationAttribute<TextBox> ()
+                yield! id.inputAttributes<TextBox> ()
                 TextBox.width 220.0
                 TextBox.horizontalAlignment HorizontalAlignment.Left
                 TextBox.text text.value
@@ -123,19 +122,19 @@ let private addItemFormRows (model : TableAndElementRotationModel) (form : AddIt
         match form.itemDraftOpt, model.kitWrites with
         | Some draft, ControlOffered ->
             [
-                MaterialsWindowView.actionButton
+                CommandControls.actionCommand
                     ConstructorUiId.addItemConfirmButton
                     (ControlCaption "Add")
-                    MaterialsWindowView.positiveBackground
+                    PositiveCommand
                     (fun () -> dispatch (AddItem draft))
             ]
         | Some _, ControlWithheld
         | None, _ -> []
     let cancel =
-        MaterialsWindowView.actionButton
+        CommandControls.actionCommand
             ConstructorUiId.addItemCancelButton
             (ControlCaption "Cancel")
-            MaterialsWindowView.negativeBackground
+            NegativeCommand
             (fun () -> dispatch CancelAddItemForm)
     // `actionButton` subscribes its press once per key, so the row is keyed by the draft it sends.
     let actionsKey =
@@ -194,7 +193,7 @@ let private kitItemListView (model : TableAndElementRotationModel) (dispatch : T
         | [] -> [ (ControlCaption "This kit holds no item yet.").itemsPanelLine ]
         | items -> items |> List.map row
     StackPanel.create [
-        ConstructorUiId.kitItemList.automationAttribute<StackPanel> ()
+        yield! ConstructorUiId.kitItemList.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Vertical
         StackPanel.margin (Thickness(0.0, 4.0, 0.0, 4.0))
         StackPanel.children rows
@@ -232,7 +231,7 @@ let private itemParameterGridView (item : Item) (dispatch : TableAndElementRotat
                 Border.row row
                 Border.column 0
                 Border.child (
-                    MaterialsWindowView.verbButton (ConstructorUiId.itemParameterRow parameter.name) parameter.name.caption (fun () ->
+                    CommandControls.verbCommand (ConstructorUiId.itemParameterRow parameter.name) parameter.name.caption (fun () ->
                         dispatch (EditItemParameter parameter.name)))
             ]
             cell row 1 FontWeight.Normal cells.state
@@ -241,12 +240,19 @@ let private itemParameterGridView (item : Item) (dispatch : TableAndElementRotat
             cell row 4 FontWeight.Normal cells.sigma
             cell row 5 FontWeight.Normal cells.provenance
         ]
-    Grid.create [
-        ConstructorUiId.itemParameterGrid.automationAttribute<Grid> ()
-        Grid.margin (Thickness(0.0, 6.0, 0.0, 4.0))
-        Grid.columnDefinitions "Auto,Auto,Auto,Auto,Auto,Auto"
-        Grid.rowDefinitions (List.replicate (List.length item.parameters + 1) "Auto" |> String.concat ",")
-        Grid.children (header @ (item.parameters |> List.mapi parameterRow |> List.concat))
+    // Spec 0051 `.manual/003` 4.3: the grid scrolls sideways in its own scroller, never the page.
+    ScrollViewer.create [
+        ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
+        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
+        ScrollViewer.content (
+            Grid.create [
+                yield! ConstructorUiId.itemParameterGrid.groupAttributes<Grid> ()
+                Grid.margin (Thickness(0.0, 6.0, 0.0, 4.0))
+                Grid.horizontalAlignment HorizontalAlignment.Left
+                Grid.columnDefinitions "Auto,Auto,Auto,Auto,Auto,Auto"
+                Grid.rowDefinitions (List.replicate (List.length item.parameters + 1) "Auto" |> String.concat ",")
+                Grid.children (header @ (item.parameters |> List.mapi parameterRow |> List.concat))
+            ])
     ]
     |> View.withKey $"{ConstructorUiId.itemParameterGrid.value}_{item.id.value}"
     :> IView
@@ -291,26 +297,26 @@ let parameterEditorView
         match draft.tryState, model.kitWrites with
         | Ok state, ControlOffered ->
             [
-                MaterialsWindowView.actionButton
+                CommandControls.actionCommand
                     ConstructorUiId.parameterEditSetButton
                     (ControlCaption "Set")
-                    MaterialsWindowView.positiveBackground
+                    PositiveCommand
                     (fun () -> dispatch (setWith state))
             ]
         | Ok _, ControlWithheld
         | Error _, _ -> []
     let cancel =
-        MaterialsWindowView.actionButton
+        CommandControls.actionCommand
             ConstructorUiId.parameterEditCancelButton
             (ControlCaption "Cancel")
-            MaterialsWindowView.negativeBackground
+            NegativeCommand
             (fun () -> dispatch CancelParameterEdit)
     // `actionButton` subscribes its press once per key, so the row is keyed by the texts the state is read from.
     let actionsKey =
         let choice = chosenOpt |> Option.map (fun id -> id.value) |> Option.defaultValue ""
         $"ParameterEditActions_{draft.parameter.name.value}_{choice}_{draft.valueText.value}_{draft.lowerText.value}_{draft.upperText.value}_{draft.priorSigmaText.value}"
     StackPanel.create [
-        ConstructorUiId.parameterEditPanel.automationAttribute<StackPanel> ()
+        yield! ConstructorUiId.parameterEditPanel.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Vertical
         StackPanel.margin (Thickness(0.0, 4.0, 0.0, 4.0))
         StackPanel.children (
@@ -368,7 +374,7 @@ let private selectedItemRows (model : TableAndElementRotationModel) (item : Item
                     TextBlock.text "Label:"
                 ]
                 TextBox.create [
-                    ConstructorUiId.itemLabelField.automationAttribute<TextBox> ()
+                    yield! ConstructorUiId.itemLabelField.inputAttributes<TextBox> ()
                     TextBox.width 220.0
                     TextBox.horizontalAlignment HorizontalAlignment.Left
                     TextBox.isEnabled model.kitWrites.isEnabled
@@ -387,7 +393,7 @@ let private selectedItemRows (model : TableAndElementRotationModel) (item : Item
         ] :> IView
     let notesBox =
         TextBox.create [
-            ConstructorUiId.itemNotesField.automationAttribute<TextBox> ()
+            yield! ConstructorUiId.itemNotesField.inputAttributes<TextBox> ()
             TextBox.acceptsReturn true
             TextBox.textWrapping TextWrapping.Wrap
             TextBox.minHeight 48.0
@@ -402,23 +408,49 @@ let private selectedItemRows (model : TableAndElementRotationModel) (item : Item
         match item.photoOpt with
         | Some path -> ControlCaption $"Photo: {path.value}"
         | None -> ControlCaption "No photo"
+    // Spec 0051 `.manual/003` 5.5: the photo itself as a thumbnail, read at this edge; a missing file, or one that does
+    // not decode, shows its name alone.
+    let photoThumbnail : IView list =
+        match item.photoOpt, model.kitFolderOpt with
+        | Some path, Some folder ->
+            let file = System.IO.Path.Combine(folder.value.value, path.value)
+            let bitmapOpt =
+                if System.IO.File.Exists file then
+                    try Some (new Avalonia.Media.Imaging.Bitmap(file))
+                    with _ -> None
+                else None
+            match bitmapOpt with
+            | Some bitmap ->
+                [
+                    Image.create [
+                        yield! ConstructorUiId.itemPhotoImage.figureAttributes<Image> ()
+                        Image.source bitmap
+                        Image.maxWidth 160.0
+                        Image.maxHeight 120.0
+                        Image.stretch Stretch.Uniform
+                        Image.horizontalAlignment HorizontalAlignment.Left
+                        Image.margin (Thickness(0.0, 2.0, 0.0, 4.0))
+                    ]
+                    |> View.withKey $"ItemPhoto_{path.value}"
+                    :> IView
+                ]
+            | None -> []
+        | Some _, None
+        | None, _ -> []
     // Spec 0050 S7.2: the photo is picked as a lab file is attached, resolving the owner window from the press.
-    let choosePhoto (e : PointerPressedEventArgs) : unit =
-        match e.Source with
-        | :? Visual as source ->
-            match TopLevel.GetTopLevel source with
-            | :? Window as owner -> pickDataFile owner (ControlCaption "Choose item photo") (fun file -> dispatch (SetKitItemPhoto (item.id, file)))
-            | _ -> ()
+    let choosePhoto (pressed : CommandButton) : unit =
+        match TopLevel.GetTopLevel pressed with
+        | :? Window as owner -> pickDataFile owner model PickedPhotoFile (ControlCaption "Choose item photo") (fun file -> dispatch (SetKitItemPhoto (item.id, file)))
         | _ -> ()
     let photoVerbs : IView list =
         match model.kitWrites, item.photoOpt with
         | ControlOffered, Some _ ->
             [
-                MaterialsWindowView.verbButtonOn ConstructorUiId.itemChoosePhotoButton (ControlCaption "Choose photo…") choosePhoto
-                MaterialsWindowView.verbButton ConstructorUiId.itemRemovePhotoButton (ControlCaption "Remove photo") (fun () ->
+                CommandControls.verbCommandOn ConstructorUiId.itemChoosePhotoButton (ControlCaption "Choose photo…") choosePhoto
+                CommandControls.verbCommand ConstructorUiId.itemRemovePhotoButton (ControlCaption "Remove photo") (fun () ->
                     dispatch (RemoveKitItemPhoto item.id))
             ]
-        | ControlOffered, None -> [ MaterialsWindowView.verbButtonOn ConstructorUiId.itemChoosePhotoButton (ControlCaption "Choose photo…") choosePhoto ]
+        | ControlOffered, None -> [ CommandControls.verbCommandOn ConstructorUiId.itemChoosePhotoButton (ControlCaption "Choose photo…") choosePhoto ]
         | ControlWithheld, _ -> []
     let editor : IView list =
         match model.parameterEditOpt with
@@ -441,7 +473,7 @@ let private selectedItemRows (model : TableAndElementRotationModel) (item : Item
         :> IView
     let revisions =
         StackPanel.create [
-            ConstructorUiId.itemRevisionList.automationAttribute<StackPanel> ()
+            yield! ConstructorUiId.itemRevisionList.groupAttributes<StackPanel> ()
             StackPanel.orientation Orientation.Vertical
             StackPanel.margin (Thickness(0.0, 4.0, 0.0, 4.0))
             StackPanel.children (
@@ -459,6 +491,9 @@ let private selectedItemRows (model : TableAndElementRotationModel) (item : Item
                     (ControlCaption "Notes:").itemsPanelLine
                     notesBox :> IView
                     infoText ConstructorUiId.itemPhotoText photoText
+                ]
+                @ photoThumbnail
+                @ [
                     WrapPanel.create [
                         WrapPanel.orientation Orientation.Horizontal
                         WrapPanel.children photoVerbs
@@ -480,7 +515,7 @@ let itemsPanelView (model : TableAndElementRotationModel) (dispatch : TableAndEl
         match model.kitWrites, model.addItemFormOpt with
         | ControlOffered, None ->
             [
-                MaterialsWindowView.verbButton ConstructorUiId.addItemButton (ControlCaption "Add item from library model…") (fun () ->
+                CommandControls.verbCommand ConstructorUiId.addItemButton (ControlCaption "Add item from library model…") (fun () ->
                     dispatch OpenAddItemForm)
                 |> itemsPanelListBox
             ]
@@ -497,19 +532,24 @@ let itemsPanelView (model : TableAndElementRotationModel) (dispatch : TableAndEl
     ScrollViewer.create [
         ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so no page is wider than its window.
         ScrollViewer.content (
-            StackPanel.create [
-                ConstructorUiId.itemsPanel.automationAttribute<StackPanel> ()
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.margin (Thickness 8.0)
-                StackPanel.children (
-                    [
-                        (ControlCaption "Items").itemsPanelHeading
-                        (ControlCaption "The physical pieces of this kit: each instantiates a library model and holds its own parameters.").itemsPanelLine
-                    ]
-                    @ addVerb
-                    @ form
-                    @ [ kitItemListView model dispatch ]
-                    @ selected)
+            MinWidthPanel.create [
+                (PanelMinWidth 520.0).minWidthPanelAttribute ()
+                MinWidthPanel.child (
+                    StackPanel.create [
+                        yield! ConstructorUiId.itemsPanel.groupAttributes<StackPanel> ()
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.margin (Thickness 8.0)
+                        StackPanel.children (
+                            [
+                                (ControlCaption "Items").itemsPanelHeading
+                                (ControlCaption "The physical pieces of this kit: each instantiates a library model and holds its own parameters.").itemsPanelLine
+                            ]
+                            @ addVerb
+                            @ form
+                            @ [ kitItemListView model dispatch ]
+                            @ selected)
+                    ])
             ])
     ] :> IView

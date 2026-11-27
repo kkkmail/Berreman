@@ -178,7 +178,7 @@ let kitArchiveProgressView (state : KitArchiveJobState) (ids : KitArchiveProgres
             Border.create [
                 Border.dock Dock.Right
                 Border.child (
-                    MaterialsWindowView.actionButton ids.cancel (ControlCaption "Cancel") MaterialsWindowView.negativeBackground cancel)
+                    CommandControls.actionCommand ids.cancel (ControlCaption "Cancel") NegativeCommand cancel)
             ]
             StackPanel.create [
                 StackPanel.orientation Orientation.Vertical

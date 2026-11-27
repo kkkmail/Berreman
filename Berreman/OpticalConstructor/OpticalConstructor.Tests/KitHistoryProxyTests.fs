@@ -25,6 +25,7 @@ type KitHistoryProxyContract () =
             name = KitName $"Kit {kit}"
             lastOpened = ClockTime (firstOpen.AddTicks ticks)
             star = star
+            lastSetupOpt = None
         }
 
     let kitA : KitHistoryEntry = entryOf "a" "4c8e2f17-9b3a-4d65-a1e0-7f52b9c84d36" 987_654_321L StarredKit
@@ -107,6 +108,7 @@ type KitHistoryProxyFolderTests () =
                 name = KitName "Optics QZ — µ"
                 lastOpened = ClockTime (DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc).AddTicks 1_234_567L)
                 star = StarredKit
+                lastSetupOpt = None
             }
 
         { KitHistory.empty with entries = [ entry ] }
@@ -158,7 +160,7 @@ type KitHistoryProxyFolderTests () =
         let unreadableTexts : string list =
             [
                 "{"
-                editedHistoryText (fun (node : JsonObject) -> node["schemaVersion"] <- JsonValue.Create 2)
+                editedHistoryText (fun (node : JsonObject) -> node["schemaVersion"] <- JsonValue.Create 3)
                 editedHistoryText (fun (node : JsonObject) ->
                     let entry = node.["entries"].[0].AsObject()
                     entry["star"] <- JsonValue.Create 3)

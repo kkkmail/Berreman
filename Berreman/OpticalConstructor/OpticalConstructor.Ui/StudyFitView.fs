@@ -18,17 +18,6 @@ open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-let private namedFitActionButton
-    (id : ConstructorUiId)
-    (caption : ControlCaption)
-    (background : Color)
-    (onClick : unit -> unit)
-    : IView =
-    let action = MaterialsWindowView.actionButton id caption background onClick :?> IView<Border>
-    action
-    |> View.withAttrs [ AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone) ]
-    :> IView
-
 /// Chooses the fit mode, runs the study through the shell's host and shows checks and history (spec 0050 S11.5; S12.1).
 let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let selected : IView list =
@@ -84,10 +73,7 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                                 let id = ConstructorUiId.studyFitModeChoice mode
                                 let caption = ControlCaption mode.text
                                 let select () = dispatch (StudyCommand (SetFitMode (study.name, mode)))
-                                if mode = study.settings.mode then
-                                    namedFitActionButton id caption MaterialsWindowView.positiveBackground select
-                                else
-                                    MaterialsWindowView.verbButton id caption select)))
+                                CommandControls.choiceCommand id caption (if mode = study.settings.mode then ChosenChoice else UnchosenChoice) select)))
                     ]
                     // Spec 0050 S12.1: actionButton retains its handler, so another study needs a fresh closure.
                     |> View.withKey $"StudyFitModes_{study.name.fileStem.value}"
@@ -97,10 +83,11 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                 | ControlWithheld -> []
                 | ControlOffered ->
                     [
-                        StackPanel.create [
-                            StackPanel.orientation Orientation.Horizontal
-                            StackPanel.isEnabled (not model.studyFit.job.isRunning)
-                            StackPanel.children (
+                        // Spec 0051 `.manual/003` 4.3: the three runs wrap at the page's width.
+                        WrapPanel.create [
+                            WrapPanel.orientation Orientation.Horizontal
+                            WrapPanel.isEnabled (not model.studyFit.job.isRunning)
+                            WrapPanel.children (
                                 [
                                     JointStage, ConstructorUiId.studyRunFitButton, ControlCaption "Run joint"
                                     CalibrationStage, ConstructorUiId.studyRunStageOneButton, ControlCaption "Run stage 1 (calibration)"
@@ -111,13 +98,13 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                                         {
                                             study = study.name
                                             stage = stage
-                                            calibrationUse = model.studySurface.calibrationUse
+                                            calibrationUse = study.settings.calibrationUse
                                         }
-                                    namedFitActionButton id caption MaterialsWindowView.positiveBackground
+                                    CommandControls.actionCommand id caption PositiveCommand
                                         (fun () -> dispatch (StudyFit (RunFit request)))))
                         ]
                         // Spec 0050 S11.5: actionButton retains its handler, so each request needs a fresh closure.
-                        |> View.withKey $"StudyFitActions_{study.name.fileStem.value}_{model.studySurface.calibrationUse.value}"
+                        |> View.withKey $"StudyFitActions_{study.name.fileStem.value}_{study.settings.calibrationUse.value}"
                         :> IView
                     ]
             let calibration : IView =
@@ -128,11 +115,8 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                           CalibrationAsPrior, ConstructorUiId.studyCalibrationPriorChoice ]
                         |> List.map (fun (choice, id) ->
                             let caption = ControlCaption choice.text
-                            let select () = dispatch (SetStudyCalibrationUse choice)
-                            if choice = model.studySurface.calibrationUse then
-                                namedFitActionButton id caption MaterialsWindowView.positiveBackground select
-                            else
-                                MaterialsWindowView.verbButton id caption select))
+                            let select () = dispatch (StudyCommand (SetCalibrationUse (study.name, choice)))
+                            CommandControls.choiceCommand id caption (if choice = study.settings.calibrationUse then ChosenChoice else UnchosenChoice) select))
                 ] :> IView
             let progress : IView list =
                 if model.studyFit.job.isRunning then
@@ -148,8 +132,8 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                             AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit progress", ValueNone)
                             TextBlock.text (model.studyFit.job.progressText |> Option.defaultValue "")
                         ]
-                        namedFitActionButton ConstructorUiId.studyFitCancelButton (ControlCaption "Cancel")
-                            MaterialsWindowView.negativeBackground (fun () -> dispatch (StudyFit CancelStudyFit))
+                        CommandControls.actionCommand ConstructorUiId.studyFitCancelButton (ControlCaption "Cancel")
+                            NegativeCommand (fun () -> dispatch (StudyFit CancelStudyFit))
                     ]
                 else []
             let errors : IView list =
@@ -173,14 +157,11 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                         let id = ConstructorUiId.fitRunRow run.name
                         let caption = ControlCaption $"{run.name.value} — {run.stage.text}, {run.engine.text}, {run.runs.Length} run(s)"
                         let select () = dispatch (SelectFitRun run.name)
-                        if model.studySurface.fitRunOpt = Some run.name then
-                            namedFitActionButton id caption MaterialsWindowView.positiveBackground select
-                        else
-                            MaterialsWindowView.verbButton id caption select)
+                        CommandControls.choiceCommand id caption (if model.studySurface.fitRunOpt = Some run.name then ChosenChoice else UnchosenChoice) select)
             [
                 TextBlock.create [ TextBlock.text "Before the fit:" ]
                 StackPanel.create [
-                    ConstructorUiId.studyPrefitList.automationAttribute<StackPanel> ()
+                    yield! ConstructorUiId.studyPrefitList.groupAttributes<StackPanel> ()
                     AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Before the fit", ValueNone)
                     StackPanel.children prefits
                 ]
@@ -193,7 +174,7 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
             @ [
                 TextBlock.create [ TextBlock.text "Fit runs:" ]
                 StackPanel.create [
-                    ConstructorUiId.fitRunHistory.automationAttribute<StackPanel> ()
+                    yield! ConstructorUiId.fitRunHistory.groupAttributes<StackPanel> ()
                     AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit runs", ValueNone)
                     StackPanel.children history
                 ]
@@ -203,12 +184,17 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
         AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
         ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so no page is wider than its window.
         ScrollViewer.content (
-            StackPanel.create [
-                ConstructorUiId.studyFitPanel.automationAttribute<StackPanel> ()
-                AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study fit", ValueNone)
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.margin 8.0
-                StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+            MinWidthPanel.create [
+                (PanelMinWidth 520.0).minWidthPanelAttribute ()
+                MinWidthPanel.child (
+                    StackPanel.create [
+                        yield! ConstructorUiId.studyFitPanel.groupAttributes<StackPanel> ()
+                        AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study fit", ValueNone)
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.margin 8.0
+                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+                    ])
             ])
     ] :> IView

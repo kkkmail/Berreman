@@ -29,7 +29,6 @@ module StudyTests =
                 ExperimentScan.oneAxis
                     {
                         elementId = ElementId "lp2"
-                        label = ElementLabel "Linear polarizer #4"
                         variable = VaryR1
                         range = VariableRange.forVariable VaryR1
                     }
@@ -583,6 +582,7 @@ module StudyTests =
                 disabled = [ e3 ]
                 starts = FitStartCount.single
                 suspect = SuspectThresholds.initial
+                calibrationUse = CalibrationHeldFixed
             }
 
         Assert.Equal({ settingsStudy with settings = expectedSettings; notes = notes }, noted)
@@ -629,6 +629,7 @@ module StudyTests =
                 disabled = [ e2 ]
                 starts = fourStarts
                 suspect = SuspectThresholds.initial
+                calibrationUse = CalibrationHeldFixed
             }
 
         Assert.Equal({ configured with settings = expectedSettings }, fourFold)
@@ -681,6 +682,7 @@ module StudyTests =
                 disabled = [ e2 ]
                 starts = threeStarts
                 suspect = thresholds
+                calibrationUse = CalibrationHeldFixed
             }
 
         Assert.Equal({ configured with settings = expectedSettings }, thresholded)

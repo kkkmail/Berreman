@@ -634,8 +634,9 @@ module ConstructorUiIdOfDomain =
 
         /// The kit's last open as its history row shows it, in the invariant culture as `KitLockHolder.describe` (spec 0050 S5.2).
         member this.lastOpenedCaption : ControlCaption =
-            let instant = this.lastOpened.value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
-            ControlCaption $"Last opened {instant} UTC"
+            // Spec 0051 `.manual/003` 5.6: the user's own clock, not UTC.
+            let instant = this.lastOpened.value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+            ControlCaption $"Last opened {instant}"
 
     type OpticalConstructor.Domain.Kit.KitFolder with
 
@@ -953,6 +954,13 @@ module ConstructorUiIdOfDomain =
         /// The angle in degrees as the rotation bar writes them (`BarDegrees.text`), then `°` (spec 0050 S8.4).
         member this.degreeCaption : ControlCaption = ControlCaption $"{(BarDegrees this.degrees).text}°"
 
+        /// The angle as a turn, in whole degrees within [0°, 360°): a full or negative turn reads as its place on the
+        /// circle, so 0° never shows as 360° (spec 0051 `.manual/003` 3.7).
+        member this.turnCaption : ControlCaption =
+            let whole = System.Math.Round this.degrees
+            let turn = ((whole % 360.0) + 360.0) % 360.0 + 0.0
+            ControlCaption $"%.0f{turn}°"
+
     type Kit.ItemId with
 
         /// The label of this item among `items`, `(not in this kit)` when `items` lacks it (spec 0050 S8.4).
@@ -961,21 +969,41 @@ module ConstructorUiIdOfDomain =
             | Some item -> item.label.caption
             | None -> ControlCaption "(not in this kit)"
 
+    type Experiments.ElementLabel with
+
+        /// The label as a control shows it.
+        member this.caption : ControlCaption = ControlCaption this.value
+
     type Setups.RoledSlot with
 
-        /// The chip's `<role>: <item label>`, `—` for nothing and `(not in this kit)` for an item `items` lacks; an
-        /// object holding an item adds ` @ ` and its `turnAngle`, the angle a name writes (spec 0050 S8.3, S8.4).
-        member this.chipCaption (items : Kit.Item list) : ControlCaption =
+        /// The slot's one name, `<role>: <item label>`, `—` for nothing and `(not in this kit)` for an item `items` lacks
+        /// ("Analyzer 1: LP2"): the chip, the Experiments bay, a scan's text and the readout all name a slot so (spec 0050
+        /// S8.4; 0051 `.manual/003` 3.5).
+        member this.slotName (items : Kit.Item list) : Experiments.ElementLabel =
             match this.slot.content.itemOpt with
-            | None -> ControlCaption $"{this.role.text}: —"
-            | Some held ->
-                let label = (held.labelAmong items).value
-                match this.role with
-                | Setups.ObjectSlotRole _ -> ControlCaption $"{this.role.text}: {label} @ {this.slot.turnAngle.degreeCaption.value}"
-                | Setups.SourceSlotRole
-                | Setups.PrepSlotRole _
-                | Setups.AnalyzerSlotRole _
-                | Setups.DetectorSlotRole _ -> ControlCaption $"{this.role.text}: {label}"
+            | None -> Experiments.ElementLabel $"{this.role.text}: —"
+            | Some held -> Experiments.ElementLabel $"{this.role.text}: {(held.labelAmong items).value}"
+
+        /// The chip's `slotName`; an object holding an item adds ` @ ` and its `turnAngle`, the angle a name writes (spec
+        /// 0050 S8.3, S8.4).
+        member this.chipCaption (items : Kit.Item list) : ControlCaption =
+            let name = this.slotName items
+            match this.role, this.slot.content.itemOpt with
+            | Setups.ObjectSlotRole _, Some _ -> ControlCaption $"{name.value} @ {this.slot.turnAngle.degreeCaption.value}"
+            | Setups.ObjectSlotRole _, None
+            | Setups.SourceSlotRole, _
+            | Setups.PrepSlotRole _, _
+            | Setups.AnalyzerSlotRole _, _
+            | Setups.DetectorSlotRole _, _ -> name.caption
+
+    type Setups.SetupSlot with
+
+        /// The `slotName` of the slot `id` among `slots` in light order: how an experiment's axis on it is named, from the
+        /// setup it scans; `(not in the setup)` for an id the slots lack (spec 0051 `.manual/003` 3.5, D3).
+        static member elementLabelIn (slots : Setups.SetupSlot list) (items : Kit.Item list) (id : Library.ElementId) : Experiments.ElementLabel =
+            match Setups.SetupSlot.inLightOrder slots |> List.tryFind (fun roled -> roled.slot.id = id) with
+            | Some roled -> roled.slotName items
+            | None -> Experiments.ElementLabel "(not in the setup)"
 
     type SetupGrids.GridCombination with
 
@@ -1097,6 +1125,11 @@ module ConstructorUiIdOfDomain =
             | ImportProfiles.SignalReading (signal, _) -> signal.value
             | ImportProfiles.MuellerReading measured -> measured.element 0 0
 
+    type Berreman.Fields.WaveLength with
+
+        /// The wavelength in nanometres.
+        member w.nanometers : float = w.value / Berreman.Constants.nmToMeter / Berreman.Constants.oneNanometer
+
     type ImportProfiles.MappedPoints with
 
         /// One caption per point in order, its numbers by `%g`, as its row of the Data step's review reads it (spec 0050 S9.3).
@@ -1130,29 +1163,35 @@ module ConstructorUiIdOfDomain =
                     let scan = row.scan |> List.map (fun cell -> $"%g{cell.displayValue.value}") |> String.concat ", "
                     ControlCaption $"{scan}: %g{row.reading.firstValue}")
 
-        /// One chart point per point: x its 1-based number, y its reading's first value — the intensity, Ψ in degrees,
-        /// `avg_total`, or the m00 or signal (spec 0050 S9.3).
+        /// One chart point per point: x the scanned value it was read at — the series' X, the wavelength in nm, the
+        /// analyzer angle, the incidence in degrees or the first scan column, else its 1-based number; y its reading's
+        /// first value — the intensity, Ψ in degrees, `avg_total`, or the m00 or signal (spec 0050 S9.3; 0051
+        /// `.manual/003` 3.4, 4.2).
         member this.chartPoints : ExperimentControls.ChartPoint list =
-            let readings : float list =
-                match this with
-                | ImportProfiles.SeriesPoints (MeasuredData.IntensityData series) -> series.points |> List.map (fun point -> point.intensity.value)
-                | ImportProfiles.SeriesPoints (MeasuredData.EllipsometricData series) -> series.points |> List.map (fun point -> point.psi.degrees)
-                | ImportProfiles.CapturePoints captures -> captures |> List.map (fun capture -> capture.avgTotal.value)
-                | ImportProfiles.ObservationPoints observations -> observations |> List.map (fun keyed -> keyed.observation.measured.element 0 0)
-                | ImportProfiles.ColumnPoints rows -> rows |> List.map (fun row -> row.reading.firstValue)
-            readings
-            |> List.mapi (fun index reading ->
-                let point : ExperimentControls.ChartPoint =
-                    {
-                        x = float (index + 1)
-                        y = reading
-                    }
-                point)
+            let at (x : float) (y : float) : ExperimentControls.ChartPoint = { x = x; y = y }
+            match this with
+            | ImportProfiles.SeriesPoints (MeasuredData.IntensityData series) ->
+                series.points |> List.map (fun point -> at point.x.value point.intensity.value)
+            | ImportProfiles.SeriesPoints (MeasuredData.EllipsometricData series) ->
+                series.points |> List.map (fun point -> at point.waveLength.nanometers point.psi.degrees)
+            | ImportProfiles.CapturePoints captures -> captures |> List.map (fun capture -> at capture.description.degrees capture.avgTotal.value)
+            | ImportProfiles.ObservationPoints observations ->
+                observations
+                |> List.map (fun keyed -> at keyed.observation.configuration.incidenceAngle.angle.degrees (keyed.observation.measured.element 0 0))
+            | ImportProfiles.ColumnPoints rows ->
+                rows
+                |> List.mapi (fun index row ->
+                    match row.scan with
+                    | first :: _ -> at first.displayValue.value row.reading.firstValue
+                    | [] -> at (float (index + 1)) row.reading.firstValue)
 
     type ConstructorUiId with
 
         /// A group's row of the Data step's split panel: `DataSplitGroup_<key>` (spec 0050 S9.3).
         static member dataSplitGroupRow (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitGroup_{key.uiKey.value}"
+
+        /// The wizard's choice of the rows holding that key: `ImportWizardRows_<key>` (spec 0051 `.manual/003` 2.4).
+        static member importWizardRowsChoice (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"ImportWizardRows_{key.uiKey.value}"
 
         /// An offered group's toggle, ticking its setup and experiment for creation: `DataSplitOffer_<key>` (spec 0050 S9.3).
         static member dataSplitOfferToggle (key : Kit.DataRowKey) : ConstructorUiId = ConstructorUiId $"DataSplitOffer_{key.uiKey.value}"
@@ -1161,6 +1200,10 @@ module ConstructorUiIdOfDomain =
         static member dataSplitGroupSetupChoice (key : Kit.DataRowKey) : ConstructorUiId =
             let stem = FileStem.ofText key.value
             ConstructorUiId $"DataSplitGroupSetup_{stem.value}"
+
+        /// A data-file row's heading, the experiment's name, role and badge: `DataFileHeading_<id>` (spec 0051 `.manual/003`
+        /// 4.1).
+        static member dataFileHeading (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataFileHeading_{experimentId.value}"
 
         /// A data-file row's Review, showing the experiment's points in the Data step: `DataReview_<id>` (spec 0050 S9.3).
         static member dataReviewButton (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataReview_{experimentId.value}"

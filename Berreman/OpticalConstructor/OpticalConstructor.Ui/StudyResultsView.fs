@@ -31,16 +31,22 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
             TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
             TextBlock.text caption.value
         ] :> IView
+    // Spec 0051 `.manual/003` 4.3: a table scrolls sideways in its own scroller, never the page.
     let table (headers : ControlCaption list) (rows : ControlCaption list list) : IView =
-        Grid.create [
-            Grid.horizontalAlignment HorizontalAlignment.Left
-            Grid.columnDefinitions (List.replicate headers.Length "Auto" |> String.concat ",")
-            Grid.rowDefinitions (List.replicate (rows.Length + 1) "Auto" |> String.concat ",")
-            Grid.children (
-                (headers |> List.mapi (fun column caption -> cell 0 column FontWeight.SemiBold caption))
-                @ (rows |> List.mapi (fun row captions ->
-                    captions |> List.mapi (fun column caption ->
-                        cell (row + 1) column FontWeight.Normal caption)) |> List.concat))
+        ScrollViewer.create [
+            ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
+            ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
+            ScrollViewer.content (
+                Grid.create [
+                    Grid.horizontalAlignment HorizontalAlignment.Left
+                    Grid.columnDefinitions (List.replicate headers.Length "Auto" |> String.concat ",")
+                    Grid.rowDefinitions (List.replicate (rows.Length + 1) "Auto" |> String.concat ",")
+                    Grid.children (
+                        (headers |> List.mapi (fun column caption -> cell 0 column FontWeight.SemiBold caption))
+                        @ (rows |> List.mapi (fun row captions ->
+                            captions |> List.mapi (fun column caption ->
+                                cell (row + 1) column FontWeight.Normal caption)) |> List.concat))
+                ])
         ] :> IView
     let itemLabels (items : ItemId list) (separator : string) : string =
         items |> List.map (fun item -> (item.labelAmong model.kitItems).value) |> String.concat separator
@@ -145,20 +151,14 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
                     TextBlock.text runCaption.value
                 ]
                 WrapPanel.create [
-                    ConstructorUiId.fitResultsTabStrip.automationAttribute<WrapPanel> ()
+                    yield! ConstructorUiId.fitResultsTabStrip.groupAttributes<WrapPanel> ()
                     AttrBuilder<WrapPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Results tabs", ValueNone)
                     WrapPanel.children (FitResultsTab.all |> List.map (fun tab ->
                         let choose () = dispatch (ShowResultsTab tab)
-                        let button =
-                            if tab = model.studySurface.resultsTab then
-                                MaterialsWindowView.actionButton tab.tabUiId tab.caption MaterialsWindowView.positiveBackground choose
-                            else MaterialsWindowView.verbButton tab.tabUiId tab.caption choose
-                        (button :?> IView<Border>)
-                        |> View.withAttrs [ AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, tab.caption.value, ValueNone) ]
-                        :> IView))
+                        CommandControls.choiceCommand tab.tabUiId tab.caption (if tab = model.studySurface.resultsTab then ChosenChoice else UnchosenChoice) choose))
                 ]
                 StackPanel.create [
-                    ConstructorUiId.fitResultsTable.automationAttribute<StackPanel> ()
+                    yield! ConstructorUiId.fitResultsTable.groupAttributes<StackPanel> ()
                     AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, model.studySurface.resultsTab.caption.value, ValueNone)
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.margin (Thickness(0.0, 8.0, 0.0, 0.0))
@@ -171,12 +171,17 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
         AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
         ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so no page is wider than its window.
         ScrollViewer.content (
-            StackPanel.create [
-                ConstructorUiId.studyResultsPanel.automationAttribute<StackPanel> ()
-                AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study results", ValueNone)
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.margin 8.0
-                StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+            MinWidthPanel.create [
+                (PanelMinWidth 520.0).minWidthPanelAttribute ()
+                MinWidthPanel.child (
+                    StackPanel.create [
+                        yield! ConstructorUiId.studyResultsPanel.groupAttributes<StackPanel> ()
+                        AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study results", ValueNone)
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.margin 8.0
+                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+                    ])
             ])
     ] :> IView

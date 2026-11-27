@@ -2,6 +2,7 @@ namespace OpticalConstructor.Ui.Tests
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Controls.Shapes
 open Avalonia.Headless
 open Avalonia.Threading
@@ -20,17 +21,13 @@ open OpticalConstructor.Domain.ItemEvaluation
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0027 (028) — the redesigned Experiments bay: the multi-step, editable experiment builder (choose
 /// element → element-constrained variable → T/R/both capture → range → Add) and the persistent collection
 /// (edit / remove). Covers the pure control contract, the host's `experimentState` / `experimentResult`
 /// branches, the MVU bindings, and a few headless render proofs.
 module ExperimentControlsTests =
-
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (candidate / collection
-    /// items carry an AutomationId — a mutable attached property — so they survive reordering; see the bay).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
 
     let private elem (i : int) (m : TableAndElementRotationModel) : Setups.SetupSlot = List.item i m.elements
 
@@ -200,8 +197,18 @@ module ExperimentControlsTests =
         let exp = List.head m.experimentCollection.experiments
         let mEdit = m |> updateTableAndElementRotation (ExpEdit exp.id)
         Assert.Equal(Some exp.id, mEdit.experimentCollection.draft.editingId)
-        let mRemove = m |> updateTableAndElementRotation (ExpRemove exp.id)
+        // Spec 0051 `.manual/003` 2.3: Remove asks first; No keeps the experiment, Yes removes it.
+        let asked = m |> updateTableAndElementRotation (ExpRemove exp.id)
+        Assert.Equal(Some exp.id, asked.experimentRemovalOpt)
+        Assert.Equal<Experiments.Experiment list>(m.experimentCollection.experiments, asked.experimentCollection.experiments)
+        Assert.Equal(Some exp.id.uiKey, asked.experimentState.removalPendingOpt)
+        let kept = asked |> updateTableAndElementRotation ExpCancelRemove
+        Assert.Equal(None, kept.experimentRemovalOpt)
+        Assert.Equal<Experiments.Experiment list>(m.experimentCollection.experiments, kept.experimentCollection.experiments)
+        let mRemove = asked |> updateTableAndElementRotation ExpConfirmRemove
         Assert.Empty(mRemove.experimentCollection.experiments)
+        Assert.Equal(None, mRemove.experimentRemovalOpt)
+        Assert.Equal(Some (ControlCaption $"Removed experiment '{exp.name.value}' and its file."), mRemove.kitStatusCaption)
 
     [<Fact>]
     let ``the bay state exposes the collection rows and the editing highlight`` () =
@@ -209,7 +216,7 @@ module ExperimentControlsTests =
         let st = m.experimentState
         Assert.Single(st.collection) |> ignore
         let row = List.head st.collection
-        Assert.Contains("Light source", row.description.value)
+        Assert.Contains("Source", row.description.value)
         Assert.Equal(ExperimentControls.LoadedInEditor, row.focus)
         Assert.Equal(ExperimentControls.EditorUpdatesExisting, st.editorMode)
 
@@ -348,7 +355,7 @@ module ExperimentControlsTests =
     /// The model after the message, which must leave the kit status clear.
     let private applied (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let next = model |> updateTableAndElementRotation msg
-        Assert.Equal<ControlCaption option>(None, next.kitStatus)
+        Assert.Equal<ControlCaption option>(None, next.kitRefusalOpt)
         next
 
     /// A known angle parameter of that many degrees, in radians, an angle parameter's unit (spec 0050 S8.1).
@@ -542,7 +549,7 @@ module ExperimentControlsTests =
                 |> applied (AssignSlot (second.id, Some dialDraft.id))
                 |> updateTableAndElementRotation (SetSetupName (ControlCaption "Dial"))
                 |> updateTableAndElementRotation CreateSetup
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Dial'."), recorded.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Dial'."), recorded.kitStatusCaption)
             match (recorded.kitSetups |> List.find (fun setup -> setup.name = SetupName "Dial")).slots |> List.find (fun slot -> slot.id = second.id) with
             | { Setups.SetupSlot.content = Setups.ItemInSlot (heldId, Setups.DialTurn reading) } ->
                 Assert.Equal<ItemId>(dialDraft.id, heldId)
@@ -554,7 +561,7 @@ module ExperimentControlsTests =
                 recorded
                 |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 20.0<deg>))
                 |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Dial'."), drawn.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Dial'."), drawn.kitStatusCaption)
             Assert.Equal((Angle.degree 40.0<deg>).value, (drawn.elements |> List.find (fun slot -> slot.id = second.id)).placement.r1.value, 1e-12)
             let itemChart = chartSweepingFirst drawn
 
@@ -625,7 +632,7 @@ module ExperimentControlsTests =
                 Dispatcher.UIThread.RunJobs()
                 let shown (variable : ExperimentControls.VariableChoice) : bool =
                     let name = (ConstructorUiId.experimentVariable variable.uiKey).value
-                    window.GetVisualDescendants() |> Seq.exists (function :? Border as b when matchesId name b && b.IsEffectivelyVisible -> true | _ -> false)
+                    window.GetVisualDescendants() |> Seq.exists (function :? Control as b when UiDriver.hasId name b && b.IsEffectivelyVisible -> true | _ -> false)
                 Assert.True(shown ExperimentControls.VaryDialReading, "the dial box was not offered")
                 Assert.False(shown ExperimentControls.VaryR1, "the R1 box was offered for a dial-mounted item")
                 window.Close()
@@ -710,8 +717,9 @@ module ExperimentControlsTests =
         Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.TransmittedBeam ], objectsOn 1 table)
         Assert.Equal<(Library.ElementId * BeamTree.BeamBranch) list>([ polarizer, BeamTree.TransmittedBeam; film, BeamTree.ReflectedBeam ], objectsOn 4 table)
         let drafted = twoVariableDraft table
-        let label = (List.head drafted.experimentCollection.draft.outerAxes).label.value
-        Assert.Equal("Sample #4", label)
+        // Spec 0051 `.manual/003` 3.5: the slot is named as its chip names it.
+        let label = (drafted.tableLabelOf (List.head drafted.experimentCollection.draft.outerAxes).elementId).value
+        Assert.StartsWith("Obj ", label)
         let chart = drafted.experimentResult
         let incidences = [ 20.0; 40.0; 60.0 ]
         Assert.Equal<string list>(
@@ -781,7 +789,7 @@ module ExperimentControlsTests =
             Assert.Equal<ExperimentControls.ChartPoint list>(draft.points, drawn.points)
         Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
         Assert.Equal(firstBlock.experimentResult.title, chart.title)
-        Assert.Contains(experiment.description, chart.description.value)
+        Assert.Contains((committed.experimentDescription experiment).value, chart.description.value)
 
     [<Fact>]
     let ``the export of a two-variable draft carries every series of its chart`` () =
@@ -1003,7 +1011,7 @@ module ExperimentControlsTests =
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let hasNamed (name : string) : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? Control as c -> c.Name = name | _ -> false)
+                |> Seq.exists (function :? Control as c -> UiDriver.hasId name c | _ -> false)
             Assert.True(hasNamed ConstructorUiId.chartWindowPlot.value, "the ScottPlot host control was not present")
             Assert.True(hasNamed ConstructorUiId.chartWindowElement.value, "the element picker was not present")
             Assert.True(hasNamed ConstructorUiId.chartWindowProperties.value, "the properties panel was not present")
@@ -1018,7 +1026,7 @@ module ExperimentControlsTests =
             try window.Show() with _ -> ()
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let ctrl (name : string) : Control option =
-                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when UiDriver.hasId name c -> Some c | _ -> None)
             // Toggle polar ON (exercises the PolarAxis + GetCoordinates rebuild) and back to XY.
             match ctrl ConstructorUiId.chartWindowPolar.value with
             | Some c ->
@@ -1057,7 +1065,7 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let chartVisible () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? Polyline as p when p.Name = ConstructorUiId.experimentChart.value && p.IsEffectivelyVisible -> true | _ -> false)
+                |> Seq.exists (function :? Polyline as p when UiDriver.hasId ConstructorUiId.experimentChart.value p && p.IsEffectivelyVisible -> true | _ -> false)
             Assert.True(chartVisible (), "the intensity polyline was not visible")
             window.Close())
 
@@ -1065,7 +1073,8 @@ module ExperimentControlsTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Experiments bay lists candidates and a click picks the element`` () =
         HeadlessSession.run (fun () ->
-            let mutable model = SceneTestFixture.mainScene () |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+            // Spec 0051 `.manual/003` 3.6: only a tunable source has something to vary, so only it is a candidate.
+            let mutable model = withTunableSource () |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 300.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
@@ -1073,12 +1082,17 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let readoutVisible () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? TextBlock as t when t.Name = ConstructorUiId.experimentReadout.value && t.IsEffectivelyVisible -> true | _ -> false)
+                |> Seq.exists (function :? TextBlock as t when UiDriver.hasId ConstructorUiId.experimentReadout.value t && t.IsEffectivelyVisible -> true | _ -> false)
             Assert.True(readoutVisible (), "the Experiment readout was not visible")
+            for element in model.elements |> List.filter (fun element -> element.id.value <> "src") do
+                let other = (ConstructorUiId.experimentCandidate element.id.uiKey).value
+                Assert.False(
+                    window.GetVisualDescendants() |> Seq.exists (function :? Control as control -> UiDriver.hasId other control | _ -> false),
+                    $"{other} has nothing to vary, so it must not be offered")
             let candName = (ConstructorUiId.experimentCandidate (ConstructorUiKey "src")).value
-            let findCand () : Border option =
+            let findCand () : Control option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when matchesId candName b && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Control as b when UiDriver.hasId candName b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findCand () with
             | None -> Assert.Fail("the src candidate was not visible in the Experiments bay")
             | Some b ->
@@ -1107,9 +1121,9 @@ module ExperimentControlsTests =
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            let findAdd () : Border option =
+            let findAdd () : Control option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when matchesId ConstructorUiId.experimentAddButton.value b && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Control as b when UiDriver.hasId ConstructorUiId.experimentAddButton.value b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findAdd () with
             | None -> Assert.Fail("the Add button was not visible")
             | Some b ->
@@ -1131,7 +1145,7 @@ module ExperimentControlsTests =
         Window(Width = 1000.0, Height = 980.0, Content = comp)
 
     let private clickIn (window : Window) (name : string) : unit =
-        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId name b -> Some b | _ -> None) with
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Control as b when UiDriver.hasId name b -> Some b | _ -> None) with
         | Some b ->
             match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
             | v when v.HasValue ->
@@ -1196,7 +1210,7 @@ module ExperimentControlsTests =
         // this recycled a named box into a differently-named one and threw.
         HeadlessSession.run (fun () ->
             let seed =
-                SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement LinearPolarizer)     // idx 2
+                withTunableSource () |> updateTableAndElementRotation (AddElement LinearPolarizer)     // idx 2
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))                     // source ⇒ variable boxes = [wavelength]
                 |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let pid = idOf 2 seed
@@ -1268,7 +1282,7 @@ module ExperimentControlsTests =
             try window.Show() with _ -> ()
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let ctrl (name : string) : Control option =
-                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when UiDriver.hasId name c -> Some c | _ -> None)
             let ava = (ctrl ConstructorUiId.chartWindowPlot.value |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
             let lim0 = ava.Plot.Axes.GetLimits()
             let btn = (ctrl ConstructorUiId.chartWindowPolar.value |> Option.get) :?> Button
@@ -1295,7 +1309,7 @@ module ExperimentControlsTests =
             try window.Show() with _ -> ()
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let ctrl (name : string) : Control option =
-                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when UiDriver.hasId name c -> Some c | _ -> None)
             let ava = (ctrl ConstructorUiId.chartWindowPlot.value |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
             let scatters () : ScottPlot.Plottables.Scatter list =
                 ava.Plot.GetPlottables()
@@ -1388,7 +1402,7 @@ module ExperimentControlsTests =
                 {
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                     setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
-                    addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                    addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore; confirmRemoval = ignore; cancelRemoval = ignore
                     addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
                     viewExperiment = ignore; openChartWindow = ignore
                 }
@@ -1430,7 +1444,7 @@ module ExperimentControlsTests =
         window.GetVisualDescendants()
         |> Seq.tryPick (fun visual ->
             match visual with
-            | :? 'Control as c when matchesId id.value c -> Some c
+            | :? 'Control as c when UiDriver.hasId id.value c -> Some c
             | _ -> None)
 
     /// The scan summary's lines, top to bottom.
@@ -1441,7 +1455,7 @@ module ExperimentControlsTests =
 
     /// Whether the bay's box of that id takes a press.
     let private enabledIn (window : Window) (id : ConstructorUiId) : bool =
-        match controlIn<Border> window id with
+        match controlIn<Control> window id with
         | Some box -> box.IsEffectivelyEnabled
         | None -> failwith $"{id.value} is not in the bay"
 
@@ -1458,6 +1472,32 @@ module ExperimentControlsTests =
         |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
         |> updateTableAndElementRotation ExpCommit
         |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+
+    /// Spec 0051 `.manual/003` 2.3: a row's Remove becomes its question with Yes and No, and No brings the Remove back.
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a row's Remove asks inline before the experiment and its file go`` () =
+        HeadlessSession.run (fun () ->
+            let committed = committedPolarizer ()
+            let e1 = Assert.Single committed.experimentCollection.experiments
+            let window, latest = liveWithLatest committed
+            try
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                UiDriver.ById.assertAbsent window ConstructorUiId.experimentRemovePrompt
+                UiDriver.ById.clickOn window (ConstructorUiId.experimentRemoveButton e1.id.uiKey)
+                Assert.Equal(Some e1.id, latest.Value.experimentRemovalOpt)
+                Assert.Equal("Remove this experiment and its file?", UiDriver.textOfControl (UiDriver.ById.findControl window ConstructorUiId.experimentRemovePrompt))
+                Assert.Equal("Yes, remove", UiDriver.ById.captionOf window ConstructorUiId.experimentRemoveConfirmButton)
+                UiDriver.ById.assertAbsent window (ConstructorUiId.experimentRemoveButton e1.id.uiKey)
+                UiDriver.ById.clickOn window ConstructorUiId.experimentRemoveCancelButton
+                Assert.Equal(None, latest.Value.experimentRemovalOpt)
+                Assert.Single latest.Value.experimentCollection.experiments |> ignore
+                UiDriver.ById.clickOn window (ConstructorUiId.experimentRemoveButton e1.id.uiKey)
+                UiDriver.ById.clickOn window ConstructorUiId.experimentRemoveConfirmButton
+                Assert.Empty(latest.Value.experimentCollection.experiments)
+            finally
+                window.Close())
 
     [<Fact>]
     let ``the bay's scan, role, session and notes UiIds are the stable intent-named ids`` () =
@@ -1494,7 +1534,7 @@ module ExperimentControlsTests =
             clickIn window ConstructorUiId.experimentAddScanAxisButton.value
             let held = Assert.Single latest.Value.experimentCollection.draft.outerAxes
             Assert.Equal(Experiments.VaryR2, held.variable)
-            Assert.Equal<string list>([ $"This block: {held.describe}" ], scanLinesIn window)
+            Assert.Equal<string list>([ $"This block: {(held.describeAs (latest.Value.tableLabelOf held.elementId)).value}" ], scanLinesIn window)
             Assert.False(enabledIn window ConstructorUiId.experimentAddScanAxisButton, "the edited axis held: Add variable is withheld")
 
             clickIn window candidate.value
@@ -1505,7 +1545,8 @@ module ExperimentControlsTests =
             Assert.Equal<Experiments.VariableParameter list>([ Experiments.VaryR2; Experiments.VaryR1 ], block.axes |> List.map (fun axis -> axis.variable))
             Assert.Empty(latest.Value.experimentCollection.draft.outerAxes)
             let r2, r1 = List.item 0 block.axes, List.item 1 block.axes
-            Assert.Equal<string list>([ $"Block 1: {r2.describe} × {r1.describe}, capture {block.capture.label}" ], scanLinesIn window)
+            let describe (axis : Experiments.ScanAxis) : string = (axis.describeAs (latest.Value.tableLabelOf axis.elementId)).value
+            Assert.Equal<string list>([ $"Block 1: {describe r2} × {describe r1}, capture {block.capture.label}" ], scanLinesIn window)
             let line = List.exactlyOne (scanLinesIn window)
             Assert.True(line.IndexOf "Incidence R2" < line.IndexOf "Rotation R1", $"R2 is the outer axis: {line}")
             Assert.EndsWith(", capture Transmitted (T)", line)
@@ -1519,7 +1560,7 @@ module ExperimentControlsTests =
             let committed = committedPolarizer ()
             let e1 = Assert.Single committed.experimentCollection.experiments
             let roleBoxShown (window : Window) (role : Experiments.ExperimentRole) : bool =
-                match controlIn<Border> window (ConstructorUiId.experimentRoleChoice role.uiKey) with
+                match controlIn<Control> window (ConstructorUiId.experimentRoleChoice role.uiKey) with
                 | Some box -> box.IsEffectivelyVisible
                 | None -> false
             let fieldText (window : Window) (id : ConstructorUiId) : string =
@@ -1562,7 +1603,7 @@ module ExperimentControlsTests =
 
             // A press on Calibration records it for E1.
             clickIn window (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey).value
-            Assert.Equal<ControlCaption option>(None, latest.Value.kitStatus)
+            Assert.Equal<ControlCaption option>(None, latest.Value.kitRefusalOpt)
             let recorded = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
             Assert.Equal(Experiments.CalibrationRun, recorded.role)
             Assert.Equal<(string * ExperimentControls.ExperimentRoleMark) list>(marksWith Experiments.CalibrationRun, marks latest.Value)
@@ -1612,7 +1653,7 @@ module ExperimentControlsTests =
             let e1 = Assert.Single committed.experimentCollection.experiments
             Assert.Equal("E1", e1.name.value)
             let row = Assert.Single committed.experimentState.collection
-            Assert.Equal($"E1 [Science] — {e1.description}", row.description.value)
+            Assert.Equal($"E1 [Science] — {(committed.experimentDescription e1).value}", row.description.value)
             Assert.Equal("no data", row.badge.value)
 
             let window, _ = liveWithLatest committed
@@ -1625,7 +1666,7 @@ module ExperimentControlsTests =
                     |> Seq.choose (function :? TextBlock as t when t.IsEffectivelyVisible -> Option.ofObj t.Text | _ -> None)
                     |> List.ofSeq
                 | None -> failwith $"{id.value} is not in the bay"
-            Assert.Equal<string list>([ $"E1 [Science] — {e1.description}" ], texts (ConstructorUiId.experimentEditButton e1.id.uiKey))
+            Assert.Equal<string list>([ $"E1 [Science] — {(committed.experimentDescription e1).value}" ], texts (ConstructorUiId.experimentEditButton e1.id.uiKey))
             Assert.Equal<string list>([ "no data" ], texts (ConstructorUiId.experimentRowBadge e1.id.uiKey))
             window.Close())
 

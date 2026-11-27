@@ -5,6 +5,7 @@ module OpticalConstructor.Ui.SlotBarView
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.VisualTree
@@ -30,6 +31,8 @@ type SlotBarState =
         chips : SlotChipState list
         openOpt : Library.ElementId option
         recordAvailability : ControlAvailability
+        /// The note Record experiment names its experiment with (spec 0051 `.manual/003` 3.9).
+        recordNote : ControlCaption
     }
 
 /// What the bar sends: a chip's toggle, a listed item's swap, a letter typed on a chip, Record experiment and Setup grid…
@@ -40,12 +43,9 @@ type SlotBarHandlers =
         swapSlot : Library.ElementId -> Kit.ItemId -> unit
         pickByLetter : Library.ElementId -> Setups.PickLetter -> unit
         recordExperiment : unit -> unit
+        setRecordNote : ControlCaption -> unit
         openSetupGrid : unit -> unit
     }
-
-// `MaterialsWindowView.verbButton`'s box look; that module keeps its idle colours private (spec 0050 S8.4).
-let private idleBackground : Color = Color.FromRgb(232uy, 232uy, 232uy)
-let private idleBorder : Color = Color.FromRgb(120uy, 120uy, 120uy)
 
 /// The bar over `state`: its chips, then Record experiment while offered and Setup grid…, on a wrapping row, and the open
 /// chip's fitting items below. A chip is a tab stop, so Tab walks the chips in light order, and a letter typed on one
@@ -54,68 +54,55 @@ let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
     let chipBox (chip : SlotChipState) : IView =
         let slotId = chip.roled.slot.id
         let id = ConstructorUiId.slotChip chip.roled.role
-        let background =
+        let mark =
             match state.openOpt with
-            | Some openId when openId = slotId -> MaterialsWindowView.positiveBackground
+            | Some openId when openId = slotId -> ChosenChoice
             | Some _
-            | None -> idleBackground
-        let chipView =
-            Border.create [
-                id.automationAttribute<Border> ()
-                AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.NameProperty, chip.caption.value, ValueNone)
-                Border.focusable true
-                Border.isTabStop true
-                Border.background (MaterialsWindowView.brush background)
-                Border.borderBrush (MaterialsWindowView.brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(12.0, 5.0))
-                Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text $"{chip.caption.value} ▾" ])
-                Border.onPointerPressed (
-                    (fun e ->
-                        e.Handled <- true
-                        match e.Source with
-                        | :? Visual as pressed ->
-                            pressed.FindAncestorOfType<Border>(true) |> Option.ofObj |> Option.iter (fun chipBorder -> chipBorder.Focus() |> ignore)
-                        | _ -> ()
-                        handlers.toggleChip slotId),
-                    SubPatchOptions.Always)
-                Border.onTextInput (
-                    (fun e ->
-                        match Option.ofObj e.Text |> Option.bind PickLetter.tryCreate with
-                        | Some letter ->
-                            e.Handled <- true
-                            handlers.pickByLetter slotId letter
-                        | None -> ()),
-                    SubPatchOptions.Always)
-            ]
-            |> View.withKey id.value
-        chipView :> IView
+            | None -> UnchosenChoice
+        CommandControls.choiceToggle id (ControlCaption $"{chip.caption.value} ▾") mark PositiveCommand ControlOffered (fun () -> handlers.toggleChip slotId)
+            [ ToggleButton.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+              ToggleButton.onTextInput (
+                  (fun e ->
+                      match Option.ofObj e.Text |> Option.bind PickLetter.tryCreate with
+                      | Some letter ->
+                          e.Handled <- true
+                          handlers.pickByLetter slotId letter
+                      | None -> ()),
+                  SubPatchOptions.Always) ]
     let recordVerb : IView list =
         match state.recordAvailability with
         | ControlOffered ->
-            [ MaterialsWindowView.verbButton ConstructorUiId.recordExperimentButton (ControlCaption "Record experiment") handlers.recordExperiment ]
+            [
+                TextBox.create [
+                    yield! ConstructorUiId.recordNoteField.inputAttributes<TextBox> ()
+                    TextBox.placeHolderText "Note for the name"
+                    TextBox.width 160.0
+                    TextBox.margin (Thickness(0.0, 0.0, 6.0, 4.0))
+                    TextBox.text state.recordNote.value
+                    TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter handlers.setRecordNote)
+                ]
+                :> IView
+                CommandControls.verbCommand ConstructorUiId.recordExperimentButton (ControlCaption "Record experiment") handlers.recordExperiment
+            ]
         | ControlWithheld -> []
     // The grid's edits write nothing, so a read-only kit is offered it too (spec 0050 S8.4).
     let gridVerb : IView =
-        MaterialsWindowView.verbButton ConstructorUiId.setupGridOpenButton (ControlCaption "Setup grid…") handlers.openSetupGrid
+        CommandControls.verbCommand ConstructorUiId.setupGridOpenButton (ControlCaption "Setup grid…") handlers.openSetupGrid
     let choiceList (chip : SlotChipState) : IView =
         let slotId = chip.roled.slot.id
         let choiceBox (item : Kit.Item) : IView =
             let id = ConstructorUiId.slotChipChoice chip.roled.role item.id
             match chip.roled.slot.content.itemOpt with
             | Some held when held = item.id ->
-                MaterialsWindowView.actionButton id item.label.caption MaterialsWindowView.positiveBackground (fun () -> handlers.toggleChip slotId)
+                CommandControls.choiceCommand id item.label.caption ChosenChoice (fun () -> handlers.toggleChip slotId)
             | Some _
-            | None -> MaterialsWindowView.verbButton id item.label.caption (fun () -> handlers.swapSlot slotId item.id)
+            | None -> CommandControls.choiceCommand id item.label.caption UnchosenChoice (fun () -> handlers.swapSlot slotId item.id)
         let choices : IView list =
             match chip.fitting with
             | [] -> [ TextBlock.create [ TextBlock.text $"No item of this kit fits {chip.roled.role.text}." ] :> IView ]
             | fitting -> fitting |> List.map choiceBox
         WrapPanel.create [
-            ConstructorUiId.slotChipChoiceList.automationAttribute<WrapPanel> ()
+            yield! ConstructorUiId.slotChipChoiceList.groupAttributes<WrapPanel> ()
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children choices
         ] :> IView
@@ -124,7 +111,7 @@ let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
         | Some openId -> state.chips |> List.filter (fun chip -> chip.roled.slot.id = openId) |> List.map choiceList
         | None -> []
     StackPanel.create [
-        ConstructorUiId.slotBar.automationAttribute<StackPanel> ()
+        yield! ConstructorUiId.slotBar.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Vertical
         StackPanel.margin (Thickness(8.0, 4.0))
         StackPanel.children (

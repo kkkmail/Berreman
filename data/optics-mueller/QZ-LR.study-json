@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "study": {
     "experiments": [
       "LP-(AIR#0)-LP-2",
@@ -133,6 +133,7 @@
       }
     ],
     "settings": {
+      "calibrationUse": 1,
       "detectorWeights": [],
       "disabled": [],
       "experimentWeights": [],

@@ -2,6 +2,7 @@ namespace OpticalConstructor.Controls
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
@@ -93,57 +94,19 @@ module MaterialsControls =
             viewMaterial : unit -> unit
         }
 
-    // -- The button look, identical to the other bars' idle/chosen boxes (so they MATCH). --
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+    /// The box keyed `key` is chosen while it is the selection.
+    let private boxMark (selected : ConstructorUiKey option) (key : ConstructorUiKey) : ChoiceMark =
+        if selected = Some key then ChosenChoice else UnchosenChoice
 
-    /// The chosen look for the box keyed `key` while it is the selection, the idle look otherwise.
-    let private boxBackground (selected : ConstructorUiKey option) (key : ConstructorUiKey) : Color =
-        if selected = Some key then chosenBackground else idleBackground
+    /// A facet option or a listed row: a choice, chosen while it is the selection, keyed by its id so a membership
+    /// change recreates a shifted box instead of patching another item's in place (spec 0038).
+    let private choiceBox (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (onClick : unit -> unit) : IView =
+        CommandControls.choiceToggle id label mark ChosenCommand ControlOffered onClick
+            [ ToggleButton.padding (Thickness(10.0, 4.0)); ToggleButton.margin (Thickness(0.0, 0.0, 6.0, 4.0)) ]
 
-    /// A clickable, styled box (a facet option or a listed row). Its id is an AutomationId, not a
-    /// `Name`: the host's filter rewrites the rows, so FuncUI can shift a sibling onto a reused box, and
-    /// Avalonia forbids renaming a styled control. KEYED by its id (`View.withKey`, spec 0038) so a
-    /// membership change recreates a shifted box instead of patching another item's in place.
-    /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or
-    /// the highlight changes so a reused box can't keep a stale handler.
-    let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-        let keyedBox =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(10.0, 4.0))
-                Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, background)))
-            ]
-            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
-            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        keyedBox :> IView
-
-    /// A verb button (Add / Edit / Remove / View), on the accent background when it is the primary verb.
-    let private verbButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.isEnabled availability.isEnabled
-            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, availability.isEnabled)))
-        ] :> IView
+    /// A verb button (Add / Edit / Remove / View), chosen-blue when it is the primary verb.
+    let private verbButton (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
+        CommandControls.commandButton id label emphasis availability onClick [ Button.margin (Thickness(0.0, 0.0, 8.0, 0.0)) ]
 
     /// The search row: a label and the live search box (the host filters on every text change —
     /// the same idiom as the Ui materials panel's search field).
@@ -154,7 +117,7 @@ module MaterialsControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Search:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    TextBox.name ConstructorUiId.materialSearchBox.value
+                    yield! ConstructorUiId.materialSearchBox.inputAttributes<TextBox> ()
                     TextBox.width 220.0
                     TextBox.text state.searchText.value
                     TextBox.onTextChanged (ControlCaption >> handlers.setSearchText)
@@ -171,18 +134,18 @@ module MaterialsControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text title.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 WrapPanel.create [
-                    WrapPanel.name containerId.value
+                    yield! containerId.groupAttributes<WrapPanel> ()
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         options
-                        |> List.map (fun o -> clickBox (optionId o.code) o.label (boxBackground selected o.code) (fun () -> select o.code)))
+                        |> List.map (fun o -> choiceBox (optionId o.code) o.label (boxMark selected o.code) (fun () -> select o.code)))
                 ]
             ]
         ] :> IView
 
     /// One listed material row — clickable (selects it), highlighted when it is the selection.
     let private rowView (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) (r : MaterialsControlsRow) : IView =
-        clickBox (ConstructorUiId.materialRow r.materialId) r.label (boxBackground state.selectedId r.materialId) (fun () -> handlers.selectMaterial r.materialId)
+        choiceBox (ConstructorUiId.materialRow r.materialId) r.label (boxMark state.selectedId r.materialId) (fun () -> handlers.selectMaterial r.materialId)
 
     /// The materials list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) : IView =
@@ -190,7 +153,7 @@ module MaterialsControls =
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name ConstructorUiId.materialsList.value
+                    yield! ConstructorUiId.materialsList.groupAttributes<StackPanel> ()
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView state handlers))
                 ])
@@ -206,10 +169,10 @@ module MaterialsControls =
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 0.0
             StackPanel.children [
-                verbButton ConstructorUiId.addMaterialButton (ControlCaption "Add") chosenBackground ControlOffered handlers.addMaterial
-                verbButton ConstructorUiId.editMaterialButton (ControlCaption "Edit") idleBackground onSelection handlers.editMaterial
-                verbButton ConstructorUiId.removeMaterialButton (ControlCaption "Remove") idleBackground onSelection handlers.removeMaterial
-                verbButton ConstructorUiId.viewMaterialButton (ControlCaption "View") idleBackground onSelection handlers.viewMaterial
+                verbButton ConstructorUiId.addMaterialButton (ControlCaption "Add") ChosenCommand ControlOffered handlers.addMaterial
+                verbButton ConstructorUiId.editMaterialButton (ControlCaption "Edit") NeutralCommand onSelection handlers.editMaterial
+                verbButton ConstructorUiId.removeMaterialButton (ControlCaption "Remove") NeutralCommand onSelection handlers.removeMaterial
+                verbButton ConstructorUiId.viewMaterialButton (ControlCaption "View") NeutralCommand onSelection handlers.viewMaterial
             ]
         ] :> IView
 

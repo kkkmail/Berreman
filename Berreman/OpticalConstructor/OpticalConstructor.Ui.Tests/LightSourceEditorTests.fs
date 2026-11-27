@@ -25,6 +25,7 @@ open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
 open OpticalConstructor.Tests
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0046 — the Library's light-source editor: its pure MVU (name, wavelength in a chosen unit, Save
 /// through the user-sources store, the dirty exit gate), the Library window's Add source / Edit / Remove
@@ -201,7 +202,7 @@ module LightSourceEditorTests =
             window.GetVisualDescendants()
             |> Seq.tryPick (fun v ->
                 match v with
-                | :? TextBlock as t when t.Name = ConstructorUiId.teReadout.value -> Some t.Text
+                | :? TextBlock as t when UiDriver.hasId ConstructorUiId.teReadout.value t -> Some t.Text
                 | _ -> None)
             |> Option.defaultValue ""
         window.Close()
@@ -223,27 +224,8 @@ module LightSourceEditorTests =
 
     // ------------------------------ the editor window (headless) ------------------------------
 
-    let private clickOn (window : Window) (autoId : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (fun v ->
-                match v with
-                | :? Border as b when AutomationProperties.GetAutomationId b = autoId && b.IsEffectivelyVisible -> Some b
-                | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{autoId} was not found")
-        | Some b ->
-            match Option.ofNullable (b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)) with
-            | Some c ->
-                window.MouseDown(c, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                if window.IsVisible then
-                    window.MouseUp(c, MouseButton.Left, RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            | None -> Assert.Fail($"%s{autoId} has no on-screen position")
-
     let private typeInto (window : Window) (name : string) (text : string) : unit =
-        match window.GetVisualDescendants() |> Seq.tryPick (fun v -> match v with :? TextBox as t when t.Name = name -> Some t | _ -> None) with
+        match window.GetVisualDescendants() |> Seq.tryPick (fun v -> match v with :? TextBox as t when UiDriver.hasId name t -> Some t | _ -> None) with
         | Some box ->
             box.Text <- text
             Dispatcher.UIThread.RunJobs()

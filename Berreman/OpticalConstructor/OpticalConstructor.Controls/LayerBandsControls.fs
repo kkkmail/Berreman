@@ -73,7 +73,7 @@ module LayerBandsControls =
         let minHeight = 18.0
         let maxHeight = 64.0
         Border.create [
-            Border.name (ConstructorUiId.layerBand position).value
+            yield! (ConstructorUiId.layerBand position).figureAttributes<Border> ()
             Border.height (minHeight + (maxHeight - minHeight) * (b.heightWeight.normalisedAgainst largest).value)
             Border.background (brush b.colorHex.fill)
             Border.borderBrush (brush idleBorder)
@@ -105,7 +105,7 @@ module LayerBandsControls =
                 StackPanel.spacing 6.0
                 StackPanel.children [
                     TextBlock.create [
-                        TextBlock.name ConstructorUiId.layerBandsTitle.value
+                        ConstructorUiId.layerBandsTitle.automationAttribute<TextBlock> ()
                         TextBlock.text this.title.value
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.maxWidth 360.0
@@ -115,7 +115,7 @@ module LayerBandsControls =
                         ScrollViewer.maxHeight 320.0
                         ScrollViewer.content (
                             StackPanel.create [
-                                StackPanel.name ConstructorUiId.layerBandsStack.value
+                                yield! ConstructorUiId.layerBandsStack.groupAttributes<StackPanel> ()
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.width 300.0
                                 StackPanel.children bandViews

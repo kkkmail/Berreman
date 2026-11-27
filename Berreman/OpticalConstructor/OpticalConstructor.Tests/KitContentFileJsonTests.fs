@@ -187,7 +187,6 @@ module KitContentFileJsonTests =
     let private polarizerTurn : ScanAxis =
         {
             elementId = polarizerId
-            label = ElementLabel "Linear polarizer #3"
             variable = VaryR1
             range = VariableRange.forVariable VaryR1
         }
@@ -243,7 +242,6 @@ module KitContentFileJsonTests =
         let incidence : ScanAxis =
             {
                 elementId = sampleId
-                label = ElementLabel "Sample #1"
                 variable = VaryR2
                 range = range 20.0 60.0 3
             }
@@ -328,7 +326,7 @@ module KitContentFileJsonTests =
 
     [<Fact>]
     let ``an experiment file round-trips through its canonical text`` () : unit =
-        let expectedVersion = FileSchemaVersion 1
+        let expectedVersion = FileSchemaVersion 2
 
         for experiment in [ e1; e3; e1TwoBlocks; e1KeyedRows; e1Corrected ] do
             let file = experiment.experimentFile
@@ -350,14 +348,14 @@ module KitContentFileJsonTests =
 
     [<Fact>]
     let ``an experiment file of another schema version is UnsupportedSchemaVersionErr`` () : unit =
-        let intact = editedExperimentFile (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
-        let versionOnly = KitFileText "{ \"schemaVersion\": 2 }"
+        let intact = editedExperimentFile (fun node -> node["schemaVersion"] <- JsonValue.Create 3)
+        let versionOnly = KitFileText "{ \"schemaVersion\": 3 }"
         let invalidBody =
             editedExperimentFile (fun node ->
-                node["schemaVersion"] <- JsonValue.Create 2
+                node["schemaVersion"] <- JsonValue.Create 3
                 node["experiment"] <- JsonValue.Create "not-an-experiment")
-        let expectedFound = FileSchemaVersion 2
-        let expectedVersion = FileSchemaVersion 1
+        let expectedFound = FileSchemaVersion 3
+        let expectedVersion = FileSchemaVersion 2
 
         for text in [ intact; versionOnly; invalidBody ] do
             match text.parseExperimentFile with
@@ -444,7 +442,6 @@ module KitContentFileJsonTests =
         let malformedEdits : (JsonObject -> unit) list =
             [
                 (fun node -> node.["experiment"].["scan"].["blocks"].[0].["axes"].[0].["elementId"] <- JsonValue.Create 7)
-                (fun node -> node.["experiment"].["scan"].["blocks"].[0].["axes"].[0].["label"] <- JsonValue.Create 7)
                 (fun node -> node.["experiment"].["scan"].["blocks"].[0] <- JsonValue.Create "not-a-block")
                 (fun node -> node.["experiment"].["scan"].["blocks"].[0].["capture"] <- JsonValue.Create "not-a-measurement")
                 (fun node -> node.["experiment"].["scan"].["blocks"].[0].["axes"].[0].["range"].["points"] <- JsonValue.Create "not-a-count")
@@ -1088,7 +1085,7 @@ module KitContentFileJsonTests =
         let text = file.fileText |> kitContentJsonValue
         let readBack = text.parseStudyFile |> kitContentJsonValue
 
-        Assert.Equal<FileSchemaVersion>(FileSchemaVersion 1, file.schemaVersion)
+        Assert.Equal<FileSchemaVersion>(FileSchemaVersion 2, file.schemaVersion)
         Assert.Equal<Study>(study, file.study)
         Assert.Equal<StudyFile>(file, readBack)
         Assert.Equal<FitStartCount>(threeStarts, readBack.study.settings.starts)
@@ -1126,10 +1123,10 @@ module KitContentFileJsonTests =
 
     [<Fact>]
     let ``a study file of another schema version is UnsupportedSchemaVersionErr`` () : unit =
-        let withBody = editedStudyFile (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
-        let versionOnly = KitFileText "{ \"schemaVersion\": 2 }"
-        let expectedFound = FileSchemaVersion 2
-        let expectedVersion = FileSchemaVersion 1
+        let withBody = editedStudyFile (fun node -> node["schemaVersion"] <- JsonValue.Create 3)
+        let versionOnly = KitFileText "{ \"schemaVersion\": 3 }"
+        let expectedFound = FileSchemaVersion 3
+        let expectedVersion = FileSchemaVersion 2
 
         for text in [ withBody; versionOnly ] do
             match text.parseStudyFile with

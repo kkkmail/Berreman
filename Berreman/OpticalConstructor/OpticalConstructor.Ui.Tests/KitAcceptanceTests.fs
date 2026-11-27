@@ -464,7 +464,7 @@ module KitAcceptanceTests =
             opened |> apply ([ ChooseNewItemModel offer; SetNewItemLabel spec.label.caption ] @ formEdits)
         let draft = (formOf filled).itemDraftOpt |> Option.defaultWith (fun () -> failwith $"{file.value}: expected an Add draft; actual none")
         let added = filled |> updateTableAndElementRotation (AddItem draft)
-        TestAppScope.expect file "Add item status" None added.kitStatus
+        TestAppScope.expect file "Add item status" None added.kitRefusalOpt
         added, offer
 
     let private addAcceptanceItem (model : TableAndElementRotationModel) (spec : AcceptanceItem) : TableAndElementRotationModel =
@@ -477,7 +477,7 @@ module KitAcceptanceTests =
                 | UnknownParameter _ as state -> Some (SetParameterState (spec.id, axis.name, state))
                 | KnownParameter _ | CalibratedParameter _ -> None)
         let edited = added |> apply edits
-        TestAppScope.expect file "parameter edit status" None edited.kitStatus
+        TestAppScope.expect file "parameter edit status" None edited.kitRefusalOpt
         edited
 
     let private gridOf (model : TableAndElementRotationModel) : SetupGrid =
@@ -786,7 +786,7 @@ module KitAcceptanceTests =
             |> apply
                 ([ StudyCommand (CreateStudy (studyName, experiments)); StudyCommand (SetFitMode (studyName, StagedFit)) ]
                  @ (sessionGainSettings |> List.map (fun setting -> StudyCommand (SetSessionGainModel (studyName, setting)))))
-        TestAppScope.expect file "study configuration status" None configured.kitStatus
+        TestAppScope.expect file "study configuration status" None configured.kitRefusalOpt
         setTime calibrationTime
         let calibrated = configured |> runAcceptanceFit CalibrationStage calibrationRunName
         let calibrationFile = FitRunKitFile.fileNameOf calibrationRunName.fileStem
@@ -1161,7 +1161,6 @@ module KitAcceptanceTests =
                 let axis : ScanAxis =
                     {
                         elementId = analyzer.slot.id
-                        label = built.model.experimentCollection.draft.elementLabel
                         variable = VaryDialReading
                         range = analyzerDialRange
                     }
@@ -1421,7 +1420,7 @@ module KitAcceptanceTests =
         let sent = sending |> apply recordedSend
         TestAppScope.expect zip "send job returned to idle" KitArchiveJobState.idle sent.kitSend
         TestAppScope.expect zip "send completion status"
-            (Some (ControlCaption $"The kit was sent: {expectedFiles.Count} file(s) zipped.")) sent.kitStatus
+            (Some (ControlCaption $"The kit was sent: {expectedFiles.Count} file(s) zipped.")) sent.kitStatusCaption
         TestAppScope.expect zip "zip written outside the kit" true (File.Exists zip.value)
         let entries =
             archive.listZipEntries zip
@@ -1723,7 +1722,7 @@ module KitAcceptanceTests =
     let private buildAbsorbingTable (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let assigned (slot : ElementId) (spec : AcceptanceItem) (current : TableAndElementRotationModel) : TableAndElementRotationModel =
             let next = current |> updateTableAndElementRotation (AssignSlot (slot, Some spec.id))
-            TestAppScope.expect KitFile.fileName $"{spec.label.value} assigned to {slot.value}" None next.kitStatus
+            TestAppScope.expect KitFile.fileName $"{spec.label.value} assigned to {slot.value}" None next.kitRefusalOpt
             next
         let table =
             model
@@ -1786,7 +1785,7 @@ module KitAcceptanceTests =
             |> updateTableAndElementRotation OpenSetupGrid
             |> apply (plates |> List.map (fun plate -> ToggleSetupGridItem (firstObjectSlot, plate.id)))
         let generated = opened |> updateTableAndElementRotation (GenerateSetupGrid (gridOf opened))
-        let status = generated.kitStatus |> Option.map _.value |> Option.defaultValue "none"
+        let status = generated.kitStatusCaption |> Option.map _.value |> Option.defaultValue "none"
         let names = plates |> List.map _.label.value
         let heldSetups = opened.kitSetups |> List.map _.name
         let addedSetups = generated.kitSetups |> List.map _.name |> List.filter (fun name -> not (List.contains name heldSetups))
@@ -1863,7 +1862,7 @@ module KitAcceptanceTests =
     let private attachSeedObservations (folder : KitFolder) (seed : NoiseSeed) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         let file = labFileAt folder (noisyObservationsFile seed)
         let split = model |> updateTableAndElementRotation (SplitByColumn (file, ImportProfileName.muellerObservations))
-        let statusOf (current : TableAndElementRotationModel) : string = current.kitStatus |> Option.map _.value |> Option.defaultValue "none"
+        let statusOf (current : TableAndElementRotationModel) : string = current.kitStatusCaption |> Option.map _.value |> Option.defaultValue "none"
         let preview = splitOf file split
         let plates = absorbingPlateCuts |> List.map fst
         let experimentForEach : (DataRowKey * ExperimentName option) list =
@@ -1931,7 +1930,7 @@ module KitAcceptanceTests =
         let file = StudyKitFile.fileNameOf absorbingStudyName.fileStem
         let sent (current : TableAndElementRotationModel) (message : StudyMsg) : TableAndElementRotationModel =
             let next = current |> updateTableAndElementRotation (StudyCommand message)
-            TestAppScope.expect file "study command status" None next.kitStatus
+            TestAppScope.expect file "study command status" None next.kitRefusalOpt
             next
         let experiments = model.experimentCollection.experiments |> List.map _.name
         let opened =
@@ -2074,11 +2073,10 @@ module KitAcceptanceTests =
         let libraryFile = FileName library.value
         TestAppScope.expect libraryFile "snapshot files" (snapshots |> List.map _.snapshotFileName |> List.sort) (TestAppScope.relativeFiles library)
         let dropped = [ absorbingMaterial.id.toLibraryEntryId; absorbingPlate.id.toLibraryEntryId ]
+        // A palette element in a kit window is an empty slot, so no palette preset is snapshotted (spec 0051 `.manual/003` 3.8, D7).
         let shipped =
             [
                 presetEntryIdOf PresetIds.heNe633
-                // The reflected detector keeps `AddElement Detector`'s seed, which its setups snapshot (0433-impl-log.md).
-                presetEntryIdOf PresetIds.detectorIntensity
                 ItemModelIds.sourcePresetItemModelId.toLibraryEntryId
                 ItemModelIds.muellerPolarimeterModelId.toLibraryEntryId
                 ItemModelIds.stackSampleItemModelId.toLibraryEntryId

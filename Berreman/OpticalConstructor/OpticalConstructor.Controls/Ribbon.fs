@@ -2,6 +2,7 @@ namespace OpticalConstructor.Controls
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
@@ -39,6 +40,9 @@ module Ribbon =
         /// The name as the key of the bay's tab and pane ids.
         member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
 
+        /// The name as its tab shows it.
+        member this.toControlCaption : ControlCaption = ControlCaption this.value
+
     /// One large control docked in the ribbon: a display `name` (shown in the top strip), its already
     /// bound `content` view, and the `mode` that decides whether the ribbon hosts that content in its own
     /// content pane or hands it to the host to fill the surface below the tab strip.
@@ -63,46 +67,20 @@ module Ribbon =
             | Some b -> Some b
             | None -> List.tryHead this.bays
 
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    // The same "selected / idle" treatment the rotation bar uses, so the ribbon tabs match the controls.
-    let private activeBackground = Color.FromRgb(204uy, 232uy, 255uy)     // #CCE8FF Windows selected/active light accent
-    let private activeBorder = Color.FromRgb(0uy, 120uy, 212uy)           // #0078D4 Fluent accent outline
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
-
     /// Whether a tab is the selected bay's.
     type private BayTabState =
         | BayTabActive
         | BayTabIdle
 
-    /// One ribbon tab — a clickable, button-styled Border that lights up when it is the selected bay.
+    /// One ribbon tab, a choice lit with the accent and bold text when it is the selected bay. The bottom margin keeps a
+    /// WRAPPED second row of tabs off the first.
     let private tab (name : BayName) (state : BayTabState) (onSelect : BayName -> unit) : IView =
-        let background, border, weight =
+        let mark, weight =
             match state with
-            | BayTabActive -> activeBackground, activeBorder, FontWeight.Bold
-            | BayTabIdle -> idleBackground, idleBorder, FontWeight.Normal
-        Border.create [
-            Border.name (ConstructorUiId.ribbonTab name.uiKey).value
-            Border.background (brush background)
-            Border.borderBrush (brush border)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            // Right gap between tabs and a bottom gap so a WRAPPED second row of tabs (the strip wraps
-            // when the bays do not fit one row — see the tab container below) does not touch the first.
-            Border.margin (Thickness(0.0, 0.0, 4.0, 4.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (
-                TextBlock.create [
-                    TextBlock.text name.value
-                    TextBlock.fontWeight weight
-                    TextBlock.foreground (brush textForeground)
-                ])
-            // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the active
-            // flag flips so the tab never keeps a stale handler.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onSelect name), SubPatchOptions.OnChangeOf (box state))
-        ] :> IView
+            | BayTabActive -> ChosenChoice, FontWeight.Bold
+            | BayTabIdle -> UnchosenChoice, FontWeight.Normal
+        CommandControls.choiceToggle (ConstructorUiId.ribbonTab name.uiKey) name.toControlCaption mark ArmedCommand ControlOffered (fun () -> onSelect name)
+            [ ToggleButton.margin (Thickness(0.0, 0.0, 4.0, 4.0)); ToggleButton.fontWeight weight ]
 
     /// The ribbon — a top tab strip of bay names, then (for an IN-PANE bay) the ACTIVE bay's content in ONE
     /// keyed slot. Only the selected bay's content is realized (no hidden panes): the single slot is KEYED by
@@ -113,7 +91,9 @@ module Ribbon =
     /// one — so a pane is only ever patched against its own previous self. A `FullSurface` bay renders NO
     /// in-ribbon pane: the ribbon shows only its tab and the HOST fills the surface below this strip with the
     /// bay's content. `onSelect` is the host's "show this bay" seam.
-    let ribbonView (state : RibbonState) (onSelect : BayName -> unit) : IView =
+    /// The ribbon with `trailing` after its tabs on the wrapping tab strip, so they wrap with the tabs and never leave the
+    /// window (spec 0051 `.manual/003` 4.3).
+    let ribbonViewWith (trailing : IView list) (state : RibbonState) (onSelect : BayName -> unit) : IView =
         let activeName = state.activeBay |> Option.map (fun b -> b.name)
         let tabs =
             state.bays
@@ -130,7 +110,7 @@ module Ribbon =
                 | InRibbonPane ->
                     let pane =
                         Border.create [
-                            Border.name (ConstructorUiId.ribbonPane b.name.uiKey).value
+                            yield! (ConstructorUiId.ribbonPane b.name.uiKey).groupAttributes<Border> ()
                             Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
                             Border.child b.content
                         ]
@@ -152,7 +132,7 @@ module Ribbon =
                 // the reorder (Materials / Library LAST) needs, since nine bays overflow a narrow window.
                 WrapPanel.create [
                     WrapPanel.orientation Orientation.Horizontal
-                    WrapPanel.children tabs
+                    WrapPanel.children (tabs @ trailing)
                 ]
                 StackPanel.create [
                     StackPanel.orientation Orientation.Vertical
@@ -160,3 +140,7 @@ module Ribbon =
                 ]
             ]
         ] :> IView
+
+    /// The ribbon with nothing after its tabs.
+    let ribbonView (state : RibbonState) (onSelect : BayName -> unit) : IView = ribbonViewWith [] state onSelect
+

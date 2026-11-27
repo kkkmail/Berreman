@@ -101,7 +101,7 @@ module LibraryControlsTests =
                 let tree =
                     window.GetVisualDescendants()
                     |> Seq.choose (function
-                        | :? StackPanel as panel when panel.Name = ConstructorUiId.libraryTree.value -> Some panel
+                        | :? StackPanel as panel when UiDriver.hasId ConstructorUiId.libraryTree.value panel -> Some panel
                         | _ -> None)
                     |> Assert.Single<StackPanel>
                 let rows = tree.Children |> Seq.toList
@@ -121,13 +121,11 @@ module LibraryControlsTests =
                 let leafId = ConstructorUiId.libraryEntry sample.id.toElementValueId.uiKey
                 let leaf =
                     mirrorRows
-                    |> List.choose (function
-                        | :? Border as border when Avalonia.Automation.AutomationProperties.GetAutomationId(border) = leafId.value -> Some border
-                        | _ -> None)
-                    |> Assert.Single<Border>
+                    |> List.filter (UiDriver.hasId leafId.value)
+                    |> Assert.Single
                 let leafDepth = LibraryControls.LibraryRowDepth 3
                 Assert.Equal(leafDepth.indent, leaf.Margin.Left)
-                Assert.Equal(sample.name.value, Assert.IsType<TextBlock>(leaf.Child).Text)
+                Assert.Equal(sample.name.value, UiDriver.textOfControl leaf)
                 Assert.Equal(None, (elem 2 model).placement.valueId)
                 Assert.True(leaf.IsEnabled)
             finally
@@ -241,7 +239,7 @@ module LibraryControlsTests =
             let tabNames =
                 window.GetVisualDescendants()
                 |> Seq.choose (function
-                    | :? Border as b when not (System.String.IsNullOrEmpty b.Name) && b.Name.StartsWith("RibbonTab_") -> Some b.Name
+                    | :? Control as b when (UiDriver.idOf b |> string).StartsWith("RibbonTab_") -> Some (UiDriver.idOf b)
                     | _ -> None)
                 |> List.ofSeq
             Assert.Contains((ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.selector.value)).value, tabNames)
@@ -251,13 +249,13 @@ module LibraryControlsTests =
             let descriptionShown () : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function
-                    | :? TextBlock as t -> t.Name = ConstructorUiId.libraryEntryDescription.value && not (System.String.IsNullOrWhiteSpace t.Text) && t.IsEffectivelyVisible
+                    | :? TextBlock as t -> UiDriver.hasId ConstructorUiId.libraryEntryDescription.value t && not (System.String.IsNullOrWhiteSpace t.Text) && t.IsEffectivelyVisible
                     | _ -> false)
             Assert.True(descriptionShown (), "the pending entry's full description was not shown")
             // Click Confirm — now it binds the selected element's valueId.
-            let findConfirm () : Border option =
+            let findConfirm () : Control option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ConstructorUiId.libraryConfirmButton.value && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Control as b when UiDriver.hasId (ConstructorUiId.libraryConfirmButton.value) b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findConfirm () with
             | None -> Assert.Fail("the Confirm button was not visible in the Select bay")
             | Some b ->
@@ -280,10 +278,10 @@ module LibraryControlsTests =
     // through a REAL re-rendering Component (the app's Elmish patch path) to guard that.
 
     /// A Border in `window` carrying this automation id (the converted boxes carry no `Name`).
-    let private borderWithId (window : Window) (id : string) : Border option =
+    let private borderWithId (window : Window) (id : string) : Control option =
         window.GetVisualDescendants()
         |> Seq.tryPick (function
-            | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id && b.IsEffectivelyVisible -> Some b
+            | :? Control as b when UiDriver.hasId (id) b && b.IsEffectivelyVisible -> Some b
             | _ -> None)
 
     let private clickIn (window : Window) (id : string) : unit =

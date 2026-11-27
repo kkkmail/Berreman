@@ -215,10 +215,16 @@ module KitFolderStore =
 
             let writeTextBytes (file : FileName) (text : KitFileText) : Result<FileByteContent, KitError> =
                 let bytes = Encoding.UTF8.GetBytes text.value |> FileByteContent
-                file.writeBytesAtomically bytes
-                |> Result.mapError (fun (error : StorageError) ->
-                    KitIoErr $"kit folder '{folder.value.value}': the file '{file.value}' is not written: {error.describe}")
-                |> Result.map (fun () -> bytes)
+                // Spec 0051 `.manual/003` 2.2: a file already holding these bytes is left as it is.
+                let unchanged =
+                    try File.Exists file.value && File.ReadAllBytes file.value = bytes.value
+                    with _ -> false
+                if unchanged then Ok bytes
+                else
+                    file.writeBytesAtomically bytes
+                    |> Result.mapError (fun (error : StorageError) ->
+                        KitIoErr $"kit folder '{folder.value.value}': the file '{file.value}' is not written: {error.describe}")
+                    |> Result.map (fun () -> bytes)
 
             let writeText (file : FileName) (text : KitFileText) : Result<unit, KitError> =
                 writeTextBytes file text

@@ -27,19 +27,16 @@ let studyBarView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                 let id = ConstructorUiId.studyChoice study.name
                 let caption = study.name.caption
                 let select () = dispatch (SelectStudy study.name)
-                if model.studySurface.studyOpt = Some study.name then
-                    MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground select
-                else
-                    MaterialsWindowView.verbButton id caption select)
+                CommandControls.choiceCommand id caption (if model.studySurface.studyOpt = Some study.name then ChosenChoice else UnchosenChoice) select)
     let status : IView list =
         match model.kitStatus with
         | None -> []
-        | Some caption ->
+        | Some told ->
             [
                 TextBlock.create [
                     ConstructorUiId.studyStatusLine.automationAttribute<TextBlock> ()
                     TextBlock.textWrapping TextWrapping.Wrap
-                    TextBlock.text caption.value
+                    TextBlock.text told.caption.value
                 ]
             ]
     StackPanel.create [
@@ -47,7 +44,7 @@ let studyBarView (model : TableAndElementRotationModel) (dispatch : TableAndElem
             [
                 TextBlock.create [ TextBlock.text "Study:"; TextBlock.fontWeight FontWeight.SemiBold ]
                 WrapPanel.create [
-                    ConstructorUiId.studyList.automationAttribute<WrapPanel> ()
+                    yield! ConstructorUiId.studyList.groupAttributes<WrapPanel> ()
                     WrapPanel.children choices
                 ]
             ] @ status)
@@ -58,22 +55,22 @@ let private newStudyFormRows (model : TableAndElementRotationModel) (dispatch : 
     | ControlWithheld -> []
     | ControlOffered ->
         let chosen = model.studySurface.newStudyExperiments
+        // Spec 0051 `.manual/003` 3.6: Create study stays in place, withheld with its reason until the study is named.
         let create : IView list =
-            match StudyName.tryCreate model.studySurface.newStudyName.value with
-            | Error _ -> []
-            | Ok name ->
-                let chosenKey = chosen |> List.map _.fileStem.value |> String.concat ","
-                [
-                    Border.create [
-                        Border.horizontalAlignment HorizontalAlignment.Left
-                        Border.child (
-                            MaterialsWindowView.actionButton ConstructorUiId.createStudyButton (ControlCaption "Create study")
-                                MaterialsWindowView.positiveBackground (fun () -> dispatch (StudyCommand (CreateStudy (name, chosen)))))
-                    ]
-                    // Spec 0050 S11.5: actionButton retains its handler per key; every draft needs its own closure.
-                    |> View.withKey $"CreateStudy_{name.value}_{chosenKey}"
-                    :> IView
+            let chosenKey = chosen |> List.map _.fileStem.value |> String.concat ","
+            let button (availability : ControlAvailability) (key : string) (onCreate : unit -> unit) : IView =
+                Border.create [
+                    Border.horizontalAlignment HorizontalAlignment.Left
+                    Border.child (CommandControls.actionCommandWhen availability ConstructorUiId.createStudyButton (ControlCaption "Create study") PositiveCommand onCreate)
                 ]
+                // Spec 0050 S11.5: actionButton retains its handler per key; every draft needs its own closure.
+                |> View.withKey $"CreateStudy_{key}_{chosenKey}"
+                :> IView
+            match StudyName.tryCreate model.studySurface.newStudyName.value with
+            | Error _ ->
+                button ControlWithheld "" ignore
+                :: CommandControls.withheldReason ConstructorUiId.createStudyReason (Some (ControlCaption "Type the new study's name first."))
+            | Ok name -> [ button ControlOffered name.value (fun () -> dispatch (StudyCommand (CreateStudy (name, chosen)))) ]
         [
             DockPanel.create [
                 DockPanel.margin (Thickness(0.0, 8.0, 0.0, 4.0))
@@ -85,7 +82,7 @@ let private newStudyFormRows (model : TableAndElementRotationModel) (dispatch : 
                         TextBlock.text "New study:"
                     ]
                     TextBox.create [
-                        ConstructorUiId.newStudyNameField.automationAttribute<TextBox> ()
+                        yield! ConstructorUiId.newStudyNameField.inputAttributes<TextBox> ()
                         TextBox.width 220.0
                         TextBox.horizontalAlignment HorizontalAlignment.Left
                         TextBox.text model.studySurface.newStudyName.value
@@ -100,10 +97,7 @@ let private newStudyFormRows (model : TableAndElementRotationModel) (dispatch : 
                         let id = ConstructorUiId.newStudyExperimentToggle experiment.name
                         let caption = experiment.name.caption
                         let toggle () = dispatch (ToggleNewStudyExperiment experiment.name)
-                        if List.contains experiment.name chosen then
-                            MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground toggle
-                        else
-                            MaterialsWindowView.verbButton id caption toggle))
+                        CommandControls.choiceCommand id caption (if List.contains experiment.name chosen then ChosenChoice else UnchosenChoice) toggle))
             ]
         ] @ create
 
@@ -120,7 +114,7 @@ let private studyOfferRows
             model.experimentCollection.experiments
             |> List.filter (fun experiment -> not (List.contains experiment.name study.experiments))
             |> List.map (fun experiment ->
-                MaterialsWindowView.verbButton (ConstructorUiId.addExperimentToStudyButton experiment.name)
+                CommandControls.verbCommand (ConstructorUiId.addExperimentToStudyButton experiment.name)
                     (ControlCaption $"Add {experiment.name.value}")
                     (fun () -> dispatch (StudyCommand (AddExperimentsToStudy (study.name, [ experiment.name ])))))
         let materials =
@@ -136,7 +130,7 @@ let private studyOfferRows
                     match model.materials.resolveVersion version with
                     | Ok (Some entry) -> $"{entry.name.value} v{version.version.value}"
                     | Ok None | Error _ -> $"{version.materialId.value} v{version.version.value}"
-                MaterialsWindowView.verbButton (ConstructorUiId.openMaterialButton version) (ControlCaption $"Open {caption}")
+                CommandControls.verbCommand (ConstructorUiId.openMaterialButton version) (ControlCaption $"Open {caption}")
                     (fun () -> dispatch (StudyCommand (OpenMaterial (study.name, version)))))
         [
             WrapPanel.create [ WrapPanel.children (experiments @ materials) ]
@@ -173,7 +167,7 @@ let private studyParameterGrid
             | KnownParameter _ | CalibratedParameter _ -> cell row 6 FontWeight.Normal (ControlCaption "—")
             | UnknownParameter _ ->
                 ComboBox.create [
-                    (ConstructorUiId.studyParameterScopeChoice reference).automationAttribute<ComboBox> ()
+                    yield! (ConstructorUiId.studyParameterScopeChoice reference).inputAttributes<ComboBox> ()
                     ComboBox.row row
                     ComboBox.column 6
                     ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
@@ -200,7 +194,7 @@ let private studyParameterGrid
                 | UnknownParameter _ ->
                     let leaders = unknowns |> List.filter ((<>) reference)
                     ComboBox.create [
-                        (ConstructorUiId.studyParameterLinkChoice reference).automationAttribute<ComboBox> ()
+                        yield! (ConstructorUiId.studyParameterLinkChoice reference).inputAttributes<ComboBox> ()
                         ComboBox.row row
                         ComboBox.column 7
                         ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
@@ -224,7 +218,7 @@ let private studyParameterGrid
                 Border.row row
                 Border.column 1
                 Border.child (
-                    MaterialsWindowView.verbButton (ConstructorUiId.studyParameterRow reference) parameter.name.caption
+                    CommandControls.verbCommand (ConstructorUiId.studyParameterRow reference) parameter.name.caption
                         (fun () -> dispatch (EditStudyParameter reference)))
             ]
             cell row 2 FontWeight.Normal cells.state
@@ -247,7 +241,7 @@ let private studyParameterGrid
         ]
         |> List.mapi (fun column caption -> cell 0 column FontWeight.SemiBold caption)
     Grid.create [
-        ConstructorUiId.studyUnknownsGrid.automationAttribute<Grid> ()
+        yield! ConstructorUiId.studyUnknownsGrid.groupAttributes<Grid> ()
         Grid.margin (Thickness(0.0, 6.0, 0.0, 4.0))
         Grid.columnDefinitions "Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
         Grid.rowDefinitions (List.replicate (rows.Length + 1) "Auto" |> String.concat ",")
@@ -309,7 +303,7 @@ let private studySessionRows
                             | _ -> ()), SubPatchOptions.Always)
                     ] :> IView)
             Grid.create [
-                ConstructorUiId.studySessionGrid.automationAttribute<Grid> ()
+                yield! ConstructorUiId.studySessionGrid.groupAttributes<Grid> ()
                 AttrBuilder<Grid>.CreateProperty<string>(AutomationProperties.NameProperty, "Sessions and gains", ValueNone)
                 Grid.margin (Thickness(0.0, 6.0, 0.0, 4.0))
                 Grid.columnDefinitions "Auto,Auto,Auto"
@@ -365,7 +359,15 @@ let studyUnknownsView (model : TableAndElementRotationModel) (dispatch : TableAn
                 ]
             ]
             @ studyOfferRows model study used dispatch
-            @ [ studyParameterGrid model study rows dispatch ]
+            @ [
+                // Spec 0051 `.manual/003` 4.3: the grid scrolls sideways in its own scroller, never the page.
+                ScrollViewer.create [
+                    ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
+                    ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
+                    ScrollViewer.content (studyParameterGrid model study rows dispatch)
+                ]
+                :> IView
+            ]
             @ studySessionRows model study dispatch
             @ editor
     ScrollViewer.create [
@@ -373,11 +375,16 @@ let studyUnknownsView (model : TableAndElementRotationModel) (dispatch : TableAn
         AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
         ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so the chips and the experiments line wrap.
         ScrollViewer.content (
-            StackPanel.create [
-                ConstructorUiId.studyUnknownsPanel.automationAttribute<StackPanel> ()
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.margin 8.0
-                StackPanel.children ([ studyBarView model dispatch ] @ newStudyFormRows model dispatch @ selected)
+            MinWidthPanel.create [
+                (PanelMinWidth 520.0).minWidthPanelAttribute ()
+                MinWidthPanel.child (
+                    StackPanel.create [
+                        yield! ConstructorUiId.studyUnknownsPanel.groupAttributes<StackPanel> ()
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.margin 8.0
+                        StackPanel.children ([ studyBarView model dispatch ] @ newStudyFormRows model dispatch @ selected)
+                    ])
             ])
     ] :> IView

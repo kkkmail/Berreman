@@ -197,7 +197,7 @@
           "r2Locked": false,
           "r3": 0,
           "r3Locked": true,
-          "valueId": "f1d38e6a-16e7-405d-9678-45c990f5a155"
+          "valueId": null
         },
         "zoom": 5
       },
@@ -294,7 +294,7 @@
           "r2Locked": false,
           "r3": 0,
           "r3Locked": true,
-          "valueId": "f1d38e6a-16e7-405d-9678-45c990f5a155"
+          "valueId": null
         },
         "zoom": 5
       }

@@ -2,6 +2,7 @@ namespace OpticalConstructor.Controls
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
@@ -80,62 +81,19 @@ module SampleLibraryControls =
             makeMultilayer : unit -> unit
         }
 
-    // -- The button look, identical to the other bars' idle/chosen boxes (so they MATCH). --
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+    /// The box keyed `key` is chosen while it is the selection.
+    let private boxMark (selected : ConstructorUiKey option) (key : ConstructorUiKey) : ChoiceMark =
+        if selected = Some key then ChosenChoice else UnchosenChoice
 
-    /// The chosen look for the box keyed `key` while it is the selection, the idle look otherwise.
-    let private boxBackground (selected : ConstructorUiKey option) (key : ConstructorUiKey) : Color =
-        if selected = Some key then chosenBackground else idleBackground
+    /// A facet option or a listed row: a choice, chosen while it is the selection, keyed by its id so a membership
+    /// change recreates a shifted box instead of patching another item's in place (spec 0038).
+    let private choiceBox (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (onClick : unit -> unit) : IView =
+        CommandControls.choiceToggle id label mark ChosenCommand ControlOffered onClick
+            [ ToggleButton.padding (Thickness(10.0, 4.0)); ToggleButton.margin (Thickness(0.0, 0.0, 6.0, 4.0)) ]
 
-    /// A clickable, styled box (a facet option or a listed row). Its id is an AutomationId, not a
-    /// `Name`: the host's filter rewrites the rows, so FuncUI can shift a sibling onto a reused box, and
-    /// Avalonia forbids renaming a styled control (the `MaterialsControls` precedent). KEYED by its id
-    /// (`View.withKey`, spec 0038) so a membership change recreates a shifted box instead of patching
-    /// another item's in place.
-    /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or
-    /// the highlight changes so a reused box can't keep a stale handler.
-    let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-        let keyedBox =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(10.0, 4.0))
-                Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, background)))
-            ]
-            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
-            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        keyedBox :> IView
-
-    /// A verb button (Add / Edit / Remove / View / Make multilayer), on the accent background when it
-    /// is the primary verb, keyed by its id (matching `clickBox` — spec 0038).
-    let private verbButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        let keyedButton =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.isEnabled availability.isEnabled
-                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(12.0, 5.0))
-                Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, availability.isEnabled)))
-            ]
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        keyedButton :> IView
+    /// A verb button (Add / Edit / Remove / View), chosen-blue when it is the primary verb.
+    let private verbButton (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
+        CommandControls.commandButton id label emphasis availability onClick [ Button.margin (Thickness(0.0, 0.0, 8.0, 0.0)) ]
 
     /// The search row: a label and the live search box (the host filters on every text change —
     /// the same idiom as the materials workbench's search field).
@@ -146,7 +104,7 @@ module SampleLibraryControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Search:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    TextBox.name ConstructorUiId.sampleSearchBox.value
+                    yield! ConstructorUiId.sampleSearchBox.inputAttributes<TextBox> ()
                     TextBox.width 220.0
                     TextBox.text state.searchText.value
                     TextBox.onTextChanged (ControlCaption >> handlers.setSearchText)
@@ -163,19 +121,19 @@ module SampleLibraryControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Substrate:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 WrapPanel.create [
-                    WrapPanel.name ConstructorUiId.sampleSubstrateFilter.value
+                    yield! ConstructorUiId.sampleSubstrateFilter.groupAttributes<WrapPanel> ()
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         state.substrateOptions
                         |> List.map (fun o ->
-                            clickBox (ConstructorUiId.sampleSubstrateOption o.code) o.label (boxBackground state.selectedSubstrate o.code) (fun () -> handlers.selectSubstrate o.code)))
+                            choiceBox (ConstructorUiId.sampleSubstrateOption o.code) o.label (boxMark state.selectedSubstrate o.code) (fun () -> handlers.selectSubstrate o.code)))
                 ]
             ]
         ] :> IView
 
     /// One listed sample row — clickable (selects it), highlighted when it is the selection.
     let private rowView (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) (r : SampleLibraryControlsRow) : IView =
-        clickBox (ConstructorUiId.sampleRow r.sampleId) r.label (boxBackground state.selectedId r.sampleId) (fun () -> handlers.selectSample r.sampleId)
+        choiceBox (ConstructorUiId.sampleRow r.sampleId) r.label (boxMark state.selectedId r.sampleId) (fun () -> handlers.selectSample r.sampleId)
 
     /// The samples list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) : IView =
@@ -183,7 +141,7 @@ module SampleLibraryControls =
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name ConstructorUiId.samplesList.value
+                    yield! ConstructorUiId.samplesList.groupAttributes<StackPanel> ()
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView state handlers))
                 ])
@@ -200,11 +158,11 @@ module SampleLibraryControls =
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 0.0
             StackPanel.children [
-                verbButton ConstructorUiId.addSampleButton (ControlCaption "Add") chosenBackground ControlOffered handlers.addSample
-                verbButton ConstructorUiId.editSampleButton (ControlCaption "Edit") idleBackground onSelection handlers.editSample
-                verbButton ConstructorUiId.removeSampleButton (ControlCaption "Remove") idleBackground onSelection handlers.removeSample
-                verbButton ConstructorUiId.viewSampleButton (ControlCaption "View") idleBackground onSelection handlers.viewSample
-                verbButton ConstructorUiId.makeMultilayerButton (ControlCaption "Make multilayer") idleBackground ControlOffered handlers.makeMultilayer
+                verbButton ConstructorUiId.addSampleButton (ControlCaption "Add") ChosenCommand ControlOffered handlers.addSample
+                verbButton ConstructorUiId.editSampleButton (ControlCaption "Edit") NeutralCommand onSelection handlers.editSample
+                verbButton ConstructorUiId.removeSampleButton (ControlCaption "Remove") NeutralCommand onSelection handlers.removeSample
+                verbButton ConstructorUiId.viewSampleButton (ControlCaption "View") NeutralCommand onSelection handlers.viewSample
+                verbButton ConstructorUiId.makeMultilayerButton (ControlCaption "Make multilayer") NeutralCommand ControlOffered handlers.makeMultilayer
             ]
         ] :> IView
 

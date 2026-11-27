@@ -97,7 +97,7 @@ module PlanViewTests =
 
     /// The lines of the vertical list carrying `id`, in order.
     let private linesOf (window : Window) (id : ConstructorUiId) : string list =
-        Assert.IsType<StackPanel>(SlotBarTests.controlById window id).Children
+        Assert.IsType<StackPanel>(UiDriver.ById.findControl window id).Children
         |> Seq.map (fun line -> Assert.IsType<TextBlock>(line).Text)
         |> List.ofSeq
 
@@ -107,15 +107,17 @@ module PlanViewTests =
 
     /// The list carrying `planCandidateList`.
     let private candidateListOf (window : Window) : StackPanel =
-        Assert.IsType<StackPanel>(SlotBarTests.controlById window ConstructorUiId.planCandidateList)
+        Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.planCandidateList)
 
     /// The ids the list's children carry, in order; a plain line carries none.
     let private childIdsOf (list : StackPanel) : string list =
         list.Children |> Seq.map (fun child -> AutomationProperties.GetAutomationId child |> Option.ofObj |> Option.defaultValue "") |> List.ofSeq
 
     /// The caption of the row carrying `id`, its first child.
+    /// A candidate row's caption, the DockPanel's filling last child beside its docked verb (spec 0051 `.manual/003` 4.3).
     let private rowCaptionOf (window : Window) (id : ConstructorUiId) : string =
-        Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(SlotBarTests.controlById window id).Children[0]).Text
+        let row = Assert.IsType<DockPanel>(UiDriver.ById.findControl window id)
+        Assert.IsType<TextBlock>(row.Children[row.Children.Count - 1]).Text
 
     /// The brief's row text for the ranked step at `position` by `criterion`, written apart from the view.
     let private expectedRowText (position : int) (criterion : PlanCriterion) (step : RankedPlanStep) : string =
@@ -215,19 +217,19 @@ module PlanViewTests =
                     information.confounded |> List.map (fun (direction : SingularDirection) -> (direction.text information.coordinates).value)
                 Assert.Equal<string list>([ "+1.00 g11"; "+1.00 g33" ], confounded)
                 withPlanWindow (planned |> updateTableAndElementRotation (ShowFlowStep PlanFlowStep)) (fun window ->
-                    SlotBarTests.controlById window ConstructorUiId.planPanel |> ignore
+                    UiDriver.ById.findControl window ConstructorUiId.planPanel |> ignore
                     let findings = linesOf window ConstructorUiId.planFindingsList
                     Assert.Contains(offAxis, findings)
                     Assert.Equal<string list>(report.structural.findings |> List.map (fun (finding : PlannerFinding) -> finding.text), findings)
                     Assert.Equal(
                         "Rank 0 of 2 from what the kit holds: 2 combination(s) confounded.",
-                        Assert.IsType<TextBlock>(SlotBarTests.controlById window ConstructorUiId.planRankText).Text)
+                        Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.planRankText).Text)
                     Assert.Equal<string list>(confounded, linesOf window ConstructorUiId.planConfoundedList)
-                    SlotBarTests.assertAbsent window ConstructorUiId.planBoundsGrid
+                    UiDriver.ById.assertAbsent window ConstructorUiId.planBoundsGrid
                     Assert.Contains("No bound yet: what the kit holds leaves a combination confounded.", textsOf window)
                     Assert.Empty(linesOf window ConstructorUiId.planInstrumentList)
-                    SlotBarTests.assertAbsent window ConstructorUiId.planErrorText
-                    SlotBarTests.assertAbsent window ConstructorUiId.planProgressBar)
+                    UiDriver.ById.assertAbsent window ConstructorUiId.planErrorText
+                    UiDriver.ById.assertAbsent window ConstructorUiId.planProgressBar)
                 // The same report at its last ranked step's standing: full rank, so a condition, the weakest combination
                 // and a bound per target.
                 let standing = (List.last report.ranked).standing
@@ -258,9 +260,9 @@ module PlanViewTests =
                 withPlanWindow fullRank (fun window ->
                     Assert.Equal(
                         $"Rank 2 of 2 from what the kit holds; condition {condition}.",
-                        Assert.IsType<TextBlock>(SlotBarTests.controlById window ConstructorUiId.planRankText).Text)
+                        Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.planRankText).Text)
                     Assert.Equal<string list>([ $"Weakest: {weakest}" ], linesOf window ConstructorUiId.planConfoundedList)
-                    let grid = Assert.IsType<Grid>(SlotBarTests.controlById window ConstructorUiId.planBoundsGrid)
+                    let grid = Assert.IsType<Grid>(UiDriver.ById.findControl window ConstructorUiId.planBoundsGrid)
                     let cellText (row : int) (column : int) : string =
                         let cell = grid.Children |> Seq.find (fun cell -> Grid.GetRow cell = row && Grid.GetColumn cell = column)
                         Assert.IsType<TextBlock>(cell).Text
@@ -303,11 +305,10 @@ module PlanViewTests =
                     |> List.iteri (fun (index : int) (step : RankedPlanStep) ->
                         let rowId = ConstructorUiId.planCandidateRow step.candidate
                         let addId = ConstructorUiId.addPlanCandidateButton step.candidate
-                        let row = Assert.IsType<StackPanel>(SlotBarTests.controlById window rowId)
-                        Assert.Equal(Orientation.Horizontal, row.Orientation)
+                        let row = Assert.IsType<DockPanel>(UiDriver.ById.findControl window rowId)
                         Assert.Equal(expectedRowText (index + 1) DeterminantPlanCriterion step, rowCaptionOf window rowId)
-                        Assert.Same(row, (SlotBarTests.controlById window addId).Parent)
-                        Assert.Equal("Add to kit", SlotBarTests.boxLabelOf window addId))
+                        Assert.Same(row, (UiDriver.ById.findControl window addId).Parent.Parent)
+                        Assert.Equal("Add to kit", UiDriver.ById.captionOf window addId))
                     Assert.DoesNotContain(noneOpen, textsOf window))
 
                 // Over the kit opened read-only the rows stay and no Add to kit is offered.
@@ -322,7 +323,7 @@ module PlanViewTests =
                 withPlanWindow readOnly (fun window ->
                     Assert.Equal<string list>(rowIds, childIdsOf (candidateListOf window))
                     for step in [ first; second ] do
-                        SlotBarTests.assertAbsent window (ConstructorUiId.addPlanCandidateButton step.candidate)
+                        UiDriver.ById.assertAbsent window (ConstructorUiId.addPlanCandidateButton step.candidate)
                     Assert.DoesNotContain(textsOf window, fun (text : string) -> text.StartsWith("In the kit as ", StringComparison.Ordinal)))
 
                 // The view shows what the report holds: its held candidates first, its criterion's measure, and the line
@@ -384,30 +385,30 @@ module PlanViewTests =
                                 }
                     }
                 withPlanWindow hosted (fun window ->
-                    SlotBarTests.assertAbsent window ConstructorUiId.planPanel
-                    SlotBarTests.pressBox window ConstructorUiId.flowPlanStep
-                    SlotBarTests.controlById window ConstructorUiId.planPanel |> ignore
-                    SlotBarTests.assertAbsent window ConstructorUiId.planProgressBar
-                    SlotBarTests.assertAbsent window ConstructorUiId.planCancelButton
+                    UiDriver.ById.assertAbsent window ConstructorUiId.planPanel
+                    UiDriver.ById.clickOn window ConstructorUiId.flowPlanStep
+                    UiDriver.ById.findControl window ConstructorUiId.planPanel |> ignore
+                    UiDriver.ById.assertAbsent window ConstructorUiId.planProgressBar
+                    UiDriver.ById.assertAbsent window ConstructorUiId.planCancelButton
 
-                    SlotBarTests.pressBox window ConstructorUiId.planRunButton
+                    UiDriver.ById.clickOn window ConstructorUiId.planRunButton
                     Assert.Single jobs |> ignore
                     Assert.Empty cancels
-                    let run = SlotBarTests.controlById window ConstructorUiId.planRunButton
+                    let run = UiDriver.ById.findControl window ConstructorUiId.planRunButton
                     Assert.False(run.IsEffectivelyEnabled, "Run plan must be disabled while its plan runs")
-                    let row = Assert.IsType<StackPanel>(run.Parent)
+                    let row = Assert.IsType<WrapPanel>(run.Parent)
                     Assert.Equal(Orientation.Horizontal, row.Orientation)
-                    let bar = Assert.IsType<ProgressBar>(SlotBarTests.controlById window ConstructorUiId.planProgressBar)
-                    let cancel = SlotBarTests.controlById window ConstructorUiId.planCancelButton
+                    let bar = Assert.IsType<ProgressBar>(UiDriver.ById.findControl window ConstructorUiId.planProgressBar)
+                    let cancel = UiDriver.ById.findControl window ConstructorUiId.planCancelButton
                     Assert.Same(row, bar.Parent)
                     Assert.Same(row, cancel.Parent)
                     Assert.False(bar.IsIndeterminate, "the plan's bar counts its candidates")
                     // .spec-md §10.5: the opposing pair shares the row, Cancel right of Run plan past a gap.
                     let runRight = (SlotBarTests.topLeftOf window run).X + run.Bounds.Width
                     Assert.True((SlotBarTests.topLeftOf window cancel).X > runRight, "Cancel must stand right of Run plan, past a gap")
-                    Assert.Equal("Cancel", SlotBarTests.boxLabelOf window ConstructorUiId.planCancelButton)
+                    Assert.Equal("Cancel", UiDriver.ById.captionOf window ConstructorUiId.planCancelButton)
 
-                    SlotBarTests.pressBox window ConstructorUiId.planCancelButton
+                    UiDriver.ById.clickOn window ConstructorUiId.planCancelButton
                     Assert.Single cancels |> ignore
                     Assert.Single jobs |> ignore)
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
@@ -432,7 +433,7 @@ module PlanViewTests =
                 let setupsBefore = stemsOf SetupKitFile
                 Assert.Empty(stemsOf ExperimentKitFile)
                 withPlanWindow planned (fun window ->
-                    SlotBarTests.pressBox window (ConstructorUiId.addPlanCandidateButton transmitted)
+                    UiDriver.ById.clickOn window (ConstructorUiId.addPlanCandidateButton transmitted)
 
                     // The kit's folder holds one more setup and one planned experiment of the candidate.
                     Assert.Equal(setupsBefore.Length + 1, (stemsOf SetupKitFile).Length)
@@ -443,10 +444,10 @@ module PlanViewTests =
                     Assert.Equal(CandidateInKit experiment.name, transmitted.coverageIn setups [ experiment ])
 
                     // Its row now reads it in the kit, with no new plan run; the other candidate still offers Add to kit.
-                    let row = SlotBarTests.controlById window (ConstructorUiId.planCandidateRow transmitted)
+                    let row = UiDriver.ById.findControl window (ConstructorUiId.planCandidateRow transmitted)
                     let rowTexts = textsOf row
                     Assert.Contains(rowTexts, fun (text : string) -> text.StartsWith("In the kit as ", StringComparison.Ordinal))
                     Assert.Contains($"In the kit as {experiment.name.value}.", rowTexts)
-                    SlotBarTests.assertAbsent window (ConstructorUiId.addPlanCandidateButton transmitted)
-                    Assert.Equal("Add to kit", SlotBarTests.boxLabelOf window (ConstructorUiId.addPlanCandidateButton reflected)))
+                    UiDriver.ById.assertAbsent window (ConstructorUiId.addPlanCandidateButton transmitted)
+                    Assert.Equal("Add to kit", UiDriver.ById.captionOf window (ConstructorUiId.addPlanCandidateButton reflected)))
             finally model.kit.close () |> SceneTestFixture.kitSuccess)

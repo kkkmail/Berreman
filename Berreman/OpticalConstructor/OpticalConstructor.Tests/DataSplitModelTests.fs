@@ -143,7 +143,7 @@ module DataSplitModelTests =
                 [ lp1Draft; qzDraft; qz2Draft; laserDraft; lpdDraft ]
                 |> List.fold (fun current draft -> current |> updateTableAndElementRotation (AddItem draft)) loaded
                 |> updateTableAndElementRotation (SetParameterState (lpdDraft.id, ParameterName.dialZero, KnownParameter (ItemModels.ParameterValue (Angle.degree 10.0<deg>).value)))
-            Assert.Equal<ControlCaption option>(None, stocked.kitStatus)
+            Assert.Equal<ControlCaption option>(None, stocked.kitRefusalOpt)
             let slotOfKind (model : TableAndElementRotationModel) (kind : CatalogueKind) : Library.ElementId =
                 (model.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)).id
             let withPolarizer = stocked |> updateTableAndElementRotation (AddElement LinearPolarizer)
@@ -164,7 +164,7 @@ module DataSplitModelTests =
                 |> updateTableAndElementRotation (AssignSlot (analyzer.id, Some lpdDraft.id))
                 |> updateTableAndElementRotation (ExpChooseElement polarizer)
                 |> updateTableAndElementRotation ExpCommit
-            Assert.Equal<ControlCaption option>(None, committed.kitStatus)
+            Assert.Equal<ControlCaption option>(None, committed.kitRefusalOpt)
             Assert.Equal<SetupName list>([ SetupName "LP1-(QZ#45)-LPd" ], committed.kitSetups |> List.map (fun setup -> setup.name))
             let e1 = Assert.Single(committed.experimentCollection.experiments)
             Assert.Equal<Experiments.ExperimentId>(Experiments.ExperimentId 1, e1.id)
@@ -255,7 +255,7 @@ module DataSplitModelTests =
             Assert.Equal<DataRowKey list>([ DataRowKey "Darkness" ], held.split.unmatched |> List.map (fun group -> group.key))
             Assert.Equal<ControlCaption option>(
                 Some (ControlCaption "Split phone-roi.csv by 'experiment': 1 matched, 2 offered, 1 unmatched."),
-                split.kitStatus)
+                split.kitStatusCaption)
             // Nothing is attached or created until the split is applied (spec 0050 S9.3).
             Assert.Equal<TableAndElementRotationModel>({ kit.committed with dataSplitOpt = split.dataSplitOpt; kitStatus = split.kitStatus }, split)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
@@ -306,11 +306,11 @@ module DataSplitModelTests =
             for message, told in refusals do
                 let refused = kit.committed |> updateTableAndElementRotation message
                 Assert.Equal<DataSplitState option>(None, refused.dataSplitOpt)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption told), refused.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption told), refused.kitStatusCaption)
                 Assert.Equal<TableAndElementRotationModel>({ kit.committed with kitStatus = refused.kitStatus }, refused)
                 // A refusal keeps a split already held.
                 let kept = split |> updateTableAndElementRotation message
-                Assert.Equal<TableAndElementRotationModel>({ split with kitStatus = Some (ControlCaption told) }, kept)
+                Assert.Equal<TableAndElementRotationModel>({ split with kitStatus = Some (KitStatusRefused (ControlCaption told)) }, kept)
             Assert.Contains("could not read the picked data file", readReason)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
 
@@ -338,7 +338,7 @@ module DataSplitModelTests =
             Assert.Equal<ExperimentDataBadge>(ValidatedDataBadge (MeasuredPointCount 2), applied.dataBadgeOf matched)
             Assert.Equal<DataSplitState option>(None, applied.dataSplitOpt)
             let told = "Attached phone-roi.csv to 1 experiment(s): 1 matched, 0 created with 0 new setup(s); 3 group(s) left unattached."
-            Assert.Equal<ControlCaption option>(Some (ControlCaption told), applied.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption told), applied.kitStatusCaption)
             // The table, the setups, the active setup, the draft and the review stay (spec 0050 S9.3).
             let expected =
                 {
@@ -349,7 +349,7 @@ module DataSplitModelTests =
                             }
                         experimentDataStatus = split.experimentDataStatus |> Map.add e1.id (ValidatedDataBadge (MeasuredPointCount 2))
                         dataSplitOpt = None
-                        kitStatus = Some (ControlCaption told)
+                        kitStatus = Some (KitStatusDone (ControlCaption told))
                 }
             Assert.Equal<TableAndElementRotationModel>(expected, applied))
 
@@ -426,7 +426,7 @@ module DataSplitModelTests =
             Assert.Equal<DataSplitState option>(None, applied.dataSplitOpt)
             Assert.Equal<ControlCaption option>(
                 Some (ControlCaption "Attached phone-roi.csv to 3 experiment(s): 1 matched, 2 created with 1 new setup(s); 1 group(s) left unattached."),
-                applied.kitStatus)
+                applied.kitStatusCaption)
             Assert.Equal<Setups.SetupSlot list>(ticked.elements, applied.elements)
             Assert.Equal<Setups.Setup option>(ticked.activeSetupOpt, applied.activeSetupOpt)
             Assert.Equal<ReviewedData option>(ticked.reviewedDataOpt, applied.reviewedDataOpt))
@@ -462,7 +462,7 @@ module DataSplitModelTests =
             let noSplitStatus = ControlCaption "Not offered — no file is being split."
             Assert.Equal<TableAndElementRotationModel>(
                 {
-                    prepared with kitStatus = Some noSplitStatus
+                    prepared with kitStatus = Some (KitStatusRefused noSplitStatus)
                 }, noSplit)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
 
@@ -473,13 +473,13 @@ module DataSplitModelTests =
             let unknownSetupStatus = ControlCaption "Not offered — the kit holds no setup Missing."
             Assert.Equal<TableAndElementRotationModel>(
                 {
-                    split with kitStatus = Some unknownSetupStatus
+                    split with kitStatus = Some (KitStatusRefused unknownSetupStatus)
                 }, unknownSetup)
             let unknownKey = split |> updateTableAndElementRotation (OfferSplitGroupOver (DataRowKey "Nothing", benchName))
             let unknownKeyStatus = ControlCaption "Not offered — no group of the split has the key: Nothing"
             Assert.Equal<TableAndElementRotationModel>(
                 {
-                    split with kitStatus = Some unknownKeyStatus
+                    split with kitStatus = Some (KitStatusRefused unknownKeyStatus)
                 }, unknownKey)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
 
@@ -514,7 +514,7 @@ module DataSplitModelTests =
             let readableStatus = ControlCaption "Not offered — the group's setup comes from its key or its experiment: Darkness"
             Assert.Equal<TableAndElementRotationModel>(
                 {
-                    offered with kitStatus = Some readableStatus
+                    offered with kitStatus = Some (KitStatusRefused readableStatus)
                 }, repeated)
             let unticked = offered |> updateTableAndElementRotation (ToggleSplitOffer darkness)
             Assert.Empty((heldSplit unticked).creating)
@@ -633,7 +633,7 @@ module DataSplitModelTests =
             Assert.Equal<DataSplitState option>(None, applied.dataSplitOpt)
             Assert.Equal<ControlCaption option>(
                 Some (ControlCaption "Attached phone-roi.csv to 1 experiment(s): 0 matched, 1 created with 0 new setup(s); 1 group(s) left unattached."),
-                applied.kitStatus)
+                applied.kitStatusCaption)
             Assert.Equal<FileByteContent>(fileBefore, FileByteContent (File.ReadAllBytes kit.phoneRoiFile.value)))
 
     [<Fact>]
@@ -651,7 +651,7 @@ module DataSplitModelTests =
             let refused = blank |> updateTableAndElementRotation MatchByTemplate
 
             let told = "Not split — a new experiment records the Experiments draft's scan: choose a variable there, or tick no offer."
-            Assert.Equal<TableAndElementRotationModel>({ blank with kitStatus = Some (ControlCaption told) }, refused)
+            Assert.Equal<TableAndElementRotationModel>({ blank with kitStatus = Some (KitStatusRefused (ControlCaption told)) }, refused)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
 
             // With no split held, nothing is applied.

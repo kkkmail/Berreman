@@ -12,12 +12,14 @@ open OpticalConstructor.Domain.CatalogueImport
 open OpticalConstructor.Domain.ItemModels
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Storage.KitContentFiles
 open OpticalConstructor.Ui
+open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
 
@@ -159,7 +161,7 @@ module SetupModelTests =
             [ lp1Draft; qzDraft; laserDraft; lpdDraft ]
             |> List.fold (fun current draft -> current |> updateTableAndElementRotation (AddItem draft)) model
             |> updateTableAndElementRotation (SetParameterState (lpdDraft.id, ParameterName.dialZero, knownDegrees 10.0<deg>))
-        Assert.Equal<ControlCaption option>(None, added.kitStatus)
+        Assert.Equal<ControlCaption option>(None, added.kitRefusalOpt)
         Assert.Equal<ItemId list>(
             [ lp1Draft.id; lpdDraft.id; laserDraft.id; qzDraft.id ] |> List.sort,
             added.kitItems |> List.map (fun item -> item.id) |> List.sort)
@@ -195,7 +197,7 @@ module SetupModelTests =
         let added =
             [ qzDraft; qz2Draft ]
             |> List.fold (fun current draft -> current |> updateTableAndElementRotation (AddItem draft)) model
-        Assert.Equal<ControlCaption option>(None, added.kitStatus)
+        Assert.Equal<ControlCaption option>(None, added.kitRefusalOpt)
         let placed, sample = withSample added
         Assert.Equal<CatalogueKind list>(
             [ LightSource; Sample; Detector ],
@@ -248,7 +250,7 @@ module SetupModelTests =
     /// second linear polarizer, which the light meets in that order before the seeded detector (spec 0050 S8.3).
     let private templateTable (model : TableAndElementRotationModel) : TemplateTable =
         let kit = stocked model |> updateTableAndElementRotation (AddItem qz2Draft)
-        Assert.Equal<ControlCaption option>(None, kit.kitStatus)
+        Assert.Equal<ControlCaption option>(None, kit.kitRefusalOpt)
         let polarizerPlaced, polarizer = withPolarizer kit
         let samplePlaced, sample = withSample polarizerPlaced
         // The add selects the sample, so the turn is its own.
@@ -262,7 +264,7 @@ module SetupModelTests =
             |> updateTableAndElementRotation (AssignSlot (polarizer, Some lp1Draft.id))
             |> updateTableAndElementRotation (AssignSlot (sample, Some qzDraft.id))
             |> updateTableAndElementRotation (AssignSlot (analyzer.id, Some lpdDraft.id))
-        Assert.Equal<ControlCaption option>(None, assigned.kitStatus)
+        Assert.Equal<ControlCaption option>(None, assigned.kitRefusalOpt)
         Assert.Equal((Angle.degree 45.0<deg>).value, (slotOf sample assigned).placement.r1.value, 1e-12)
         let idOf (kind : CatalogueKind) : Library.ElementId =
             (assigned.elements |> List.find (fun slot -> slot.placement.catalogueKind = kind)).id
@@ -321,7 +323,13 @@ module SetupModelTests =
     [<Fact>]
     let ``CreateSetup records the table as a new kit setup and makes it the active one`` () : unit =
         withSetupKit (fun folder model ->
-            let placed = model |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            // Spec 0051 `.manual/003` 3.8: a kit window adds an empty slot, so the preset is bound to it explicitly.
+            let added = model |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let fresh = added.elements |> List.find (fun slot -> slot.placement.catalogueKind = LinearPolarizer)
+            let placed =
+                match LinearPolarizer.defaultSeedEntry with
+                | Some seed -> added |> updateTableAndElementRotation (BindValueIdTo (fresh.id, seed))
+                | None -> failwith "The linear polarizer kind must have a seeded preset."
             let polarizer = placed.elements |> List.find (fun slot -> slot.placement.catalogueKind = LinearPolarizer)
             let presetId =
                 polarizer.placement.valueId
@@ -335,7 +343,7 @@ module SetupModelTests =
             Assert.Equal<Setups.SetupSlot list>(placed.elements, bench.slots)
             Assert.Empty(bench.history)
             Assert.Equal<Setups.Setup option>(Some bench, created.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench'."), created.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench'."), created.kitStatusCaption)
             Assert.Equal<Setups.SetupSlot list>(placed.elements, created.elements)
 
             Assert.Equal<string list>([ "Bench.setup-json" ], setupFilesIn folder)
@@ -351,7 +359,7 @@ module SetupModelTests =
     let ``CreateSetup of a blank name, or of a name whose file the kit holds, is told and records nothing`` () : unit =
         withSetupKit (fun folder model ->
             let assertNotCreated (before : TableAndElementRotationModel) (answer : TableAndElementRotationModel) : unit =
-                match answer.kitStatus with
+                match answer.kitStatusCaption with
                 | Some status -> Assert.StartsWith("Not created", status.value)
                 | None -> Assert.Fail "a refused setup must be told in the kit status"
                 Assert.Equal<Setups.Setup list>(before.kitSetups, answer.kitSetups)
@@ -396,10 +404,10 @@ module SetupModelTests =
             Assert.Equal<BeamLayout.RotationPivot>(BeamLayout.PivotAtIncidentFace, activated.rotationPivot)
             Assert.Equal<Selection>(TableSelected, activated.selection)
             Assert.Equal<Setups.Setup option>(Some bench, activated.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench'."), activated.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench'."), activated.kitStatusCaption)
 
             let missing = activated |> updateTableAndElementRotation (ActivateSetup (SetupName "nowhere"))
-            match missing.kitStatus with
+            match missing.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Load failed", status.value)
                 Assert.Contains("nowhere", status.value)
@@ -427,7 +435,7 @@ module SetupModelTests =
             Assert.Equal<Experiments.Experiment list>([ e1 ], committed.experimentCollection.experiments)
             Assert.Equal<Setups.Setup option>(Some setup1, committed.activeSetupOpt)
             Assert.Equal<Setups.Setup list>([ setup1 ], committed.kitSetups)
-            Assert.Equal<ControlCaption option>(None, committed.kitStatus))
+            Assert.Equal<ControlCaption option>(None, committed.kitRefusalOpt))
 
     [<Fact>]
     let ``a commit over a changed table whose revision an experiment references mints the next revision, and the earlier experiment keeps its own`` () : unit =
@@ -499,7 +507,7 @@ module SetupModelTests =
             Assert.Empty(bench.history)
             Assert.Equal<Setups.Setup list>([ bench ], inPlace.kitSetups)
             Assert.Equal<Setups.Setup option>(Some bench, inPlace.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved setup 'Bench', revision 1."), inPlace.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved setup 'Bench', revision 1."), inPlace.kitStatusCaption)
 
             // The table is unchanged, so the commit references `Bench` at revision 1 and rewrites nothing.
             let committed = inPlace |> committedVarying polarizer
@@ -525,7 +533,7 @@ module SetupModelTests =
             Assert.Equal<Setups.Setup option>(Some revised, minted.activeSetupOpt)
             Assert.Equal<Experiments.Experiment list>([ e1 ], minted.kit.proxy.readExperiments () |> kitValue)
             Assert.Equal<Experiments.Experiment list>(committed.experimentCollection.experiments, minted.experimentCollection.experiments)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved setup 'Bench', revision 2."), minted.kitStatus))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved setup 'Bench', revision 2."), minted.kitStatusCaption))
 
     [<Fact>]
     let ``SaveSetup with no active setup, or over an unchanged table, writes nothing and says why`` () : unit =
@@ -537,7 +545,7 @@ module SetupModelTests =
             Assert.Empty(noActive.kitSetups)
             Assert.Equal<Setups.Setup option>(None, noActive.activeSetupOpt)
             Assert.Equal<Setups.SetupSlot list>(placed.elements, noActive.elements)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "No setup is active: create one first."), noActive.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "No setup is active: create one first."), noActive.kitStatusCaption)
 
             let created = placed |> createdAs "Bench"
             let benchFile = Path.Combine(folder.value.value, "Bench.setup-json")
@@ -549,7 +557,7 @@ module SetupModelTests =
             Assert.Equal(benchWritten, File.GetLastWriteTimeUtc benchFile)
             Assert.Equal<Setups.Setup list>(created.kitSetups, unchanged.kitSetups)
             Assert.Equal<Setups.Setup option>(created.activeSetupOpt, unchanged.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Setup 'Bench' is unchanged."), unchanged.kitStatus))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Setup 'Bench' is unchanged."), unchanged.kitStatusCaption))
 
     [<Fact>]
     let ``AssignSlot puts a kit item into a table slot bound to its library entry, and AssignSlot of nothing empties it`` () : unit =
@@ -564,7 +572,7 @@ module SetupModelTests =
             Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (lp1Draft.id, Setups.PlacementTurn), lp1Slot.content)
             Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, lp1Slot.placement.valueId)
             Assert.Equal<Setups.SetupSlot>(slotOf sample placed, slotOf sample lp1Held)
-            Assert.Equal<ControlCaption option>(None, lp1Held.kitStatus)
+            Assert.Equal<ControlCaption option>(None, lp1Held.kitRefusalOpt)
 
             let qzHeld = lp1Held |> updateTableAndElementRotation (AssignSlot (sample, Some qzDraft.id))
             let plate = BuiltinCatalogue.sample Library.SampleIds.glassPlate1mmId
@@ -579,7 +587,7 @@ module SetupModelTests =
             Assert.Equal<Setups.SlotContent>(Setups.EmptySlotContent, emptiedSlot.content)
             Assert.Equal<ElementPlacement>(lp1Slot.placement, emptiedSlot.placement)
             Assert.Equal<Setups.SetupSlot>(qzSlot, slotOf sample emptied)
-            Assert.Equal<ControlCaption option>(None, emptied.kitStatus)
+            Assert.Equal<ControlCaption option>(None, emptied.kitRefusalOpt)
 
             // Spec 0050 S8.2: an assignment writes nothing; the setup records the slot when it is next written.
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
@@ -618,7 +626,7 @@ module SetupModelTests =
                     reopenedPlaced
                     |> updateTableAndElementRotation (AssignSlot (reopenedPolarizer, Some lp1Draft.id))
                     |> updateTableAndElementRotation (AssignSlot (reopenedSample, Some qzDraft.id))
-                Assert.Equal<ControlCaption option>(None, reassigned.kitStatus)
+                Assert.Equal<ControlCaption option>(None, reassigned.kitRefusalOpt)
                 let reassignedPolarizer = slotOf reopenedPolarizer reassigned
                 Assert.Equal<Setups.SlotContent>(Setups.ItemInSlot (lp1Draft.id, Setups.PlacementTurn), reassignedPolarizer.content)
                 Assert.Equal<ElementValueId option>(Some Library.PresetIds.polarizerLp, reassignedPolarizer.placement.valueId)
@@ -635,7 +643,7 @@ module SetupModelTests =
             let polarizerPlaced, polarizer = withPolarizer (stocked model)
             let placed, sample = withSample polarizerPlaced
             let assertNotAssigned (named : string) (answer : TableAndElementRotationModel) : unit =
-                match answer.kitStatus with
+                match answer.kitStatusCaption with
                 | Some status ->
                     Assert.StartsWith("Not assigned", status.value)
                     Assert.Contains(named, status.value)
@@ -672,7 +680,7 @@ module SetupModelTests =
                 }
             Assert.Equal<ItemModelChoice option>(None, withLost.tryItemModelChoice lost)
             let lostAnswer = withLost |> updateTableAndElementRotation (AssignSlot (sample, Some lost.id))
-            match lostAnswer.kitStatus with
+            match lostAnswer.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Not assigned", status.value)
                 Assert.Contains("Lost plate", status.value)
@@ -690,7 +698,7 @@ module SetupModelTests =
             Assert.Equal<ItemModelChoice option>(None, modelless.tryItemModelChoice lp1)
             Assert.Equal<ItemModelChoice option>(Some linearPolarizerChoice, placed.tryItemModelChoice lp1)
             let modellessAnswer = modelless |> updateTableAndElementRotation (AssignSlot (polarizer, Some lp1.id))
-            match modellessAnswer.kitStatus with
+            match modellessAnswer.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Not assigned", status.value)
                 Assert.Contains("LP1", status.value)
@@ -704,7 +712,7 @@ module SetupModelTests =
         withSetupKit (fun folder model ->
             let placed, polarizer = withPolarizer (stocked model)
             let assigned = turned placed |> updateTableAndElementRotation (AssignSlot (polarizer, Some lpdDraft.id))
-            Assert.Equal<ControlCaption option>(None, assigned.kitStatus)
+            Assert.Equal<ControlCaption option>(None, assigned.kitRefusalOpt)
 
             let created = assigned |> createdAs "Dial"
             let dial = created.kitSetups |> List.find (fun setup -> setup.name = SetupName "Dial")
@@ -718,7 +726,7 @@ module SetupModelTests =
             let rezeroed =
                 created
                 |> updateTableAndElementRotation (SetParameterState (lpdDraft.id, ParameterName.dialZero, knownDegrees 20.0<deg>))
-            Assert.Equal<ControlCaption option>(None, rezeroed.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Dial'."), rezeroed.kitStatusCaption)
             let drawn = rezeroed |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
             Assert.Equal((Angle.degree 40.0<deg>).value, (slotOf polarizer drawn).placement.r1.value, 1e-12)
             Assert.Equal<string list>([ "Dial.setup-json" ], setupFilesIn folder))
@@ -735,14 +743,14 @@ module SetupModelTests =
             Assert.Equal<Setups.Setup option>(Some benchB, swapped.activeSetupOpt)
             Assert.Equal<Setups.SetupSlot list>(benchB.slots, swapped.elements)
             Assert.Equal<Setups.Setup list>(benches.kitSetups, swapped.kitSetups)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench B'."), swapped.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench B'."), swapped.kitStatusCaption)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
 
             // Spec 0050 S8.2: a swap refuses as AssignSlot does, told as `Not swapped`, and changes nothing else.
             let unheld = ItemId (Guid.Parse "26400000-0000-4000-8000-000000000099")
             for slotId, itemId, named in [ (Library.ElementId "nowhere", qz2Draft.id, "nowhere"); (sample, unheld, unheld.value.ToString()) ] do
                 let refused = benches |> updateTableAndElementRotation (SwapSlot (slotId, itemId))
-                match refused.kitStatus with
+                match refused.kitStatusCaption with
                 | Some status ->
                     Assert.StartsWith("Not swapped", status.value)
                     Assert.Contains(named, status.value)
@@ -773,7 +781,7 @@ module SetupModelTests =
             Assert.Equal<Setups.Setup list>(swapped.kitSetups, swapped.kit.proxy.readSetups () |> kitValue)
             Assert.Equal<Setups.Setup option>(Some created, swapped.activeSetupOpt)
             Assert.Equal<Setups.SetupSlot list>(created.slots, swapped.elements)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench A (2)' by the swap."), swapped.kitStatus))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench A (2)' by the swap."), swapped.kitStatusCaption))
 
         // Spec 0050 S8.2: a table that is no setup yet becomes the first free `Setup <n>`.
         withSetupKit (fun folder model ->
@@ -790,7 +798,7 @@ module SetupModelTests =
             Assert.Equal<Setups.Setup list>([ setup1 ], swapped.kitSetups)
             Assert.Equal<Setups.Setup option>(Some setup1, swapped.activeSetupOpt)
             Assert.Equal<Setups.SetupSlot list>(setup1.slots, swapped.elements)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Setup 1' by the swap."), swapped.kitStatus))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Setup 1' by the swap."), swapped.kitStatusCaption))
 
     [<Fact>]
     let ``a kit opened read-only switches setups by a swap but creates none`` () : unit =
@@ -805,13 +813,13 @@ module SetupModelTests =
                 let switched = benchA |> updateTableAndElementRotation (SwapSlot (sample, qz2Draft.id))
                 Assert.Equal<Setups.Setup option>(Some benchB, switched.activeSetupOpt)
                 Assert.Equal<Setups.SetupSlot list>(benchB.slots, switched.elements)
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench B'."), switched.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench B'."), switched.kitStatusCaption)
                 Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
 
                 // A table with one more slot than either setup holds content no setup holds, so the swap would create one.
                 let widened = switched |> updateTableAndElementRotation (AddElement LinearPolarizer)
                 let refused = widened |> updateTableAndElementRotation (SwapSlot (sample, qzDraft.id))
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatusCaption)
                 Assert.Equal<Setups.SetupSlot list>(widened.elements, refused.elements)
                 Assert.Equal<Setups.Setup list>(widened.kitSetups, refused.kitSetups)
                 Assert.Equal<Setups.Setup option>(widened.activeSetupOpt, refused.activeSetupOpt)
@@ -839,7 +847,7 @@ module SetupModelTests =
             Assert.Equal<Experiments.Experiment list>([ e1 ], committed.experimentCollection.experiments)
             Assert.Equal<Setups.Setup option>(Some named, committed.activeSetupOpt)
             Assert.Equal<Setups.Setup list>([ named ], committed.kitSetups)
-            Assert.Equal<ControlCaption option>(None, committed.kitStatus))
+            Assert.Equal<ControlCaption option>(None, committed.kitRefusalOpt))
 
     [<Fact>]
     let ``a swap to content no setup holds takes the template's name of the swapped table`` () : unit =
@@ -861,7 +869,7 @@ module SetupModelTests =
             Assert.Equal<Setups.Setup list>(swapped.kitSetups, swapped.kit.proxy.readSetups () |> kitValue)
             Assert.Equal<Setups.Setup option>(Some created, swapped.activeSetupOpt)
             Assert.Equal<Setups.SetupSlot list>(created.slots, swapped.elements)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'LP1-(QZ2#45)-LPd' by the swap."), swapped.kitStatus))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'LP1-(QZ2#45)-LPd' by the swap."), swapped.kitStatusCaption))
 
     [<Fact>]
     let ``GenerateSetupGrid records a setup per ticked combination, named by the kit's template, and an experiment of the draft over each`` () : unit =
@@ -873,7 +881,7 @@ module SetupModelTests =
 
             let generated = chosen |> updateTableAndElementRotation (GenerateSetupGrid (plateGrid held))
 
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 2 experiments."), generated.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 2 experiments."), generated.kitStatusCaption)
             Assert.Equal<string list>([ "LP1-(QZ#0)-LPd.setup-json"; "LP1-(QZ#45)-LPd.setup-json" ], setupFilesIn folder)
             // Spec 0050 S9.1: each experiment is named by the template over its setup.
             Assert.Equal<string list>([ "LP1-(QZ#0)-LPd.experiment-json"; "LP1-(QZ#45)-LPd.experiment-json" ], experimentFilesIn folder)
@@ -914,14 +922,14 @@ module SetupModelTests =
                 held.table
                 |> updateTableAndElementRotation (ExpChooseElement held.polarizer)
                 |> updateTableAndElementRotation (GenerateSetupGrid grid)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 2 experiments."), first.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 2 experiments."), first.kitStatusCaption)
             let setupFiles = [ "LP1-(QZ#0)-LPd.setup-json"; "LP1-(QZ#45)-LPd.setup-json" ]
             let setupBytes () : byte[] list = setupFiles |> List.map (fun name -> File.ReadAllBytes(Path.Combine(folder.value.value, name)))
             let firstBytes = setupBytes ()
 
             let again = first |> updateTableAndElementRotation (GenerateSetupGrid grid)
 
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (0 new) and 2 experiments."), again.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (0 new) and 2 experiments."), again.kitStatusCaption)
             Assert.Equal<string list>(setupFiles, setupFilesIn folder)
             Assert.Equal<byte[] list>(firstBytes, setupBytes ())
             Assert.Equal<Setups.Setup list>(first.kitSetups, again.kitSetups)
@@ -958,7 +966,7 @@ module SetupModelTests =
                 }
             let before = kitFileBytes folder
             let refused = again |> updateTableAndElementRotation (GenerateSetupGrid laserGrid)
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Not generated", status.value)
                 Assert.Contains("Laser", status.value)
@@ -980,7 +988,7 @@ module SetupModelTests =
 
             let generated = cleared |> updateTableAndElementRotation (GenerateSetupGrid (plateGrid held))
 
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 0 experiments."), generated.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 2 setups (2 new) and 0 experiments."), generated.kitStatusCaption)
             Assert.Equal<string list>([ "LP1-(QZ#0)-LPd.setup-json"; "LP1-(QZ#45)-LPd.setup-json" ], setupFilesIn folder)
             Assert.Empty(experimentFilesIn folder)
             Assert.Equal<Setups.Setup list>(generated.kit.proxy.readSetups () |> kitValue, generated.kitSetups)
@@ -994,7 +1002,7 @@ module SetupModelTests =
             let held = templateTable model
             // The table recorded, so the read-only kit can draw it and the grid alone is refused.
             let bench = held.table |> createdAs "Bench"
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench'."), bench.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench'."), bench.kitStatusCaption)
             withReadOnlyReopen folder (fun readOnly ->
                 Assert.Equal<ControlAvailability>(ControlWithheld, readOnly.kitWrites)
                 let drawn =
@@ -1009,7 +1017,7 @@ module SetupModelTests =
 
                 let refused = drawn |> updateTableAndElementRotation (GenerateSetupGrid grid)
 
-                Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatus)
+                Assert.Equal<ControlCaption option>(Some (ControlCaption "The kit is open read-only: nothing is saved."), refused.kitStatusCaption)
                 Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
                 Assert.Equal<Setups.Setup list>(drawn.kitSetups, refused.kitSetups)
                 Assert.Equal<Experiments.ExperimentCollection>(drawn.experimentCollection, refused.experimentCollection)
@@ -1035,7 +1043,7 @@ module SetupModelTests =
             let firstRange = chosen.experimentCollection.draft.range
 
             let first = chosen |> updateTableAndElementRotation RecordExperiment
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E1 over 'Bench' revision 1."), first.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E1 over 'Bench' revision 1."), first.kitStatusCaption)
             let changed = narrowed first
             let secondRange = changed.experimentCollection.draft.range
             Assert.NotEqual<Experiments.VariableRange>(firstRange, secondRange)
@@ -1054,7 +1062,7 @@ module SetupModelTests =
             Assert.Equal<byte>(benchBytes, File.ReadAllBytes benchFile)
             Assert.Equal<Setups.Setup list>([ bench ], second.kitSetups)
             Assert.Equal<Setups.Setup option>(Some bench, second.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Bench' revision 1."), second.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Bench' revision 1."), second.kitStatusCaption)
             Assert.Equal<Experiments.ExperimentId option>(None, second.experimentCollection.draft.editingId))
 
     [<Fact>]
@@ -1086,7 +1094,7 @@ module SetupModelTests =
                 Assert.Equal<SetupReference>(e1.setup, e2.setup)
                 Assert.Equal<Experiments.Experiment list>([ e1; e2 ], second.experimentCollection.experiments)
             | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Bench' revision 1."), second.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Bench' revision 1."), second.kitStatusCaption)
             Assert.Equal<Experiments.ExperimentId option>(None, second.experimentCollection.draft.editingId))
 
     [<Fact>]
@@ -1110,7 +1118,7 @@ module SetupModelTests =
             Assert.Equal<SetupReference>(revision1, e1.setup)
             Assert.Equal<Setups.Setup option>(Some setup1, first.activeSetupOpt)
             Assert.Equal<Setups.Setup list>([ setup1 ], first.kitSetups)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E1 over 'Setup 1' revision 1."), first.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E1 over 'Setup 1' revision 1."), first.kitStatusCaption)
 
             // The add selected the polarizer, so the turn is its own.
             let rotated = turned first
@@ -1135,7 +1143,7 @@ module SetupModelTests =
             | experiments -> Assert.Fail($"expected E1 and E2, read {List.length experiments} experiment(s)")
             Assert.Equal<Setups.Setup option>(Some revised, second.activeSetupOpt)
             Assert.Equal<Setups.Setup list>([ revised ], second.kitSetups)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Setup 1' revision 2."), second.kitStatus))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Recorded E2 over 'Setup 1' revision 2."), second.kitStatusCaption))
 
     [<Fact>]
     let ``RecordExperiment without a chosen element and variable is told and writes nothing`` () : unit =
@@ -1147,12 +1155,12 @@ module SetupModelTests =
 
             let refused = cleared |> updateTableAndElementRotation RecordExperiment
 
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some status -> Assert.StartsWith("Not recorded", status.value)
             | None -> Assert.Fail "a draft that cannot be recorded must be told in the kit status"
             Assert.Equal<ControlCaption option>(
                 Some (ControlCaption "Not recorded — choose the element and the variable to vary in the Experiments bay first."),
-                refused.kitStatus)
+                refused.kitStatusCaption)
             Assert.Empty(experimentFilesIn folder)
             Assert.Empty(setupFilesIn folder)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
@@ -1164,12 +1172,17 @@ module SetupModelTests =
     /// S8.4).
     let private chipTable (model : TableAndElementRotationModel) : TemplateTable =
         let kit = stocked model |> updateTableAndElementRotation (AddItem qz2Draft)
-        Assert.Equal<ControlCaption option>(None, kit.kitStatus)
+        Assert.Equal<ControlCaption option>(None, kit.kitRefusalOpt)
         let polarizerPlaced, polarizer = withPolarizer kit
         let placed, sample = withSample polarizerPlaced
+        // Spec 0051 `.manual/003` 3.8: an element added in a kit window opens its chip; the table starts with all closed.
+        let closed =
+            match placed.slotChipOpenOpt with
+            | Some openId -> placed |> updateTableAndElementRotation (ToggleSlotChip openId)
+            | None -> placed
         let held : TemplateTable =
             {
-                table = placed
+                table = closed
                 polarizer = polarizer
                 sample = sample
             }
@@ -1201,7 +1214,7 @@ module SetupModelTests =
 
             // A slot holding an item still lists every item that fits it, its own included.
             let assigned = table |> updateTableAndElementRotation (AssignSlot (held.polarizer, Some lp1Draft.id))
-            Assert.Equal<ControlCaption option>(None, assigned.kitStatus)
+            Assert.Equal<ControlCaption option>(None, assigned.kitRefusalOpt)
             Assert.Equal<ItemId list>(
                 [ lp1Draft.id; lpdDraft.id ],
                 assigned.slotChipItems (slotOf held.polarizer assigned) |> List.map (fun item -> item.id)))
@@ -1229,13 +1242,13 @@ module SetupModelTests =
                 Assert.Equal<Library.ElementId option>(current.slotChipOpenOpt, answered.slotChipOpenOpt)
                 Assert.Equal<Setups.SetupSlot list>(current.elements, answered.elements)
                 Assert.Equal<Selection>(current.selection, answered.selection)
-                Assert.Equal<ControlCaption option>(current.kitStatus, answered.kitStatus)
+                Assert.Equal<ControlCaption option>(current.kitStatusCaption, answered.kitStatusCaption)
 
             // A toggle changes only which list is open, and writes nothing.
             for current in [ sampleOpen; polarizerOpen; reclosed ] do
                 Assert.Equal<Setups.SetupSlot list>(closed.elements, current.elements)
                 Assert.Equal<Selection>(closed.selection, current.selection)
-                Assert.Equal<ControlCaption option>(closed.kitStatus, current.kitStatus)
+                Assert.Equal<ControlCaption option>(closed.kitStatusCaption, current.kitStatusCaption)
                 Assert.Equal<Item list>(closed.kitItems, current.kitItems)
                 Assert.Equal<Setups.Setup list>(closed.kitSetups, current.kitSetups)
                 Assert.Equal<Setups.Setup option>(closed.activeSetupOpt, current.activeSetupOpt)
@@ -1246,14 +1259,14 @@ module SetupModelTests =
             Assert.Equal<Library.ElementId option>(None, created.slotChipOpenOpt)
             let qz2Setup = Assert.Single(created.kitSetups)
             Assert.Equal<Setups.Setup option>(Some qz2Setup, created.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Created setup '{qz2Setup.name.value}' by the swap."), created.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Created setup '{qz2Setup.name.value}' by the swap."), created.kitStatusCaption)
 
             let unheld = ItemId (Guid.Parse "27900000-0000-4000-8000-000000000099")
             let refusedOpen = created |> toggled held.sample
             Assert.Equal<Library.ElementId option>(Some held.sample, refusedOpen.slotChipOpenOpt)
             let refused = refusedOpen |> updateTableAndElementRotation (SwapSlot (held.sample, unheld))
             Assert.Equal<Library.ElementId option>(None, refused.slotChipOpenOpt)
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some status -> Assert.StartsWith("Not swapped", status.value)
             | None -> Assert.Fail "a refused swap must be told in the kit status"
             Assert.Equal<Setups.SetupSlot list>(created.elements, refused.elements)
@@ -1267,7 +1280,7 @@ module SetupModelTests =
             let switched = switchedOpen |> updateTableAndElementRotation (SwapSlot (held.sample, qz2Draft.id))
             Assert.Equal<Library.ElementId option>(None, switched.slotChipOpenOpt)
             Assert.Equal<Setups.Setup option>(Some qz2Setup, switched.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Loaded setup '{qz2Setup.name.value}'."), switched.kitStatus))
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Loaded setup '{qz2Setup.name.value}'."), switched.kitStatusCaption))
 
     // Spec 0050 S8.4: the grid panel's messages edit its draft, and GenerateSetupGrid records the draft's grid.
 
@@ -1330,7 +1343,7 @@ module SetupModelTests =
                 Assert.Equal<Setups.SetupSlot list>(table.elements, current.elements)
                 Assert.Equal<Setups.Setup list>(table.kitSetups, current.kitSetups)
                 Assert.Equal<Experiments.ExperimentCollection>(table.experimentCollection, current.experimentCollection)
-                Assert.Equal<ControlCaption option>(table.kitStatus, current.kitStatus)
+                Assert.Equal<ControlCaption option>(table.kitStatusCaption, current.kitStatusCaption)
             Assert.Empty(setupFilesIn folder)
             Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder))
 
@@ -1390,7 +1403,7 @@ module SetupModelTests =
 
             let generated = drafted |> updateTableAndElementRotation (GenerateSetupGrid grid)
 
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 3 setups (3 new) and 3 experiments."), generated.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Generated 3 setups (3 new) and 3 experiments."), generated.kitStatusCaption)
             let names = [ "LP1-(QZ#0)-LPd"; "LP1-(QZ#45)-LPd"; "LP1-(QZ2#0)-LPd" ]
             Assert.Equal<string list>(names |> List.map (fun name -> $"{name}.setup-json"), setupFilesIn folder)
             // Spec 0050 S9.1: the template names each experiment as it names its setup.
@@ -1411,3 +1424,103 @@ module SetupModelTests =
             Assert.Equal<SetupGrids.SetupGrid option>(Some grid, generated.setupGrid)
             Assert.Equal<Setups.SetupSlot list>(chosen.elements, generated.elements)
             Assert.Equal<Setups.Setup option>(chosen.activeSetupOpt, generated.activeSetupOpt))
+
+    /// Spec 0051 `.manual/003` 3.8 (D7): in a kit window a palette element is an empty slot whose chip opens at once, never
+    /// a library preset bound behind the user's back.
+    [<Fact>]
+    let ``a palette element added in a kit window is an empty slot whose chip opens`` () : unit =
+        withSetupKit (fun _ model ->
+            let placed = model |> updateTableAndElementRotation (AddElement LinearPolarizer)
+            let polarizer = placed.elements |> List.find (fun slot -> slot.placement.catalogueKind = LinearPolarizer)
+            Assert.Equal<ElementValueId option>(None, polarizer.placement.valueId)
+            Assert.Equal<Setups.SlotContent>(Setups.EmptySlotContent, polarizer.content)
+            Assert.Equal<Library.ElementId option>(Some polarizer.id, placed.slotChipOpenOpt))
+
+    // ======================== spec 0051 `.manual/003` Phase 3: the table is the context ========================
+
+    /// A memory recalling `recalled` and recording every setup it is told to remember.
+    let private memoryOf (recalled : SetupName option) (remembered : ResizeArray<SetupName>) : KitSetupMemory =
+        {
+            recallSetup = fun () -> recalled
+            rememberSetup = fun setup -> remembered.Add setup; Ok ()
+        }
+
+    /// Spec 0051 `.manual/003` 3.1 (D2).
+    [<Fact>]
+    let ``a kit window opens on the setup it last had, else its last experiment's, else the empty table with a hint`` () : unit =
+        withSetupKit (fun _ model ->
+            let placed, polarizer = withPolarizer model
+            let bench = placed |> createdAs "Bench"
+            let other = bench |> turned |> createdAs "Other" |> committedVarying polarizer
+            Assert.Equal<SetupName list>([ SetupName "Bench"; SetupName "Other" ], other.kitSetups |> List.map _.name)
+            let remembered = ResizeArray<SetupName>()
+            let recalledBench = { other with setupMemory = memoryOf (Some (SetupName "Bench")) remembered }.openedOnSetup
+            Assert.Equal<SetupName option>(Some (SetupName "Bench"), recalledBench.activeSetupOpt |> Option.map _.name)
+            Assert.Equal<Setups.SetupSlot list>(bench.elements, recalledBench.elements)
+            // A remembered setup the kit no longer holds falls back to the last experiment's.
+            let forgotten = { other with setupMemory = memoryOf (Some (SetupName "Gone")) remembered }.openedOnSetup
+            Assert.Equal<SetupName option>(Some (SetupName "Other"), forgotten.activeSetupOpt |> Option.map _.name)
+            // A kit without a setup keeps its table and says where one is made.
+            let empty = model.openedOnSetup
+            Assert.Equal<Setups.Setup option>(None, empty.activeSetupOpt)
+            Assert.Equal<ControlCaption option>(
+                Some (ControlCaption "This kit has no setup yet: build the table, then press Create setup in the Setups step."), empty.kitStatusCaption)
+            Assert.Empty(remembered))
+
+    /// Spec 0051 `.manual/003` 3.1: only a change of the active setup is remembered.
+    [<Fact>]
+    let ``the active setup is remembered when it changes, and only then`` () : unit =
+        withSetupKit (fun _ model ->
+            let placed, _ = withPolarizer model
+            let remembered = ResizeArray<SetupName>()
+            let remembering = { placed with setupMemory = memoryOf None remembered }
+            let bench = remembering |> createdAs "Bench"
+            Assert.Equal(Ok (), bench.rememberSetupSince remembering)
+            Assert.Equal(Ok (), bench.rememberSetupSince bench)
+            let turnedBench = bench |> turned
+            Assert.Equal(Ok (), turnedBench.rememberSetupSince bench)
+            Assert.Equal<SetupName list>([ SetupName "Bench" ], List.ofSeq remembered))
+
+    /// Spec 0051 `.manual/003` 3.3: a row draws its experiment's own setup revision, and Update keeps that revision.
+    [<Fact>]
+    let ``choosing an experiment draws its own setup revision and an unchanged Update writes nothing`` () : unit =
+        withSetupKit (fun folder model ->
+            let placed, polarizer = withPolarizer model
+            let committed = placed |> createdAs "Bench" |> committedVarying polarizer
+            let e1 = Assert.Single committed.experimentCollection.experiments
+            let firstSlots = committed.elements
+            // A changed table saved over a referenced revision mints revision 2.
+            let saved = committed |> turned |> updateTableAndElementRotation SaveSetup
+            Assert.Equal<SetupRevision option>(Some SetupRevision.first.next, saved.activeSetupOpt |> Option.map _.revision)
+            Assert.NotEqual<Setups.SetupSlot list>(firstSlots, saved.elements)
+            let edited = saved |> updateTableAndElementRotation (ExpEdit e1.id)
+            Assert.Equal<Setups.SetupSlot list>(firstSlots, edited.elements)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded E1 on its setup 'Bench', revision 1 of 2."), edited.kitStatusCaption)
+            let before = kitFileBytes folder
+            let updated = edited |> updateTableAndElementRotation ExpCommit
+            Assert.Equal<Map<string, FileByteContent>>(before, kitFileBytes folder)
+            Assert.Equal<SetupReference>(e1.setup, (Assert.Single updated.experimentCollection.experiments).setup))
+
+    /// Spec 0051 `.manual/003` 3.9: the note typed beside Record experiment names the record, and the next takes its own.
+    [<Fact>]
+    let ``Record experiment writes the typed note into the name, then clears it`` () : unit =
+        withSetupKit (fun _ model ->
+            let held = templateTable model
+            let chosen = held.table |> createdAs "Bench" |> updateTableAndElementRotation (ExpChooseElement held.polarizer)
+            let first = chosen |> updateTableAndElementRotation (SetRecordNote (ControlCaption "warm")) |> updateTableAndElementRotation RecordExperiment
+            let second = first |> narrowed |> updateTableAndElementRotation (SetRecordNote (ControlCaption "cold")) |> updateTableAndElementRotation RecordExperiment
+            match second.experimentCollection.experiments |> List.map (fun experiment -> experiment.name.value) with
+            | [ warm; cold ] ->
+                Assert.EndsWith("-warm", warm)
+                Assert.EndsWith("-cold", cold)
+            | names -> Assert.Fail($"expected two records, got {names}")
+            Assert.Equal(ControlCaption "", second.recordNote))
+
+    /// Spec 0051 `.manual/003` 3.7: a turn reads as its place on the circle, never as 360°.
+    [<Fact>]
+    let ``a turn is shown in whole degrees within 0 to 360`` () : unit =
+        let shown (degrees : float<deg>) : string = (Angle.degree degrees).turnCaption.value
+        Assert.Equal<string list>(
+            [ "0°"; "0°"; "270°"; "45°"; "0°"; "359°" ],
+            [ shown 0.0<deg>; shown 360.0<deg>; shown -90.0<deg>; shown 405.0<deg>; shown 359.6<deg>; shown -1.2<deg> ])
+

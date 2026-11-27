@@ -2,6 +2,7 @@ namespace OpticalConstructor.Ui.Tests
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Headless
 open Avalonia.Input
 open Avalonia.Media
@@ -31,6 +32,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.ImportDialogView
 open OpticalConstructor.Tests
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0038 Part F (step 015) — the Library window (UICOMP_XDUO_0010): the single-instance
 /// window instantiating the step-012 `FacetedTreeControls` over the step-011 library facet
@@ -57,42 +59,6 @@ module LibraryWindowTests =
 
     // ============================ shared helpers ============================
 
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
-    /// window's rows / offers / verbs live in variable-membership lists, so they carry an
-    /// AutomationId — the FacetedTreeControls discipline).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Scroll the box into view first — BuiltinCatalogue.sources () (spec 0046) puts
-            // later rows below the window's visible area, where a click at their centre lands nowhere.
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                if window.IsVisible then
-                    window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
-
     /// Expand the tree node with this code by clicking its disclosure chevron (spec 0040 step 002).
     /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
     /// only after this — and the expansion PERSISTS across the window's later re-renders.
@@ -102,17 +68,6 @@ module LibraryWindowTests =
     /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
     /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
     let private expandEntries (window : Window) : unit = expandNode window "entries"
-
-    /// The display text under the control carrying `id` (the control itself when it is a
-    /// TextBlock, its first TextBlock descendant otherwise).
-    let private textOf (window : Window) (id : string) : string =
-        match tryFindControl window id with
-        | None -> ""
-        | Some (:? TextBlock as t) -> (if isNull t.Text then "" else t.Text)
-        | Some c ->
-            c.GetVisualDescendants()
-            |> Seq.tryPick (function :? TextBlock as t when not (isNull t.Text) -> Some t.Text | _ -> None)
-            |> Option.defaultValue ""
 
     /// Set the text of the TextBox carrying `id` (the editor windows subscribe text changes;
     /// the faceted filter box does NOT — it is driven through `commitFilter` below).
@@ -142,16 +97,13 @@ module LibraryWindowTests =
 
     /// The clickable label Border of the tree row carrying `id` (the row's `treeNode` id — the
     /// chevron carries a DISTINCT id, so this is unambiguously the label box).
-    let private labelBorderOf (window : Window) (id : string) : Border =
-        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+    let private labelBorderOf (window : Window) (id : string) : TemplatedControl =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? TemplatedControl as b when UiDriver.hasId id b -> Some b | _ -> None) with
         | Some b -> b
         | None -> failwith $"%s{id} label border was not found"
 
     /// A Border's solid fill colour (None when it carries a non-solid brush).
-    let private backgroundColorOf (b : Border) : Color option =
-        match b.Background with
-        | :? SolidColorBrush as s -> Some s.Color
-        | _ -> None
+    let private backgroundColorOf (b : TemplatedControl) : Color option = Some (UiDriver.fillOfControl b)
 
     // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
     let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
@@ -520,7 +472,7 @@ module LibraryWindowTests =
         assertLibraryExportPreservesState before exported
 
     [<Fact>]
-    let ``a refused Library export shows its reason as the window message`` () : unit =
+    let ``Export my library over a library with no entries of its own says so and writes nothing`` () : unit =
         let _, context = freshLibraryExportContext ()
         let before =
             {
@@ -531,19 +483,18 @@ module LibraryWindowTests =
         let folder = freshLibraryExportFolder ()
         let target = CatalogueExportTarget.ofFolder folder
         let refused = LW.updateLibraryWindow (LW.ExportMyLibrary target) before
-        let reason =
-            match refused.lastError with
-            | Some (LW.LibraryExportRefusedErr (EmptyLibraryExportErr _ as error)) -> error.caption
-            | _ -> failwith "An empty user library must return the typed export refusal."
-        Assert.Equal<ControlCaption option>(None, refused.entryExportStatus)
+        // Spec 0051 `.manual/003` 5.4: plain words, not a refusal.
+        let said = "Your library holds no entries of its own, only the shipped catalogue's: there is nothing to export."
+        Assert.Equal<ControlCaption option>(Some (ControlCaption said), refused.entryExportStatus)
+        Assert.Equal<LW.LibraryWindowError option>(None, refused.lastError)
         Assert.False(System.IO.Directory.Exists folder.value)
         assertLibraryExportPreservesState before refused
         HeadlessSession.run (fun () ->
             let window = HostWindow(Width = 1150.0, Height = 800.0)
             try
                 mountLibraryExportView window refused
-                Assert.Equal(reason.value, textOf window ConstructorUiId.libraryWindowMessage.value)
-                Assert.False(isPresent window ConstructorUiId.libraryExportStatusText.value)
+                Assert.Equal(said, textOf window ConstructorUiId.libraryExportStatusText.value)
+                Assert.False(isPresent window ConstructorUiId.libraryWindowMessage.value)
             finally window.Close())
 
     [<Fact>]
@@ -1539,7 +1490,7 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryWindow = opened.[0]
-            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryWindow, "the opened window must be the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryWindow, "the opened window must be the Library window")
             Assert.True(libraryWindow.IsVisible)
             // The single-instance acceptance: a second click ACTIVATES the live window — the
             // shared registry under LibraryWindowKey creates nothing new.
@@ -1598,7 +1549,7 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]
-            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value editor, "the opened window must be the Sample editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.sampleEditorWindow.value editor, "the opened window must be the Sample editor")
             // Name it and give it one layer (a valid stack — Add layer takes the first listed
             // material now that the inline picker is gone, step 019), then Save — NewUnsaved
             // → addSample.
@@ -1676,7 +1627,7 @@ module LibraryWindowTests =
             clickOn window ConstructorUiId.libraryEditButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
-            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value opened.[0], "the opened window must be the Sample editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.sampleEditorWindow.value opened.[0], "the opened window must be the Sample editor")
             Assert.Contains("Glass thin film", opened.[0].Title)
             opened.[0].Close()
             Dispatcher.UIThread.RunJobs()
@@ -2143,7 +2094,7 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let selectWindow = opened.[0]
-            Assert.True(matchesId ConstructorUiId.libraryWindow.value selectWindow, "Choose… must open the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value selectWindow, "Choose… must open the Library window")
             Assert.True(selectWindow.IsVisible)
             // Select state, constrained to the element's kind: the fixed no-chip banner names
             // Detector, only detector entries are offered, and the Select/Close pair is there.
@@ -2203,7 +2154,7 @@ module LibraryWindowTests =
             Assert.Equal(None, (getModel ()).elementMenu)
             Assert.Equal(1, opened.Count)
             let selectWindow = opened.[0]
-            Assert.True(matchesId ConstructorUiId.libraryWindow.value selectWindow, "the menu's Choose… must open the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value selectWindow, "the menu's Choose… must open the Library window")
             Assert.Contains("Light source", textOf selectWindow ConstructorUiId.librarySelectConstraint.value)
             (match (getModel ()).activeSelect with
              | Some session -> Assert.Equal<ElementId>(ElementId "src", session.target)

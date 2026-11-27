@@ -24,6 +24,7 @@ open System
 open System.Globalization
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Controls.Shapes
 open Avalonia.Layout
 open Avalonia.Media
@@ -424,69 +425,25 @@ let updateMaterialEditor (msg : MaterialEditorMsg) (m : MaterialEditorModel) : M
 // ---------------------------------------------------------------------------
 
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
-let private saveBackground = Color.FromRgb(186uy, 224uy, 186uy)
-let private cancelBackground = Color.FromRgb(236uy, 202uy, 202uy)
-let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+let private idleBorder = NeutralCommand.outline
 let private hintColor = Color.FromRgb(110uy, 110uy, 110uy)
 let private errorColor = Color.FromRgb(165uy, 40uy, 40uy)
 let private warningColor = Color.FromRgb(170uy, 110uy, 20uy)
 
-/// A clickable, styled box on `background` (the chosen look or the idle one). `e.Handled <- true`
-/// drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or the look changes.
-let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(10.0, 4.0))
-        Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, background)))
-    ] :> IView
+/// An option or toggle box, a choice chosen while `mark` says so.
+let private clickBox (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (onClick : unit -> unit) : IView =
+    CommandControls.choiceToggle id label mark ChosenCommand ControlOffered onClick
+        [ ToggleButton.padding (Thickness(10.0, 4.0)); ToggleButton.margin (Thickness(0.0, 0.0, 6.0, 4.0)) ]
 
 /// An option (or toggle) box, chosen while `current` is the option it offers.
 let private optionBox<'Choice when 'Choice : equality> (id : ConstructorUiId) (label : ControlCaption) (current : 'Choice) (offered : 'Choice) (onClick : unit -> unit) : IView =
-    clickBox id label (if current = offered then chosenBackground else idleBackground) onClick
+    clickBox id label (if current = offered then ChosenChoice else UnchosenChoice) onClick
 
-/// A verb button — withheld verbs are present but inert (a disabled Border dispatches no
-/// pointer event). Left-aligned so a button never stretches to its container's full width
-/// (spec 0033 gap G11 — the add-segment verb sat in a vertical stack and spanned it).
+/// A verb button, withheld verbs present but inert. Left-aligned so it never stretches to its container's full width
+/// (spec 0033 gap G11).
 let private verbButton (id : ConstructorUiId) (label : ControlCaption) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.isEnabled availability.isEnabled
-        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-        Border.background (brush idleBackground)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(12.0, 5.0))
-        Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
-        Border.horizontalAlignment HorizontalAlignment.Left
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, availability.isEnabled)))
-    ] :> IView
-
-/// The Save / Cancel actions (one row, distinct positive/negative styling).
-let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(22.0, 6.0))
-        Border.margin (Thickness(0.0, 0.0, 10.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
-    ] :> IView
+    CommandControls.commandButton id label NeutralCommand availability onClick
+        [ Button.margin (Thickness(0.0, 0.0, 8.0, 4.0)); Button.horizontalAlignment HorizontalAlignment.Left ]
 
 type ControlCaption with
 
@@ -564,7 +521,7 @@ let private rhoEntry : MaterialEntryFormat<RhoValue> =
 /// never Name — the ladder boxes live in variable-membership subtrees.
 let private numberBox<'Value> (id : ConstructorUiId) (format : MaterialEntryFormat<'Value>) (value : 'Value) (onCommit : 'Value -> unit) : IView =
     TextBox.create [
-        id.automationAttribute<TextBox> ()
+        yield! id.inputAttributes<TextBox> ()
         TextBox.width 70.0
         TextBox.text (format.caption value).value
         TextBox.onTextChanged (
@@ -583,7 +540,7 @@ let private numberBox<'Value> (id : ConstructorUiId) (format : MaterialEntryForm
 /// form.
 let private coeffNumberBox<'Value> (id : ConstructorUiId) (format : MaterialEntryFormat<'Value>) (value : 'Value) (onCommit : 'Value -> unit) : IView =
     TextBox.create [
-        id.automationAttribute<TextBox> ()
+        yield! id.inputAttributes<TextBox> ()
         TextBox.width 100.0
         TextBox.text (format.caption value).value
         TextBox.onLostFocus (fun e ->
@@ -604,7 +561,7 @@ let private nameRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> u
         StackPanel.children [
             (ControlCaption "Name:").materialEditorLabel
             TextBox.create [
-                TextBox.name ConstructorUiId.materialNameBox.value
+                yield! ConstructorUiId.materialNameBox.inputAttributes<TextBox> ()
                 TextBox.width 340.0
                 TextBox.text m.name.value
                 TextBox.onTextChanged (EntryName >> SetMaterialName >> dispatch)
@@ -619,7 +576,7 @@ let private descriptionRow (m : MaterialEditorModel) (dispatch : MaterialEditorM
         StackPanel.children [
             (ControlCaption "Description:").materialEditorLabel
             TextBox.create [
-                TextBox.name ConstructorUiId.materialDescriptionBox.value
+                yield! ConstructorUiId.materialDescriptionBox.inputAttributes<TextBox> ()
                 // Spec 0040 (007), Part C.2: wrap instead of clip. A MinWidth (not a fixed width that
                 // exceeds the left pane and meets the splitter) lets the box grow multiline within the
                 // pane; AcceptsReturn + Wrap turn a long description into extra lines rather than a
@@ -640,7 +597,7 @@ let private categoryRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg 
         StackPanel.children [
             (ControlCaption "Category:").materialEditorLabel
             WrapPanel.create [
-                ConstructorUiId.materialCategoryPicker.automationAttribute<WrapPanel> ()
+                yield! ConstructorUiId.materialCategoryPicker.groupAttributes<WrapPanel> ()
                 WrapPanel.orientation Orientation.Horizontal
                 // Spec 0035 (009): the create picker offers the LIVE catalogue minus every
                 // HiddenOnCreate category (Vacuum is removed, not greyed). Each option's id is the
@@ -664,7 +621,7 @@ let private anisotropyRow (m : MaterialEditorModel) (dispatch : MaterialEditorMs
         StackPanel.children [
             (ControlCaption "Anisotropy:").materialEditorLabel
             WrapPanel.create [
-                ConstructorUiId.anisotropyToggle.automationAttribute<WrapPanel> ()
+                yield! ConstructorUiId.anisotropyToggle.groupAttributes<WrapPanel> ()
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     [ Isotropic; Uniaxial; Biaxial ]
@@ -795,7 +752,7 @@ let private componentFormulaView (editorId : ConstructorUiId) (boxId : Construct
         |> List.map (fun p ->
             paramBoxWithUnit (boxId p.key.uiKey) p (fun v -> dispatchFormula (formulaOfModel formula (p.update v))))
     WrapPanel.create [
-        editorId.automationAttribute<WrapPanel> ()
+        yield! editorId.groupAttributes<WrapPanel> ()
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children boxes
     ] :> IView
@@ -830,7 +787,7 @@ let private segmentAxisView (dispatch : MaterialEditorMsg -> unit) (segmentIndex
              | None -> [])
             @ [
                 WrapPanel.create [
-                    (ConstructorUiId.dispersionModelPickerOfAxis segmentIndex.uiPosition axis.laterAxisOpt).automationAttribute<WrapPanel> ()
+                    yield! (ConstructorUiId.dispersionModelPickerOfAxis segmentIndex.uiPosition axis.laterAxisOpt).groupAttributes<WrapPanel> ()
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         defaultModelChoices
@@ -928,7 +885,7 @@ let private gyrationPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMs
         StackPanel.children [
             (ControlCaption "Gyration symmetry class:").materialEditorLabel
             WrapPanel.create [
-                ConstructorUiId.gyrationClassPicker.automationAttribute<WrapPanel> ()
+                yield! ConstructorUiId.gyrationClassPicker.groupAttributes<WrapPanel> ()
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     availableGyrationClasses m.editor.anisotropy
@@ -949,7 +906,7 @@ let private gyrationPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMs
             gyrationComponentsSection m dispatch
             (ControlCaption "Handedness (the enantiomorph — one overall sign):").materialEditorLabel
             WrapPanel.create [
-                ConstructorUiId.handednessSwitch.automationAttribute<WrapPanel> ()
+                yield! ConstructorUiId.handednessSwitch.groupAttributes<WrapPanel> ()
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     [ RightHanded; LeftHanded ]
@@ -976,7 +933,7 @@ let private muPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> u
             [
                 (ControlCaption "Magnetization axis (Z = Faraday; X/Y = Voigt):").materialEditorLabel
                 WrapPanel.create [
-                    ConstructorUiId.gyrationAxisPicker.automationAttribute<WrapPanel> ()
+                    yield! ConstructorUiId.gyrationAxisPicker.groupAttributes<WrapPanel> ()
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         [ AlongX; AlongY; AlongZ ]
@@ -1062,7 +1019,7 @@ let private chartTab (tab : MaterialPreviewTab) (m : MaterialEditorModel) (dispa
                 chart.series
                 |> List.map (fun s ->
                     let key = ConstructorUiId.previewSeriesToggle tab.uiKey s.name.uiKey
-                    clickBox key s.name (if Set.contains key m.hiddenSeries then idleBackground else chosenBackground) (fun () ->
+                    clickBox key s.name (if Set.contains key m.hiddenSeries then UnchosenChoice else ChosenChoice) (fun () ->
                         dispatch (ToggleSeriesVisibility key))))
         ] :> IView
     let host = OpticalConstructor.Controls.EmbeddedChart.embeddedChartView tab.chartId chart (applyHidden m.hiddenSeries tab chart style)
@@ -1170,7 +1127,7 @@ type MaterialEditorModel with
             DockPanel.children [
                 Border.create [ Border.dock Dock.Left; Border.margin (Thickness(0.0, 0.0, 6.0, 0.0)); Border.child (ControlCaption "Derived model:").materialEditorLabel ]
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.materialComplexitySummary.value
+                    ConstructorUiId.materialComplexitySummary.automationAttribute<TextBlock> ()
                     TextBlock.text this.complexitySummary.value
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.verticalAlignment VerticalAlignment.Center
@@ -1180,14 +1137,14 @@ type MaterialEditorModel with
 
 let private gainWarningRow (warning : ControlCaption) : IView =
     TextBlock.create [
-        TextBlock.name ConstructorUiId.materialGainWarning.value
+        ConstructorUiId.materialGainWarning.automationAttribute<TextBlock> ()
         TextBlock.foreground (brush warningColor)
         TextBlock.text warning.value
     ] :> IView
 
 let private statusRow (m : MaterialEditorModel) : IView =
     TextBlock.create [
-        TextBlock.name ConstructorUiId.materialEditorStatus.value
+        ConstructorUiId.materialEditorStatus.automationAttribute<TextBlock> ()
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
@@ -1198,7 +1155,7 @@ let private statusRow (m : MaterialEditorModel) : IView =
 /// The Save / Cancel actions of an editable entry, or the lone Close of a view-only one.
 let private saveCancelRow (dispatch : MaterialEditorMsg -> unit) (mode : EditorMode) : IView =
     let cancel (caption : ControlCaption) : IView =
-        actionButton ConstructorUiId.materialEditorCancelButton caption cancelBackground (fun () -> dispatch MaterialCancelClicked)
+        CommandControls.actionCommand ConstructorUiId.materialEditorCancelButton caption NegativeCommand (fun () -> dispatch MaterialCancelClicked)
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
@@ -1206,7 +1163,7 @@ let private saveCancelRow (dispatch : MaterialEditorMsg -> unit) (mode : EditorM
             match mode with
             | EditableMaterial ->
                 [
-                    actionButton ConstructorUiId.materialEditorSaveButton (ControlCaption "Save") saveBackground (fun () -> dispatch MaterialSaveClicked)
+                    CommandControls.actionCommand ConstructorUiId.materialEditorSaveButton (ControlCaption "Save") PositiveCommand (fun () -> dispatch MaterialSaveClicked)
                     cancel (ControlCaption "Cancel")
                 ]
             | ViewOnlyMaterial _ -> [ cancel (ControlCaption "Close") ])
@@ -1217,7 +1174,7 @@ let private saveCancelRow (dispatch : MaterialEditorMsg -> unit) (mode : EditorM
 /// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
 let private exitConfirmRow (dispatch : MaterialEditorMsg -> unit) : IView =
     StackPanel.create [
-        ConstructorUiId.materialEditorExitConfirm.automationAttribute<StackPanel> ()
+        yield! ConstructorUiId.materialEditorExitConfirm.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
@@ -1227,8 +1184,8 @@ let private exitConfirmRow (dispatch : MaterialEditorMsg -> unit) : IView =
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (Thickness(0.0, 0.0, 12.0, 0.0))
             ] :> IView
-            actionButton ConstructorUiId.materialEditorDiscardButton (ControlCaption "Discard changes") cancelBackground (fun () -> dispatch MaterialDiscardConfirmed)
-            actionButton ConstructorUiId.materialEditorKeepEditingButton (ControlCaption "Keep editing") saveBackground (fun () -> dispatch MaterialKeepEditing)
+            CommandControls.actionCommand ConstructorUiId.materialEditorDiscardButton (ControlCaption "Discard changes") NegativeCommand (fun () -> dispatch MaterialDiscardConfirmed)
+            CommandControls.actionCommand ConstructorUiId.materialEditorKeepEditingButton (ControlCaption "Keep editing") PositiveCommand (fun () -> dispatch MaterialKeepEditing)
         ]
     ] :> IView
 
@@ -1270,7 +1227,7 @@ let materialEditorView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -
                                 (ControlCaption $"{m.name.value} — {(m.category.categoryName categories).value}").materialEditorLabel
                                 TextBlock.create [ TextBlock.text m.description.value; TextBlock.foreground (brush hintColor) ] :> IView
                                 TextBlock.create [
-                                    TextBlock.name ConstructorUiId.materialViewOnlyNote.value
+                                    ConstructorUiId.materialViewOnlyNote.automationAttribute<TextBlock> ()
                                     TextBlock.text reason.value
                                     TextBlock.foreground (brush errorColor)
                                 ] :> IView

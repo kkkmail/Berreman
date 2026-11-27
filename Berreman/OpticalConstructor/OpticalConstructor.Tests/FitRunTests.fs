@@ -218,7 +218,6 @@ module FitRunTests =
                 ExperimentScan.oneAxis
                     {
                         elementId = analyzer.id
-                        label = ElementLabel "LP1"
                         variable = VaryR1
                         range = VariableRange.forVariable VaryR1
                     }

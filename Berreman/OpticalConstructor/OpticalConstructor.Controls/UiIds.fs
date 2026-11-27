@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Controls
 
 open Avalonia.Automation
+open Avalonia.Automation.Peers
 open Avalonia.Controls
 open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.Types
@@ -32,6 +33,43 @@ type ConstructorUiId =
     /// The id as the control's `AutomationProperties.AutomationId`.
     member this.automationAttribute<'Control when 'Control :> Control> () : IAttr<'Control> =
         AttrBuilder<'Control>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, this.value, ValueNone)
+
+    /// Whether `control` carries this id as its AutomationId: how the views find their own drawn surfaces.
+    member this.isCarriedBy (control : Control) : bool = AutomationProperties.GetAutomationId control = this.value
+
+    /// The id read aloud, its words split at the capitals ("NamingTemplateField" reads "Naming template field"): the
+    /// automation Name of an input whose caption is not at hand (spec 0051 `.manual/003` 1.2 item 2).
+    member this.spokenName : string =
+        let words = System.Text.RegularExpressions.Regex.Replace(this.value, "(?<=[a-z0-9])(?=[A-Z])|_", " ").Trim()
+        match words with
+        | "" -> this.value
+        | text -> string (System.Char.ToUpperInvariant text.[0]) + text.Substring(1).ToLowerInvariant()
+
+    /// The id of an input (a text box, a combo box, a slider) as its AutomationId and its spoken name as its Name.
+    member this.inputAttributes<'Control when 'Control :> Control> () : IAttr<'Control> list =
+        [
+            this.automationAttribute<'Control> ()
+            AttrBuilder<'Control>.CreateProperty<string>(AutomationProperties.NameProperty, this.spokenName, ValueNone)
+        ]
+
+    /// The id of a container, exposed to UI Automation as a group of that type, which a bare panel or border is not
+    /// (spec 0051 `.manual/003` 1.2).
+    member private this.exposedAs<'Control when 'Control :> Control> (controlType : AutomationControlType) : IAttr<'Control> list =
+        [
+            this.automationAttribute<'Control> ()
+            AttrBuilder<'Control>.CreateProperty<AccessibilityView>(AutomationProperties.AccessibilityViewProperty, AccessibilityView.Control, ValueNone)
+            AttrBuilder<'Control>.CreateProperty<System.Nullable<AutomationControlType>>(
+                AutomationProperties.ControlTypeOverrideProperty, System.Nullable controlType, ValueNone)
+        ]
+
+    /// The id of a panel or border that groups controls, so an automation can scope its search to it.
+    member this.groupAttributes<'Control when 'Control :> Control> () : IAttr<'Control> list = this.exposedAs<'Control> AutomationControlType.Group
+
+    /// The id of a drawn figure a test reads (a chart's polyline), exposed as an image.
+    member this.figureAttributes<'Control when 'Control :> Control> () : IAttr<'Control> list = this.exposedAs<'Control> AutomationControlType.Image
+
+    /// The id of a drawing surface the user clicks or drags on (a table canvas), exposed as a pane.
+    member this.surfaceAttributes<'Control when 'Control :> Control> () : IAttr<'Control> list = this.exposedAs<'Control> AutomationControlType.Pane
 
     // --- The reusable rotation-controls bar (`RotationControls`). ---
     static member rotationR1MinusButton : ConstructorUiId = ConstructorUiId "RotationR1MinusButton"
@@ -138,6 +176,8 @@ type ConstructorUiId =
     static member experimentRangePoints : ConstructorUiId = ConstructorUiId "ExperimentRangePoints"
     /// The Add / Update and New actions.
     static member experimentAddButton : ConstructorUiId = ConstructorUiId "ExperimentAddButton"
+    /// Why Add experiment, Add variable and Add block are withheld (spec 0051 `.manual/003` 3.6).
+    static member experimentAddReason : ConstructorUiId = ConstructorUiId "ExperimentAddReason"
     static member experimentNewButton : ConstructorUiId = ConstructorUiId "ExperimentNewButton"
     /// The draft's scan lines: its closed blocks and its current block's held axes (spec 0050 S9.1).
     static member experimentScanSummary : ConstructorUiId = ConstructorUiId "ExperimentScanSummary"
@@ -154,6 +194,10 @@ type ConstructorUiId =
     /// A collected experiment's Edit, Remove and View (open its chart window) actions.
     static member experimentEditButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentEdit_{experiment.value}"
     static member experimentRemoveButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentRemove_{experiment.value}"
+    /// The inline confirmation a Remove arms, its Yes and its No (spec 0051 `.manual/003` 2.3).
+    static member experimentRemovePrompt : ConstructorUiId = ConstructorUiId "ExperimentRemovePrompt"
+    static member experimentRemoveConfirmButton : ConstructorUiId = ConstructorUiId "ExperimentRemoveConfirmButton"
+    static member experimentRemoveCancelButton : ConstructorUiId = ConstructorUiId "ExperimentRemoveCancelButton"
     static member experimentViewButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentView_{experiment.value}"
     /// A collected experiment's data badge text (spec 0050 S9.1).
     static member experimentRowBadge (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentBadge_{experiment.value}"
@@ -287,6 +331,8 @@ type ConstructorUiId =
     static member chartWindowMinorGrid : ConstructorUiId = ConstructorUiId "ChartWindowMinorGrid"
     static member chartWindowExportPng : ConstructorUiId = ConstructorUiId "ChartWindowExportPng"
     static member chartWindowExportCsv : ConstructorUiId = ConstructorUiId "ChartWindowExportCsv"
+    /// What the last export wrote, or why it did not (spec 0051 `.manual/003` 5.8).
+    static member chartWindowExportStatus : ConstructorUiId = ConstructorUiId "ChartWindowExportStatus"
     static member chartWindowDescription : ConstructorUiId = ConstructorUiId "ChartWindowDescription"
 
     // --- The combined table + element rotation scene (`TableAndElementRotationView`). ---
@@ -399,6 +445,8 @@ type ConstructorUiId =
     static member sampleCellLayerThickness (item : ConstructorUiPosition) (cell : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerThickness_{item.value}_{cell.value}"
     /// A row's per-layer orientation editor (present ONLY for anisotropic materials).
     static member sampleLayerOrientation (item : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerOrientation_{item.value}"
+    /// One angle box of a layer's inline orientation editor: `<editor>_<angle>` (spec 0051 `.manual/003` 1.2).
+    static member sampleLayerOrientationAngle (editor : ConstructorUiId) (angle : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"{editor.value}_{angle.value}"
     static member sampleCellLayerOrientation (item : ConstructorUiPosition) (cell : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"SampleLayerOrientation_{item.value}_{cell.value}"
     /// A SubstrateKind facet option, by its stable code.
     static member sampleSubstrateKind (substrate : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"SampleSubstrateKind_{substrate.value}"
@@ -623,6 +671,10 @@ type ConstructorUiId =
     static member importWizardProfileChoice (profile : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ImportWizardProfile_{profile.value}"
     /// The New column mapping box.
     static member importWizardNewMappingButton : ConstructorUiId = ConstructorUiId "ImportWizardNewMappingButton"
+    /// The wizard's preview, the named inner scroller its wide file scrolls sideways in (spec 0051 `.manual/003` 4.3).
+    static member importWizardPreviewScroller : ConstructorUiId = ConstructorUiId "ImportWizardPreviewScroller"
+    /// The wizard's "Every row" choice beside one choice per key of the file (spec 0051 `.manual/003` 2.4).
+    static member importWizardAllRowsChoice : ConstructorUiId = ConstructorUiId "ImportWizardAllRows"
     /// The new mapping's profile name field.
     static member importWizardProfileNameField : ConstructorUiId = ConstructorUiId "ImportWizardProfileNameField"
     /// The preview of the file's columns and first rows.
@@ -826,6 +878,8 @@ type ConstructorUiId =
     static member itemNotesField : ConstructorUiId = ConstructorUiId "ItemNotesField"
     /// The selected item's photo as its kit path, or that it has none (spec 0050 S7.2).
     static member itemPhotoText : ConstructorUiId = ConstructorUiId "ItemPhotoText"
+    /// The item's photo itself, as a thumbnail (spec 0051 `.manual/003` 5.5).
+    static member itemPhotoImage : ConstructorUiId = ConstructorUiId "ItemPhotoImage"
     /// Choose photo…: picks the selected item's photo file (spec 0050 S7.2).
     static member itemChoosePhotoButton : ConstructorUiId = ConstructorUiId "ItemChoosePhotoButton"
     /// Remove photo: drops the selected item's photo, keeping its file (spec 0050 S7.2).
@@ -906,6 +960,8 @@ type ConstructorUiId =
     static member newStudyNameField : ConstructorUiId = ConstructorUiId "NewStudyNameField"
     /// Creates the named study over the chosen experiments (spec 0050 S11.5).
     static member createStudyButton : ConstructorUiId = ConstructorUiId "CreateStudyButton"
+    /// Why Create study is withheld (spec 0051 `.manual/003` 3.6).
+    static member createStudyReason : ConstructorUiId = ConstructorUiId "CreateStudyReason"
     /// The selected study's experiments (spec 0050 S11.5).
     static member studyExperimentsText : ConstructorUiId = ConstructorUiId "StudyExperimentsText"
     /// The study's parameter owners, states, scopes and links (spec 0050 S11.5).
@@ -1026,6 +1082,8 @@ type ConstructorUiId =
     static member setupGridCombinationList : ConstructorUiId = ConstructorUiId "SetupGridCombinationList"
     /// Generate: every ticked combination as a setup of the kit (spec 0050 S8.4; 001 §O).
     static member setupGridGenerateButton : ConstructorUiId = ConstructorUiId "SetupGridGenerateButton"
+    /// Why Generate is withheld (spec 0051 `.manual/003` 3.6).
+    static member setupGridGenerateReason : ConstructorUiId = ConstructorUiId "SetupGridGenerateReason"
     /// Close: the panel closes, forgetting its draft (spec 0050 S8.4).
     static member setupGridCloseButton : ConstructorUiId = ConstructorUiId "SetupGridCloseButton"
     /// A combination's line in the panel's list: `SetupGridCombination_<n>`, 1-based (spec 0050 S8.4).
@@ -1045,3 +1103,15 @@ type ConstructorUiId =
     static member openRendererTestButton : ConstructorUiId = ConstructorUiId "OpenRendererTestButton"
     static member openSnapToBeamTestButton : ConstructorUiId = ConstructorUiId "OpenSnapToBeamTestButton"
     static member openSnapToReflectedTestButton : ConstructorUiId = ConstructorUiId "OpenSnapToReflectedTestButton"
+    /// The Select bay's list of the table's elements, and one element's item in it (spec 0051 `.manual/003` 1.2, 3.6).
+    static member tableElementList : ConstructorUiId = ConstructorUiId "TableElementList"
+    static member tableElementListItem (element : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"TableElementListItem_{element.value}"
+    /// The note beside Record experiment, its name's `{note}` (spec 0051 `.manual/003` 3.9).
+    static member recordNoteField : ConstructorUiId = ConstructorUiId "RecordNoteField"
+    /// The import dialog's count of the rows that ask nothing (spec 0051 `.manual/003` 5.3).
+    static member importUnaskedSummary : ConstructorUiId = ConstructorUiId "ImportUnaskedSummary"
+    /// The Launcher's line naming the imports the start applied without a question (spec 0051 `.manual/003` 5.3).
+    static member launcherSettledImportsText : ConstructorUiId = ConstructorUiId "LauncherSettledImportsText"
+    /// The Library window's line saying entries wait for an import decision (spec 0051 `.manual/003` 5.3).
+    static member libraryPendingImportsText : ConstructorUiId = ConstructorUiId "LibraryPendingImportsText"
+

@@ -43,6 +43,7 @@ open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.App
+open OpticalConstructor.Ui.Tests.UiDriver
 
 module LauncherTests =
 
@@ -55,21 +56,16 @@ module LauncherTests =
 
     /// Every launcher button but the footer's Data locations link, which is not a surface (spec 0050 S5.3).
     let private surfaceButtons (w : Window) : Button list =
-        buttons w |> List.filter (fun b -> b.Name <> ConstructorUiId.launcherDataLocationsLink.value)
+        buttons w |> List.filter (fun b -> not (UiDriver.hasId ConstructorUiId.launcherDataLocationsLink.value b))
 
     let private tryFindButton (name : string) (w : Window) : Button option =
-        buttons w |> List.tryFind (fun b -> b.Name = name)
+        buttons w |> List.tryFind (fun b -> UiDriver.hasId name b)
 
     let private tryFindLibraryError (window : Window) : TextBlock option =
         window.GetVisualDescendants()
         |> Seq.tryPick (function
-            | :? TextBlock as text when text.Name = ConstructorUiId.launcherLibraryErrorText.value -> Some text
+            | :? TextBlock as text when UiDriver.hasId ConstructorUiId.launcherLibraryErrorText.value text -> Some text
             | _ -> None)
-
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the windows
-    /// the launcher opens set both — the `WireUiCompositionTests` precedent).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || AutomationProperties.GetAutomationId c = id
 
     /// Confirms the fixture catalogue before handing the launcher its remaining work (spec 0050 S3.2).
     let private freshContext () : AppContext =
@@ -127,7 +123,7 @@ module LauncherTests =
     let private clickBorder (window : Window) (id : string) : unit =
         let found =
             window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
+            |> Seq.tryPick (function :? Control as b when UiDriver.hasId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
@@ -160,7 +156,7 @@ module LauncherTests =
     let private withWindowClosingLauncher (answer : KitFolder ref) (check : LauncherWindow -> unit) : unit =
         let picker : KitFolderPicker =
             {
-                pickKitFolder = fun () -> async { return Some answer.Value }
+                pickKitFolder = fun _ -> async { return Some answer.Value }
             }
         withLauncherPicker picker (fun launcher ->
             let opened = ResizeArray<Window>()
@@ -313,6 +309,31 @@ module LauncherTests =
         Assert.True(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
         fixture.assertLibraryUnchanged ()
         dialog
+
+    /// Spec 0051 `.manual/003` 5.3 (D6): a kit whose every snapshot row is a reuse opens its constructor without the
+    /// import dialog, over the library as it was.
+    let private openWithoutQuestion (materialId : MaterialId) (snapshot : LibraryEntryEnvelope) : unit =
+        withSnapshotLauncher snapshot (fun fixture ->
+            let heldBefore = fixture.context.catalogueImports.proxy.tryHeldEntry snapshot.content.id
+            let constructor = Assert.IsType<MainConstructorWindow>(Assert.Single(pressAndObserve fixture.start ConstructorUiId.openKitButton))
+            Assert.True(constructor.IsVisible)
+            Assert.False(fixture.start.IsVisible, "the start screen must close once its kit opens")
+            Assert.True(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+            Assert.Equal<Result<HeldEntry option, CatalogueImportError>>(heldBefore, fixture.context.catalogueImports.proxy.tryHeldEntry snapshot.content.id)
+            fixture.assertLibraryUnchanged ()
+            let expected = snapshot.content.toMaterialEntry |> Result.defaultWith (fun error -> failwith error.describe)
+            let version : MaterialVersionId =
+                {
+                    materialId = materialId
+                    version = snapshot.content.version
+                }
+            let materials = constructor.sessionLibraryStores.materials
+            Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), materials.tryGetMaterial materialId)
+            Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some expected), materials.resolveVersion version)
+            constructor.Close()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(File.Exists(Path.Combine(fixture.folder.value.value, ".oc", "lock")))
+            fixture.assertLibraryUnchanged ())
 
     let private confirmSnapshotFromLauncher (materialId : MaterialId) (snapshot : LibraryEntryEnvelope) : unit =
         withSnapshotLauncher snapshot (fun fixture ->
@@ -474,7 +495,7 @@ module LauncherTests =
         withLauncher (fun launcher ->
             let footer =
                 launcher.GetVisualDescendants()
-                |> Seq.tryPick (function :? TextBlock as t when matchesId ConstructorUiId.launcherVersionText.value t -> Some t | _ -> None)
+                |> Seq.tryPick (function :? TextBlock as t when UiDriver.hasId ConstructorUiId.launcherVersionText.value t -> Some t | _ -> None)
             match footer with
             | Some text ->
                 Assert.Equal($"Version {Berreman.BuildInfo.version.value}", text.Text)
@@ -500,7 +521,7 @@ module LauncherTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: a start-up catalogue whose rows await a choice opens the import dialog from the launcher; Cancel keeps it waiting and Apply settles it`` () : unit =
+    let ``acceptance: a start-up catalogue whose rows await a choice opens the import dialog from the launcher; Cancel keeps it waiting and Apply settles it; one that asks nothing is applied on start`` () : unit =
         HeadlessSession.run (fun () ->
             let fileLocations = TestAppScope.fileLocations owner
             let shipped = FolderName (Path.Combine(Path.GetDirectoryName fileLocations.backupsFolder.value, "ShippedCatalogue"))
@@ -552,10 +573,13 @@ module LauncherTests =
                     Assert.Equal(ConstructorUiId.launcherReviewImportsButton.value, review.Name)
                     Assert.Equal("Review imports…", string review.Content)
                     Assert.Equal("Review imports…", AutomationProperties.GetName review)
+                // Spec 0051 `.manual/003` 5.3 (D6): a row of one choice is counted, not listed.
+                let asked = pending.decisions |> List.filter (fun decision -> not (List.isEmpty decision.alternatives))
                 let assertRows (dialog : ImportDialogWindow) : unit =
                     let rows = Assert.IsType<StackPanel>(launcherControl dialog ConstructorUiId.importDecisionList)
-                    Assert.Equal(pending.decisions.Length, rows.Children.Count)
-                    for decision in pending.decisions do
+                    let unasked = pending.decisions.Length - asked.Length
+                    Assert.Equal(asked.Length + (if unasked = 0 then 0 else 1), rows.Children.Count)
+                    for decision in asked do
                         let row = launcherControl dialog (ConstructorUiId.importDecisionRow decision.entryId.uiKey)
                         let texts =
                             row.GetVisualDescendants()
@@ -606,26 +630,56 @@ module LauncherTests =
                     launcher.Close()
                     Dispatcher.UIThread.RunJobs()
 
+            // Spec 0051 `.manual/003` 5.3 (D6): the launcher tells what the start applied and opens no dialog for it.
+            let assertSettledLauncher (context : AppContext) (count : int) : unit =
+                let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, Ok context,
+                    fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
+                let opened = ResizeArray<Window>()
+                use _subscription =
+                    Window.WindowOpenedEvent.Raised
+                    |> Observable.subscribe (fun (struct (sender, _)) ->
+                        match sender with
+                        | :? Window as window when not (obj.ReferenceEquals(window, launcher)) -> opened.Add window
+                        | _ -> ())
+                try
+                    launcher.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    Assert.Empty opened
+                    let notice = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherSettledImportsText)
+                    Assert.Equal($"Imported {count} catalogue entries on start; none needed a decision.", notice.Text)
+                    Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherPendingImportsText |> Option.isNone)
+                finally
+                    for window in opened do window.Close()
+                    launcher.Close()
+                    Dispatcher.UIThread.RunJobs()
+
+            // The shipped catalogue's first import adds every entry without a question.
             writeCatalogue catalogue
             let fresh = openContext ()
-            Assert.Empty(heldEntries fresh)
-            Assert.Empty(loggedImports fresh)
-            Assert.Empty(materials fresh)
-            let freshPending = Assert.Single fresh.pendingImports
-            Assert.Equal(catalogue.envelopes.Length, freshPending.decisions.Length)
-            Assert.All(freshPending.decisions, fun decision -> Assert.Equal(AddIncomingEntry, decision.defaultAction))
-            exercisePendingLauncher fresh
+            Assert.Empty fresh.pendingImports
+            let freshSettled = Assert.Single fresh.settledImports
+            Assert.Equal(catalogue.envelopes.Length, freshSettled.decisions.Length)
+            Assert.All(freshSettled.decisions, fun decision -> Assert.Equal(AddIncomingEntry, decision.defaultAction))
+            Assert.Equal(catalogue.envelopes.Length, (heldEntries fresh).Length)
+            let freshLogged = Assert.Single(loggedImports fresh)
+            Assert.Equal(freshSettled.entry.manifestHash, freshLogged.manifestHash)
+            assertSettledLauncher fresh catalogue.envelopes.Length
+            let freshReopened = openContext ()
+            Assert.Empty freshReopened.pendingImports
+            Assert.Empty freshReopened.settledImports
 
-            // Spec 0050 S32-LAUNCHER-PENDING: a changed manifest still asks when every row reuses.
+            // A changed manifest whose every row reuses has nothing to ask either.
             let reuseCatalogue =
                 CatalogueData.tryCreate catalogue.manifest.id catalogue.manifest.name catalogue.manifest.version.next catalogue.envelopes
                 |> Result.defaultWith (fun error -> failwith error.describe)
             writeCatalogue reuseCatalogue
+            let heldBeforeReuse = heldEntries fresh
             let reusing = openContext ()
-            let reusePending = Assert.Single reusing.pendingImports
-            Assert.Equal(catalogue.envelopes.Length, reusePending.decisions.Length)
-            Assert.All(reusePending.decisions, fun decision -> Assert.Equal(ReuseHeldEntry, decision.defaultAction))
-            exercisePendingLauncher reusing
+            Assert.Empty reusing.pendingImports
+            let reuseSettled = Assert.Single reusing.settledImports
+            Assert.All(reuseSettled.decisions, fun decision -> Assert.Equal(ReuseHeldEntry, decision.defaultAction))
+            Assert.Equal<HeldEntry list>(heldBeforeReuse, heldEntries reusing)
+            assertSettledLauncher reusing catalogue.envelopes.Length
 
             let userMaterial =
                 {
@@ -759,7 +813,8 @@ module LauncherTests =
                 live.Open()
                 use entries = live.CreateCommand()
                 entries.CommandText <- "SELECT COUNT(*) FROM EntryVersion;"
-                Assert.Equal(0L, unbox<int64> (entries.ExecuteScalar()))
+                // Spec 0051 `.manual/003` 5.3 (D6): the new library takes the shipped catalogue on its first start.
+                Assert.Equal(int64 (BuiltinCatalogue.catalogueData ()).envelopes.Length, unbox<int64> (entries.ExecuteScalar()))
             finally launcher.Close())
 
     [<Fact>]
@@ -850,7 +905,7 @@ module LauncherTests =
     let ``acceptance: a kit whose snapshot needs a decision opens the import dialog first, and Apply opens the constructor over its library`` () : unit =
         let materialId, snapshot = launcherUserSnapshot ()
         confirmSnapshotFromLauncher materialId snapshot
-        confirmSnapshotFromLauncher MaterialIds.silicon (launcherSiliconSnapshot ())
+        openWithoutQuestion MaterialIds.silicon (launcherSiliconSnapshot ())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -874,8 +929,8 @@ module LauncherTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``a kit whose snapshots the library holds byte for byte confirms every reuse row before opening`` () : unit =
-        confirmSnapshotFromLauncher MaterialIds.silicon (launcherSiliconSnapshot ())
+    let ``a kit whose snapshots the library holds byte for byte opens without a question`` () : unit =
+        openWithoutQuestion MaterialIds.silicon (launcherSiliconSnapshot ())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -888,7 +943,7 @@ module LauncherTests =
         let calls = ResizeArray<unit>()
         let picker : KitFolderPicker =
             {
-                pickKitFolder = fun () ->
+                pickKitFolder = fun _ ->
                     async {
                         calls.Add ()
                         return None
@@ -936,7 +991,7 @@ module LauncherTests =
             let picks = ResizeArray<unit>()
             let picker : KitFolderPicker =
                 {
-                    pickKitFolder = fun () ->
+                    pickKitFolder = fun _ ->
                         async {
                             picks.Add ()
                             return Some folder
@@ -953,13 +1008,13 @@ module LauncherTests =
                     Assert.Equal(ConstructorUiId.kitStartOfferText.value, AutomationProperties.GetAutomationId offerText)
                     Assert.Equal(TextWrapping.Wrap, offerText.TextWrapping)
                     Assert.True(offerText.IsEffectivelyVisible)
-                    let readOnly = Assert.IsType<Border>(launcherControl start ConstructorUiId.openKitReadOnlyButton)
-                    let cancel = Assert.IsType<Border>(launcherControl start ConstructorUiId.cancelKitStartOfferButton)
+                    let readOnly = (launcherControl start ConstructorUiId.openKitReadOnlyButton : Control)
+                    let cancel = (launcherControl start ConstructorUiId.cancelKitStartOfferButton : Control)
                     for offerBox, id, label in
                         [ readOnly, ConstructorUiId.openKitReadOnlyButton, "Open read-only"
                           cancel, ConstructorUiId.cancelKitStartOfferButton, "Cancel" ] do
                         Assert.Equal(id.value, AutomationProperties.GetAutomationId offerBox)
-                        Assert.Equal(label, Assert.IsType<TextBlock>(offerBox.Child).Text)
+                        Assert.Equal(label, UiDriver.textOfControl offerBox)
                         Assert.True(offerBox.IsEffectivelyVisible)
                         Assert.True(offerBox.IsEnabled)
                     let row = Assert.IsType<StackPanel>(readOnly.Parent)
@@ -971,8 +1026,8 @@ module LauncherTests =
                     Assert.True(readOnly.Margin.Right > 0.0, "a visible gap must part Open read-only from Cancel")
                     Assert.Equal(readOnly.Bounds.Top, cancel.Bounds.Top)
                     Assert.Equal(readOnly.Bounds.Right + readOnly.Margin.Right, cancel.Bounds.Left)
-                    Assert.Equal(MaterialsWindowView.positiveBackground, Assert.IsType<SolidColorBrush>(readOnly.Background).Color)
-                    Assert.Equal(MaterialsWindowView.negativeBackground, Assert.IsType<SolidColorBrush>(cancel.Background).Color)
+                    Assert.Equal(PositiveCommand.fill, UiDriver.fillOfControl readOnly)
+                    Assert.Equal(NegativeCommand.fill, UiDriver.fillOfControl cancel)
                     assertFilesUnchanged ()
 
                     let window = Assert.IsType<MainConstructorWindow>(Assert.Single(pressAndObserve start ConstructorUiId.openKitReadOnlyButton))
@@ -985,8 +1040,8 @@ module LauncherTests =
                         Assert.DoesNotContain<Visual>(row, launcher.GetVisualDescendants())
                         assertFilesUnchanged ()
 
-                        let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
-                        clickBorder window experimentsTab.value
+                        // Spec 0051 `.manual/003` 3.2: the setups are the Setups step's.
+                        clickBorder window ConstructorUiId.flowSetupsStep.value
                         let setupName = Assert.IsType<TextBox>(launcherControl window ConstructorUiId.setupNameField)
                         setupName.Text <- "Read-only setup"
                         let create = launcherControl window ConstructorUiId.createSetupButton
@@ -994,9 +1049,12 @@ module LauncherTests =
                         Dispatcher.UIThread.RunJobs()
                         Assert.True(create.IsEffectivelyVisible)
                         Assert.False(create.IsEnabled, "a read-only kit must withhold Create setup")
-                        Assert.Equal<Control option>(None, tryFindLauncherControl window ConstructorUiId.kitStatus)
+                        // Spec 0051 `.manual/003` 3.1: a kit with no setup opens saying where one is made; a press on the
+                        // withheld Create setup says nothing more.
+                        let hint = "This kit has no setup yet: build the table, then press Create setup in the Setups step."
+                        Assert.Equal(hint, UiDriver.textOfControl (launcherControl window ConstructorUiId.kitStatus))
                         clickBorder window ConstructorUiId.createSetupButton.value
-                        Assert.Equal<Control option>(None, tryFindLauncherControl window ConstructorUiId.kitStatus)
+                        Assert.Equal(hint, UiDriver.textOfControl (launcherControl window ConstructorUiId.kitStatus))
                         assertFilesUnchanged ()
                     finally window.Close()
                     assertFilesUnchanged ()
@@ -1151,7 +1209,7 @@ module LauncherTests =
         withLauncher (fun launcher ->
             match clickAndObserve launcher ConstructorUiId.openMaterialsButton.value with
             | [ opened ] ->
-                Assert.True(matchesId ConstructorUiId.materialsWindow.value opened, "'OpenMaterialsButton' must open the Materials window")
+                Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value opened, "'OpenMaterialsButton' must open the Materials window")
                 Assert.True(opened.IsVisible, "the Materials window must be shown")
                 // Close it so the shared WindowRegistry does not leak the MaterialsWindowKey registration.
                 opened.Close()
@@ -1164,7 +1222,7 @@ module LauncherTests =
         withLauncher (fun launcher ->
             match clickAndObserve launcher ConstructorUiId.openLibraryButton.value with
             | [ opened ] ->
-                Assert.True(matchesId ConstructorUiId.libraryWindow.value opened, "'OpenLibraryButton' must open the Library window")
+                Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value opened, "'OpenLibraryButton' must open the Library window")
                 Assert.True(opened.IsVisible, "the Library window must be shown")
                 // Close it so the shared WindowRegistry does not leak the LibraryWindowKey registration.
                 opened.Close()
@@ -1244,7 +1302,7 @@ module LauncherTests =
                     Window.WindowOpenedEvent.Raised
                     |> Observable.subscribe (fun (struct (sender, _args)) ->
                         match sender with
-                        | :? Window as w when matchesId ConstructorUiId.materialsWindow.value w -> materialsOpens.Add w
+                        | :? Window as w when UiDriver.hasId ConstructorUiId.materialsWindow.value w -> materialsOpens.Add w
                         | _ -> ())
                 // 1) launcher Materials button → CREATES the single instance.
                 (match tryFindButton ConstructorUiId.openMaterialsButton.value launcher with

@@ -275,7 +275,7 @@ let private controlBar (model : TableRotationModel) (dispatch : TableRotationMsg
         StackPanel.children [
             RotationControls.view model.rotationState (rotationHandlers dispatch)
             TextBlock.create [
-                TextBlock.name ConstructorUiId.tableRotationReadout.value
+                ConstructorUiId.tableRotationReadout.automationAttribute<TextBlock> ()
                 TextBlock.text readout
             ]
             TextBlock.create [
@@ -291,7 +291,7 @@ type TableRotationModel with
     /// from the shared `TableScene`, so this test draws the SAME table as every other screen.
     member internal model.tableCanvas : IView =
         Canvas.create [
-            Canvas.name ConstructorUiId.tableRotationCanvas.value
+            yield! ConstructorUiId.tableRotationCanvas.surfaceAttributes<Canvas> ()
             Canvas.width TableScene.canvasWidth.value
             Canvas.height TableScene.canvasHeight.value
             Canvas.horizontalAlignment HorizontalAlignment.Left

@@ -153,7 +153,6 @@ module StudyWindowModelTests =
         let axis : ScanAxis =
             {
                 elementId = cpl2SlotId
-                label = ElementLabel "CPL2"
                 variable = VaryR1
                 range = VariableRange.forVariable VaryR1
             }
@@ -302,15 +301,12 @@ module StudyWindowModelTests =
                 leader = calibrationEntry.parameter
             }
         let linked = model |> updateTableAndElementRotation (StudyCommand (LinkParameters (qzLr, link)))
-        Assert.Equal<ControlCaption option>(None, linked.kitStatus)
+        Assert.Equal<ControlCaption option>(None, linked.kitRefusalOpt)
         linked
 
     let private assertStatusOnly (caption : ControlCaption) (before : TableAndElementRotationModel) (after : TableAndElementRotationModel) : unit =
-        let expected =
-            {
-                before with kitStatus = Some caption
-            }
-        Assert.Equal<TableAndElementRotationModel>(expected, after)
+        Assert.Equal<ControlCaption option>(Some caption, after.kitStatusCaption)
+        Assert.Equal<TableAndElementRotationModel>({ before with kitStatus = after.kitStatus }, after)
 
     let private withMaterialFit
         (access : KitAccess)
@@ -338,7 +334,7 @@ module StudyWindowModelTests =
                 }
             Assert.Equal<Result<unit, MaterialError>>(Ok (), shared.materials.saveMaterial entry)
             let opened = shared |> updateTableAndElementRotation (StudyCommand (OpenMaterial (qzLr, version)))
-            Assert.Equal<ControlCaption option>(None, opened.kitStatus)
+            Assert.Equal<ControlCaption option>(None, opened.kitRefusalOpt)
             let study = opened.kitStudies |> List.find (fun held -> held.name = qzLr)
             let n1 = ParameterName "n1"
             let stamp = ClockTime (calibrationRun.stamp.value.AddHours 1.0)
@@ -411,7 +407,7 @@ module StudyWindowModelTests =
                     item.parameters |> List.filter (fun parameter -> parameter.name <> retardance))
             Assert.Equal<Item>(phone, published.kitItems |> List.find (fun item -> item.id = phone.id))
             Assert.Equal<Item list>(published.kitItems, published.kit.proxy.readItems () |> kitValue)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Published the calibration of CPL1, CPL2 from QZ-LR@20261101T120000Z."), published.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Published the calibration of CPL1, CPL2 from QZ-LR@20261101T120000Z."), published.kitStatusCaption)
             let expected =
                 {
                     linked with kitItems = published.kitItems; kitStatus = published.kitStatus
@@ -440,7 +436,7 @@ module StudyWindowModelTests =
                     linked with kitFitRuns = [ noSigma ]
                 }
             let refused = undetermined |> updateTableAndElementRotation (PublishCalibration noSigma.name)
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some caption ->
                 Assert.StartsWith("Nothing was published — the fit leaves a sigma undetermined", caption.value)
                 assertStatusOnly caption undetermined refused
@@ -471,17 +467,17 @@ module StudyWindowModelTests =
             Assert.Equal<Item>(cpl2, partial.kitItems |> List.find (fun item -> item.id = cpl2.id))
             Assert.Equal<Item list>(partial.kitItems, linked.kit.proxy.readItems () |> kitValue)
             let error = KitLibraryKitErr failure
-            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Not saved to the kit — {error.describe}"), partial.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Not saved to the kit — {error.describe}"), partial.kitStatusCaption)
             Assert.Equal<FileByteContent>(Map.find (FileName "CPL2.item-json") beforeFailure, Map.find (FileName "CPL2.item-json") (folderBytes folder))
             let retryable =
                 {
                     partial with kit = linked.kit
                 }
             let published = retryable |> updateTableAndElementRotation (PublishCalibration calibrationRun.name)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Published the calibration of CPL2 from QZ-LR@20261101T120000Z."), published.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Published the calibration of CPL2 from QZ-LR@20261101T120000Z."), published.kitStatusCaption)
             let before = folderBytes folder
             let repeated = published |> updateTableAndElementRotation (PublishCalibration calibrationRun.name)
-            match repeated.kitStatus with
+            match repeated.kitStatusCaption with
             | Some caption ->
                 Assert.StartsWith("Nothing was published — the calibration is already published", caption.value)
                 assertStatusOnly caption published repeated
@@ -544,7 +540,7 @@ module StudyWindowModelTests =
                 let refused = unreadable |> updateTableAndElementRotation (PromoteToLibrary (fit.name, MaterialPromotion version))
                 assertStatusOnly (ControlCaption "The material version could not be read.") unreadable refused
             let unfitted = promoted |> updateTableAndElementRotation (PromoteToLibrary (calibrationRun.name, MaterialPromotion version))
-            match unfitted.kitStatus with
+            match unfitted.kitStatusCaption with
             | Some caption ->
                 Assert.StartsWith("Not promoted — the fit run fitted none of its values", caption.value)
                 assertStatusOnly caption promoted unfitted
@@ -570,7 +566,7 @@ module StudyWindowModelTests =
                     dial = FixedMounting
                 }
             let added = loaded |> updateTableAndElementRotation (AddItem draft)
-            Assert.Equal<ControlCaption option>(None, added.kitStatus)
+            Assert.Equal<ControlCaption option>(None, added.kitRefusalOpt)
             let item = added.kitItems |> List.find (fun held -> held.id = draft.id)
             let m00 = ParameterName "m00"
             let fitted : FitRunEntry =
@@ -646,7 +642,7 @@ module StudyWindowModelTests =
                 let refused = unreadable |> updateTableAndElementRotation (PromoteToLibrary (fit.name, BlackBoxPromotion item.id))
                 assertStatusOnly (ControlCaption "The item or its model is not in the kit.") unreadable refused
             let notBlackBox = promoted |> updateTableAndElementRotation (PromoteToLibrary (fit.name, BlackBoxPromotion cpl1.id))
-            match notBlackBox.kitStatus with
+            match notBlackBox.kitStatusCaption with
             | Some caption ->
                 Assert.StartsWith("Not promoted — the item is not a black-box Mueller matrix", caption.value)
                 assertStatusOnly caption promoted notBlackBox
@@ -731,7 +727,7 @@ module StudyWindowModelTests =
                         offered with kitStatus = refused.kitStatus
                     }
                 Assert.Equal<TableAndElementRotationModel>(expectedRefusal, refused)
-                match refused.kitStatus with
+                match refused.kitStatusCaption with
                 | Some caption ->
                     Assert.StartsWith("The kit could not be reloaded — ", caption.value)
                     Assert.Contains(file.value, caption.value)
@@ -777,7 +773,7 @@ module StudyWindowModelTests =
                     StudySurfaceState.initial with studyOpt = Some qzLr
                 }
             Assert.Equal<StudySurfaceState>(expectedSurface, created.studySurface)
-            Assert.Equal<ControlCaption option>(None, created.kitStatus)
+            Assert.Equal<ControlCaption option>(None, created.kitRefusalOpt)
 
             let scope : ScopedParameter =
                 {
@@ -816,7 +812,7 @@ module StudyWindowModelTests =
                     loaded with kitStatus = refused.kitStatus
                 }
             Assert.Equal<TableAndElementRotationModel>(expectedRefusal, refused)
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some caption ->
                 Assert.StartsWith("The study was not changed — ", caption.value)
                 Assert.Contains("the kit has no such study", caption.value)
@@ -871,7 +867,7 @@ module StudyWindowModelTests =
                     failing with kitStatus = notSaved.kitStatus
                 }
             Assert.Equal<TableAndElementRotationModel>(expectedNotSaved, notSaved)
-            match notSaved.kitStatus with
+            match notSaved.kitStatusCaption with
             | Some caption ->
                 let expectedError = KitLibraryKitErr failure
                 Assert.Equal($"Not saved to the kit — {expectedError.describe}", caption.value)
@@ -887,7 +883,7 @@ module StudyWindowModelTests =
                 }
             Assert.Equal<TableAndElementRotationModel>(expectedRefusal, refused)
             Assert.Empty refused.kitStudies
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some caption -> Assert.Contains("read-only", caption.value)
             | None -> Assert.Fail "the kit guard must refuse a read-only study write"
             Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
@@ -942,7 +938,7 @@ module StudyWindowModelTests =
                 }
             Assert.Equal<Result<unit, MaterialError>>(Ok (), selected.materials.saveMaterial entry)
             let opened = selected |> updateTableAndElementRotation (StudyCommand (OpenMaterial (qzLr, version)))
-            Assert.Equal<ControlCaption option>(None, opened.kitStatus)
+            Assert.Equal<ControlCaption option>(None, opened.kitRefusalOpt)
             Assert.Equal<StudyName option>(Some qzLr, opened.studySurface.studyOpt)
             let study = opened.kitStudies |> List.find (fun held -> held.name = qzLr)
             let material = Assert.Single(study.materials)
@@ -1094,7 +1090,7 @@ module StudyWindowModelTests =
             Assert.False refused.studyFit.job.isRunning
             Assert.Empty jobs
             Assert.Empty cancels
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some caption -> Assert.Contains("read-only", caption.value)
             | None -> Assert.Fail "the kit guard must refuse a read-only fit start"
             Assert.Empty(refused.kit.proxy.listKindFiles FitRunKitFile |> kitValue)
@@ -1178,7 +1174,7 @@ module StudyWindowModelTests =
                 }
                 |> updateTableAndElementRotation (StudyCommand (CreateStudy (empty, [])))
             Assert.Equal<StudyName option>(Some empty, ready.studySurface.studyOpt)
-            Assert.Equal<ControlCaption option>(None, ready.kitStatus)
+            Assert.Equal<ControlCaption option>(None, ready.kitRefusalOpt)
             let before = folderBytes folder
             let request =
                 {
@@ -1328,16 +1324,22 @@ module StudyWindowModelTests =
                 }
             loaded.kit.proxy.writeFitRun second |> kitValue
             let ready = loaded |> updateTableAndElementRotation ReloadKitChanges
-            Assert.Equal<ControlCaption option>(None, ready.kitStatus)
+            Assert.Equal<ControlCaption option>(None, ready.kitRefusalOpt)
             Assert.Equal<FitRun list>([ qzRun; second ], ready.studyFitRuns)
-            Assert.Equal<CalibrationUse>(CalibrationHeldFixed, ready.studySurface.calibrationUse)
+            let calibrationOf (model : TableAndElementRotationModel) : CalibrationUse option =
+                model.kitStudies |> List.tryFind (fun study -> study.name = qzLr) |> Option.map _.settings.calibrationUse
+            Assert.Equal<CalibrationUse option>(Some CalibrationHeldFixed, calibrationOf ready)
             let before = folderBytes folder
             let selected = ready |> updateTableAndElementRotation (SelectFitRun qzRun.name)
             Assert.Equal<FitRunName option>(Some qzRun.name, selected.studySurface.fitRunOpt)
             let absent = FitRunName "Absent@20261101T120000Z"
             Assert.Equal<TableAndElementRotationModel>(selected, selected |> updateTableAndElementRotation (SelectFitRun absent))
-            let prior = selected |> updateTableAndElementRotation (SetStudyCalibrationUse CalibrationAsPrior)
-            Assert.Equal<CalibrationUse>(CalibrationAsPrior, prior.studySurface.calibrationUse)
+            // Spec 0051 `.manual/003` 2.5: the choice is the study's, so it is written into the study file alone.
+            let prior = selected |> updateTableAndElementRotation (StudyCommand (SetCalibrationUse (qzLr, CalibrationAsPrior)))
+            Assert.Equal<CalibrationUse option>(Some CalibrationAsPrior, calibrationOf prior)
+            Assert.Equal<CalibrationUse option>(Some CalibrationAsPrior, prior.kit.proxy.readStudies () |> kitValue |> List.tryFind (fun study -> study.name = qzLr) |> Option.map _.settings.calibrationUse)
+            let studyFile = FileName $"{qzLr.value}.study-json"
+            let withoutStudy (bytes : Map<FileName, FileByteContent>) : Map<FileName, FileByteContent> = bytes |> Map.filter (fun file _ -> file <> studyFile)
             Assert.Equal<FitRunName option>(Some qzRun.name, prior.studySurface.fitRunOpt)
             match prior.studyPrefitsOpt with
             | Some (Ok [ firstCheck; secondCheck ]) ->
@@ -1366,4 +1368,4 @@ module StudyWindowModelTests =
                 }
             Assert.Equal<Result<ExperimentPrefit list, StudyForwardError> option>(None, unselected.studyPrefitsOpt)
             Assert.Equal<TableAndElementRotationModel>(unselected, unselected |> updateTableAndElementRotation (SelectFitRun qzRun.name))
-            Assert.Equal<Map<FileName, FileByteContent>>(before, folderBytes folder))
+            Assert.Equal<Map<FileName, FileByteContent>>(withoutStudy before, withoutStudy (folderBytes folder)))

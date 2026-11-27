@@ -135,7 +135,7 @@ let private dataLocationRowView (dispatch : DataLocationsMsg -> unit) (row : Dat
                     StackPanel.orientation Orientation.Horizontal
                     StackPanel.verticalAlignment VerticalAlignment.Center
                     StackPanel.children [
-                        MaterialsWindowView.verbButton (ConstructorUiId.dataLocationOpenFolderButton kind) (ControlCaption "Open folder") (fun () ->
+                        CommandControls.verbCommand (ConstructorUiId.dataLocationOpenFolderButton kind) (ControlCaption "Open folder") (fun () ->
                             dispatch (OpenDataLocationFolder kind))
                     ]
                 ]
@@ -159,7 +159,7 @@ let private dataLocationRowView (dispatch : DataLocationsMsg -> unit) (row : Dat
         ]
 
     DockPanel.create [
-        rowId.automationAttribute<DockPanel> ()
+        yield! rowId.groupAttributes<DockPanel> ()
         DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
         DockPanel.children (openFolder @ [ captionAndPath ])
     ]

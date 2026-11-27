@@ -364,7 +364,7 @@ type SnapToReflectedModel with
 
     member internal model.tableCanvas : IView =
         Canvas.create [
-            Canvas.name ConstructorUiId.snapReflectedCanvas.value
+            yield! ConstructorUiId.snapReflectedCanvas.surfaceAttributes<Canvas> ()
             Canvas.width TableScene.canvasWidth.value
             Canvas.height TableScene.canvasHeight.value
             Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -412,7 +412,7 @@ let private controlBar (model : SnapToReflectedModel) (dispatch : SnapToReflecte
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
             RotationControls.view model.rotationState (rotationHandlers dispatch)
-            TextBlock.create [ TextBlock.name ConstructorUiId.snapReflectedReadout.value; TextBlock.text model.readoutText ]
+            TextBlock.create [ ConstructorUiId.snapReflectedReadout.automationAttribute<TextBlock> (); TextBlock.text model.readoutText ]
             TextBlock.create [
                 TextBlock.foreground (brush hintColor)
                 TextBlock.text "click the mirror (or source/detector) to select it · the bar / wheel rotate the selection · drag = pan · wheel = zoom table"

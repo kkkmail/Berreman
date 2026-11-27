@@ -30,7 +30,8 @@ module ElementRendererBindingTests =
           centre = placement.placementPoint.toVector3
           zoom = BeamLayout.ElementZoom 3.5
           opticalSign = FlatSign
-          normals = ElementRenderer.ShowNormals }
+          normals = ElementRenderer.ShowNormals
+          caption = ControlCaption kind.kindCode }
 
     /// Render one drawable through the given renderer kind and collect the realized Avalonia shapes. MUST be
     /// called on the headless UI thread (inside `HeadlessSession.run`).

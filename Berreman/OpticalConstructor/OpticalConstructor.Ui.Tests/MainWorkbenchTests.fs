@@ -20,6 +20,7 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0033 (024) / 0038 (013/015) — the Main-screen workbench composition around the ribbon.
 /// The MATERIALS bay these tests used to cover became the single-instance Materials WINDOW
@@ -29,43 +30,6 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// launcher seam, the material-editor create picker over the live catalogue, and the
 /// Details-bay band-state projection.
 module MainWorkbenchTests =
-
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
-    /// workbench rows / verb buttons live in variable-membership lists, so they carry an
-    /// AutomationId — the MaterialsControls precedent).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    /// Present anywhere in the visual tree (visible or not) — the "is it listed" probe.
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
 
     /// Fresh, isolated stores imported from the Built-in catalogue as in the App (spec 0050 §3.4–3.5).
     let private freshStores () : InMemoryCatalogueStores =

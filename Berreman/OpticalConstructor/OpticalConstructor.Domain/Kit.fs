@@ -841,12 +841,15 @@ module Kit =
         | SampleInstance of model : ItemModelVersionId * sample : SampleVersionId
         | ItemModelVersionInstance of ItemModelVersionId
 
-        /// The model version the kit snapshots and pins, in every case (spec 0050 S7.1).
-        member this.entryReferenceOpt : EntryReference option =
+        /// The item-model version instantiated, in every case (spec 0050 S7.1).
+        member this.itemModel : ItemModelVersionId =
             match this with
             | PresetInstance (model, _)
             | SampleInstance (model, _)
-            | ItemModelVersionInstance model -> Some model.entryReference
+            | ItemModelVersionInstance model -> model
+
+        /// The model version the kit snapshots and pins, in every case (spec 0050 S7.1).
+        member this.entryReferenceOpt : EntryReference option = Some this.itemModel.entryReference
 
         /// The bound physics by step 137's rules: a preset's GUID at its latest, a sample's exact version; `None` for a
         /// standalone model or a preset id that is no GUID, which AddItem refuses (spec 0050 S4.2, S7.1).

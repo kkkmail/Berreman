@@ -84,27 +84,9 @@ module TablePositionControls =
             reset : unit -> unit                    // Reset → host returns the element to its home position
         }
 
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
-
-    /// A small clickable, button-styled Border, matching `RayPositionControls`. The subscription re-patches
-    /// when the label flips (a lock toggle reads Lock / Unlock), so the action always matches the label.
-    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : PointerPressedEventArgs -> unit) : IView =
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.isEnabled availability.isEnabled
-            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.background (brush idleBackground)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 5.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text caption.value; TextBlock.foreground (brush textForeground) ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
-        ] :> IView
+    /// One of the bar's buttons, matching `RayPositionControls`; a lock toggle reads Lock / Unlock.
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : CommandButton -> unit) : IView =
+        CommandControls.commandButtonOn id caption NeutralCommand availability onClick [ Button.padding (Thickness(10.0, 5.0)) ]
 
     let private field (handlers : TablePositionControlsHandlers) (axis : Axis) (value : BarMeters) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
@@ -112,7 +94,7 @@ module TablePositionControls =
             | :? TextBox as tb when not (isNull tb.Text) -> BarMeters.tryCreate tb.Text |> Option.iter (handlers.setPosition axis)
             | _ -> ()
         TextBox.create [
-            TextBox.name axis.fieldId.value
+            yield! axis.fieldId.inputAttributes<TextBox> ()
             TextBox.width 80.0
             TextBox.isEnabled availability.isEnabled
             TextBox.text value.signedText
@@ -126,8 +108,8 @@ module TablePositionControls =
             match axisState.lock with
             | RotationControls.AxisFree -> availability, ControlCaption $"Lock {axis.name}"
             | RotationControls.AxisLocked -> ControlWithheld, ControlCaption $"Unlock {axis.name}"
-        let step (direction : StepDirection) (e : PointerPressedEventArgs) =
-            handlers.moveBy axis ((RayPositionControls.stepMeters e.KeyModifiers).inDirection direction)
+        let step (direction : StepDirection) (button : CommandButton) =
+            handlers.moveBy axis ((RayPositionControls.stepMeters button.pressModifiers).inDirection direction)
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
@@ -171,7 +153,7 @@ module TablePositionControls =
                             Border.horizontalAlignment HorizontalAlignment.Left
                             Border.child (clickBox ConstructorUiId.tablePositionResetButton (ControlCaption "Reset position") state.availability (fun _ -> handlers.reset ()))
                         ]
-                        TextBlock.create [ TextBlock.name ConstructorUiId.tablePositionReadout.value; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text state.readoutText ]
+                        TextBlock.create [ ConstructorUiId.tablePositionReadout.automationAttribute<TextBlock> (); TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text state.readoutText ]
                     ]
                 ]
             ]

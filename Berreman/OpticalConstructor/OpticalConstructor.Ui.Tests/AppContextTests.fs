@@ -37,6 +37,7 @@ open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.Tests.UiDriver
 
 // Spec 0050 S3.3: isolated picker sessions must not race the assembly's Avalonia session.
 [<CollectionDefinition("Library picker isolation", DisableParallelization = true)>]
@@ -142,46 +143,8 @@ module AppContextTests =
     // Manual 011: completed storage tasks keep the adapter on this isolated UI thread.
     let private pickKitFolderForTest (window : TopLevel) (suggested : FolderName) : KitFolder option =
         let picker = KitFolderPicker.ofWindow window suggested
-        let task = picker.pickKitFolder () |> Async.StartImmediateAsTask
+        let task = picker.pickKitFolder ChooseKitFolder |> Async.StartImmediateAsTask
         task.GetAwaiter().GetResult()
-
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
-    /// workbench rows / verb buttons live in variable-membership lists, so they carry an
-    /// AutomationId — the MaterialsControls precedent).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    /// Present anywhere in the visual tree (visible or not) — the "is it listed" probe.
-    let private isPresent (window : Window) (id : string) : bool =
-        match tryFindControl window id with
-        | Some _ -> true
-        | None -> false
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                // A Save click closes the editor during the press — skip the release then.
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
 
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// control's `onTextChanged` binds).
@@ -209,14 +172,23 @@ module AppContextTests =
         (CatalogueProxy.create folder).writeCatalogue catalogue
         |> Result.defaultWith (fun error -> failwith error.describe)
 
-    let private assertEmptyStartup (context : AppContext) : unit =
-        Assert.Equal<Result<Sample list, SampleError>>(Ok [], context.samples.listSamples IncludeInactive)
-        Assert.Equal<Result<MaterialEntry list, MaterialError>>(Ok [], context.materials.listMaterials IncludeInactive)
-        Assert.Equal<Result<MaterialCategory list, CategoryError>>(Ok [], context.categories.listCategories ())
-        Assert.Equal<Result<HeldEntry list, CatalogueImportError>>(
-            Ok [], context.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue)
-        Assert.Equal<Result<CatalogueImportLogEntry list, CatalogueImportError>>(
-            Ok [], context.catalogueImports.proxy.loggedImports ())
+    /// Spec 0051 `.manual/003` 5.3 (D6): a new library takes the shipped catalogue on its first start, asking nothing, and
+    /// logs that one import.
+    let private assertShippedFirstStart (context : AppContext) (catalogue : CatalogueData) : unit =
+        Assert.Empty context.pendingImports
+        let settled = Assert.Single context.settledImports
+        Assert.Equal(catalogue.manifest.id, settled.entry.catalogueId)
+        Assert.Equal<LibraryEntryId list>(
+            catalogue.envelopes |> List.map (fun envelope -> envelope.content.id) |> List.sort,
+            settled.decisions |> List.map _.entryId |> List.sort)
+        let held =
+            context.catalogueImports.proxy.heldEntriesOf CatalogueIds.builtInCatalogue
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(catalogue.envelopes.Length, held.Length)
+        let logged =
+            context.catalogueImports.proxy.loggedImports ()
+            |> Result.defaultWith (fun error -> failwith error.describe)
+        Assert.Equal(settled.entry.manifestHash, (Assert.Single logged).manifestHash)
 
     let private assertPendingCatalogue (context : AppContext) (catalogue : CatalogueData) : PendingCatalogueImport =
         let pending = Assert.Single context.pendingImports
@@ -437,9 +409,7 @@ module AppContextTests =
             AppContext.create locations WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
         let expected = BuiltinCatalogue.samples () |> List.sortBy _.id
-        assertEmptyStartup first
-        assertPendingCatalogue first (BuiltinCatalogue.catalogueData ()) |> ignore
-        TestAppScope.settlePendingImports first
+        assertShippedFirstStart first (BuiltinCatalogue.catalogueData ())
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok expected,
             first.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
@@ -467,9 +437,7 @@ module AppContextTests =
         let first =
             AppContext.create locations WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
-        assertEmptyStartup first
-        assertPendingCatalogue first catalogue |> ignore
-        TestAppScope.settlePendingImports first
+        assertShippedFirstStart first catalogue
         let silicon = BuiltinCatalogue.material MaterialIds.silicon
         Assert.Equal<Result<MaterialEntry option, MaterialError>>(Ok (Some silicon), first.materials.tryGetMaterial silicon.id)
         let importsBefore = first.catalogueImports.proxy.loggedImports () |> Result.defaultWith (fun error -> failwith error.describe)
@@ -542,9 +510,7 @@ module AppContextTests =
         let first =
             AppContext.create locations WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
-        assertEmptyStartup first
-        assertPendingCatalogue first catalogue |> ignore
-        TestAppScope.settlePendingImports first
+        assertShippedFirstStart first catalogue
         let userMaterial =
             {
                 BuiltinCatalogue.material MaterialIds.glass152 with
@@ -690,6 +656,7 @@ module AppContextTests =
                 name = KitName "App scope kit"
                 lastOpened = ClockTime (System.DateTime(2026, 11, 8, 12, 0, 0, System.DateTimeKind.Utc))
                 star = StarredKit
+                lastSetupOpt = None
             }
         let history : KitHistory = { KitHistory.empty with entries = [ opened ] }
         Assert.Equal<Result<unit, KitHistoryError>>(Ok (), context.kitHistory.writeHistory history)
@@ -705,9 +672,7 @@ module AppContextTests =
         let context =
             AppContext.create (TestAppScope.testLocations owner) WorkbenchSettings.defaults
             |> Result.defaultWith (fun error -> failwith error.describe)
-        assertEmptyStartup context
-        assertPendingCatalogue context (BuiltinCatalogue.catalogueData ()) |> ignore
-        TestAppScope.settlePendingImports context
+        assertShippedFirstStart context (BuiltinCatalogue.catalogueData ())
         Assert.Equal<Result<Sample list, SampleError>>(
             Ok (BuiltinCatalogue.samples () |> List.sortBy _.id),
             context.samples.listSamples IncludeInactive |> Result.map (List.sortBy _.id))
@@ -796,12 +761,12 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryOfFirst = opened.[0]
-            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryOfFirst, "the strip button must open the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryOfFirst, "the strip button must open the Library window")
             clickOn libraryOfFirst ConstructorUiId.libraryMakeMultilayerButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let editor = opened.[1]
-            Assert.True(matchesId ConstructorUiId.sampleEditorWindow.value editor, "the opened window must be the Sample editor")
+            Assert.True(UiDriver.hasId ConstructorUiId.sampleEditorWindow.value editor, "the opened window must be the Sample editor")
             setText editor ConstructorUiId.sampleNameBox.value "Shared-scope sample"
             clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible, "Save must persist the entry and close the editor")
@@ -824,7 +789,7 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             let libraryOfSecond = opened.[2]
-            Assert.True(matchesId ConstructorUiId.libraryWindow.value libraryOfSecond, "the strip button must open the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryOfSecond, "the strip button must open the Library window")
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
             clickOn libraryOfSecond (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             Assert.True(isPresent libraryOfSecond ((ConstructorUiId.libraryEntryNode savedId.toElementValueId).value),

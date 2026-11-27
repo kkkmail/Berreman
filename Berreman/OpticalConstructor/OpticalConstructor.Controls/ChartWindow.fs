@@ -3,9 +3,12 @@ namespace OpticalConstructor.Controls
 open System
 open System.IO
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.Platform.Storage
+open Softellect.Sys.Primitives
 open OpticalConstructor.Controls.ExperimentChart
 
 /// Spec 0027 (026/028/030) — the pop-out interactive chart window (double-click the inline Experiments
@@ -188,10 +191,27 @@ module ChartPlot =
         applyAxisLimits plot chart style
         scatters
 
-type ChartWindow(chart : ExperimentChart) as this =
+/// A chart export: the picture or the numbers (spec 0051 `.manual/003` 5.8).
+type ChartExportFormat =
+    | PngChartExport
+    | CsvChartExport
+
+    member this.caption : string =
+        match this with
+        | PngChartExport -> "PNG image"
+        | CsvChartExport -> "CSV table"
+
+    member this.extension : string =
+        match this with
+        | PngChartExport -> "png"
+        | CsvChartExport -> "csv"
+
+/// The chart in a window of its own, opening on `initialStyle` (spec 0051 `.manual/003` 3.4: a measured series on the
+/// right axis), or on the chart's default style; its exports ask where to save, starting in `exportsFolderOpt` (5.8).
+type ChartWindow(chart : ExperimentChart, initialStyle : ChartStyle.ChartStyleState, exportsFolderOpt : FolderName option) as this =
     inherit Window()
 
-    let mutable style = ChartStyle.defaultChartStyleState chart
+    let mutable style = initialStyle
     let mutable projection = ChartPlot.CartesianProjection
     let seriesName (i : ChartStyle.ChartSeriesIndex) : ControlCaption =
         match List.tryItem i.value chart.series with
@@ -323,9 +343,10 @@ type ChartWindow(chart : ExperimentChart) as this =
             StackPanel(Name = ConstructorUiId.chartWindowProperties.value, Orientation = Orientation.Vertical, Margin = Thickness(8.0), Spacing = 2.0)
 
         // A number text field committing an axis value on Enter / blur; editable only while the axis is pinned.
-        let numberField (id : string) (value : ChartStyle.ChartAxisValue) (fit : ChartStyle.AxisFit) (onCommit : ChartStyle.ChartAxisValue -> unit) : TextBox =
+        let numberField (id : ConstructorUiId) (value : ChartStyle.ChartAxisValue) (fit : ChartStyle.AxisFit) (onCommit : ChartStyle.ChartAxisValue -> unit) : TextBox =
             let enabled = (match fit with ChartStyle.PinnedAxis -> true | ChartStyle.AutoFitAxis -> false)
-            let tb = TextBox(Name = id, Width = 84.0, IsEnabled = enabled, Text = (ChartStyle.formatValue ChartStyle.GeneralFormat value).value)
+            let tb = TextBox(Name = id.value, Width = 84.0, IsEnabled = enabled, Text = (ChartStyle.formatValue ChartStyle.GeneralFormat value).value)
+            AutomationProperties.SetName(tb, id.spokenName)
             let commit () =
                 match Double.TryParse(tb.Text, Globalization.NumberStyles.Float, Globalization.CultureInfo.InvariantCulture) with
                 | true, v -> onCommit (ChartStyle.ChartAxisValue v)
@@ -362,9 +383,10 @@ type ChartWindow(chart : ExperimentChart) as this =
                 let fit = (match autoBox.IsChecked.GetValueOrDefault true with true -> ChartStyle.AutoFitAxis | false -> ChartStyle.PinnedAxis)
                 style <- ChartStyle.setAxisFit axis fit style
                 applyStyle (); rebuildProperties ())
-            let minF = numberField ConstructorUiId.chartWindowAxisMin.value axisStyle.min axisStyle.fit (fun v -> style <- ChartStyle.setAxisMin axis v style; applyStyle (); rebuildProperties ())
-            let maxF = numberField ConstructorUiId.chartWindowAxisMax.value axisStyle.max axisStyle.fit (fun v -> style <- ChartStyle.setAxisMax axis v style; applyStyle (); rebuildProperties ())
+            let minF = numberField ConstructorUiId.chartWindowAxisMin axisStyle.min axisStyle.fit (fun v -> style <- ChartStyle.setAxisMin axis v style; applyStyle (); rebuildProperties ())
+            let maxF = numberField ConstructorUiId.chartWindowAxisMax axisStyle.max axisStyle.fit (fun v -> style <- ChartStyle.setAxisMax axis v style; applyStyle (); rebuildProperties ())
             let fmtBox = ComboBox(Name = ConstructorUiId.chartWindowAxisFormat.value)
+            AutomationProperties.SetName(fmtBox, ConstructorUiId.chartWindowAxisFormat.spokenName)
             let twoDigits = ChartStyle.DecimalDigits 2
             for f in [ ChartStyle.GeneralFormat; ChartStyle.FixedFormat twoDigits; ChartStyle.ScientificFormat twoDigits ] do
                 fmtBox.Items.Add(ComboBoxItem(Content = f.label)) |> ignore
@@ -401,6 +423,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                 let visible = (match visBox.IsChecked.GetValueOrDefault true with true -> ChartStyle.ShownOnChart | false -> ChartStyle.HiddenOnChart)
                 style <- ChartStyle.setLegendVisible visible style; applyStyle (); rebuildProperties ())
             let placeBox = ComboBox(Name = ConstructorUiId.chartWindowLegendPlacement.value)
+            AutomationProperties.SetName(placeBox, ConstructorUiId.chartWindowLegendPlacement.spokenName)
             for p in ChartStyle.allPlacements do placeBox.Items.Add(ComboBoxItem(Content = p.label)) |> ignore
             placeBox.SelectedIndex <- List.findIndex (fun p -> p = style.legend.placement) ChartStyle.allPlacements
             placeBox.SelectionChanged.Add(fun _ ->
@@ -426,6 +449,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             thickPlus.Click.Add(fun _ -> style <- ChartStyle.bumpSeriesThickness i (ChartStyle.LinePixels 0.5) style; applyStyle (); rebuildProperties ())
             let thickReadout = TextBlock(Name = ConstructorUiId.chartWindowSeriesThick.value, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{st.thickness.value} px")
             let colorBox = ComboBox(Name = ConstructorUiId.chartWindowSeriesColor.value)
+            AutomationProperties.SetName(colorBox, ConstructorUiId.chartWindowSeriesColor.spokenName)
             for c in ChartStyle.colorChoices do colorBox.Items.Add(ComboBoxItem(Content = c.value)) |> ignore
             colorBox.SelectedIndex <- (match List.tryFindIndex (fun c -> c = st.colorHex) ChartStyle.colorChoices with Some idx -> idx | None -> 0)
             colorBox.SelectionChanged.Add(fun _ ->
@@ -439,6 +463,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             // Which Y axis the series plots against (spec 0033/018) — applying the style re-asserts each
             // scatter's Axes.YAxis, so the flip takes effect without a full rebuild.
             let axisBox = ComboBox(Name = ConstructorUiId.chartWindowSeriesAxis.value)
+            AutomationProperties.SetName(axisBox, ConstructorUiId.chartWindowSeriesAxis.spokenName)
             for side in ChartStyle.allSides do axisBox.Items.Add(ComboBoxItem(Content = side.label)) |> ignore
             axisBox.SelectedIndex <- List.findIndex (fun a -> a = st.axisSide) ChartStyle.allSides
             axisBox.SelectionChanged.Add(fun _ ->
@@ -457,6 +482,7 @@ type ChartWindow(chart : ExperimentChart) as this =
         // The element picker (Header / X axis / Y axis / Legend / each series).
         let elementOptions = ChartStyle.elements chart.series
         let elementSelector = ComboBox(Name = ConstructorUiId.chartWindowElement.value, Margin = Thickness(0.0, 0.0, 0.0, 8.0), HorizontalAlignment = HorizontalAlignment.Stretch)
+        AutomationProperties.SetName(elementSelector, ConstructorUiId.chartWindowElement.spokenName)
         for e in elementOptions do elementSelector.Items.Add(ComboBoxItem(Content = (ChartStyle.elementLabel seriesName e).value)) |> ignore
 
         rebuildProperties <-
@@ -524,17 +550,49 @@ type ChartWindow(chart : ExperimentChart) as this =
         let minorGrid = CheckBox(Name = ConstructorUiId.chartWindowMinorGrid.value, Content = "Minor grid", IsChecked = false, Margin = Thickness(8.0, 0.0, 0.0, 0.0))
         minorGrid.IsCheckedChanged.Add(fun _ -> minorOn <- minorGrid.IsChecked.GetValueOrDefault false; applyGrid ())
 
-        let exportPng = Button(Name = ConstructorUiId.chartWindowExportPng.value, Content = "Export PNG", Margin = Thickness(16.0, 0.0, 0.0, 0.0))
-        exportPng.Click.Add(fun _ ->
-            try plot.SavePng(Path.Combine(Path.GetTempPath(), "experiment-chart.png"), 1200, 800) |> ignore with _ -> ())
-        let exportCsv = Button(Name = ConstructorUiId.chartWindowExportCsv.value, Content = "Export CSV", Margin = Thickness(8.0, 0.0, 0.0, 0.0))
-        exportCsv.Click.Add(fun _ ->
-            try File.WriteAllText(Path.Combine(Path.GetTempPath(), "experiment-chart.csv"), chart.toCsv) with _ -> ())
+        // Spec 0051 `.manual/003` 5.8: each export asks where to save, starting in Exports, and says what it wrote.
+        let exportStatus =
+            TextBlock(Name = ConstructorUiId.chartWindowExportStatus.value, Margin = Thickness(12.0, 0.0, 0.0, 0.0), VerticalAlignment = VerticalAlignment.Center)
+        let written (format : ChartExportFormat) (file : FileName) : unit =
+            match format with
+            | PngChartExport -> plot.SavePng(file.value, 1200, 800) |> ignore
+            | CsvChartExport -> File.WriteAllText(file.value, chart.toCsv)
+        let exportAs (format : ChartExportFormat) : unit =
+            let pick =
+                async {
+                    try
+                        let options =
+                            FilePickerSaveOptions(
+                                Title = $"Export the chart as a {format.caption}",
+                                SuggestedFileName = $"experiment-chart.{format.extension}",
+                                DefaultExtension = format.extension,
+                                FileTypeChoices = [ FilePickerFileType(format.caption, Patterns = [ $"*.{format.extension}" ]) ],
+                                ShowOverwritePrompt = Nullable true)
+                        match exportsFolderOpt with
+                        | Some folder ->
+                            let! suggested = StorageProviderExtensions.TryGetFolderFromPathAsync(this.StorageProvider, folder.value) |> Async.AwaitTask
+                            options.SuggestedStartLocation <- suggested
+                        | None -> ()
+                        let! picked = this.StorageProvider.SaveFilePickerAsync options |> Async.AwaitTask
+                        match Option.ofObj picked |> Option.bind (fun file -> Option.ofObj (file.TryGetLocalPath())) with
+                        | Some path ->
+                            let file = FileName path
+                            written format file
+                            exportStatus.Text <- $"Saved {file.value}."
+                        | None -> ()
+                    with error -> exportStatus.Text <- $"Not saved — {error.Message}"
+                }
+            Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate pick)
+        let exportPng = Button(Name = ConstructorUiId.chartWindowExportPng.value, Content = "Export PNG…", Margin = Thickness(16.0, 0.0, 0.0, 0.0))
+        exportPng.Click.Add(fun _ -> exportAs PngChartExport)
+        let exportCsv = Button(Name = ConstructorUiId.chartWindowExportCsv.value, Content = "Export CSV…", Margin = Thickness(8.0, 0.0, 0.0, 0.0))
+        exportCsv.Click.Add(fun _ -> exportAs CsvChartExport)
 
         toolbar.Children.Add majorGrid
         toolbar.Children.Add minorGrid
         toolbar.Children.Add exportPng
         toolbar.Children.Add exportCsv
+        toolbar.Children.Add exportStatus
 
         let descriptionBox =
             TextBox(
@@ -544,6 +602,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = Thickness(8.0, 0.0, 8.0, 8.0))
+        AutomationProperties.SetName(descriptionBox, ConstructorUiId.chartWindowDescription.spokenName)
 
         let bottom = StackPanel(Orientation = Orientation.Vertical)
         bottom.Children.Add toolbar
@@ -563,3 +622,6 @@ type ChartWindow(chart : ExperimentChart) as this =
     /// A test seam: how many `ChartWindow`s have been constructed (bumped in the `do` block). Lets a headless
     /// test verify that the "View" / "Open chart" / double-click path actually reaches here (opens a window).
     static member val ConstructedCount : int = 0 with get, set
+
+    /// The chart on its default style, its exports starting where the dialog last was.
+    new (chart : ExperimentChart) = ChartWindow(chart, ChartStyle.defaultChartStyleState chart, None)

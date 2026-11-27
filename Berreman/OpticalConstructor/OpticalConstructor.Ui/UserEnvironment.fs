@@ -400,13 +400,10 @@ type EnvironmentSettings with
 /// The single fixed per-user settings path under the OS application-data folder
 /// (§J.6 item 2 — outside the repository working tree, so a committable-vs-gitignore
 /// non-issue).
-let settingsPath () : FileName =
-    let folder =
-        FolderName (
-            Path.Combine(
-                Environment.GetFolderPath Environment.SpecialFolder.ApplicationData,
-                "Softellect", "Berreman", "OpticalConstructor"))
-    (FileName "environment.json").combine folder
+type WorkbenchSettings.DataLocations with
+
+    /// The environment file in the Preferences location the Data locations window shows (spec 0051 `.manual/003` 5.7).
+    member this.environmentFile : FileName = (FileName "environment.json").combine this.preferencesFolder
 
 // ---------------------------------------------------------------------------
 // Picker last-folder (§J.6 `lastFolders`, keyed by picker purpose). The field is a
@@ -419,6 +416,9 @@ let settingsPath () : FileName =
 /// The picker purpose of the measured-data file picker (the collection builder's
 /// per-experiment attach), centralized so the id is never scattered through the codebase.
 let measuredDataFolderKey : PickerPurpose = PickerPurpose "measured-data"
+
+/// The picker purpose of an item's photo (spec 0051 `.manual/003` 5.2).
+let itemPhotoFolderKey : PickerPurpose = PickerPurpose "item-photo"
 
 /// The persisted last-used folder for `purpose`, if any. `None` on a fresh environment, or when an
 /// old array-shaped `lastFolders` file failed validation and the total `load` fell back to the

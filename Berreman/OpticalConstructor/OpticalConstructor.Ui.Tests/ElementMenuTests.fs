@@ -20,6 +20,7 @@ open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0046 — the Main workbench's reflected rays: the right-click element menu (switch an element's
 /// reflected / transmitted rays, move it onto the reflected ray of a partially-reflecting element),
@@ -288,11 +289,8 @@ module ElementMenuTests =
 
     // ------------------------------ headless: right click → menu ------------------------------
 
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || AutomationProperties.GetAutomationId c = id
-
     let private tryFind (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when matchesId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
+        window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when UiDriver.hasId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
 
     /// Present AND effectively visible.
     let private isShown (window : Window) (id : string) : bool =
@@ -359,7 +357,7 @@ module ElementMenuTests =
             try
                 let checkBox () : CheckBox option =
                     window.GetVisualDescendants()
-                    |> Seq.tryPick (function :? CheckBox as c when matchesId ConstructorUiId.rotateAboutIncidentFaceCheck.value c -> Some c | _ -> None)
+                    |> Seq.tryPick (function :? CheckBox as c when UiDriver.hasId ConstructorUiId.rotateAboutIncidentFaceCheck.value c -> Some c | _ -> None)
                 match checkBox () with
                 | Some box ->
                     Assert.False(box.IsChecked.GetValueOrDefault true, "unchecked by default: elements rotate about their centre")

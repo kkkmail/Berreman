@@ -247,7 +247,7 @@ module TableAndElementRotationTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let click (name : string) : unit =
-                match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when b.Name = name -> Some b | _ -> None) with
+                match window.GetVisualDescendants() |> Seq.tryPick (function :? Control as b when UiDriver.hasId name b -> Some b | _ -> None) with
                 | Some b ->
                     let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
                     if c.HasValue then
@@ -469,7 +469,7 @@ module TableAndElementRotationTests =
                 withMouseHarness (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ConstructorUiId.rotationR2PlusButton.value -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Control as b when UiDriver.hasId (ConstructorUiId.rotationR2PlusButton.value) b -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->
@@ -507,7 +507,7 @@ module TableAndElementRotationTests =
             // stable id); the static test scene (empty palette) renders none.
             let removeButtons =
                 window.GetVisualDescendants()
-                |> Seq.choose (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ConstructorUiId.paletteRemoveSelectedButton.value -> Some b | _ -> None)
+                |> Seq.choose (function :? Control as b when UiDriver.hasId (ConstructorUiId.paletteRemoveSelectedButton.value) b -> Some b | _ -> None)
                 |> Seq.toList
             Assert.Equal(1, List.length removeButtons)
             window.Close())
@@ -530,7 +530,7 @@ module TableAndElementRotationTests =
                 let button =
                     window.GetVisualDescendants()
                     |> Seq.tryPick (function
-                        | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id -> Some b
+                        | :? Control as b when UiDriver.hasId (id) b -> Some b
                         | _ -> None)
                 match button with
                 | Some b ->

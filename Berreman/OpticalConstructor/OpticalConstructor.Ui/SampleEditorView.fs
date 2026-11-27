@@ -31,6 +31,7 @@ open System.Numerics
 open Avalonia
 open Avalonia.Automation
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.Builder
@@ -615,84 +616,46 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
 // ---------------------------------------------------------------------------
 
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
 let private groupBackground = Color.FromRgb(214uy, 224uy, 238uy)
-let private saveBackground = Color.FromRgb(186uy, 224uy, 186uy)
-let private cancelBackground = Color.FromRgb(236uy, 202uy, 202uy)
-let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+let private idleBorder = NeutralCommand.outline
 let private hintColor = Color.FromRgb(110uy, 110uy, 110uy)
 let private errorColor = Color.FromRgb(165uy, 40uy, 40uy)
 
 // Avalonia layout thicknesses are written `Avalonia.Thickness(…)`: the bare `Thickness` in this file
 // is the DOMAIN layer thickness (Berreman.Media), opened after Avalonia.
 
-/// A clickable, styled box on `background` (the chosen look or the idle one). `e.Handled <- true`
-/// drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or the look changes.
-let private clickBoxView (id : ConstructorUiId) (background : Color) (child : IView) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Avalonia.Thickness(10.0, 4.0))
-        Border.margin (Avalonia.Thickness(0.0, 0.0, 6.0, 4.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child child
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, background)))
-    ] :> IView
+/// A small command showing `child` (a glyph or a figure), named by `caption`.
+let private clickBoxView (id : ConstructorUiId) (caption : ControlCaption) (child : IView) (onClick : unit -> unit) : IView =
+    CommandControls.commandButtonShowing id caption child NeutralCommand ControlOffered (fun _ -> onClick ())
+        [ Button.padding (Avalonia.Thickness(10.0, 4.0)); Button.margin (Avalonia.Thickness(0.0, 0.0, 6.0, 4.0)) ]
 
-let private clickBox (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    clickBoxView id background (TextBlock.create [ TextBlock.text label.value ] :> IView) onClick
+/// A small command showing its caption.
+let private clickBox (id : ConstructorUiId) (label : ControlCaption) (onClick : unit -> unit) : IView =
+    clickBoxView id label label.wrappingText onClick
 
-/// A toolbar verb button on `background` — withheld verbs are present but inert (a disabled
-/// Border dispatches no pointer event).
-let private verbButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.isEnabled availability.isEnabled
-        Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Avalonia.Thickness(12.0, 5.0))
-        Border.margin (Avalonia.Thickness(0.0, 0.0, 8.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, availability.isEnabled)))
-    ] :> IView
+/// A substrate-kind option, a choice chosen while it is the sample's substrate.
+let private kindBox (id : ConstructorUiId) (label : ControlCaption) (mark : ChoiceMark) (onClick : unit -> unit) : IView =
+    CommandControls.choiceToggle id label mark ChosenCommand ControlOffered onClick
+        [ ToggleButton.padding (Avalonia.Thickness(10.0, 4.0)); ToggleButton.margin (Avalonia.Thickness(0.0, 0.0, 6.0, 4.0)) ]
 
-/// The Save / Cancel actions (one row, distinct positive/negative styling).
-let private actionButton (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-    Border.create [
-        id.automationAttribute<Border> ()
-        Border.background (brush background)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Avalonia.Thickness(22.0, 6.0))
-        Border.margin (Avalonia.Thickness(0.0, 0.0, 10.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label.value ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box id.value))
-    ] :> IView
+/// A toolbar verb, chosen-blue when it is the primary verb; withheld verbs are present but inert.
+let private verbButton (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
+    CommandControls.commandButton id label emphasis availability onClick [ Button.margin (Avalonia.Thickness(0.0, 0.0, 8.0, 0.0)) ]
 
 /// A −/count/+ stepper (the toolbar fold count and each group's inline period count).
 let private stepper (containerId : ConstructorUiId) (minusId : ConstructorUiId) (plusId : ConstructorUiId) (count : PeriodCount) (stepBy : PeriodCountStep -> unit) : IView =
     StackPanel.create [
-        containerId.automationAttribute<StackPanel> ()
+        yield! containerId.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 2.0
         StackPanel.children [
-            clickBox minusId (ControlCaption "−") idleBackground (fun () -> stepBy (PeriodCountStep -1))
+            clickBox minusId (ControlCaption "−") (fun () -> stepBy (PeriodCountStep -1))
             TextBlock.create [
                 TextBlock.text (string count.value)
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (Avalonia.Thickness(4.0, 0.0))
             ] :> IView
-            clickBox plusId (ControlCaption "+") idleBackground (fun () -> stepBy (PeriodCountStep 1))
+            clickBox plusId (ControlCaption "+") (fun () -> stepBy (PeriodCountStep 1))
         ]
     ] :> IView
 
@@ -711,7 +674,7 @@ let private nameRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
         StackPanel.children [
             (ControlCaption "Name:").sampleEditorLabel
             TextBox.create [
-                TextBox.name ConstructorUiId.sampleNameBox.value
+                yield! ConstructorUiId.sampleNameBox.inputAttributes<TextBox> ()
                 TextBox.width 340.0
                 TextBox.text m.name.value
                 TextBox.onTextChanged (EntryName >> SetName >> dispatch)
@@ -726,7 +689,7 @@ let private descriptionRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -
         DockPanel.children [
             Border.create [ Border.dock Dock.Left; Border.margin (Avalonia.Thickness(0.0, 0.0, 6.0, 0.0)); Border.child ((ControlCaption "Description:").sampleEditorLabel) ]
             TextBox.create [
-                TextBox.name ConstructorUiId.sampleDescriptionBox.value
+                yield! ConstructorUiId.sampleDescriptionBox.inputAttributes<TextBox> ()
                 TextBox.text m.description.value
                 TextBox.onTextChanged (EntryDescription >> SetDescription >> dispatch)
             ] :> IView
@@ -741,8 +704,7 @@ let private substrateRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> 
             (ControlCaption "Geometry:").sampleEditorLabel
             :: ([ ThinFilm; ThickPlate; Mirror ]
                 |> List.map (fun kind ->
-                    let background = if m.substrate = kind then chosenBackground else idleBackground
-                    clickBox (ConstructorUiId.sampleSubstrateKind kind.uiKey) kind.caption background (fun () -> dispatch (SetSampleSubstrate kind)))))
+                    kindBox (ConstructorUiId.sampleSubstrateKind kind.uiKey) kind.caption (if m.substrate = kind then ChosenChoice else UnchosenChoice) (fun () -> dispatch (SetSampleSubstrate kind)))))
     ] :> IView
 
 /// One emission group checkbox (spec 0040 Part D.2 step 010). `isChecked` is bound ONE-WAY from
@@ -829,25 +791,12 @@ let private chooseMaterialForLayer (m : SampleEditorModel) (dispatch : SampleEdi
 /// tree at dispatch time (the step-017 precedent); the subscription re-patches on the id — the
 /// closure's only other captures (the context seam, dispatch) are render-stable.
 let private chooseMaterialVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (chooseId : ConstructorUiId) : IView =
-    Border.create [
-        chooseId.automationAttribute<Border> ()
-        Border.background (brush idleBackground)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Avalonia.Thickness(10.0, 3.0))
-        Border.margin (Avalonia.Thickness(6.0, 0.0, 0.0, 3.0))
-        Border.verticalAlignment VerticalAlignment.Top
-        Border.child (TextBlock.create [ TextBlock.text "Choose material…" ])
-        Border.onPointerPressed ((fun e ->
-            e.Handled <- true
-            match e.Source with
-            | :? Visual as source ->
-                match TopLevel.GetTopLevel source with
-                | :? Window as owner -> chooseMaterialForLayer m dispatch position owner
-                | _ -> ()
-            | _ -> ()), SubPatchOptions.OnChangeOf chooseId.value)
-    ] :> IView
+    CommandControls.commandButtonOn chooseId (ControlCaption "Choose material…") NeutralCommand ControlOffered
+        (fun pressed ->
+            match TopLevel.GetTopLevel pressed with
+            | :? Window as owner -> chooseMaterialForLayer m dispatch position owner
+            | _ -> ())
+        [ Button.padding (Avalonia.Thickness(10.0, 3.0)); Button.margin (Avalonia.Thickness(6.0, 0.0, 0.0, 3.0)); Button.verticalAlignment VerticalAlignment.Top ]
 
 /// Compose one Select session for the SUBSTRATE plate and open (or re-target) the Materials
 /// window through the context seam (spec 0040 Part D.4 step 011 — the `chooseMaterialForLayer`
@@ -879,34 +828,22 @@ let private chooseMaterialForSubstrate (m : SampleEditorModel) (dispatch : Sampl
 /// click's own visual tree at dispatch time (the `chooseMaterialVerb` precedent). Styled as a
 /// toolbar verb; it reuses the `setSubstrateButton` id.
 let private setSubstrateVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
-    Border.create [
-        ConstructorUiId.setSubstrateButton.automationAttribute<Border> ()
-        Border.background (brush idleBackground)
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Avalonia.Thickness(12.0, 5.0))
-        Border.margin (Avalonia.Thickness(0.0, 0.0, 8.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text "Set…" ])
-        Border.onPointerPressed ((fun e ->
-            e.Handled <- true
-            match e.Source with
-            | :? Visual as source ->
-                match TopLevel.GetTopLevel source with
-                | :? Window as owner -> chooseMaterialForSubstrate m dispatch owner
-                | _ -> ()
-            | _ -> ()), SubPatchOptions.OnChangeOf ConstructorUiId.setSubstrateButton.value)
-    ] :> IView
+    CommandControls.commandButtonOn ConstructorUiId.setSubstrateButton (ControlCaption "Set…") NeutralCommand ControlOffered
+        (fun pressed ->
+            match TopLevel.GetTopLevel pressed with
+            | :? Window as owner -> chooseMaterialForSubstrate m dispatch owner
+            | _ -> ())
+        [ Button.margin (Avalonia.Thickness(0.0, 0.0, 8.0, 0.0)) ]
 
 /// One layer's inline orientation editor (φ/θ/ψ in degrees) — rendered ONLY when the layer's
 /// material is anisotropic; an unparsable entry dispatches nothing.
 let private orientationEditorView (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (orientationId : ConstructorUiId) (orientation : CrystalOrientation) : IView =
     let angles = orientation.editorAngles
-    let angleBox (label : ControlCaption) (current : Angle) (withAngle : Angle -> EulerAngles) : IView list =
+    let angleBox (label : ControlCaption) (angle : ConstructorUiKey) (current : Angle) (withAngle : Angle -> EulerAngles) : IView list =
         [
             label.sampleEditorLabel
             TextBox.create [
+                yield! (ConstructorUiId.sampleLayerOrientationAngle orientationId angle).inputAttributes<TextBox> ()
                 TextBox.width 46.0
                 TextBox.text $"%g{current.degrees}"
                 TextBox.onTextChanged (
@@ -918,13 +855,13 @@ let private orientationEditorView (dispatch : SampleEditorMsg -> unit) (position
             ] :> IView
         ]
     StackPanel.create [
-        orientationId.automationAttribute<StackPanel> ()
+        yield! orientationId.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 4.0
         StackPanel.children (
-            angleBox (ControlCaption "φ°") angles.phi (fun a -> { angles with phi = a })
-            @ angleBox (ControlCaption "θ°") angles.theta (fun a -> { angles with theta = a })
-            @ angleBox (ControlCaption "ψ°") angles.psi (fun a -> { angles with psi = a }))
+            angleBox (ControlCaption "φ°") (ConstructorUiKey "Phi") angles.phi (fun a -> { angles with phi = a })
+            @ angleBox (ControlCaption "θ°") (ConstructorUiKey "Theta") angles.theta (fun a -> { angles with theta = a })
+            @ angleBox (ControlCaption "ψ°") (ConstructorUiKey "Psi") angles.psi (fun a -> { angles with psi = a }))
     ] :> IView
 
 /// One film-layer row (a top-level single or a group's nested cell slot): clickable
@@ -949,41 +886,38 @@ let private layerRowView
         match entryOpt with
         | Some entry when entry.isAnisotropic -> [ orientationEditorView dispatch position orientationId layer.orientation ]
         | Some _ | None -> []
-    Border.create [
-        rowId.automationAttribute<Border> ()
-        Border.margin margin
-        Border.background (brush (if selected then chosenBackground else idleBackground))
-        Border.borderBrush (brush idleBorder)
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Avalonia.Thickness(8.0, 3.0))
-        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch (ToggleLayer position)), SubPatchOptions.OnChangeOf (box (rowId.value, selected)))
-        Border.child (
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.spacing 10.0
-                StackPanel.children (
-                    [
-                        TextBlock.create [
-                            TextBlock.text materialName.value
-                            TextBlock.width 230.0
-                            TextBlock.verticalAlignment VerticalAlignment.Center
-                        ] :> IView
-                        TextBlock.create [
-                            thicknessId.automationAttribute<TextBlock> ()
-                            TextBlock.text layer.thickness.nanometreCaption.value
-                            TextBlock.width 90.0
-                            TextBlock.verticalAlignment VerticalAlignment.Center
-                        ] :> IView
-                        TextBlock.create [
-                            TextBlock.text layer.orientation.editorCaption.value
-                            TextBlock.foreground (brush hintColor)
-                            TextBlock.verticalAlignment VerticalAlignment.Center
-                        ] :> IView
-                    ]
-                    @ orientationEditor)
-            ])
-    ] :> IView
+    let rowContent : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 10.0
+            StackPanel.children (
+                [
+                    TextBlock.create [
+                        TextBlock.text materialName.value
+                        TextBlock.width 230.0
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                    ] :> IView
+                    TextBlock.create [
+                        thicknessId.automationAttribute<TextBlock> ()
+                        TextBlock.text layer.thickness.nanometreCaption.value
+                        TextBlock.width 90.0
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                    ] :> IView
+                    TextBlock.create [
+                        TextBlock.text layer.orientation.editorCaption.value
+                        TextBlock.foreground (brush hintColor)
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                    ] :> IView
+                ]
+                @ orientationEditor)
+        ] :> IView
+    // The row is a choice, selected while it is in the selection; its inline orientation boxes take their own presses.
+    CommandControls.choiceToggleShowing rowId materialName rowContent (if selected then ChosenChoice else UnchosenChoice) ChosenCommand ControlOffered
+        (fun () -> dispatch (ToggleLayer position))
+        [ ToggleButton.margin margin
+          ToggleButton.padding (Avalonia.Thickness(8.0, 3.0))
+          ToggleButton.horizontalAlignment HorizontalAlignment.Stretch
+          ToggleButton.horizontalContentAlignment HorizontalAlignment.Left ]
 
 /// A period group's ONE collapsible super-row: the rotating-triangle expander, the cell
 /// summary, and the inline repeat-count stepper (whole periods through `SetRepeatCount`).
@@ -997,7 +931,7 @@ let private groupRowView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> 
             TextBlock.verticalAlignment VerticalAlignment.Center
         ] :> IView
     Border.create [
-        (ConstructorUiId.sampleGroupRow groupIndex.uiPosition).automationAttribute<Border> ()
+        yield! (ConstructorUiId.sampleGroupRow groupIndex.uiPosition).groupAttributes<Border> ()
         Border.margin (Avalonia.Thickness(0.0, 0.0, 0.0, 3.0))
         Border.background (brush groupBackground)
         Border.borderBrush (brush idleBorder)
@@ -1009,7 +943,7 @@ let private groupRowView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> 
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 8.0
                 StackPanel.children [
-                    clickBoxView (ConstructorUiId.sampleGroupExpander groupIndex.uiPosition) idleBackground triangle (fun () -> dispatch (ToggleGroup groupIndex))
+                    clickBoxView (ConstructorUiId.sampleGroupExpander groupIndex.uiPosition) (ControlCaption (if collapsed then "Expand group" else "Collapse group")) triangle (fun () -> dispatch (ToggleGroup groupIndex))
                     TextBlock.create [
                         TextBlock.text $"%d{List.length group.cell}-layer cell"
                         TextBlock.verticalAlignment VerticalAlignment.Center
@@ -1098,7 +1032,7 @@ let private halfSpacesRow (m : SampleEditorModel) (dispatch : SampleEditorMsg ->
                     (ControlCaption "Substrate plate:").sampleEditorLabel
                     summary ConstructorUiId.sampleSubstrateSummary substrateText
                     setSubstrateVerb m dispatch
-                    verbButton ConstructorUiId.clearSubstrateButton (ControlCaption "Clear") idleBackground ControlOffered (fun () -> dispatch ClearSubstrateClicked)
+                    verbButton ConstructorUiId.clearSubstrateButton (ControlCaption "Clear") NeutralCommand ControlOffered (fun () -> dispatch ClearSubstrateClicked)
                 ]
             ] :> IView
             WrapPanel.create [
@@ -1106,8 +1040,8 @@ let private halfSpacesRow (m : SampleEditorModel) (dispatch : SampleEditorMsg ->
                 WrapPanel.children [
                     (ControlCaption "Lower half-space:").sampleEditorLabel
                     summary ConstructorUiId.sampleLowerSummary lowerText
-                    verbButton ConstructorUiId.setLowerButton (ControlCaption "Set from chosen") idleBackground m.chosenMaterialAvailability (fun () -> dispatch SetLowerClicked)
-                    verbButton ConstructorUiId.clearLowerButton (ControlCaption "Clear (vacuum)") idleBackground ControlOffered (fun () -> dispatch ClearLowerClicked)
+                    verbButton ConstructorUiId.setLowerButton (ControlCaption "Set from chosen") NeutralCommand m.chosenMaterialAvailability (fun () -> dispatch SetLowerClicked)
+                    verbButton ConstructorUiId.clearLowerButton (ControlCaption "Clear (vacuum)") NeutralCommand ControlOffered (fun () -> dispatch ClearLowerClicked)
                 ]
             ] :> IView
         ]
@@ -1125,14 +1059,14 @@ let private selectionToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children [
-            verbButton ConstructorUiId.addLayerButton (ControlCaption "Add layer") chosenBackground addAvailability (fun () -> dispatch AddLayerClicked)
-            verbButton ConstructorUiId.selectByMaterialButton (ControlCaption "Select by material") idleBackground m.chosenMaterialAvailability (fun () -> dispatch SelectByMaterialClicked)
-            verbButton ConstructorUiId.clearSelectionButton (ControlCaption "Clear selection") idleBackground m.selectionAvailability (fun () -> dispatch ClearSelectionClicked)
-            verbButton ConstructorUiId.removeSelectedLayersButton (ControlCaption "Remove") idleBackground m.selectionAvailability (fun () -> dispatch RemoveSelectedClicked)
-            verbButton ConstructorUiId.moveSelectedUpButton (ControlCaption "Move up") idleBackground m.selectionAvailability (fun () -> dispatch MoveUpClicked)
-            verbButton ConstructorUiId.moveSelectedDownButton (ControlCaption "Move down") idleBackground m.selectionAvailability (fun () -> dispatch MoveDownClicked)
+            verbButton ConstructorUiId.addLayerButton (ControlCaption "Add layer") ChosenCommand addAvailability (fun () -> dispatch AddLayerClicked)
+            verbButton ConstructorUiId.selectByMaterialButton (ControlCaption "Select by material") NeutralCommand m.chosenMaterialAvailability (fun () -> dispatch SelectByMaterialClicked)
+            verbButton ConstructorUiId.clearSelectionButton (ControlCaption "Clear selection") NeutralCommand m.selectionAvailability (fun () -> dispatch ClearSelectionClicked)
+            verbButton ConstructorUiId.removeSelectedLayersButton (ControlCaption "Remove") NeutralCommand m.selectionAvailability (fun () -> dispatch RemoveSelectedClicked)
+            verbButton ConstructorUiId.moveSelectedUpButton (ControlCaption "Move up") NeutralCommand m.selectionAvailability (fun () -> dispatch MoveUpClicked)
+            verbButton ConstructorUiId.moveSelectedDownButton (ControlCaption "Move down") NeutralCommand m.selectionAvailability (fun () -> dispatch MoveDownClicked)
             stepper ConstructorUiId.repeatCountStepper ConstructorUiId.repeatCountStepperMinus ConstructorUiId.repeatCountStepperPlus m.foldCount (FoldCountBy >> dispatch)
-            verbButton ConstructorUiId.makeRepeatBlockButton (ControlCaption "Make repeat block") idleBackground m.selectionAvailability (fun () -> dispatch MakeRepeatBlockClicked)
+            verbButton ConstructorUiId.makeRepeatBlockButton (ControlCaption "Make repeat block") NeutralCommand m.selectionAvailability (fun () -> dispatch MakeRepeatBlockClicked)
         ]
     ] :> IView
 
@@ -1150,7 +1084,7 @@ let private editToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg -> u
     let angleBox (boxId : ConstructorUiId) (label : ControlCaption) (text : ControlCaption) (slot : AngleSlot) : IView =
         labelled label (
             TextBox.create [
-                TextBox.name boxId.value
+                yield! boxId.inputAttributes<TextBox> ()
                 TextBox.width 46.0
                 TextBox.text text.value
                 TextBox.onTextChanged (ControlCaption >> (fun entered -> dispatch (SetOrientationText (slot, entered))))
@@ -1160,17 +1094,17 @@ let private editToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg -> u
         WrapPanel.children [
             labelled (ControlCaption "Thickness (nm):") (
                 TextBox.create [
-                    TextBox.name ConstructorUiId.sampleLayerHeightBox.value
+                    yield! ConstructorUiId.sampleLayerHeightBox.inputAttributes<TextBox> ()
                     TextBox.width 70.0
                     TextBox.text m.thicknessText.value
                     TextBox.onTextChanged (ControlCaption >> SetThicknessText >> dispatch)
                 ] :> IView)
-            verbButton ConstructorUiId.setLayerHeightButton (ControlCaption "Set thickness") idleBackground m.selectionAvailability (fun () -> dispatch SetLayerHeightClicked)
-            verbButton ConstructorUiId.setLayerMaterialButton (ControlCaption "Set material") idleBackground m.setMaterialAvailability (fun () -> dispatch SetLayerMaterialClicked)
+            verbButton ConstructorUiId.setLayerHeightButton (ControlCaption "Set thickness") NeutralCommand m.selectionAvailability (fun () -> dispatch SetLayerHeightClicked)
+            verbButton ConstructorUiId.setLayerMaterialButton (ControlCaption "Set material") NeutralCommand m.setMaterialAvailability (fun () -> dispatch SetLayerMaterialClicked)
             angleBox ConstructorUiId.sampleOrientationPhiBox (ControlCaption "φ°") m.phiText PhiSlot
             angleBox ConstructorUiId.sampleOrientationThetaBox (ControlCaption "θ°") m.thetaText ThetaSlot
             angleBox ConstructorUiId.sampleOrientationPsiBox (ControlCaption "ψ°") m.psiText PsiSlot
-            verbButton ConstructorUiId.setOrientationOfSelectedButton (ControlCaption "Set orientation") idleBackground m.selectionAvailability (fun () -> dispatch SetOrientationClicked)
+            verbButton ConstructorUiId.setOrientationOfSelectedButton (ControlCaption "Set orientation") NeutralCommand m.selectionAvailability (fun () -> dispatch SetOrientationClicked)
         ]
     ] :> IView
 
@@ -1189,14 +1123,14 @@ let private qwotRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
         StackPanel.children [
             (ControlCaption "QWOT λ (nm):").sampleEditorLabel
             TextBox.create [
-                TextBox.name ConstructorUiId.qwotEntryBox.value
+                yield! ConstructorUiId.qwotEntryBox.inputAttributes<TextBox> ()
                 TextBox.width 70.0
                 TextBox.text m.qwotText.value
                 TextBox.onTextChanged (ControlCaption >> SetQwotText >> dispatch)
             ] :> IView
             (ControlCaption "→ t = λ/(4n) =").sampleEditorLabel
             TextBlock.create [
-                TextBlock.name ConstructorUiId.qwotDerivedText.value
+                ConstructorUiId.qwotDerivedText.automationAttribute<TextBlock> ()
                 TextBlock.text derivedLabel.value
                 TextBlock.verticalAlignment VerticalAlignment.Center
             ] :> IView
@@ -1205,7 +1139,7 @@ let private qwotRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
 
 let private statusRow (m : SampleEditorModel) : IView =
     TextBlock.create [
-        TextBlock.name ConstructorUiId.sampleEditorStatus.value
+        ConstructorUiId.sampleEditorStatus.automationAttribute<TextBlock> ()
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
@@ -1218,8 +1152,8 @@ let private saveCancelRow (dispatch : SampleEditorMsg -> unit) : IView =
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
-            actionButton ConstructorUiId.sampleEditorSaveButton (ControlCaption "Save") saveBackground (fun () -> dispatch SaveClicked)
-            actionButton ConstructorUiId.sampleEditorCancelButton (ControlCaption "Cancel") cancelBackground (fun () -> dispatch CancelClicked)
+            CommandControls.actionCommand ConstructorUiId.sampleEditorSaveButton (ControlCaption "Save") PositiveCommand (fun () -> dispatch SaveClicked)
+            CommandControls.actionCommand ConstructorUiId.sampleEditorCancelButton (ControlCaption "Cancel") NegativeCommand (fun () -> dispatch CancelClicked)
         ]
     ] :> IView
 
@@ -1228,7 +1162,7 @@ let private saveCancelRow (dispatch : SampleEditorMsg -> unit) : IView =
 /// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
 let private exitConfirmRow (dispatch : SampleEditorMsg -> unit) : IView =
     StackPanel.create [
-        ConstructorUiId.sampleEditorExitConfirm.automationAttribute<StackPanel> ()
+        yield! ConstructorUiId.sampleEditorExitConfirm.groupAttributes<StackPanel> ()
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
@@ -1238,8 +1172,8 @@ let private exitConfirmRow (dispatch : SampleEditorMsg -> unit) : IView =
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (Avalonia.Thickness(0.0, 0.0, 12.0, 0.0))
             ] :> IView
-            actionButton ConstructorUiId.sampleEditorDiscardButton (ControlCaption "Discard changes") cancelBackground (fun () -> dispatch DiscardConfirmed)
-            actionButton ConstructorUiId.sampleEditorKeepEditingButton (ControlCaption "Keep editing") saveBackground (fun () -> dispatch KeepEditing)
+            CommandControls.actionCommand ConstructorUiId.sampleEditorDiscardButton (ControlCaption "Discard changes") NegativeCommand (fun () -> dispatch DiscardConfirmed)
+            CommandControls.actionCommand ConstructorUiId.sampleEditorKeepEditingButton (ControlCaption "Keep editing") PositiveCommand (fun () -> dispatch KeepEditing)
         ]
     ] :> IView
 
@@ -1294,7 +1228,7 @@ let sampleEditorView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit
                                         StackPanel.children [
                                             (ControlCaption "Films (expanded):").sampleEditorLabel
                                             TextBlock.create [
-                                                TextBlock.name ConstructorUiId.sampleFilmsCount.value
+                                                ConstructorUiId.sampleFilmsCount.automationAttribute<TextBlock> ()
                                                 TextBlock.text (string m.filmsCount)
                                                 TextBlock.verticalAlignment VerticalAlignment.Center
                                             ] :> IView
@@ -1307,7 +1241,7 @@ let sampleEditorView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit
                                 ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
                                 ScrollViewer.content (
                                     StackPanel.create [
-                                        StackPanel.name ConstructorUiId.sampleStackTable.value
+                                        yield! ConstructorUiId.sampleStackTable.groupAttributes<StackPanel> ()
                                         StackPanel.orientation Orientation.Vertical
                                         StackPanel.children (stackRows m dispatch)
                                     ])

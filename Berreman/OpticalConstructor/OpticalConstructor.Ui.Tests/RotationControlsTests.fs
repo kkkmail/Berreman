@@ -52,17 +52,17 @@ module RotationControlsTests =
 
     /// The bar's boxes carry a freely-mutable `AutomationProperties.AutomationId` (not a write-once
     /// `Name`) since the spec-0038 sweep — locate them by that id.
-    let private borderWithId (w : Window) (id : string) : Border option =
+    let private borderWithId (w : Window) (id : string) : Control option =
         w.GetVisualDescendants()
         |> Seq.choose (fun v ->
             match v with
-            | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id -> Some b
+            | :? Control as b when UiDriver.hasId (id) b -> Some b
             | _ -> None)
         |> Seq.tryHead
 
     let private backgroundColor (w : Window) (id : string) : Color option =
         match borderWithId w id with
-        | Some b -> (match b.Background with | :? SolidColorBrush as s -> Some s.Color | _ -> None)
+        | Some b -> Some (UiDriver.fillOfControl b)
         | None -> None
 
     [<Fact>]
@@ -94,7 +94,7 @@ module RotationControlsTests =
     /// The "Lock R3" / "Unlock R3" button's current label.
     let private lockLabel (window : Window) : string =
         match borderWithId window ConstructorUiId.rotationLockR3Button.value with
-        | Some b -> (match b.Child with | :? TextBlock as t -> t.Text | _ -> "<no text>")
+        | Some b -> UiDriver.textOfControl b
         | None -> "<not found>"
 
     [<Fact>]
@@ -131,7 +131,7 @@ module RotationControlsTests =
 
     let private buttonLabel (window : Window) (id : string) : string =
         match borderWithId window id with
-        | Some b -> (match b.Child with | :? TextBlock as t -> t.Text | _ -> "<no text>")
+        | Some b -> UiDriver.textOfControl b
         | None -> "<not found>"
 
     [<Fact>]

@@ -2,6 +2,7 @@ namespace OpticalConstructor.Ui.Tests
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Headless
 open Avalonia.Input
 open Avalonia.Media
@@ -10,6 +11,7 @@ open Avalonia.VisualTree
 open Avalonia.FuncUI
 open Xunit
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui.Tests.UiDriver
 
 /// Spec 0038 Part E (012) — the FacetedTreeControls component (UICOMP_XDUO_0008): the domain-free
 /// faceted, filterable, reconfigurable tree. Covers the pure control contract (empty state, the
@@ -21,12 +23,6 @@ open OpticalConstructor.Controls
 /// Materials / Library windows is a later step; these tests mount the component alone over stub
 /// handlers (the functional-proxy seam — the control never touches a proxy or the facet engine).
 module FacetedTreeControlsTests =
-
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (everything
-    /// in this control carries an AutomationId — a mutable attached property — so chips, offers,
-    /// and rows survive the host's membership changes; see the control).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
 
     // ============================ the known State ============================
 
@@ -182,10 +178,6 @@ module FacetedTreeControlsTests =
 
     // ============================ headless structure proofs ============================
 
-    let private isPresent (window : Window) (id : string) : bool =
-        window.GetVisualDescendants()
-        |> Seq.exists (function :? Control as c -> matchesId id c | _ -> false)
-
     /// The number of generated tree node rows (any control whose AutomationId carries the
     /// FacetTreeNode_ prefix) — gated mode must render ZERO.
     let private treeRowCount (window : Window) : int =
@@ -198,44 +190,14 @@ module FacetedTreeControlsTests =
             | _ -> false)
         |> Seq.length
 
-    /// The display text under the control carrying `id` (the control itself when it is a
-    /// TextBlock, its TextBlock child otherwise).
-    let private textOf (window : Window) (id : string) : string =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-        match found with
-        | None -> ""
-        | Some (:? TextBlock as t) -> (if isNull t.Text then "" else t.Text)
-        | Some c ->
-            c.GetVisualDescendants()
-            |> Seq.tryPick (function :? TextBlock as t when not (isNull t.Text) -> Some t.Text | _ -> None)
-            |> Option.defaultValue ""
-
     /// The TextBox carrying `id` (fails the test when it is missing).
     let private textBoxOf (window : Window) (id : string) : TextBox =
         let found =
             window.GetVisualDescendants()
-            |> Seq.tryPick (function :? TextBox as tb when matchesId id tb -> Some tb | _ -> None)
+            |> Seq.tryPick (function :? TextBox as tb when UiDriver.hasId id tb -> Some tb | _ -> None)
         match found with
         | Some tb -> tb
         | None -> failwith $"%s{id} TextBox was not found"
-
-    /// Click the centre of the control carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
 
     let private mount (state : FacetedTreeControls.FacetedTreeControlsState) (handlers : FacetedTreeControls.FacetedTreeControlsHandlers) : Window =
         let window = Window(Width = 760.0, Height = 700.0)
@@ -246,17 +208,14 @@ module FacetedTreeControlsTests =
 
     /// The clickable label Border of the tree row carrying `code` (its stable `treeNode` id — the
     /// chevron carries the DISTINCT `treeNodeChevron` id, so this is unambiguously the label box).
-    let private labelBorderOf (window : Window) (code : string) : Border =
+    let private labelBorderOf (window : Window) (code : string) : TemplatedControl =
         let id = (ConstructorUiId.facetTreeNode (ConstructorUiKey code)).value
-        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? TemplatedControl as b when UiDriver.hasId id b -> Some b | _ -> None) with
         | Some b -> b
         | None -> failwith $"%s{id} label border was not found"
 
     /// A Border's solid fill colour (None when it carries a non-solid brush).
-    let private backgroundColorOf (b : Border) : Color option =
-        match b.Background with
-        | :? SolidColorBrush as s -> Some s.Color
-        | _ -> None
+    let private backgroundColorOf (b : TemplatedControl) : Color option = Some (UiDriver.fillOfControl b)
 
     // The control's idle / chosen row fills (mirrored from FacetedTreeControls, which keeps them private).
     let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)

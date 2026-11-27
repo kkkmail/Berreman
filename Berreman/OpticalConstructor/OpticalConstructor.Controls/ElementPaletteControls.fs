@@ -39,39 +39,10 @@ module ElementPaletteControls =
             removeSelected : unit -> unit
         }
 
-    // -- The button look, identical to the rotation-controls bar's idle button (so they MATCH). --
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-
-    /// A clickable, button-styled box, KEYED by its id so a membership change recreates the box at a
-    /// shifted slot instead of patching another entry's styled control in place. The id is its
-    /// `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`):
-    /// the add buttons are GENERATED from the host's `addItems` (variable membership), so a sibling can
-    /// shift onto a reused control's slot, and Avalonia forbids renaming a styled control (the
-    /// `MaterialsControls` precedent).
+    /// A palette button, keyed by its id so a membership change recreates it at a shifted slot.
     let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        let button =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.isEnabled availability.isEnabled
-                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-                Border.background (brush idleBackground)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(10.0, 5.0))
-                Border.margin (Thickness(0.0, 0.0, 6.0, 6.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text caption.value ])
-                // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
-                // label changes (matching the rotation bar) so a reused button can't keep a stale handler.
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box caption.value))
-            ]
-            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
-            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        button :> IView
+        CommandControls.commandButton id caption NeutralCommand availability onClick
+            [ Button.padding (Thickness(10.0, 5.0)); Button.margin (Thickness(0.0, 0.0, 6.0, 6.0)) ]
 
     /// The palette bar — a wrapping row of "+ label" add buttons followed by "Remove selected".
     let elementPaletteControlsView (state : ElementPaletteControlsState) (handlers : ElementPaletteControlsHandlers) : IView =

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Platforms>x64</Platforms>
+        <IsPackable>false</IsPackable>
+        <OutputType>Exe</OutputType>
+        <IsTestProject>true</IsTestProject>
+        <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="DesktopSession.fs" />
+        <Compile Include="DesktopTests.fs" />
+        <Compile Include="DesktopSurvey.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="FlaUI.Core" />
+        <PackageReference Include="FlaUI.UIA3" />
+        <PackageReference Include="System.Management" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.App\OpticalConstructor.App.fsproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\..\BerremanTestSupport\BerremanTestSupport.fsproj" />
+    </ItemGroup>
+
+</Project>

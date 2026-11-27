@@ -54,6 +54,8 @@ type AppContext =
         catalogueImports : CatalogueImportContext
         /// Startup catalogues whose complete row lists await confirmation (spec 0050 §3.7).
         pendingImports : PendingCatalogueImport list
+        /// The start's imports that asked nothing and were applied (spec 0051 `.manual/003` 5.3, D6).
+        settledImports : PendingCatalogueImport list
         /// Write each exported run as CSV in the configured exports folder (spec 0046; spec 0050 §3.9).
         /// No file is written until an export is requested.
         experimentExport : ExperimentExport.ExperimentExportProxy
@@ -94,7 +96,13 @@ type AppContext =
                                 ClockProvider.system
                         ]
             }
-        let pendingImports =
+        // Spec 0051 `.manual/003` 5.3 (D6): the shipped catalogue's first import and rows of one choice ask nothing.
+        let shipped =
+            match catalogueImports.proxy.loggedImports () with
+            | Ok imports when imports |> List.exists (fun entry -> entry.catalogueId = CatalogueIds.builtInCatalogue) -> ShippedImportedBefore
+            | Ok _
+            | Error _ -> ShippedFirstImport
+        let reported =
             match catalogueImports.importOnStart (CatalogueProxy.builtInFolderUnder locations.shippedCatalogueFolder) with
             | Error e ->
                 Logger.logError $"AppContext.compose: could not import catalogues on start: {e.describe}"
@@ -105,6 +113,17 @@ type AppContext =
                     | Error e -> Logger.logError $"AppContext.compose: could not import catalogue folder '{folder.folder.value}': {e.describe}"
                     | Ok _ -> ()
                 report.pending
+        let settled, pendingImports =
+            reported
+            |> List.fold (fun (settled : PendingCatalogueImport list, asking : PendingCatalogueImport list) pending ->
+                match pending.unaskedChoicesOpt shipped with
+                | Some choices ->
+                    match catalogueImports.settle pending choices with
+                    | Ok _ -> settled @ [ pending ], asking
+                    | Error e ->
+                        Logger.logError $"AppContext.compose: could not apply catalogue '{pending.entry.folder.value}': {e.describe}"
+                        settled, asking @ [ pending ]
+                | None -> settled, asking @ [ pending ]) ([], [])
 
         {
             library = LibraryProxy.createInDatabase database
@@ -117,6 +136,7 @@ type AppContext =
             libraryBackups = LibraryBackupProxy.createInDatabase database locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
             catalogueImports = catalogueImports
             pendingImports = pendingImports
+            settledImports = settled
             experimentExport =
                 OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
                     locations.exportsFolder
@@ -126,12 +146,25 @@ type AppContext =
             kitHistory = KitHistoryProxy.create locations.preferencesFolder
         }
 
-    /// Every start imports the shipped catalogue and registered folders by manifest hash, pending confirmation (spec 0050 S2.4; S3.1).
+    /// Every start makes the Kits, Exports and Catalogues folders, so every dialog that starts in one finds it, then
+    /// imports the shipped catalogue and registered folders by manifest hash, pending confirmation (spec 0050 S2.4; S3.1;
+    /// 0051 `.manual/003` 5.2, D5).
     static member create (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
-        LibraryDatabase.openOrCreate locations.libraryConnection
+        AppContext.madeWorkFolders locations
+        |> Result.bind (fun () -> LibraryDatabase.openOrCreate locations.libraryConnection)
         |> Result.map (AppContext.compose locations settings)
+
+    /// The Kits, Exports and Catalogues folders, made where missing (spec 0051 `.manual/003` 5.2, D5).
+    static member private madeWorkFolders (locations : DataLocations) : Result<unit, StorageError> =
+        try
+            for folder in [ locations.kitsFolder; locations.exportsFolder; locations.cataloguesFolder ] do
+                System.IO.Directory.CreateDirectory folder.value |> ignore
+            Ok ()
+        with error -> Error (FileIoExn error)
 
     /// Backs up and recreates; every start imports shipped and registered catalogues by manifest hash, pending confirmation (spec 0050 001 §C; S3.1).
     static member recreateLibrary (locations : DataLocations) (settings : WorkbenchSettings) : Result<AppContext, StorageError> =
-        LibraryDatabase.recreate locations.libraryConnection locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now)
+        AppContext.madeWorkFolders locations
+        |> Result.bind (fun () ->
+            LibraryDatabase.recreate locations.libraryConnection locations.backupsFolder (fun () -> LibraryBackupTime System.DateTime.Now))
         |> Result.map (AppContext.compose locations settings)

@@ -85,7 +85,8 @@ type OpenedKit =
     /// Shows the kit at once only when it has no snapshot row; otherwise the import dialog confirms every row, Reuse
     /// included, before `show` (spec 0050 S4.3, S5.2). A cancelled dialog or a failed re-binding releases the kit.
     member this.resolveAndShow (imports : CatalogueImportContext) (show : OpenedKit -> unit) (onFailed : KitLibraryError -> unit) : unit =
-        match this.pendingDecisions with
+        // Spec 0051 `.manual/003` 5.3 (D6): a reopen whose every row has one choice (a reuse) asks nothing.
+        match this.pendingDecisions |> List.filter (fun decision -> not (List.isEmpty decision.alternatives)) with
         | [] -> show this
         | _ ->
             let closePendingKit () : unit =
@@ -221,10 +222,10 @@ type KitFolderPicker with
     /// Picks one local folder; cancellation, non-local selections and provider failures return None (spec 0050 S4.3).
     static member ofWindow (owner : TopLevel) (suggested : FolderName) : KitFolderPicker =
         {
-            pickKitFolder = fun () ->
+            pickKitFolder = fun question ->
                 async {
                     try
-                        let options = FolderPickerOpenOptions(Title = "Choose a kit folder", AllowMultiple = false)
+                        let options = FolderPickerOpenOptions(Title = question.title, AllowMultiple = false)
                         let! start =
                             StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, suggested.value)
                             |> Async.AwaitTask
@@ -248,7 +249,7 @@ type KitFolderPicker with
 
     /// Starts the picker on the calling UI thread and hands on the folder it answers; a cancel calls nothing (spec 0050 S5.2).
     /// It catches nothing: `ofWindow` already answers None when the dialog cannot open.
-    member this.pickThen (onPicked : KitFolder -> unit) : unit = startPick (this.pickKitFolder ()) onPicked
+    member this.pickThen (question : KitFolderQuestion) (onPicked : KitFolder -> unit) : unit = startPick (this.pickKitFolder question) onPicked
 
 /// Whether a constructor window held a chosen kit (spec 0050 S5.3).
 type KitWindowPresence =

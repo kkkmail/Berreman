@@ -84,7 +84,8 @@ let initRendererTest () : RendererTestModel =
           centre = placement.placementPoint.toVector3
           zoom = BeamLayout.ElementZoom 3.5
           opticalSign = sign
-          normals = ElementRenderer.ShowNormals }
+          normals = ElementRenderer.ShowNormals
+          caption = ControlCaption kind.kindCode }
     {
         table = Table.defaultTable
         view = Table.defaultView
@@ -209,7 +210,7 @@ type RendererTestModel with
                 let highlight = if Some i = model.selected then ElementRenderer.ElementHighlighted else ElementRenderer.ElementNotHighlighted
                 renderer.draw (TableScene.projectOnScene model.view) highlight e)
         Canvas.create [
-            Canvas.name ConstructorUiId.rendererTestCanvas.value
+            yield! ConstructorUiId.rendererTestCanvas.surfaceAttributes<Canvas> ()
             Canvas.width TableScene.canvasWidth.value
             Canvas.height TableScene.canvasHeight.value
             Canvas.horizontalAlignment HorizontalAlignment.Left

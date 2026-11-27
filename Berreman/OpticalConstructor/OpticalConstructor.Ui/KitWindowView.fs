@@ -37,18 +37,22 @@ type TableAndElementRotationModel with
             ]
         ] :> IView
 
-    /// The last kit read or write that needs telling, in the library windows' refusal colour; the one control
-    /// carrying `kitStatus`, whichever bay is open (spec 0050 S5.3).
+    /// The last kit read or write that needs telling: a done step in the text colour, a refusal in firebrick; the one
+    /// control carrying `kitStatus`, whichever bay is open (spec 0050 S5.3; 0051 `.manual/003` 5.1).
     member internal model.kitStatusRows : IView list =
         match model.kitStatus with
         | Some status ->
+            let colour =
+                match status with
+                | KitStatusDone _ -> Color.FromRgb(40uy, 40uy, 40uy)
+                | KitStatusRefused _ -> Color.FromRgb(178uy, 34uy, 34uy)
             [
                 TextBlock.create [
                     ConstructorUiId.kitStatus.automationAttribute<TextBlock> ()
-                    TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
+                    TextBlock.foreground (MaterialsWindowView.brush colour)
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0))
-                    TextBlock.text status.value
+                    TextBlock.text status.caption.value
                 ]
                 |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitStatus.value
                 :> IView
@@ -64,7 +68,7 @@ let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableA
         match model.kitFolderOpt with
         | Some _ when not model.kitSend.job.isRunning ->
             [
-                MaterialsWindowView.verbButton ConstructorUiId.sendKitButton (ControlCaption "Send kit…") (fun () ->
+                CommandControls.verbCommand ConstructorUiId.sendKitButton (ControlCaption "Send kit…") (fun () ->
                     model.kitShell.zipPicker.pickZipToWriteThen model.kit.kitFile.name.zipFileName (SendKit >> dispatch))
             ]
         | Some _
@@ -72,15 +76,15 @@ let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableA
     let showInExplorer : IView list =
         match model.kitFolderOpt with
         | Some _ ->
-            [ MaterialsWindowView.verbButton ConstructorUiId.kitShowInExplorerButton (ControlCaption "Show in Explorer") (fun () -> dispatch ShowKitInExplorer) ]
+            [ CommandControls.verbCommand ConstructorUiId.kitShowInExplorerButton (ControlCaption "Show in Explorer") (fun () -> dispatch ShowKitInExplorer) ]
         | None -> []
     // Spec 0050 S6: offered while the kit takes writes and no source is open; a cancelled dialog sends nothing.
     let copyExperiments : IView list =
         match model.kitWrites, model.kitCopyOpt with
         | ControlOffered, None ->
             [
-                MaterialsWindowView.verbButton ConstructorUiId.kitCopyExperimentsButton (ControlCaption "Copy experiments from another kit…") (fun () ->
-                    model.kitShell.kitPicker.pickThen (OpenCopySource >> dispatch))
+                CommandControls.verbCommand ConstructorUiId.kitCopyExperimentsButton (ControlCaption "Copy experiments from another kit…") (fun () ->
+                    model.kitShell.kitPicker.pickThen OpticalConstructor.Domain.KitFolders.ChooseKitFolder (OpenCopySource >> dispatch))
             ]
         | ControlOffered, Some _
         | ControlWithheld, _ -> []
@@ -94,11 +98,11 @@ let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableA
         |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitModeText.value
         :> IView
     let switchButton (label : ControlCaption) (target : ConstructorMode) : IView =
-        MaterialsWindowView.verbButton ConstructorUiId.kitSwitchModeButton label (fun () -> dispatch (SwitchConstructorMode target))
+        CommandControls.verbCommand ConstructorUiId.kitSwitchModeButton label (fun () -> dispatch (SwitchConstructorMode target))
     let kitVerbs : IView list =
         [
-            MaterialsWindowView.verbButton ConstructorUiId.kitReloadChangesButton (ControlCaption "Reload changes") (fun () -> dispatch (CheckKitChanges KitCheckOnRequest))
-            MaterialsWindowView.verbButton ConstructorUiId.kitCloseButton (ControlCaption "Close kit") (fun () -> dispatch CloseKit)
+            CommandControls.verbCommand ConstructorUiId.kitReloadChangesButton (ControlCaption "Reload changes") (fun () -> dispatch (CheckKitChanges KitCheckOnRequest))
+            CommandControls.verbCommand ConstructorUiId.kitCloseButton (ControlCaption "Close kit") (fun () -> dispatch CloseKit)
         ]
     let constructorItems : IView list =
         match model.constructorMode with
@@ -119,7 +123,7 @@ let private namingTemplateRow (model : TableAndElementRotationModel) (dispatch :
                 Border.create [
                     Border.dock Dock.Right
                     Border.child (
-                        MaterialsWindowView.verbButton ConstructorUiId.saveNamingTemplateButton (ControlCaption "Save template") (fun () ->
+                        CommandControls.verbCommand ConstructorUiId.saveNamingTemplateButton (ControlCaption "Save template") (fun () ->
                             dispatch SaveNamingTemplate))
                 ]
             ]
@@ -140,7 +144,7 @@ let private namingTemplateRow (model : TableAndElementRotationModel) (dispatch :
             @ saveTemplate
             @ [
                 TextBox.create [
-                    ConstructorUiId.namingTemplateField.automationAttribute<TextBox> ()
+                    yield! ConstructorUiId.namingTemplateField.inputAttributes<TextBox> ()
                     TextBox.verticalAlignment VerticalAlignment.Center
                     TextBox.margin (Thickness(0.0, 0.0, 6.0, 0.0))
                     TextBox.text model.namingTemplateText.value
@@ -164,8 +168,9 @@ let private kitSendRows (model : TableAndElementRotationModel) (dispatch : Table
     else
         []
 
-/// The mapping table, one block per used item: its line, then Add and Use for each kit item, the choice filled. It
-/// shares the toggles' bounded scroller, so the bar grows no taller and no control leaves the screen (spec 0050 S7.2).
+/// The mapping table, one block per used item: its label and model, then Add and Use for each kit item, the choice
+/// filled; a heading and a 160-px scroller of its own beside the experiments, so neither list hides the other and the
+/// bar grows no taller (spec 0050 S7.2; 0051 `.manual/003` 4.4).
 let private kitCopyItemRows
     (model : TableAndElementRotationModel)
     (copySource : KitCopySource)
@@ -173,17 +178,11 @@ let private kitCopyItemRows
     : IView list =
     let block (row : ItemCopyRow) : IView =
         let source = row.sourceItem
-        let line =
-            match source.model.entryReferenceOpt with
-            | Some reference -> $"{source.label.value} — {reference.describe}"
-            | None -> source.label.value
+        let line = $"{source.label.value} — {(copySource.modelCaptionOf source).value}"
         let choiceBox (choice : ItemCopyChoice) (caption : ControlCaption) : IView =
             let id = ConstructorUiId.kitCopyItemChoice source.id choice
             let choose () = dispatch (ChooseCopiedItem (source.id, choice))
-            if choice = row.choice then
-                MaterialsWindowView.actionButton id caption MaterialsWindowView.positiveBackground choose
-            else
-                MaterialsWindowView.verbButton id caption choose
+            CommandControls.choiceCommand id caption (if choice = row.choice then ChosenChoice else UnchosenChoice) choose
         let choices =
             choiceBox AddCopiedItem (ControlCaption "Add")
             :: (model.kitItems |> List.map (fun item -> choiceBox (MapOntoKitItem item.id) (ControlCaption $"Use {item.label.value}")))
@@ -205,15 +204,26 @@ let private kitCopyItemRows
     | [] -> []
     | rows ->
         [
-            TextBlock.create [
-                TextBlock.textWrapping TextWrapping.Wrap
-                TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
-                TextBlock.text "Items the chosen experiments use: add each to this kit, or use an item it already has."
-            ]
-            StackPanel.create [
-                ConstructorUiId.kitCopyItemList.automationAttribute<StackPanel> ()
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.children (rows |> List.map block)
+            ScrollViewer.create [
+                ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+                ScrollViewer.maxHeight 160.0
+                ScrollViewer.content (
+                    StackPanel.create [
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.children [
+                            TextBlock.create [
+                                TextBlock.textWrapping TextWrapping.Wrap
+                                TextBlock.fontWeight FontWeight.SemiBold
+                                TextBlock.margin (Thickness(0.0, 0.0, 0.0, 2.0))
+                                TextBlock.text "Items the chosen experiments use: add each to this kit, or use an item it already has."
+                            ]
+                            StackPanel.create [
+                                yield! ConstructorUiId.kitCopyItemList.groupAttributes<StackPanel> ()
+                                StackPanel.orientation Orientation.Vertical
+                                StackPanel.children (rows |> List.map block)
+                            ]
+                        ]
+                    ])
             ]
             |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitCopyItemList.value
             :> IView
@@ -233,7 +243,7 @@ let private kitCopyRows (model : TableAndElementRotationModel) (dispatch : Table
                 CheckBox.content (
                     TextBlock.create [
                         TextBlock.textWrapping TextWrapping.Wrap
-                        TextBlock.text $"E{experiment.id.value} — {experiment.description}"
+                        TextBlock.text $"E{experiment.id.value} — {(copySource.describe experiment).value}"
                     ])
                 // `onClick` fires on the user's press alone, never on the render's `IsChecked` (the `pivotCheckBox` precedent).
                 CheckBox.onClick ((fun _ -> dispatch (ToggleCopiedExperiment experiment.id)), SubPatchOptions.OnChangeOf (box id.value))
@@ -245,44 +255,65 @@ let private kitCopyRows (model : TableAndElementRotationModel) (dispatch : Table
             | [] -> []
             | _ :: _ ->
                 [
-                    MaterialsWindowView.actionButton
+                    CommandControls.actionCommand
                         ConstructorUiId.kitCopyChosenButton
                         (ControlCaption "Copy")
-                        MaterialsWindowView.positiveBackground
+                        PositiveCommand
                         (fun () -> dispatch CopyChosenExperiments)
                 ]
         let cancel : IView =
-            MaterialsWindowView.actionButton
+            CommandControls.actionCommand
                 ConstructorUiId.kitCopyCancelButton
                 (ControlCaption "Cancel")
-                MaterialsWindowView.negativeBackground
+                NegativeCommand
                 (fun () -> dispatch CloseCopySource)
         [
             StackPanel.create [
                 StackPanel.orientation Orientation.Vertical
-                StackPanel.children [
+                StackPanel.children (
+                [
                     TextBlock.create [
                         ConstructorUiId.kitCopySourceText.automationAttribute<TextBlock> ()
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0))
                         TextBlock.text $"Copy from {copySource.source.kitFile.name.value}: choose the experiments to copy."
                     ]
-                    ScrollViewer.create [
-                        ConstructorUiId.kitCopyExperimentList.automationAttribute<ScrollViewer> ()
-                        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
-                        ScrollViewer.maxHeight 160.0
-                        ScrollViewer.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-                        ScrollViewer.content (
-                            StackPanel.create [
-                                StackPanel.orientation Orientation.Vertical
-                                StackPanel.children ((copySource.experiments |> List.map toggle) @ kitCopyItemRows model copySource dispatch)
-                            ])
+                    // The experiments and the items they use side by side, each in its own 160-px scroller.
+                    let experimentList : IView =
+                        ScrollViewer.create [
+                            ConstructorUiId.kitCopyExperimentList.automationAttribute<ScrollViewer> ()
+                            Grid.column 0
+                            ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
+                            ScrollViewer.maxHeight 160.0
+                            ScrollViewer.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                            ScrollViewer.content (
+                                StackPanel.create [
+                                    StackPanel.orientation Orientation.Vertical
+                                    StackPanel.children (copySource.experiments |> List.map toggle)
+                                ])
+                        ]
+                    let items : IView list =
+                        match kitCopyItemRows model copySource dispatch with
+                        | [] -> []
+                        | rows ->
+                            [
+                                StackPanel.create [
+                                    Grid.column 1
+                                    StackPanel.orientation Orientation.Vertical
+                                    StackPanel.children rows
+                                ]
+                            ]
+                    Grid.create [
+                        Grid.columnDefinitions (match items with [] -> "*" | _ :: _ -> "*,*")
+                        Grid.children (experimentList :: items)
                     ]
+                ]
+                @ [
                     StackPanel.create [
                         StackPanel.orientation Orientation.Horizontal
                         StackPanel.children (copy @ [ cancel ])
                     ]
-                ]
+                ])
             ]
             |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitCopySourceText.value
             :> IView
@@ -309,15 +340,15 @@ let private kitChangesRows (model : TableAndElementRotationModel) (dispatch : Ta
                     StackPanel.create [
                         StackPanel.orientation Orientation.Horizontal
                         StackPanel.children [
-                            MaterialsWindowView.actionButton
+                            CommandControls.actionCommand
                                 ConstructorUiId.kitChangesReloadButton
                                 (ControlCaption "Reload")
-                                MaterialsWindowView.positiveBackground
+                                PositiveCommand
                                 (fun () -> dispatch ReloadKitChanges)
-                            MaterialsWindowView.actionButton
+                            CommandControls.actionCommand
                                 ConstructorUiId.kitChangesKeepMineButton
                                 (ControlCaption "Keep mine")
-                                MaterialsWindowView.negativeBackground
+                                NegativeCommand
                                 (fun () -> dispatch KeepMyKitChanges)
                         ]
                     ]
@@ -371,7 +402,7 @@ let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndEle
         DockPanel.children [
             StackPanel.create [
                 StackPanel.dock Dock.Top
-                ConstructorUiId.kitBar.automationAttribute<StackPanel> ()
+                yield! ConstructorUiId.kitBar.groupAttributes<StackPanel> ()
                 StackPanel.orientation Orientation.Vertical
                 StackPanel.margin (Thickness(8.0, 6.0, 8.0, 2.0))
                 StackPanel.children (

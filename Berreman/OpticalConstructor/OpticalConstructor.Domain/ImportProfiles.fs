@@ -187,7 +187,6 @@ module ImportProfiles =
     type ScanQuantity =
         {
             elementId : ElementId
-            label : ElementLabel
             variable : VariableParameter
             ranges : VariableRange list
         }
@@ -197,8 +196,7 @@ module ImportProfiles =
 
     type ExperimentScan with
 
-        /// The distinct slot variables of `axes` in order of first appearance, each labelled by its first axis and ranged by
-        /// its axes in order, so A1's and A2's azimuth on one plate is one quantity (spec 0050 S9.2; 001 §Q AT-2).
+        /// The distinct slot variables of `axes` in order of first appearance, each ranged by its axes in order, so A1's and A2's azimuth on one plate is one quantity (spec 0050 S9.2; 001 §Q AT-2).
         member this.quantities : ScanQuantity list =
             let axes = this.axes
 
@@ -208,7 +206,6 @@ module ImportProfiles =
                 let quantity : ScanQuantity =
                     {
                         elementId = first.elementId
-                        label = first.label
                         variable = first.variable
                         ranges =
                             axes
@@ -249,7 +246,7 @@ module ImportProfiles =
                 | Intensity, [ quantity ] ->
                     match rows |> List.tryFind (fun row -> not (quantity.admits row.description.degrees)) with
                     | Some row ->
-                        Error (DataRangeMismatchErr $"a description {row.description.degrees}° lies outside every range of {quantity.label.value} {quantity.variable.label}")
+                        Error (DataRangeMismatchErr $"a description {row.description.degrees}° lies outside every range of slot '{quantity.elementId.value}' {quantity.variable.label}")
                     | None -> Ok this
                 | Intensity, _ ->
                     Error (DataRangeMismatchErr $"a Phone ROI CSV holds one variable (its description), and the scan varies {quantities.Length}")
@@ -268,7 +265,7 @@ module ImportProfiles =
                             List.zip row.scan quantities
                             |> List.tryPick (fun (cell : ScanCell, quantity : ScanQuantity) ->
                                 let column = cell.column
-                                let named = $"{quantity.label.value} {quantity.variable.label}"
+                                let named = $"slot '{quantity.elementId.value}' {quantity.variable.label}"
 
                                 match column.valueUnit.spectralUnitOpt, quantity.variable, column.reading with
                                 | None, VaryWaveLength, _ ->

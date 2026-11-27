@@ -1742,6 +1742,26 @@ type KitProxyFolderTests () =
         Directory.CreateDirectory folder.value |> ignore
         kitFolderAdapter folder
 
+    /// Spec 0051 `.manual/003` 2.2: a write of the bytes a file already holds leaves the file, its time included, alone.
+    [<Fact>]
+    member this.``a write of the bytes a file already holds leaves the file untouched`` () : unit =
+        let folder = this.freshFolder ()
+        let proxy = folder.openProxy ()
+        let kit = newKitFile (steppingClock ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
+        let kitJson = folder.absoluteName ".kit-json"
+        let old = DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+        File.SetLastWriteTimeUtc(kitJson.value, old)
+        let before = File.ReadAllBytes kitJson.value
+        let paths = folder.paths ()
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKitFile kit)
+        Assert.Equal(old, File.GetLastWriteTimeUtc kitJson.value)
+        Assert.Equal<byte>(before, File.ReadAllBytes kitJson.value)
+        Assert.Equal<string list>(paths, folder.paths ())
+        Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKitFile { kit with name = KitName "Renamed" })
+        Assert.NotEqual(old, File.GetLastWriteTimeUtc kitJson.value)
+        Assert.Equal<string list>(paths, folder.paths ())
+
     [<Fact>]
     member this.``a snapshot file is byte for byte its catalogue entry file`` () : unit =
         let folder = this.freshFolder ()

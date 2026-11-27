@@ -68,31 +68,13 @@ module CategoryControls =
 
     // -- The button look, identical to the other bars' idle/chosen boxes (so they MATCH). --
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private chosenBackground = Color.FromRgb(150uy, 185uy, 235uy)
     let private blockBackground = Color.FromRgb(250uy, 235uy, 235uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
-    /// A clickable verb button (a styled Border), on the accent background when it is the primary verb.
-    /// Its id is an AutomationId, not a `Name`: the rows and their verbs live in child lists whose
-    /// MEMBERSHIP changes (the host adds / removes a row; a built-in row omits Remove), so FuncUI can
-    /// shift a sibling onto a reused control, and Avalonia forbids renaming a styled control.
-    /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or
-    /// the label changes so a reused box can't keep a stale handler.
-    let private button (id : ConstructorUiId) (label : ControlCaption) (background : Color) (onClick : unit -> unit) : IView =
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-            Border.horizontalAlignment HorizontalAlignment.Left
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label.value ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, label.value)))
-        ] :> IView
+    /// A verb button, chosen-blue when it is the primary verb. Keyed by its id, since a row's verbs change with
+    /// its origin (a built-in row omits Remove).
+    let private button (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (onClick : unit -> unit) : IView =
+        CommandControls.commandButton id label emphasis ControlOffered onClick
+            [ Button.margin (Thickness(0.0, 0.0, 8.0, 0.0)); Button.horizontalAlignment HorizontalAlignment.Left ]
 
     /// One category row — an inline name box (editable for EVERY row, including built-ins), a Save
     /// (rename) verb and a Cancel verb, and a Remove verb for a `UserCategory` only (a built-in OMITS
@@ -100,7 +82,7 @@ module CategoryControls =
     let private rowView (handlers : CategoryControlsHandlers) (r : CategoryControlsRow) : IView =
         let nameBox =
             TextBox.create [
-                (ConstructorUiId.categoryRowNameBox r.categoryId).automationAttribute<TextBox> ()
+                yield! (ConstructorUiId.categoryRowNameBox r.categoryId).inputAttributes<TextBox> ()
                 TextBox.width 200.0
                 TextBox.text r.name.value
                 TextBox.onTextChanged (ControlCaption >> handlers.setCategoryName r.categoryId)
@@ -108,7 +90,7 @@ module CategoryControls =
         let removeVerb =
             match r.origin with
             | BuiltInCategoryRow -> []
-            | UserCategoryRow -> [ button (ConstructorUiId.categoryRowRemoveButton r.categoryId) (ControlCaption "Remove") idleBackground (fun () -> handlers.removeCategory r.categoryId) ]
+            | UserCategoryRow -> [ button (ConstructorUiId.categoryRowRemoveButton r.categoryId) (ControlCaption "Remove") NeutralCommand (fun () -> handlers.removeCategory r.categoryId) ]
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -117,8 +99,8 @@ module CategoryControls =
                 StackPanel.children (
                     [
                         nameBox
-                        button (ConstructorUiId.categoryRowSaveButton r.categoryId) (ControlCaption "Save") idleBackground (fun () -> handlers.saveCategory r.categoryId)
-                        button (ConstructorUiId.categoryRowCancelButton r.categoryId) (ControlCaption "Cancel") idleBackground (fun () -> handlers.cancelCategory r.categoryId)
+                        button (ConstructorUiId.categoryRowSaveButton r.categoryId) (ControlCaption "Save") NeutralCommand (fun () -> handlers.saveCategory r.categoryId)
+                        button (ConstructorUiId.categoryRowCancelButton r.categoryId) (ControlCaption "Cancel") NeutralCommand (fun () -> handlers.cancelCategory r.categoryId)
                     ]
                     @ removeVerb)
             ]
@@ -135,7 +117,7 @@ module CategoryControls =
             ScrollViewer.maxHeight 260.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name ConstructorUiId.categoriesList.value
+                    yield! ConstructorUiId.categoriesList.groupAttributes<StackPanel> ()
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView handlers))
                 ])
@@ -151,14 +133,14 @@ module CategoryControls =
             [
                 Border.create [
                     Border.background (brush blockBackground)
-                    Border.borderBrush (brush idleBorder)
+                    Border.borderBrush (brush NeutralCommand.outline)
                     Border.borderThickness 1.0
                     Border.cornerRadius (CornerRadius 3.0)
                     Border.padding (Thickness 8.0)
                     Border.margin (Thickness(0.0, 2.0, 0.0, 2.0))
                     Border.child (
                         TextBlock.create [
-                            TextBlock.name ConstructorUiId.categoryBlockMessage.value
+                            ConstructorUiId.categoryBlockMessage.automationAttribute<TextBlock> ()
                             TextBlock.text message.value
                             TextBlock.textWrapping TextWrapping.Wrap
                             TextBlock.maxWidth 360.0
@@ -174,7 +156,7 @@ module CategoryControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    button ConstructorUiId.addCategoryButton (ControlCaption "Add category") chosenBackground handlers.addCategory
+                    button ConstructorUiId.addCategoryButton (ControlCaption "Add category") ChosenCommand handlers.addCategory
                     listView state handlers
                 ]
                 @ blockMessagePanel state)

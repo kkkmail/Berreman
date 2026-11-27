@@ -26,6 +26,7 @@ open Softellect.Sys.Logging
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Domain.KitFolders
+open OpticalConstructor.Domain.KitHistory
 open OpticalConstructor.Domain.KitLibrary
 open OpticalConstructor.Domain.LibraryEntryFiles
 open OpticalConstructor.Domain.CatalogueImport
@@ -40,15 +41,43 @@ open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.PlanJob
 open OpticalConstructor.Ui.StudyFitJob
+open OpticalConstructor.Ui.UserEnvironment
+
+/// Where a windowed program logs (spec 0051 `.manual/003` 5.7).
+[<AutoOpen>]
+module private AppLog =
+
+    type DataLocations with
+
+        /// Sends every log line to `optical-constructor.log` in the Preferences location: a windowed program has no console
+        /// (spec 0051 `.manual/003` 5.7). A line that cannot be written is dropped, never thrown.
+        member this.sendLogToFile () : unit =
+            let folder = this.preferencesFolder.value
+            let file = System.IO.Path.Combine(folder, "optical-constructor.log")
+            let gate = obj ()
+            Logger.configureLogger (fun level message caller ->
+                let line = $"""# {DateTime.Now.ToString("yyyyMMdd_HHmmss.fff")} # {level.logName} # {caller.value} # {message}"""
+                lock gate (fun () ->
+                    try
+                        System.IO.Directory.CreateDirectory folder |> ignore
+                        System.IO.File.AppendAllText(file, line + Environment.NewLine)
+                    with _ -> ()))
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
 /// app always has a usable theme to apply (AC-J6).
 module private Startup =
-    let settings = UserEnvironment.EnvironmentSettings.load (UserEnvironment.settingsPath ())
-
     /// The settings and `DataLocations` that `appsettings.json` gives, read once (spec 0050 §3.9, Close).
     let workbenchSettings, dataLocations = AppConfig.loadWorkbenchSettings ()
+
+    // Spec 0051 `.manual/003` 5.7: before anything logs, the log goes to its file, which the start opens.
+    do dataLocations.sendLogToFile ()
+    do Logger.logInfo $"Optical Constructor {Berreman.BuildInfo.version.value} started; its preferences are in {dataLocations.preferencesFolder.value}."
+    // A windowed program has no console, so the reason a run ends unexpectedly goes to the log too.
+    do AppDomain.CurrentDomain.UnhandledException.Add(fun crash -> Logger.logError $"Optical Constructor stopped: {crash.ExceptionObject}")
+
+    /// Spec 0051 `.manual/003` 5.7: the environment is the Preferences location's.
+    let settings = UserEnvironment.EnvironmentSettings.load dataLocations.environmentFile
 
     /// The one app scope `AppContext.create` answers over them; an open failure is shown by the launcher
     /// (spec 0050 S2.4, Close).
@@ -94,6 +123,8 @@ module private ConstructorScene =
                             (fun progress -> hostDispatch.Value (TableAndElementRotationView.SendKitProgressed progress))
                             (fun ended -> hostDispatch.Value (TableAndElementRotationView.SendKitEnded ended))
                     kitPicker = KitFolderPicker.ofWindow window context.locations.kitsFolder
+                    environmentFileOpt = Some context.locations.environmentFile
+                    exportsFolderOpt = Some context.locations.exportsFolder
                     studyFits =
                         StudyFitJobHost.onUiThread
                             (fun progress -> hostDispatch.Value (TableAndElementRotationView.StudyFit (StudyFitProgressed progress)))
@@ -118,10 +149,17 @@ module private ConstructorScene =
             : Avalonia.FuncUI.Types.IView =
             window.Title <- model.kitWindowTitle.value
             KitWindowView.kitWindowView model dispatch
-        Program.mkProgram
-            init
-            (fun msg model -> TableAndElementRotationView.updateTableAndElementRotation msg model, Cmd.none)
-            titledView
+        // Spec 0051 `.manual/003` 3.1: a change of the active setup is remembered, so the kit reopens on it.
+        let update
+            (msg : TableAndElementRotationView.TableAndElementRotationMsg)
+            (model : TableAndElementRotationView.TableAndElementRotationModel)
+            : TableAndElementRotationView.TableAndElementRotationModel * Cmd<TableAndElementRotationView.TableAndElementRotationMsg> =
+            let next = TableAndElementRotationView.updateTableAndElementRotation msg model
+            match next.rememberSetupSince model with
+            | Ok () -> ()
+            | Error error -> Logger.logWarn $"ConstructorScene: {error.describe}"
+            next, Cmd.none
+        Program.mkProgram init update titledView
         |> Program.withHost window
         |> Program.run
         // Spec 0050 S5.3; .manual/001 §E: every activation, the first included, offers the kit files changed outside the app.
@@ -141,6 +179,7 @@ module private ConstructorScene =
                 // Spec 0050 S7.2; 001 §E: the kit's snapshots answer for models this machine's library lacks.
                 itemModels = context.itemModels.overlaidWith opened.overlay
                 experimentExport = context.experimentExport
+                setupMemory = context.kitHistory.setupMemoryOf opened.folder
         }
 
 /// Works in the kit the start screen opened, with its snapshot overlay, and releases it on close (spec 0050 S4.3, S5.2).
@@ -156,7 +195,7 @@ type MainConstructorWindow(context : AppContext, opened : OpenedKit) as this =
         let model =
             TableAndElementRotationView.initMainWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
             |> ConstructorScene.withAppContext context opened
-        ConstructorScene.mount this context opened (fun () -> model.loadKit opened)
+        ConstructorScene.mount this context opened (fun () -> (model.loadKit opened).openedOnSetup)
 
     /// The kit-overlaid stores supplied to this constructor's scene (spec 0050 S4.3).
     member _.sessionLibraryStores : KitLibraryStores = stores
@@ -173,7 +212,7 @@ type InverseConstructorWindow(context : AppContext, opened : OpenedKit) as this 
         let model =
             TableAndElementRotationView.initInverseWithKit stores.library context.experiments stores.materials stores.samples stores.categories opened.library.kit
             |> ConstructorScene.withAppContext context opened
-        ConstructorScene.mount this context opened (fun () -> model.loadKit opened)
+        ConstructorScene.mount this context opened (fun () -> (model.loadKit opened).openedOnSetup)
 
 module private KitConstructorWindows =
     /// Opens the constructor window of `mode` over the kit the start screen opened, registered under the kit's folder
@@ -299,7 +338,20 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
             footer.Children.Add version
             DockPanel.SetDock(footer, Dock.Bottom)
             match outcome with
-            | Ok _ ->
+            | Ok context ->
+                // Spec 0051 `.manual/003` 5.3 (D6): what the start imported without a question is told once.
+                match context.settledImports |> List.sumBy (fun settled -> settled.decisions.Length) with
+                | 0 -> ()
+                | count ->
+                    let message = $"Imported {count} catalogue entries on start; none needed a decision."
+                    let settledNotice =
+                        TextBlock(
+                            Name = ConstructorUiId.launcherSettledImportsText.value,
+                            Text = message,
+                            TextWrapping = TextWrapping.Wrap)
+                    AutomationProperties.SetAutomationId(settledNotice, ConstructorUiId.launcherSettledImportsText.value)
+                    AutomationProperties.SetName(settledNotice, message)
+                    panel.Children.Add settledNotice
                 match pendingImports with
                 | [] -> ()
                 | _ ->

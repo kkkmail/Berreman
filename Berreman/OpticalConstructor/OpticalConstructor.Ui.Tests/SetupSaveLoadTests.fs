@@ -14,6 +14,9 @@ open Avalonia.Threading
 open Avalonia.VisualTree
 open global.Elmish
 open Xunit
+open FsCheck
+open FsCheck.FSharp
+open BerremanTestSupport
 open Softellect.Sys.Primitives
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
@@ -54,7 +57,7 @@ module SetupSaveLoadTests =
 
     /// Presses the box carrying `id` at its centre.
     let private pressSetupControl (id : ConstructorUiId) (window : Window) : unit =
-        let button = findSetupControl id window :?> Border
+        let button = findSetupControl id window
         button.BringIntoView() |> ignore
         Dispatcher.UIThread.RunJobs()
         match button.TranslatePoint(Point(button.Bounds.Width / 2.0, button.Bounds.Height / 2.0), window) |> Option.ofNullable with
@@ -91,7 +94,7 @@ module SetupSaveLoadTests =
         let name = SetupName "Bench: A"
         let caption = ControlCaption "Bench: A"
         try
-            let placed = initial |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            let placed = initial |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
             let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
             Assert.Equal<Placement.ElementValueId option>(Some Library.PresetIds.polarizerLp, polarizer.placement.valueId)
             let entryId =
@@ -104,7 +107,7 @@ module SetupSaveLoadTests =
             Assert.Equal<SetupName>(name, bench.name)
             Assert.Equal<Setups.SetupSlot list>(placed.elements, bench.slots)
             Assert.Equal<Setups.Setup option>(Some bench, created.activeSetupOpt)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench: A'."), created.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Created setup 'Bench: A'."), created.kitStatusCaption)
             Assert.Equal<string list>([ "Bench_ A.setup-json" ], setupFilesIn folder)
             Assert.Equal<Setups.Setup list>([ bench ], created.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess)
             let snapshots = created.kit.proxy.listSnapshots () |> SceneTestFixture.kitSuccess
@@ -117,12 +120,12 @@ module SetupSaveLoadTests =
             Assert.Equal<Setups.SetupSlot list>(placed.elements, loaded.elements)
             Assert.Equal<Setups.Setup option>(Some bench, loaded.activeSetupOpt)
             Assert.Equal(TableSelected, loaded.selection)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench: A'."), loaded.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Bench: A'."), loaded.kitStatusCaption)
 
             // Spec 0050 S8.2: a setup is created once; its name, held again, is refused and its one file stays.
             let repeated = loaded |> updateTableAndElementRotation CreateSetup
             Assert.Equal<Setups.Setup list>([ bench ], repeated.kitSetups)
-            match repeated.kitStatus with
+            match repeated.kitStatusCaption with
             | Some status -> Assert.StartsWith("Not created", status.value)
             | None -> Assert.Fail("A name the kit holds must be told.")
             Assert.Equal<string list>([ "Bench_ A.setup-json" ], setupFilesIn folder)
@@ -148,7 +151,7 @@ module SetupSaveLoadTests =
             Assert.Equal<Setups.SetupSlot list>(ordered.elements, refused.elements)
             Assert.Equal<Setups.Setup option>(ordered.activeSetupOpt, refused.activeSetupOpt)
             Assert.Equal(protectedCaption, refused.setupName)
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Not saved to the kit — ", status.value)
                 Assert.Contains("read-only", status.value)
@@ -179,7 +182,7 @@ module SetupSaveLoadTests =
             Assert.Equal<Setups.Setup option>(None, refused.activeSetupOpt)
             Assert.Empty(setupFilesIn folder)
             Assert.Empty(initial.kit.proxy.listSnapshots () |> SceneTestFixture.kitSuccess)
-            match refused.kitStatus with
+            match refused.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Not created", status.value)
                 match SetupName.tryCreate blankCaption.value with
@@ -192,12 +195,12 @@ module SetupSaveLoadTests =
             let benchFile = Path.Combine(folder.value.value, "Bench_ A.setup-json")
             let benchText = File.ReadAllText benchFile
             let snapshotsBefore = created.kit.proxy.listSnapshots () |> SceneTestFixture.kitSuccess
-            let placed = created |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            let placed = created |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
             let again = placed |> updateTableAndElementRotation CreateSetup
             Assert.Equal<Setups.Setup list>([ bench ], again.kitSetups)
             Assert.Equal<Setups.Setup option>(Some bench, again.activeSetupOpt)
             Assert.Equal<Setups.SetupSlot list>(placed.elements, again.elements)
-            match again.kitStatus with
+            match again.kitStatusCaption with
             | Some status ->
                 Assert.StartsWith("Not created", status.value)
                 match Setups.Setup.create bench.name placed.elements [ bench ] with
@@ -216,7 +219,7 @@ module SetupSaveLoadTests =
         let initial = TestAppScope.openedKitIn owner stores.catalogueImports |> setupModelInKit stores
         let name = SetupName "nowhere"
         try
-            let placed = initial |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+            let placed = initial |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
             let refused = placed |> updateTableAndElementRotation (ActivateSetup name)
             Assert.Equal<Setups.SetupSlot list>(placed.elements, refused.elements)
             Assert.Equal<Table.TableViewState>(placed.view, refused.view)
@@ -224,7 +227,7 @@ module SetupSaveLoadTests =
             Assert.Equal<Setups.Setup list>(placed.kitSetups, refused.kitSetups)
             Assert.Equal<Setups.Setup option>(placed.activeSetupOpt, refused.activeSetupOpt)
             let unknown = UnknownSetupErr $"'{name.value}'"
-            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Load failed — {unknown.describe}"), refused.kitStatus)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption $"Load failed — {unknown.describe}"), refused.kitStatusCaption)
         finally
             initial.kit.close () |> SceneTestFixture.kitSuccess
 
@@ -236,12 +239,12 @@ module SetupSaveLoadTests =
             let initial = openSetupKit folder stores
             let name = SetupName "Bench"
             try
-                let placed = initial |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                let placed = initial |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
                 let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
                 let seed =
                     placed
                     |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
-                    |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                    |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
                     |> updateTableAndElementRotation (SetSetupName name.caption)
                 let mutable current = seed
                 // The dispatch the view is given, which the setup row's buttons and the Rotate bay also use.
@@ -270,7 +273,14 @@ module SetupSaveLoadTests =
                         Assert.Equal<SetupName>(name, created.name)
                         Assert.Equal<SetupRevision>(SetupRevision.first, created.revision)
 
-                        // The Experiments bay's Add commits over the unchanged table, so `Bench` stays at revision 1.
+                        // The Experiments bay's Add commits over the unchanged table, so `Bench` stays at revision 1. The
+                        // setups are the Setups step's and Add the Experiments step's (spec 0051 `.manual/003` 3.2).
+                        let showStep (step : ConstructorFlowStep) : unit =
+                            match dispatchOpt with
+                            | Some dispatch -> dispatch (ShowFlowStep step)
+                            | None -> Assert.Fail("The view must have been given its dispatch.")
+                            Dispatcher.UIThread.RunJobs()
+                        showStep ExperimentsFlowStep
                         pressSetupControl ConstructorUiId.experimentAddButton window
                         let e1 = Assert.Single(current.experimentCollection.experiments)
                         Assert.Equal<SetupReference>(created.reference, e1.setup)
@@ -282,9 +292,10 @@ module SetupSaveLoadTests =
                         Dispatcher.UIThread.RunJobs()
                         Assert.NotEqual<Setups.SetupSlot list>(created.slots, current.recordedSlots)
 
+                        showStep SetupsFlowStep
                         clickSetupControl ConstructorUiId.saveSetupButton window
                         Assert.Empty(renderErrors)
-                        Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved setup 'Bench', revision 2."), current.kitStatus)
+                        Assert.Equal<ControlCaption option>(Some (ControlCaption "Saved setup 'Bench', revision 2."), current.kitStatusCaption)
                         let activeSetup = findSetupControl ConstructorUiId.activeSetupText window :?> TextBlock
                         Assert.Equal("Active setup: Bench, revision 2", activeSetup.Text)
                         created
@@ -319,10 +330,10 @@ module SetupSaveLoadTests =
                 let created =
                     initial
                     |> createdAs caption
-                    |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                    |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
                 for mode in [ ForwardConstructor; InverseConstructor ] do
                     // Spec 0050 S8.2: with no setup active the row says so and withholds Save setup.
-                    let noSetup = { initial with constructorMode = mode } |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                    let noSetup = { initial with constructorMode = mode } |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
                     let noSetupMessages = ResizeArray<TableAndElementRotationMsg>()
                     let noSetupWindow = Window(Width = 1000.0, Height = 980.0)
                     noSetupWindow.Content <- Component(fun _ -> mainView noSetup noSetupMessages.Add)
@@ -379,7 +390,7 @@ module SetupSaveLoadTests =
                                 constructorMode = mode
                                 setupName = emptyCaption
                         }
-                        |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+                        |> SceneTestFixture.withPresetElement Placement.LinearPolarizer
                     let mutable current = seed
                     let directMessages = ResizeArray<TableAndElementRotationMsg>()
                     let createInputs = ResizeArray<TableAndElementRotationModel>()
@@ -428,13 +439,14 @@ module SetupSaveLoadTests =
                             let savedSetups = findSetupControl ConstructorUiId.savedSetups liveWindow :?> WrapPanel
                             Assert.Equal(ConstructorUiId.savedSetups.value, savedSetups.Name)
                             Assert.Equal("Saved setups", AutomationProperties.GetName savedSetups)
-                            Assert.Equal<TableAndElementRotationMsg list>([ SetSetupName editedCaption; CreateSetup ], List.ofSeq directMessages)
+                            // The pressed button takes the focus, so the field's blur commits the name before Create commits it.
+                            Assert.Equal<TableAndElementRotationMsg list>([ SetSetupName editedCaption; CreateSetup ], List.ofSeq directMessages |> List.distinct)
                             let createInput = Assert.Single(createInputs)
                             Assert.Equal(editedCaption, createInput.setupName)
                             Assert.Equal(editedCaption, current.setupName)
                             Assert.Contains<SetupName>(editedName, setupNames current.kitSetups)
                             let expectedStatus = ControlCaption $"Created setup '{editedName.value}'."
-                            Assert.Equal<ControlCaption option>(Some expectedStatus, current.kitStatus)
+                            Assert.Equal<ControlCaption option>(Some expectedStatus, current.kitStatusCaption)
                             let persisted = current.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess
                             let createdSetup = persisted |> List.find (fun setup -> setup.name = editedName)
                             Assert.Equal<Setups.SetupSlot list>(seed.elements, createdSetup.slots)
@@ -446,3 +458,27 @@ module SetupSaveLoadTests =
                         liveWindow.Close()
             finally
                 initial.kit.close () |> SceneTestFixture.kitSuccess)
+
+    /// Spec 0051 `.manual/003` 2.1: the table is a setup's slots drawn, so writing it back over the setup it was drawn
+    /// from changes nothing, whatever was active before; FsCheck picks the order the committed kits' setups are drawn in.
+    [<Fact>]
+    let ``activating any sequence of the committed kits' setups, then writing the table back, gives the active setup`` () =
+        for kit in [ OpticsMuellerKit; AbsorbingBiaxialNoisyKit ] do
+            let session = TestAppScope.openCommittedReadOnly owner kit
+            try
+                let model = session.model
+                let names = model.kitSetups |> List.map _.name |> List.distinct
+                Assert.NotEmpty(names)
+                let roundTrips (picks : int list) : bool =
+                    let drawn =
+                        picks
+                        |> List.fold (fun held pick -> held |> updateTableAndElementRotation (ActivateSetup (List.item pick names))) model
+                    match drawn.activeSetupOpt with
+                    | Some active -> drawn.tableWrittenOver active = active
+                    | None -> false
+                let picks = Gen.choose (0, names.Length - 1) |> Gen.nonEmptyListOf
+                Check.One(Config.QuickThrowOnFailure.WithMaxTest(40), Prop.forAll (Arb.fromGen picks) roundTrips)
+            finally
+                try session.opened.library.kit.close () |> TestAppScope.readKitResult KitFile.fileName
+                finally TestAppScope.assertCommittedUnchanged kit session.recorded
+

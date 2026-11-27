@@ -14,28 +14,6 @@ open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
-/// Whether a bar, or one control of it, is offered to the user (spec 0048, the shape of STL's
-/// `VncCommandAvailability`). Shared by the rotation, palette and position bars.
-type ControlAvailability =
-    | ControlOffered
-    | ControlWithheld
-
-    /// Whether the control is enabled: the one place this pair becomes Avalonia's own `bool`.
-    member this.isEnabled : bool =
-        match this with
-        | ControlOffered -> true
-        | ControlWithheld -> false
-
-/// The text a control shows: a button's caption, a knob's or a row's label, a title, a description, or
-/// the text in a text box.
-type ControlCaption =
-    | ControlCaption of string
-
-    member this.value = let (ControlCaption c) = this in c
-
-    /// This text as the key that tells its control apart from its siblings (a chart series' toggle).
-    member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
-
 /// Which way a − / + step button moves its value.
 type StepDirection =
     | StepDecrease
@@ -173,65 +151,28 @@ module RotationControls =
         | false, false, true -> Some R3
         | _ -> None
 
-    let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-
-    // An "active" (armed) button uses the standard Windows "selected/active" treatment — the light
-    // accent fill (#CCE8FF) outlined by the Fluent / WinUI system accent (#0078D4). The text only
-    // goes bold (it is NOT recoloured), so it stays legible on the light fill. The idle button is the
-    // neutral light grey used elsewhere.
-    let private activeBackground = Color.FromRgb(204uy, 232uy, 255uy)     // #CCE8FF Windows selected/active light accent
-    let private activeBorder = Color.FromRgb(0uy, 120uy, 212uy)           // #0078D4 Fluent accent outline
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
-    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
-
     /// Whether an axis' +/- pair is lit up because its rotate modifier is held (task 009).
     type private AxisHighlight =
         | AxisArmed
         | AxisIdle
 
-    /// A small clickable, button-styled Border, its id set as the `AutomationProperties.AutomationId` (a
-    /// freely-mutable attached property — unlike `Control.Name`): the reset pair swaps its label / action in
-    /// place while the bar re-renders per host update, and Avalonia forbids renaming a styled control (the
-    /// `MaterialsControls` precedent). `AxisArmed` lights it up with the accent (task 009).
-    /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble invocation so one click is one action.
-    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (highlight : AxisHighlight) (onClick : PointerPressedEventArgs -> unit) : IView =
-        let background, border =
+    /// One of the bar's buttons, lit with the accent and bold text while its axis is armed (task 009). Its id is an
+    /// AutomationId, a freely-mutable attached property, so the reset pair can swap its label and action in place.
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (highlight : AxisHighlight) (onClick : CommandButton -> unit) : IView =
+        let emphasis, weight =
             match highlight with
-            | AxisArmed -> activeBackground, activeBorder
-            | AxisIdle -> idleBackground, idleBorder
-        Border.create [
-            id.automationAttribute<Border> ()
-            Border.isEnabled availability.isEnabled
-            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-            Border.background (brush background)
-            Border.borderBrush (brush border)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 5.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (
-                TextBlock.create [
-                    TextBlock.text caption.value
-                    // "The font can only become bold" — weight is the only text change; colour is fixed.
-                    TextBlock.fontWeight (match highlight with AxisArmed -> FontWeight.Bold | AxisIdle -> FontWeight.Normal)
-                    TextBlock.foreground (brush textForeground)
-                ])
-            // FuncUI keeps the FIRST subscription forever by default (SubPatchOptions.Never). The two
-            // reset buttons change their ACTION in place (Reset→confirm, Reset All→cancel) when the
-            // confirmation arms, so re-subscribe whenever the label flips — otherwise "Yes"/"No" would
-            // still run the original Reset/Reset All (re-arming, and crossing over). Stable-label buttons
-            // (+/- , the angle steps) are unaffected, so they keep their cheap one-time subscription.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
-        ] :> IView
+            | AxisArmed -> ArmedCommand, FontWeight.Bold
+            | AxisIdle -> NeutralCommand, FontWeight.Normal
+        CommandControls.commandButtonOn id caption emphasis availability onClick
+            [ Button.padding (Thickness(10.0, 5.0)); Button.fontWeight weight ]
 
     let private stepButton (handlers : Handlers) (axis : RotationAxis) (direction : StepDirection) (availability : ControlAvailability) (highlight : AxisHighlight) : IView =
         let id, caption =
             match direction with
             | StepDecrease -> axis.minusButtonId, ControlCaption $"{axis.name} −"
             | StepIncrease -> axis.plusButtonId, ControlCaption $"{axis.name} +"
-        clickBox id caption availability highlight (fun e ->
-            handlers.rotate axis ((buttonStepDegrees e.KeyModifiers).inDirection direction))
+        clickBox id caption availability highlight (fun button ->
+            handlers.rotate axis ((buttonStepDegrees button.pressModifiers).inDirection direction))
 
     let private field (handlers : Handlers) (axis : RotationAxis) (value : BarDegrees) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
@@ -239,7 +180,7 @@ module RotationControls =
             | :? TextBox as tb when not (isNull tb.Text) -> BarDegrees.tryCreate tb.Text |> Option.iter (handlers.setAngle axis)
             | _ -> ()
         TextBox.create [
-            TextBox.name axis.fieldId.value
+            yield! axis.fieldId.inputAttributes<TextBox> ()
             TextBox.width 60.0
             TextBox.isEnabled availability.isEnabled
             // The text comes from the model; while the user types nothing re-renders it (the model
@@ -274,25 +215,21 @@ module RotationControls =
 
     let mutable private armedAxis : RotationAxis option = None
 
-    /// Paint one axis +/- button (a `clickBox` Border with a `TextBlock` child) armed or idle.
-    let private styleButton (b : Border) (highlight : AxisHighlight) : unit =
-        let background, border, weight =
-            match highlight with
-            | AxisArmed -> activeBackground, activeBorder, FontWeight.Bold
-            | AxisIdle -> idleBackground, idleBorder, FontWeight.Normal
-        b.Background <- brush background
-        b.BorderBrush <- brush border
-        match b.Child with
-        | :? TextBlock as t -> t.FontWeight <- weight
-        | _ -> ()
+    /// Paint one axis +/- button armed or idle.
+    let private styleButton (b : CommandButton) (highlight : AxisHighlight) : unit =
+        match highlight with
+        | AxisArmed ->
+            b.Emphasis <- ArmedCommand
+            b.FontWeight <- FontWeight.Bold
+        | AxisIdle ->
+            b.Emphasis <- NeutralCommand
+            b.FontWeight <- FontWeight.Normal
 
-    /// Restyle every axis button currently in a window for the current `armedAxis`. The buttons are
-    /// found by their `AutomationProperties.AutomationId` (the boxes carry no `Name` since the
-    /// spec-0038 sweep).
+    /// Restyle every axis button currently in a window for the current `armedAxis`, found by its AutomationId.
     let private restyleBar (top : TopLevel) : unit =
         for v in top.GetVisualDescendants() do
             match v with
-            | :? Border as b ->
+            | :? CommandButton as b ->
                 match RotationAxis.tryOfStepButton (ConstructorUiId (AutomationProperties.GetAutomationId b)) with
                 | Some axis -> styleButton b (if b.IsEnabled && armedAxis = Some axis then AxisArmed else AxisIdle)
                 | None -> ()

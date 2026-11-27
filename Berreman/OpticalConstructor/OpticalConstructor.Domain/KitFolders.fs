@@ -471,11 +471,21 @@ module KitFolders =
                     this with kitFile = savedKitFile
                 })
 
+    /// What a kit-folder dialog asks for, its title (spec 0051 `.manual/003` 5.2).
+    type KitFolderQuestion =
+        | ChooseKitFolder
+        | ChooseUnpackFolder
+
+        member this.title : string =
+            match this with
+            | ChooseKitFolder -> "Choose a kit folder"
+            | ChooseUnpackFolder -> "Choose an empty folder to unpack the kit into"
+
     /// Asks for a kit folder asynchronously, returning None when the user cancels (spec 0050 S4.3).
     [<ReferenceEquality>]
     type KitFolderPicker =
         {
-            pickKitFolder : unit -> Async<KitFolder option>
+            pickKitFolder : KitFolderQuestion -> Async<KitFolder option>
         }
 
     /// Why a folder could not be shown in the system's file browser (spec 0050 S5.3).

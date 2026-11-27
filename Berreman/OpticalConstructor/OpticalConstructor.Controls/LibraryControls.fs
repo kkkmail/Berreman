@@ -2,6 +2,7 @@ namespace OpticalConstructor.Controls
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Controls.Primitives
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
@@ -88,12 +89,7 @@ module LibraryControls =
             cancelEntry : unit -> unit
         }
 
-    // -- The button look, identical to the other bars' idle button (so they MATCH). --
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
-    let private boundBackground = Color.FromRgb(150uy, 185uy, 235uy)
-    let private pendingBackground = Color.FromRgb(255uy, 224uy, 160uy)
-    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
     /// How a leaf row is currently highlighted: the confirmed bound entry, the pending (selected-not-yet-
     /// confirmed) entry, or neither.
@@ -102,37 +98,18 @@ module LibraryControls =
         | RowPending
         | RowPlain
 
-    /// A clickable leaf row, highlighted when it is the bound or pending entry. Its id is an AutomationId,
-    /// not a `Name`: the kind-constrained list's membership changes with the selection, so FuncUI can shift a
-    /// sibling onto a reused Border, and Avalonia forbids renaming a styled control (the `MaterialsControls`
-    /// precedent). Keyed by its id, so a membership shift recreates the box instead of patching another's.
+    /// A leaf row, a choice chosen while it is the bound (blue) or pending (amber) entry, keyed by its id so a
+    /// membership shift recreates the row instead of patching another's.
     let private leafRow (id : ConstructorUiId) (label : ControlCaption) (depth : LibraryRowDepth) (highlight : RowHighlight) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        let background =
+        let mark, look =
             match highlight with
-            | RowBound -> boundBackground
-            | RowPending -> pendingBackground
-            | RowPlain -> idleBackground
-        let row =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.isEnabled availability.isEnabled
-                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(10.0, 4.0))
-                Border.margin (Thickness(depth.indent, 0.0, 6.0, 4.0))
-                Border.horizontalAlignment HorizontalAlignment.Left
-                Border.child (TextBlock.create [ TextBlock.text label.value ])
-                // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
-                // highlight changes (matching the other bars) so a reused row can't keep a stale handler.
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (label.value, highlight)))
-            ]
-            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
-            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        row :> IView
+            | RowBound -> ChosenChoice, ChosenCommand
+            | RowPending -> ChosenChoice, PendingCommand
+            | RowPlain -> UnchosenChoice, ChosenCommand
+        CommandControls.choiceToggle id label mark look availability onClick
+            [ ToggleButton.padding (Thickness(10.0, 4.0))
+              ToggleButton.margin (Thickness(depth.indent, 0.0, 6.0, 4.0))
+              ToggleButton.horizontalAlignment HorizontalAlignment.Left ]
 
     /// A non-selectable group-header row (a plain, indented label — no id, no click), keyed by its
     /// label + depth so membership shifts never patch one header's slot into another's.
@@ -162,29 +139,13 @@ module LibraryControls =
         | AccentAction
         | PlainAction
 
-    // -- The Confirm / Cancel action buttons of the pending bind. The panel they live in comes and
-    // goes with the pending choice, so they are regenerable: a reuse-safe AutomationId (never a
-    // write-once `Name`), keyed by that id.
+    /// The Confirm / Cancel buttons of the pending bind.
     let private actionButton (id : ConstructorUiId) (caption : ControlCaption) (emphasis : ActionEmphasis) (onClick : unit -> unit) : IView =
-        let background =
+        let look =
             match emphasis with
-            | AccentAction -> boundBackground
-            | PlainAction -> idleBackground
-        let button =
-            Border.create [
-                id.automationAttribute<Border> ()
-                Border.background (brush background)
-                Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
-                Border.cornerRadius (CornerRadius 3.0)
-                Border.padding (Thickness(12.0, 5.0))
-                Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-                Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text caption.value ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id.value, caption.value)))
-            ]
-            |> Avalonia.FuncUI.DSL.View.withKey id.value
-        button :> IView
+            | AccentAction -> ChosenCommand
+            | PlainAction -> NeutralCommand
+        CommandControls.commandButton id caption look ControlOffered onClick [ Button.margin (Thickness(0.0, 0.0, 8.0, 0.0)) ]
 
     /// The pending-bind confirm panel: the pending entry's name, its FULL description, and Confirm / Cancel
     /// (shown only while an entry is pending — i.e. selected but not yet committed).
@@ -194,7 +155,7 @@ module LibraryControls =
             [
                 Border.create [
                     Border.background (brush (Color.FromRgb(250uy, 246uy, 235uy)))
-                    Border.borderBrush (brush idleBorder)
+                    Border.borderBrush (brush NeutralCommand.outline)
                     Border.borderThickness 1.0
                     Border.cornerRadius (CornerRadius 3.0)
                     Border.padding (Thickness 8.0)
@@ -206,7 +167,7 @@ module LibraryControls =
                             StackPanel.children [
                                 TextBlock.create [ TextBlock.text $"Selected: {name.value}"; TextBlock.fontWeight FontWeight.SemiBold ]
                                 TextBlock.create [
-                                    TextBlock.name ConstructorUiId.libraryEntryDescription.value
+                                    ConstructorUiId.libraryEntryDescription.automationAttribute<TextBlock> ()
                                     TextBlock.text state.pendingDescription.value
                                     TextBlock.textWrapping TextWrapping.Wrap
                                     TextBlock.maxWidth 360.0
@@ -241,13 +202,13 @@ module LibraryControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name ConstructorUiId.libraryKindLabel.value; TextBlock.text kindText ] :> IView
-                    TextBlock.create [ TextBlock.name ConstructorUiId.libraryBoundReadout.value; TextBlock.text boundText ] :> IView
+                    TextBlock.create [ ConstructorUiId.libraryKindLabel.automationAttribute<TextBlock> (); TextBlock.text kindText ] :> IView
+                    TextBlock.create [ ConstructorUiId.libraryBoundReadout.automationAttribute<TextBlock> (); TextBlock.text boundText ] :> IView
                     ScrollViewer.create [
                         ScrollViewer.maxHeight 220.0
                         ScrollViewer.content (
                             StackPanel.create [
-                                StackPanel.name ConstructorUiId.libraryTree.value
+                                yield! ConstructorUiId.libraryTree.groupAttributes<StackPanel> ()
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.children (state.rows |> List.map (rowView state handlers))
                             ])

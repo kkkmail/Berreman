@@ -34,6 +34,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.WindowLauncher
 open OpticalConstructor.Tests
+open OpticalConstructor.Ui.Tests.UiDriver
 
 module WindowLauncherTests =
 
@@ -203,37 +204,6 @@ module WindowLauncherTests =
             let materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
             let categories = BuiltinCatalogue.categoryStore (MaterialLibrary.materialsReferencingCategory materials)
             materials, samples, categories
-
-    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId`
-    /// (the sibling suites' probe — the editors' controls carry AutomationIds).
-    let private matchesId (id : string) (c : Control) : bool =
-        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
-
-    let private tryFindControl (window : Window) (id : string) : Control option =
-        window.GetVisualDescendants()
-        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
-
-    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
-    let private clickOn (window : Window) (id : string) : unit =
-        let found =
-            window.GetVisualDescendants()
-            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
-        match found with
-        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
-        | Some b ->
-            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
-            // the visible area of its scroller, where a click at the box's centre lands nowhere).
-            b.BringIntoView() |> ignore
-            Dispatcher.UIThread.RunJobs()
-            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
-            if c.HasValue then
-                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                // A Save click closes the window during the press — skip the release then.
-                if window.IsVisible then
-                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-            else Assert.Fail($"%s{id} has no on-screen position")
 
     /// Set the text of the TextBox carrying `id`.
     let private setText (window : Window) (id : string) (text : string) : unit =

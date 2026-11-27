@@ -27,6 +27,7 @@ module KitHistoryJsonTests =
             name = KitName "Optics QZ — µ"
             lastOpened = firstOpened
             star = StarredKit
+            lastSetupOpt = None
         }
 
     let private unstarredEntry : KitHistoryEntry =
@@ -36,6 +37,7 @@ module KitHistoryJsonTests =
             name = KitName "Bench 2"
             lastOpened = ClockTime (firstOpened.value.AddHours(-1.0))
             star = UnstarredKit
+            lastSetupOpt = None
         }
 
     let private history : KitHistory = { KitHistory.empty with entries = [ starredEntry; unstarredEntry ] }
@@ -73,7 +75,7 @@ module KitHistoryJsonTests =
 
         for entry in entries do
             let entryKeys = [ for KeyValue (key, _) in entry.AsObject() -> key ]
-            Assert.Equal<string list>([ "folder"; "kitId"; "lastOpened"; "name"; "star" ], entryKeys)
+            Assert.Equal<string list>([ "folder"; "kitId"; "lastOpened"; "lastSetupOpt"; "name"; "star" ], entryKeys)
 
         let first = entries.[0].AsObject()
         Assert.Equal<string>("1", first.["star"].ToJsonString())
@@ -88,11 +90,11 @@ module KitHistoryJsonTests =
 
     [<Fact>]
     let ``a kit history of another schema version is UnsupportedSchemaVersionErr`` () : unit =
-        let intact = editedHistory (fun node -> node["schemaVersion"] <- JsonValue.Create 2)
-        let versionOnly = KitHistoryText "{ \"schemaVersion\": 2 }"
+        let intact = editedHistory (fun node -> node["schemaVersion"] <- JsonValue.Create 3)
+        let versionOnly = KitHistoryText "{ \"schemaVersion\": 3 }"
         let expectedExtension = FileExtension ".json"
-        let expectedFound = FileSchemaVersion 2
-        let expectedVersion = FileSchemaVersion 1
+        let expectedFound = FileSchemaVersion 3
+        let expectedVersion = FileSchemaVersion 2
 
         for text in [ intact; versionOnly ] do
             match text.parseKitHistory with

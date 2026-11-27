@@ -529,7 +529,6 @@ module StudyEngineTests =
     let private analyzerTurn : ScanAxis =
         {
             elementId = Library.ElementId "analyzer"
-            label = ElementLabel "Analyzer"
             variable = VaryDialReading
             range = VariableRange.forVariable VaryDialReading
         }
@@ -2616,7 +2615,6 @@ module StudyEngineTests =
         let axis : ScanAxis =
             {
                 elementId = Library.ElementId "analyzer"
-                label = ElementLabel "Analyzer"
                 variable = VaryR1
                 range =
                     {

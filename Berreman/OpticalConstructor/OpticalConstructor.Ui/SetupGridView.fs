@@ -45,6 +45,8 @@ type SetupGridState =
         slots : SetupGridSlotState list
         rows : GridCombinationState list
         generateAvailability : ControlAvailability
+        /// Why Generate is withheld, or none while it is offered (spec 0051 `.manual/003` 3.6).
+        generateReasonOpt : ControlCaption option
     }
 
 /// What the panel sends: an item or an R1 tried or not in a slot, a combination's tick, Generate and Close (spec 0050
@@ -68,10 +70,7 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
         let itemBox (item : Kit.Item) : IView =
             let id = ConstructorUiId.setupGridItemChoice role item.id
             let toggle () : unit = handlers.toggleItem slotId item.id
-            if List.contains item.id slot.draft.items then
-                MaterialsWindowView.actionButton id item.label.caption MaterialsWindowView.positiveBackground toggle
-            else
-                MaterialsWindowView.verbButton id item.label.caption toggle
+            CommandControls.choiceCommand id item.label.caption (if List.contains item.id slot.draft.items then ChosenChoice else UnchosenChoice) toggle
         // The rotation bar's field rule (`RotationControls.field`): read on Enter or blur, an unreadable text left as typed.
         let commitAngle (source : obj) : unit =
             match source with
@@ -84,7 +83,7 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
             | _ -> ()
         let angleField : IView =
             TextBox.create [
-                (ConstructorUiId.setupGridAngleField role).automationAttribute<TextBox> ()
+                yield! (ConstructorUiId.setupGridAngleField role).inputAttributes<TextBox> ()
                 TextBox.width 60.0
                 TextBox.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                 TextBox.verticalAlignment VerticalAlignment.Center
@@ -92,7 +91,7 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
                 TextBox.onLostFocus ((fun e -> commitAngle e.Source), SubPatchOptions.Always)
             ] :> IView
         let angleBox (angle : Angle) : IView =
-            MaterialsWindowView.verbButton
+            CommandControls.verbCommand
                 (ConstructorUiId.setupGridAngle role angle)
                 (ControlCaption $"{angle.degreeCaption.value} ×")
                 (fun () -> handlers.removeAngle slotId angle)
@@ -125,8 +124,8 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
         let id = ConstructorUiId.setupGridCombination (ConstructorUiPosition (index + 1))
         let toggle () : unit = handlers.toggleCombination row.combination
         match row.mark with
-        | CombinationTicked -> MaterialsWindowView.verbButton id (ControlCaption $"☑ {row.caption.value}") toggle
-        | CombinationUnticked -> MaterialsWindowView.verbButton id (ControlCaption $"☐ {row.caption.value}") toggle
+        | CombinationTicked -> CommandControls.verbCommand id (ControlCaption $"☑ {row.caption.value}") toggle
+        | CombinationUnticked -> CommandControls.verbCommand id (ControlCaption $"☐ {row.caption.value}") toggle
         | CombinationImpossible reason ->
             TextBlock.create [
                 id.automationAttribute<TextBlock> ()
@@ -135,22 +134,20 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
                 TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                 TextBlock.text $"✗ {row.caption.value} — {reason.value}"
             ] :> IView
+    // Spec 0051 `.manual/003` 3.6: Generate stays in place, withheld with its reason.
     let generate : IView list =
-        match state.generateAvailability with
-        | ControlOffered ->
-            [
-                MaterialsWindowView.actionButton
-                    ConstructorUiId.setupGridGenerateButton
-                    (ControlCaption "Generate")
-                    MaterialsWindowView.positiveBackground
-                    (fun () -> handlers.generateGrid state.grid)
-            ]
-        | ControlWithheld -> []
+        CommandControls.actionCommandWhen
+            state.generateAvailability
+            ConstructorUiId.setupGridGenerateButton
+            (ControlCaption "Generate")
+            PositiveCommand
+            (fun () -> handlers.generateGrid state.grid)
+        :: CommandControls.withheldReason ConstructorUiId.setupGridGenerateReason state.generateReasonOpt
     let close =
-        MaterialsWindowView.actionButton
+        CommandControls.actionCommand
             ConstructorUiId.setupGridCloseButton
             (ControlCaption "Close")
-            MaterialsWindowView.negativeBackground
+            NegativeCommand
             handlers.closeGrid
     // `actionButton` subscribes its press once per id, so the row is keyed by the combinations Generate makes.
     let actionsKey : string =
@@ -165,7 +162,7 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
             state.grid.ticked |> List.map (fun combination -> combination.picks |> List.map pickKey |> String.concat ",")
         $"""SetupGridActions_{String.concat ";" combinations}"""
     Border.create [
-        ConstructorUiId.setupGridPanel.automationAttribute<Border> ()
+        yield! ConstructorUiId.setupGridPanel.groupAttributes<Border> ()
         Border.margin (Thickness(8.0, 0.0, 8.0, 4.0))
         Border.child (
             StackPanel.create [
@@ -185,7 +182,7 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
                     @ [
                         TextBlock.create [ TextBlock.margin (Thickness(0.0, 4.0, 0.0, 2.0)); TextBlock.text "Combinations:" ] :> IView
                         StackPanel.create [
-                            ConstructorUiId.setupGridCombinationList.automationAttribute<StackPanel> ()
+                            yield! ConstructorUiId.setupGridCombinationList.groupAttributes<StackPanel> ()
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.children (state.rows |> List.mapi combinationLine)
                         ]

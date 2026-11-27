@@ -303,15 +303,15 @@ let private materialSourcesMinWidth : PanelMinWidth = PanelMinWidth 520.0
 let private materialSourceHitView (dispatch : MaterialSourcesMsg -> unit) (hit : MaterialSourceHit) : IView =
     let rowId = ConstructorUiId.materialSourceHitRow hit.record
     DockPanel.create [
-        DockPanel.name rowId.value
-        rowId.automationAttribute<DockPanel> ()
+        yield! rowId.groupAttributes<DockPanel> ()
+        yield! rowId.groupAttributes<DockPanel> ()
         DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
         DockPanel.children [
             Border.create [
                 Border.dock Dock.Right
                 Border.verticalAlignment VerticalAlignment.Center
                 Border.child (
-                    MaterialsWindowView.verbButton (ConstructorUiId.materialSourcePullButton hit.record) (ControlCaption "Pull") (fun () ->
+                    CommandControls.verbCommand (ConstructorUiId.materialSourcePullButton hit.record) (ControlCaption "Pull") (fun () ->
                         dispatch (PullSourceRecord hit.record)))
             ]
             StackPanel.create [
@@ -345,11 +345,12 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
                     let name = source.sourceName
                     let choiceId = ConstructorUiId.materialSourceChoice name
                     let show () = dispatch (ShowMaterialSource name)
-                    match m.shownSourceOpt with
-                    | Some shown when shown = name ->
-                        MaterialsWindowView.actionButton choiceId name.caption MaterialsWindowView.positiveBackground show
-                    | Some _
-                    | None -> MaterialsWindowView.verbButton choiceId name.caption show))
+                    let mark =
+                        match m.shownSourceOpt with
+                        | Some shown when shown = name -> ChosenChoice
+                        | Some _
+                        | None -> UnchosenChoice
+                    CommandControls.choiceCommand choiceId name.caption mark show))
         ]
 
     let updateAvailability : ControlAvailability =
@@ -369,11 +370,11 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
                     Border.isEnabled updateAvailability.isEnabled
                     Border.opacity (match updateAvailability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
                     Border.child (
-                        MaterialsWindowView.verbButton ConstructorUiId.materialSourceUpdateButton (ControlCaption "Update snapshot") (fun () ->
+                        CommandControls.verbCommand ConstructorUiId.materialSourceUpdateButton (ControlCaption "Update snapshot") (fun () ->
                             dispatch UpdateSourceSnapshot))
                 ]
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.materialSourceSnapshotText.value
+                    ConstructorUiId.materialSourceSnapshotText.automationAttribute<TextBlock> ()
                     ConstructorUiId.materialSourceSnapshotText.automationAttribute<TextBlock> ()
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.textWrapping TextWrapping.Wrap
@@ -395,17 +396,17 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
                         Border.create [
                             Border.dock Dock.Right
                             Border.child (
-                                MaterialsWindowView.actionButton
+                                CommandControls.actionCommand
                                     ConstructorUiId.materialSourceUpdateCancelButton
                                     (ControlCaption "Cancel")
-                                    MaterialsWindowView.negativeBackground
+                                    NegativeCommand
                                     (fun () -> dispatch CancelSourceSnapshot))
                         ]
                         StackPanel.create [
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.children [
                                 ProgressBar.create [
-                                    ProgressBar.name ConstructorUiId.materialSourceUpdateProgressBar.value
+                                    ConstructorUiId.materialSourceUpdateProgressBar.automationAttribute<ProgressBar> ()
                                     ConstructorUiId.materialSourceUpdateProgressBar.automationAttribute<ProgressBar> ()
                                     ProgressBar.minimum 0.0
                                     ProgressBar.maximum 1.0
@@ -413,7 +414,7 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
                                     ProgressBar.isIndeterminate (Option.isNone m.job.progress)
                                 ]
                                 TextBlock.create [
-                                    TextBlock.name ConstructorUiId.materialSourceUpdateProgressText.value
+                                    ConstructorUiId.materialSourceUpdateProgressText.automationAttribute<TextBlock> ()
                                     ConstructorUiId.materialSourceUpdateProgressText.automationAttribute<TextBlock> ()
                                     TextBlock.text (m.job.progressText |> Option.defaultValue "Downloading…")
                                 ]
@@ -450,11 +451,11 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
                     Border.verticalAlignment VerticalAlignment.Center
                     Border.margin (Thickness(8.0, 0.0, 0.0, 0.0))
                     Border.child (
-                        MaterialsWindowView.verbButton ConstructorUiId.materialSourceSearchButton (ControlCaption "Search") (fun () ->
+                        CommandControls.verbCommand ConstructorUiId.materialSourceSearchButton (ControlCaption "Search") (fun () ->
                             dispatch (SearchMaterialSource m.queryDraft)))
                 ]
                 TextBox.create [
-                    TextBox.name ConstructorUiId.materialSourceQueryBox.value
+                    yield! ConstructorUiId.materialSourceQueryBox.inputAttributes<TextBox> ()
                     ConstructorUiId.materialSourceQueryBox.automationAttribute<TextBox> ()
                     TextBox.verticalAlignment VerticalAlignment.Center
                     TextBox.text m.queryDraft.value
@@ -466,8 +467,8 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
 
     let hitList : IView =
         StackPanel.create [
-            StackPanel.name ConstructorUiId.materialSourceHitList.value
-            ConstructorUiId.materialSourceHitList.automationAttribute<StackPanel> ()
+            yield! ConstructorUiId.materialSourceHitList.groupAttributes<StackPanel> ()
+            yield! ConstructorUiId.materialSourceHitList.groupAttributes<StackPanel> ()
             StackPanel.orientation Orientation.Vertical
             StackPanel.children (m.hits |> List.map (materialSourceHitView dispatch))
         ]
@@ -477,7 +478,7 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
         | Some error, _ ->
             [
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.materialSourcesStatusText.value
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
                     ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
                     TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                     TextBlock.textWrapping TextWrapping.Wrap
@@ -487,7 +488,7 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
         | None, Some status ->
             [
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.materialSourcesStatusText.value
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
                     ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text status.value
@@ -506,7 +507,7 @@ let materialSourcesView (m : MaterialSourcesModel) (dispatch : MaterialSourcesMs
         | None ->
             [
                 TextBlock.create [
-                    TextBlock.name ConstructorUiId.materialSourcesStatusText.value
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
                     ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text "No online material source is configured."
