@@ -7,11 +7,12 @@ namespace OpticalConstructor.Controls
 /// `ExperimentControls.ChartSeries` (spec 0048 E011: one animal, one declaration).
 module ExperimentChart =
 
-    /// Spec 0027 (030): whether the x-axis is an ANGLE (degrees) — a rotation (R1, 0…360°) or an incidence
-    /// (R2, 0…90°) sweep. Only an angular chart offers the polar / XY toggle in the pop-out window; purely
-    /// a display hint — it does not change the data.
+    /// Spec 0027 (030): whether the x-axis is an ANGLE (degrees) — a rotation (R1 or a dial reading, 0…360°) or an
+    /// incidence (R2, 0…90°) sweep. Only an angular chart offers the polar / XY toggle in the pop-out window; purely
+    /// a display hint — it does not change the data. Spec 0051 `.manual/004`: only a rotation's XY view spans one turn.
     type ChartXAxisKind =
-        | AngularXAxis
+        | RotationXAxis
+        | IncidenceXAxis
         | NonAngularXAxis
 
     /// A whole chart: its series, axis labels, title, and the human description shown beneath it.
@@ -47,12 +48,13 @@ module ExperimentChart =
                     cells |> String.concat ",")
             header :: rows |> String.concat "\n"
 
-        /// The series as the XY view draws them: an angular chart's within one turn and sorted by x
+        /// The series as the XY view draws them: a rotation chart's within one turn and sorted by x
         /// (`ChartSeries.inOneTurn`), any other chart's as they are; the polar view draws them as read (spec 0051
         /// `.manual/004`).
         member this.xyViewSeries : ExperimentControls.ChartSeries list =
             match this.xAxisKind with
-            | AngularXAxis -> this.series |> List.map (fun series -> series.inOneTurn)
+            | RotationXAxis -> this.series |> List.map (fun series -> series.inOneTurn)
+            | IncidenceXAxis
             | NonAngularXAxis -> this.series
 
     /// The empty chart (no experiment built / no run to show).
@@ -414,12 +416,13 @@ module ChartStyle =
             yRight = ChartAxisRange.paddedOver (pointsOn RightAxis |> List.map (fun p -> ChartAxisValue p.y))
         }
 
-    /// The bounds a chart's XY view fits the given (series, axis side) pairs to: an angular chart's x is one full turn,
-    /// 0–360°, whatever its data covers (spec 0051 `.manual/004`); any other x fits its data.
+    /// The bounds a chart's XY view fits the given (series, axis side) pairs to: a rotation chart's x is one full turn,
+    /// 0–360°, whatever its data covers (spec 0051 `.manual/004`); any other x, an incidence's included, fits its data.
     let chartBounds (chart : ExperimentChart) (series : (ExperimentControls.ChartSeries * AxisSide) list) : ChartBounds =
         let bounds = dataBounds series
         match chart.xAxisKind with
-        | AngularXAxis -> { bounds with x = { lower = ChartAxisValue 0.0; upper = ChartAxisValue ExperimentControls.fullTurnDegrees } }
+        | RotationXAxis -> { bounds with x = { lower = ChartAxisValue 0.0; upper = ChartAxisValue ExperimentControls.fullTurnDegrees } }
+        | IncidenceXAxis
         | NonAngularXAxis -> bounds
 
     /// The initial style for a chart: all three axes auto-fit (`chartBounds`; general format; every series

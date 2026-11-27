@@ -159,7 +159,7 @@ module ChartStyleTests =
             series =
                 [ curve "T" [ 0.0, 1.0; 90.0, 0.5 ]
                   curve "R" [ 0.0, 0.1; 90.0, 0.4 ] ]
-            xAxisKind = AngularXAxis }
+            xAxisKind = IncidenceXAxis }
 
     let private first : ChartSeriesIndex = ChartSeriesIndex 0
     let private second : ChartSeriesIndex = ChartSeriesIndex 1
@@ -296,10 +296,10 @@ module ChartStyleTests =
     let private dialChart : ExperimentChart =
         { ExperimentChart.emptyExperimentChart with
             series = [ curve "Intensity" (List.init 19 (fun i -> 20.0 * float i, 0.05 * float i)); captured labRun ]
-            xAxisKind = AngularXAxis }
+            xAxisKind = RotationXAxis }
 
     [<Fact>]
-    let ``an angular chart's XY view sorts each series by x within one turn, and the chart keeps the capture order`` () =
+    let ``a rotation chart's XY view sorts each series by x within one turn, and the chart keeps the capture order`` () =
         match dialChart.xyViewSeries with
         | [ modelled; measured ] ->
             Assert.Equal(List.head dialChart.series, modelled)
@@ -320,17 +320,26 @@ module ChartStyleTests =
         | other -> Assert.Fail($"expected one series, got %d{List.length other}")
 
     [<Fact>]
-    let ``a non-angular chart's XY view draws its series as they are`` () =
-        let chart = { wlChart with series = [ curve "Intensity" [ 800.0, 0.1; 400.0, 0.2; 600.0, 0.3 ] ] }
-        Assert.Equal<ExperimentControls.ChartSeries list>(chart.series, chart.xyViewSeries)
+    let ``an incidence or a non-angular chart's XY view draws its series as they are`` () =
+        let unordered = [ curve "Intensity" [ 60.0, 0.1; 20.0, 0.2; 40.0, 0.3 ] ]
+        let incidence = { twoSeries with series = unordered }
+        Assert.Equal<ExperimentControls.ChartSeries list>(unordered, incidence.xyViewSeries)
+        let wavelength = { wlChart with series = [ curve "Intensity" [ 800.0, 0.1; 400.0, 0.2; 600.0, 0.3 ] ] }
+        Assert.Equal<ExperimentControls.ChartSeries list>(wavelength.series, wavelength.xyViewSeries)
 
     [<Fact>]
-    let ``an angular chart's XY view spans 0 to 360 whatever its data covers, and any other chart fits its data`` () =
-        let s = defaultChartStyleState twoSeries
+    let ``a rotation chart's XY view spans 0 to 360 whatever its data covers, and any other chart fits its data`` () =
+        // The same 0…90° data as a rotation and as an incidence (spec 0051 `.manual/004`).
+        let rotation = { twoSeries with xAxisKind = RotationXAxis }
+        let s = defaultChartStyleState rotation
         Assert.Equal(AutoFitAxis, s.xAxis.fit)
         Assert.Equal(0.0, s.xAxis.min.value)
         Assert.Equal(360.0, s.xAxis.max.value)
-        let angular = chartBounds twoSeries (allLeft twoSeries.series)
-        Assert.Equal<ChartAxisRange>({ lower = ChartAxisValue 0.0; upper = ChartAxisValue 360.0 }, angular.x)
-        Assert.Equal<ChartAxisRange>((dataBounds (allLeft twoSeries.series)).yLeft, angular.yLeft)
+        let turn = chartBounds rotation (allLeft rotation.series)
+        Assert.Equal<ChartAxisRange>({ lower = ChartAxisValue 0.0; upper = ChartAxisValue 360.0 }, turn.x)
+        Assert.Equal<ChartAxisRange>((dataBounds (allLeft rotation.series)).yLeft, turn.yLeft)
+        let fitted = dataBounds (allLeft twoSeries.series)
+        Assert.Equal<ChartBounds>(fitted, chartBounds twoSeries (allLeft twoSeries.series))
+        let incidenceStyle = defaultChartStyleState twoSeries
+        Assert.Equal<ChartAxisRange>(fitted.x, { lower = incidenceStyle.xAxis.min; upper = incidenceStyle.xAxis.max })
         Assert.Equal<ChartBounds>(dataBounds (allLeft wlChart.series), chartBounds wlChart (allLeft wlChart.series))

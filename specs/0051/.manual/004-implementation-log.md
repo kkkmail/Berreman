@@ -488,7 +488,7 @@ draws.
 - **Measured points were drawn in capture order.** `lp_lp.csv` captured `LP-(AIR#0)-LP-2` at dial
   60, 40, 20, 0, 340, 320 … 80, 60, so XY drew a straight line from 0° to 340° across the chart. This was not part of
   the reported bug, so it went to the operator as a question, with two remedies: dots without a line, or the points
-  sorted by x. The operator ruled three times, the last ruling standing; see "The measured line within one turn" below.
+  sorted by x. The operator ruled four times, the last two standing together; see "The measured line within one turn" below.
 
 ### Results
 
@@ -504,17 +504,19 @@ draws.
 
 ## The measured line within one turn (operator rulings, 2026-11-27)
 
-The operator ruled three times on how the measured line is drawn; each ruling replaced the one before.
+The operator ruled four times on how the measured line is drawn. The first two were built and then replaced, and the
+last two stand together.
 
 1. Sort the measured points by x. Built, then replaced: a run read at 0, 20 … 340, 0 ends at 360, not back at 0.
 2. Unwrap the readings point by point, so a run may take several turns. Built (`ChartSeries.unwrappedAngles`), then
    replaced. The lab's runs turn the dial down, from 60 through 0 round to 60, so the unwrapped run covered 60–420°
    beside the model's 0–360°.
-3. The ruling that stands:
+3. Standing:
    - every angular chart's XY view spans 0–360°;
    - the measured line may go round 0 or 360, but it is drawn within 0–360°: unwrapped, brought back into one turn
      (mod 360), then sorted by x;
    - the polar view draws the data as read.
+4. Standing, narrowing 3: only rotations span 0–360°. An incidence chart keeps its own range.
 
 How it is built:
 
@@ -524,35 +526,46 @@ How it is built:
 - **`ChartSeries.inOneTurn`** moves an x outside 0–360° into [0°, 360°) by whole turns, then sorts the points by x.
   The sort is stable, so two readings at one angle keep their capture order. An x inside the range, 360 included,
   stays where it is, so the model's last point stays at the right edge; a strict mod would move it to 0.
-- **`ExperimentChart.xyViewSeries`** is every series of an angular chart in one turn, and any other chart's series as
-  they are. `ChartPlot.buildCartesianScatters` draws it, so the chart window and the embedded host share it.
-- **`ChartStyle.chartBounds`** is the bounds the XY view fits. An angular chart's x is 0–360° without padding,
-  whatever its data covers. `defaultChartStyleState` and Auto (`ChartPlot.dataBoundsVisible`) both read it, and a
-  pinned range still wins.
+- **Rotation and incidence charts.** `ChartXAxisKind`'s angular case is split in two:
+  - `RotationXAxis` (R1 or a dial reading);
+  - `IncidenceXAxis` (R2).
+
+  Both offer the polar view. `chartForRun` calls a chart a rotation only when every x variable turns fully (R1 or a
+  dial reading). Any R2 makes it an incidence chart, and a wavelength still makes it non-angular.
+- **`ExperimentChart.xyViewSeries`** is every series of a rotation chart in one turn, and any other chart's series,
+  an incidence's included, as they are. `ChartPlot.buildCartesianScatters` draws it, so the chart window and the
+  embedded host share it.
+- **`ChartStyle.chartBounds`** is the bounds the XY view fits. A rotation chart's x is 0–360° without padding,
+  whatever its data covers, and an incidence chart's x fits its data. `defaultChartStyleState` and Auto
+  (`ChartPlot.dataBoundsVisible`) both read it, and a pinned range still wins.
 - **The chart data stays as read.** `measuredSeriesOpt` returns the kept points in capture order. The polar view
   draws them so: the lab's run is a closed loop.
-- **Which charts count as angular.** Every scan variable but the wavelength is an angle (`AngularXAxis`), so
-  incidence (R2) sweeps of 0–90° are drawn on 0–360° too, as the ruling's "all" says.
 - **What the lab's runs look like.** A reading of 0 is drawn at 0, so a run's closing reading lands beside its first
   (60 twice for the LP runs). The measured line covers 0–340°, and nothing is measured between 340° and 360°.
 
 ### Tests
 
 - **`ChartStyleTests`**: the unwrap tests are replaced by four tests.
-  - The lab's run sorts to 0 … 340 within one turn; the two 60° readings keep their capture order, and the chart
-    itself keeps the run as read.
+  - A rotation chart sorts the lab's run to 0 … 340 within one turn; the two 60° readings keep their capture order,
+    and the chart itself keeps the run as read.
   - 380, −20, 720, 360 and 0 come to 20, 340, 0, 360 and 0.
-  - A non-angular chart is drawn as it is.
-  - An angular chart's x range is 0–360°, in the default style and in `chartBounds`; any other chart fits its data.
+  - An incidence chart and a wavelength chart are drawn as they are.
+  - The same 0–90° data spans 0–360° as a rotation chart, in the default style and in `chartBounds`; as an incidence
+    chart, and on a wavelength chart, x fits the data.
 - **`ExperimentControlsTests`**:
-  - The View chart fixture now has a model over a full turn and a measured run in capture order, from 90 through 0 and
-    round to 90.
+  - The View chart fixture is a rotation chart, with a model over a full turn and a measured run in capture order,
+    from 90 through 0 and round to 90.
   - A new test renders the window. In XY the bottom axis is 0–360° and the measured line is sorted; in polar the
     measured points lie at the captured angles in capture order.
-- **`InverseConstructorTests`**: the measured series is the readings as read, in capture order.
+  - The dial scan and the R1-inner two-variable scan are rotation charts; the Ψ/Δ sample over R2 is an incidence chart.
+- **`InverseConstructorTests`**:
+  - the measured series is the readings as read, in capture order;
+  - an R2 draft's chart is an incidence chart.
 - **Checked without the fix:**
   - with `buildCartesianScatters` drawing `chart.series`, the new window test fails;
-  - with `chartBounds` fitting the data, the range test fails.
+  - with `chartBounds` fitting the data, the rotation range test fails;
+  - with an R2 chart typed as a rotation, the inverse chart test fails;
+  - with an incidence chart spanning 0–360°, the range test fails.
 
 ### Results
 
@@ -562,6 +575,7 @@ How it is built:
   - `ChartStyleTests` 24 of 24, `ExperimentControlsTests` 63 of 63 and `InverseConstructorTests` 16 of 16;
   - `DataStepTests` 13 of 13, `EmbeddedChartTests` 6 of 6, `NkDispersionChartTests` 14 of 14 and
     `ScrollExtentTests` 24 of 24.
-- Real desktop: the two View facts, 2 of 2 passed. On `LP-(AIR#0)-LP-2`:
+- Real desktop: the two View facts, 2 of 2 passed, after the incidence split as well. `optics-mueller`'s runs are dial
+  rotations. On `LP-(AIR#0)-LP-2`:
   - the XY view spans 0–360°, with the model across it and the measured line from 0° to 340° in dial order;
   - the polar view draws the run as captured, a closed loop.

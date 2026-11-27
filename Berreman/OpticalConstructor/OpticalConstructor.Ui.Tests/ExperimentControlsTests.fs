@@ -640,7 +640,7 @@ module ExperimentControlsTests =
                 let dialChart = chosen.experimentResult
                 Assert.Equal("Dial reading (°)", dialChart.xLabel.value)
                 Assert.Equal("Intensity vs dial reading", dialChart.title.value)
-                Assert.Equal(ExperimentChart.AngularXAxis, dialChart.xAxisKind)
+                Assert.Equal(ExperimentChart.RotationXAxis, dialChart.xAxisKind)
                 let dialPoints = (Assert.Single dialChart.series).points
                 Assert.Equal<float list>([ for k in 0 .. 18 -> 20.0 * float k ], dialPoints |> List.map (fun p -> p.x))
 
@@ -728,7 +728,7 @@ module ExperimentControlsTests =
             seriesNames chart)
         Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
         Assert.Equal("Intensity (S₀)", chart.yLabel.value)
-        Assert.Equal(ExperimentChart.AngularXAxis, chart.xAxisKind)
+        Assert.Equal(ExperimentChart.RotationXAxis, chart.xAxisKind)
         for s in chart.series do
             Assert.Equal<float list>([ 0.0; 90.0 ], s.points |> List.map (fun p -> p.x))
         // The inner variable really varies the run: the film's in-plane optic axis turns with its spin.
@@ -999,7 +999,7 @@ module ExperimentControlsTests =
             yLabel = ControlCaption "Ψ, Δ (°)"
             title = ControlCaption "Ellipsometric Ψ/Δ vs incidence"
             description = ControlCaption "A two-series ellipsometer sweep used by the pop-out chart-window smoke test."
-            xAxisKind = ExperimentChart.AngularXAxis
+            xAxisKind = ExperimentChart.IncidenceXAxis
         }
 
     [<Fact>]
@@ -1289,7 +1289,7 @@ module ExperimentControlsTests =
             yLabel = ControlCaption "Intensity"
             title = ControlCaption "E1"
             description = ControlCaption "A modelled series beside its measured points."
-            xAxisKind = ExperimentChart.AngularXAxis
+            xAxisKind = ExperimentChart.RotationXAxis
         }
 
     /// The View chart's window, as `viewExperimentHook` opens it, with its plot and its polar toggle.

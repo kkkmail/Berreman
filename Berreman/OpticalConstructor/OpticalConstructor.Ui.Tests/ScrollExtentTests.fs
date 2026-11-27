@@ -502,7 +502,7 @@ module ScrollExtentTests =
                 yLabel = ControlCaption "y"
                 title = ControlCaption "t"
                 description = ControlCaption "d"
-                xAxisKind = ExperimentChart.AngularXAxis
+                xAxisKind = ExperimentChart.IncidenceXAxis
             }
         assertReachable "Chart" (fun () -> ChartWindow(chart))
 

@@ -163,8 +163,8 @@ module ChartPlot =
             | PolarProjection -> ())
 
     /// Build the cartesian scatters — one per series, each bound to its assigned (left / right) Y axis.
-    /// Spec 0033 (018): the side is STYLE; n → left, k → right through the paired seed. Spec 0051 `.manual/004`: an
-    /// angular chart's series within one turn, sorted by x (`xyViewSeries`).
+    /// Spec 0033 (018): the side is STYLE; n → left, k → right through the paired seed. Spec 0051 `.manual/004`: a
+    /// rotation chart's series within one turn, sorted by x (`xyViewSeries`).
     let buildCartesianScatters (plot : ScottPlot.Plot) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ScottPlot.Plottables.Scatter list =
         chart.xyViewSeries
         |> List.mapi (fun i s ->
@@ -549,7 +549,8 @@ type ChartWindow(chart : ExperimentChart, initialStyle : ChartStyle.ChartStyleSt
 
         match chart.xAxisKind with
         | NonAngularXAxis -> ()
-        | AngularXAxis ->
+        | RotationXAxis
+        | IncidenceXAxis ->
             let polarBtn = Button(Name = ConstructorUiId.chartWindowPolar.value, Content = "Polar view", Margin = Thickness(0.0, 0.0, 16.0, 0.0))
             polarBtn.Click.Add(fun _ ->
                 projection <- projection.flipped

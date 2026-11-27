@@ -5885,10 +5885,20 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                 yLabel = yLabelOf (drawn |> List.collect (fun block -> block.kinds) |> List.distinct)
                 title = first.title
                 description = description
+                // Spec 0051 `.manual/004`: a rotation's XY view spans one turn, so a chart is one only when every x turns fully.
                 xAxisKind =
-                    match List.contains Experiments.VaryWaveLength variables with
-                    | true -> ExperimentChart.NonAngularXAxis
-                    | false -> ExperimentChart.AngularXAxis
+                    let turnsFully =
+                        variables
+                        |> List.forall (fun variable ->
+                            match variable with
+                            | Experiments.VaryR1
+                            | Experiments.VaryDialReading -> true
+                            | Experiments.VaryR2
+                            | Experiments.VaryWaveLength -> false)
+                    match List.contains Experiments.VaryWaveLength variables, turnsFully with
+                    | true, _ -> ExperimentChart.NonAngularXAxis
+                    | false, true -> ExperimentChart.RotationXAxis
+                    | false, false -> ExperimentChart.IncidenceXAxis
             }
 
 type TableAndElementRotationModel with

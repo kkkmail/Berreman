@@ -117,7 +117,7 @@ module ExperimentControls =
         | FixedSourceWaveLength of setting : BayNanometers
         | TunableSourceWaveLength of setting : BayNanometers * limits : SourceWaveLengthLimits
 
-    /// The degrees in one turn of a dial, the x range of an angular chart's XY view (spec 0051 `.manual/004`).
+    /// The degrees in one turn of a dial, the x range of a rotation chart's XY view (spec 0051 `.manual/004`).
     [<Literal>]
     let fullTurnDegrees = 360.0
 
@@ -143,7 +143,7 @@ module ExperimentControls =
             points : ChartPoint list
         }
 
-        /// This series of angles in degrees as an angular chart's XY view draws it (spec 0051 `.manual/004`): an x outside
+        /// This series of angles in degrees as a rotation chart's XY view draws it (spec 0051 `.manual/004`): an x outside
         /// 0–360° is moved into it by whole turns, as a dial read through 0° or round several turns reads, and the points
         /// are sorted by x, so the line joins neighbouring angles rather than successive captures.
         member this.inOneTurn : ChartSeries =

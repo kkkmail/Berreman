@@ -132,6 +132,8 @@ module InverseConstructorTests =
         let m2 = m1 |> updateTableAndElementRotation (BindValueIdTo (sample.id, Placement.ElementValueId glassFilm200Id))
         Assert.True(m2.experimentChartVisible, "a bound hint sample must restore the chart surface")
         Assert.NotEmpty((m2.experimentResult).series)
+        // An incidence sweep keeps its own x range in the XY view; only a rotation spans 0–360° (spec 0051 `.manual/004`).
+        Assert.Equal(ExperimentChart.IncidenceXAxis, (m2.experimentResult).xAxisKind)
 
     // ================================ per-experiment file attach status ================================
 
