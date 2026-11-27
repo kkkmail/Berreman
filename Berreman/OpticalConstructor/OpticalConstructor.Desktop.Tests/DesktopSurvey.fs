@@ -296,6 +296,43 @@ module DesktopSurveyTests =
         Assert.Contains($"Measured — {e1.name}", header)
         Assert.Equal($"Saved {target}.", shownText (app.find chart ConstructorUiId.chartWindowExportStatus))
 
+    /// The View chart's Polar view and back (spec 0051 `.manual/004`): polar drew only the measured series, and back in
+    /// XY the modelled one lay flat at zero.
+    [<Fact>]
+    [<Trait("Category", "desktop")>]
+    let ``survey: a View chart draws both series in its Polar view and is unchanged back in XY`` () : unit =
+        requireDesktop ()
+        let sandbox = createSandbox "survey-polar"
+        use app = launch sandbox
+        let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
+        app.invoke kitWindow ConstructorUiId.flowExperimentsStep
+        app.invoke kitWindow (ConstructorUiId.experimentViewButton (ConstructorUiKey "1"))
+        let chart =
+            waitFor "the chart window" 30.0 (fun () ->
+                app.windows |> List.tryFind (fun window -> app.tryFind window ConstructorUiId.chartWindowPolar |> Option.isSome))
+        let plot = app.find chart ConstructorUiId.chartWindowPlot
+        // The plot as drawn once it changed from `shown` and held still for one poll.
+        let redrawnFrom (shown : int[]) : int[] =
+            let last = ref shown
+            waitFor "the chart to redraw" 15.0 (fun () ->
+                let now = Screen.capture plot.BoundingRectangle
+                let held = now = last.Value && now <> shown
+                last.Value <- now
+                if held then Some now else None)
+        let pixelsOf (hex : int) (pixels : int[]) : int =
+            let channel (shift : int) (pixel : int) : int = (pixel >>> shift) &&& 0xFF
+            pixels |> Array.filter (fun pixel -> [ 16; 8; 0 ] |> List.forall (fun shift -> abs (channel shift pixel - channel shift hex) < 40)) |> Array.length
+        let xy = redrawnFrom Array.empty
+        app.invoke chart ConstructorUiId.chartWindowPolar
+        let polar = redrawnFrom xy
+        // The modelled series first (ChartStyle.defaultColors), the measured one second.
+        let modelled, measured = pixelsOf 0x1E5AC8 polar, pixelsOf 0xDC7814 polar
+        Assert.True(modelled * 4 >= measured, $"the polar view drew {modelled} px of the modelled series beside {measured} px of the measured one")
+        app.invoke chart ConstructorUiId.chartWindowPolar
+        let back = redrawnFrom polar
+        let changed = Array.map2 (fun (before : int) (after : int) -> before <> after) xy back |> Array.filter id |> Array.length
+        Assert.True((changed = 0), $"{changed} of {xy.Length} plot pixels differ from the XY view before Polar")
+
     /// 002-10 (spec 0051 `.manual/003` 4.4).
     [<Fact>]
     [<Trait("Category", "desktop")>]

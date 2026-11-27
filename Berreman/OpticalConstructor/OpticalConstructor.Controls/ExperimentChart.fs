@@ -524,14 +524,43 @@ module ChartStyle =
 
     // -- polar representation (spec 030; the point conversion is `ChartPoint.polarXY`) --
 
-    /// The outer radius for a polar plot: the largest |y| across the VISIBLE series (a unit fallback), so the
-    /// polar grid's outer circle just contains the data.
-    let polarRadius (state : ChartStyleState) (series : ExperimentControls.ChartSeries list) : ChartAxisValue =
-        let visible =
-            series
-            |> List.mapi (fun i s -> ChartSeriesIndex i, s)
-            |> List.filter (fun (i, _) -> (seriesStyleOf i state).visible = ShownOnChart)
-            |> List.collect (fun (_, s) -> s.points |> List.map (fun p -> abs p.y))
-        match visible with
-        | [] -> ChartAxisValue 1.0
-        | ys -> ChartAxisValue (max 1e-9 (List.max ys))
+    /// What a polar plot draws: the outer radius of its grid and the series, in the order of the chart's.
+    type PolarChart =
+        {
+            radius : ChartAxisValue
+            series : ExperimentControls.ChartSeries list
+        }
+
+    /// The polar plot of a chart's series. A polar grid has one radius, so the right axis's series are scaled onto
+    /// the left's largest visible |y|, as the XY view gives each side its own scale; a modelled 0…1 intensity beside
+    /// lab counts would otherwise shrink to the centre (spec 0051 `.manual/004`). The outer circle just contains the
+    /// visible data, with a unit fallback.
+    let polarChartOf (state : ChartStyleState) (series : ExperimentControls.ChartSeries list) : PolarChart =
+        let styled = series |> List.mapi (fun i s -> s, seriesStyleOf (ChartSeriesIndex i) state)
+        let largestOn (side : AxisSide) : ChartAxisValue option =
+            styled
+            |> List.filter (fun (_, st) -> st.visible = ShownOnChart && st.axisSide = side)
+            |> List.collect (fun (s, _) -> s.points |> List.map (fun p -> abs p.y))
+            |> List.filter (fun y -> y > 0.0)
+            |> function
+                | [] -> None
+                | ys -> Some (ChartAxisValue (List.max ys))
+        let scaledOnto (left : ChartAxisValue) (right : ChartAxisValue) (s : ExperimentControls.ChartSeries) : ExperimentControls.ChartSeries =
+            {
+                name = ControlCaption $"{s.name.value} (scaled to the left axis)"
+                points = s.points |> List.map (fun p -> { p with y = p.y * left.value / right.value })
+            }
+        match largestOn LeftAxis, largestOn RightAxis with
+        | Some left, Some right ->
+            {
+                radius = left
+                series =
+                    styled
+                    |> List.map (fun (s, st) ->
+                        match st.axisSide with
+                        | LeftAxis -> s
+                        | RightAxis -> scaledOnto left right s)
+            }
+        | Some largest, None
+        | None, Some largest -> { radius = largest; series = series }
+        | None, None -> { radius = ChartAxisValue 1.0; series = series }

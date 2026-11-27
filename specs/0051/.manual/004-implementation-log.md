@@ -418,3 +418,88 @@ Three closed rows had no test of their own. They have one now:
 - **New: `DesktopSurvey.fs`.** Six facts re-drive the 038 and 002 survey by id, each naming the findings it closes.
   The report is `005-ui-survey-after-the-fixes.md`.
 - **AGENTS.md** names the suite in Build & test and in the project layout.
+
+## After the survey: the chart's Polar view (operator report, 2026-11-27)
+
+The report: open `optics-mueller`, Experiments, any experiment, View. The chart shows two lines, "Intensity" (blue) and
+"Measured" (orange). Polar view keeps only the measured line, and back in XY the intensity lies at 0.
+
+### What the two lines are
+
+- **Intensity** is the model's prediction. The experiment's scan is run on its own setup revision
+  (`chartForExperiment` → `chartForRun`), and each point is the S₀ the detector reads, relative to a unit source.
+  The scale is therefore 0 to 1, on the left axis.
+- **Measured — <experiment>** is the experiment's attached lab data, the kept points with exclusions removed
+  (`measuredSeriesOpt`). It is in the lab file's own units, counts for `optics-mueller`, on the right axis (`003` 3.4).
+
+### Why the Polar view lost the intensity
+
+A polar grid has one radius, and `ChartStyle.polarRadius` took the largest |y| of every visible series. That is the
+measured counts, in the thousands, so the intensity curve was drawn within a thousandth of the radius: a dot at the
+centre.
+
+### Why XY then drew the intensity at 0
+
+ScottPlot 5.1.59's polar axis changes the plot beyond its own plottable, and `Plot.Clear` undoes none of it:
+
+- Its first render adds a `SquareZoomOut` axis rule, which keeps the bottom and left axes at equal units per pixel.
+  Back in XY, a 0–180° bottom axis held the left axis at about ±72, so a 0–0.45 intensity was a flat line at 0. The
+  right axis is outside the rule, so the measured line looked right.
+- `Add.PolarAxis` hides every axis, the title and the grid. The window showed only the bottom, left and right axes
+  again, so the top frame edge and the title stayed hidden, and the grid stayed off with "Major grid" ticked.
+
+The regression test of spec 030 missed this because Avalonia.Headless never rasterizes ScottPlot. The polar axis was
+never rendered, so the rule was never added, and the test compared the limits the code had set, not those a render
+draws.
+
+### The fix
+
+- **`ChartStyle.polarChartOf`** replaces `polarRadius`. It answers the polar plot's radius and its series:
+  - the radius is the left axis's largest visible |y|;
+  - every right-axis series is scaled onto that radius, as XY gives each side its own scale, and its legend reads
+    "(scaled to the left axis)";
+  - with nothing visible on the left, the right axis keeps its own units.
+- **`ChartWindow`**:
+  - back in XY, `restoreCartesianFrame` clears the axis rules (the window adds none of its own) and shows every axis;
+  - the title is shown in both views;
+  - the grid follows its two toggles in XY and stays off in polar (`setGridLines`);
+  - a style edit in the polar view rebuilds it (`restyle`), since the radius and the scaling follow which series
+    show and on which side.
+
+### Tests
+
+- `ChartStyleTests`: the radius test reads `polarChartOf`, and a new test checks that a right-axis series is scaled
+  onto the left axis and keeps its units when the left side is hidden.
+- `ExperimentControlsTests`:
+  - the round-trip test now opens the View chart's shape (intensity left, counts right) and renders each view. It
+    checks that the limits come back to nine decimals, no rule is left, and every axis, the title and the grid show;
+  - a new test checks that both polar series reach the same radius, and that moving the measured series to the left
+    axis redraws it in its own units;
+  - with the fix taken out, both tests fail.
+- `DesktopSurvey`, a seventh fact on the real app: View on `optics-mueller`'s first experiment, then Polar view and
+  back. Both series' colours must be drawn in the polar view, and the XY plot afterwards must equal the first one
+  pixel for pixel.
+
+### Found while proving it
+
+- **The chart's plot was not in the UI Automation tree.** The window is plain Avalonia, so the plot had only an
+  Avalonia `Name`, and UI Automation did not expose it. `ConstructorUiId.exposeAsFigure` is `figureAttributes` for a
+  control built outside FuncUI; the chart window's plot now carries it.
+- **Open question: measured points are drawn in capture order.** `lp_lp.csv` captured `LP-(AIR#0)-LP-2` at dial
+  60, 40, 20, 0, 340, 320 … 80, 60, so XY draws a straight line from 0° to 340° across the chart. This is not part of
+  the reported bug, and the remedy is a product choice, so it is left to the operator:
+  - draw measured points as dots without a line (the usual way to show data against a model), which also suits an
+    experiment of several blocks, whose points share the one measured series today; or
+  - sort the points by x before drawing them.
+
+### Results
+
+- Solution build: 0 errors; the only warnings are the exempt NuGet advisories (NU1701, NU190x).
+- ELEV gate: OK, 0 findings in 13 projects, run after the last product edit.
+- `OpticalConstructor.Ui.Tests`: `ChartStyleTests`, `ExperimentControlsTests`, `ScrollExtentTests`,
+  `AutomationContractTests` and `NkDispersionChartTests`, 125 of 125 passed.
+- Real desktop: the two View facts, 2 of 2 passed, the new one again after the final build.
+  - Without the scaling, the polar view drew 20 px of the modelled series (its legend swatch) beside 1,810 px of the
+    measured one.
+  - Without clearing the rule, 50,611 of 422,688 plot pixels differed from the first XY view.
+  - With the fix, the polar view draws both series, and the XY view after the round trip equals the first.

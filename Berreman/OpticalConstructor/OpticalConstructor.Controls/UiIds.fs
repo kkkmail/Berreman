@@ -68,6 +68,12 @@ type ConstructorUiId =
     /// The id of a drawn figure a test reads (a chart's polyline), exposed as an image.
     member this.figureAttributes<'Control when 'Control :> Control> () : IAttr<'Control> list = this.exposedAs<'Control> AutomationControlType.Image
 
+    /// `figureAttributes` set on a control built outside FuncUI (the chart window's plot).
+    member this.exposeAsFigure (control : Control) : unit =
+        AutomationProperties.SetAutomationId(control, this.value)
+        AutomationProperties.SetAccessibilityView(control, AccessibilityView.Control)
+        AutomationProperties.SetControlTypeOverride(control, System.Nullable AutomationControlType.Image)
+
     /// The id of a drawing surface the user clicks or drags on (a table canvas), exposed as a pane.
     member this.surfaceAttributes<'Control when 'Control :> Control> () : IAttr<'Control> list = this.exposedAs<'Control> AutomationControlType.Pane
 

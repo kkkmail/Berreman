@@ -1272,29 +1272,92 @@ module ExperimentControlsTests =
             Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
             window.Close())
 
+    /// An experiment's View chart: the modelled intensity on the left axis, the lab's counts on the right (spec 0051
+    /// `.manual/003` 3.4).
+    let private viewedChart : ExperimentChart.ExperimentChart =
+        {
+            ExperimentChart.ExperimentChart.series =
+                [
+                    curve "Intensity" [ 0.0, 0.45; 45.0, 0.25; 90.0, 0.05; 135.0, 0.25; 180.0, 0.45 ]
+                    curve "Measured — E1" [ 0.0, 2700.0; 45.0, 1500.0; 90.0, 300.0; 135.0, 1500.0; 180.0, 2700.0 ]
+                ]
+            xLabel = ControlCaption "R1 (°)"
+            yLabel = ControlCaption "Intensity"
+            title = ControlCaption "E1"
+            description = ControlCaption "A modelled series beside its measured points."
+            xAxisKind = ExperimentChart.AngularXAxis
+        }
+
+    /// The View chart's window, as `viewExperimentHook` opens it, with its plot and its polar toggle.
+    let private openViewedChart () : ChartWindow * ScottPlot.Plot * (unit -> unit) =
+        let style = ChartStyle.setSeriesAxisSide (ChartStyle.ChartSeriesIndex 1) ChartStyle.RightAxis (ChartStyle.defaultChartStyleState viewedChart)
+        let window = ChartWindow(viewedChart, style, None)
+        try window.Show() with _ -> ()
+        try Dispatcher.UIThread.RunJobs() with _ -> ()
+        let ctrl (name : string) : Control =
+            window.GetVisualDescendants() |> Seq.pick (function :? Control as c when UiDriver.hasId name c -> Some c | _ -> None)
+        let ava = ctrl ConstructorUiId.chartWindowPlot.value :?> ScottPlot.Avalonia.AvaPlot
+        let polarToggle = ctrl ConstructorUiId.chartWindowPolar.value :?> Button
+        let toggle () =
+            polarToggle.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent))
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            // Headless Avalonia never rasterizes ScottPlot, and the polar axis changes the plot on its first render.
+            ava.Plot.RenderInMemory(980, 680) |> ignore
+        ava.Plot.RenderInMemory(980, 680) |> ignore
+        window, ava.Plot, toggle
+
+    /// How far each drawn series reaches from the polar origin.
+    let private polarReaches (plot : ScottPlot.Plot) : float list =
+        plot.GetPlottables()
+        |> Seq.choose (function :? ScottPlot.Plottables.Scatter as s when s.IsVisible -> Some s | _ -> None)
+        |> Seq.map (fun s -> s.Data.GetScatterPoints() |> Seq.map (fun p -> sqrt (p.X * p.X + p.Y * p.Y)) |> Seq.max)
+        |> List.ofSeq
+
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``returning from polar to XY restores the cartesian axes and data-fit limits`` () =
-        // Regression (spec 030): `Add.PolarAxis` hides the rectangular axes for a clean polar grid; switching
-        // back must restore them (and the data-fit limits) or the XY view renders with no axes / ticks.
+        // Regression (spec 030; spec 0051 `.manual/004`): `Add.PolarAxis` hides every axis, the title and the grid, and
+        // its first render adds a square-units rule that `Plot.Clear` keeps: back in XY it stretched the left axis to the
+        // angle's units and drew the modelled intensity flat at zero.
         HeadlessSession.run (fun () ->
-            let window = ChartWindow(sampleChart)
-            try window.Show() with _ -> ()
-            try Dispatcher.UIThread.RunJobs() with _ -> ()
-            let ctrl (name : string) : Control option =
-                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when UiDriver.hasId name c -> Some c | _ -> None)
-            let ava = (ctrl ConstructorUiId.chartWindowPlot.value |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
-            let lim0 = ava.Plot.Axes.GetLimits()
-            let btn = (ctrl ConstructorUiId.chartWindowPolar.value |> Option.get) :?> Button
-            let click () = btn.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); (try Dispatcher.UIThread.RunJobs() with _ -> ())
-            click ()   // → polar (hides the cartesian axes)
-            click ()   // → XY (must restore them)
-            let axisVisible (a : obj) : bool = match a with :? ScottPlot.AxisPanels.AxisBase as ax -> ax.IsVisible | _ -> false
-            Assert.True(axisVisible ava.Plot.Axes.Bottom, "the X axis was not restored after leaving polar")
-            Assert.True(axisVisible ava.Plot.Axes.Left, "the Y axis was not restored after leaving polar")
-            let lim1 = ava.Plot.Axes.GetLimits()
-            Assert.True(abs (lim0.Left - lim1.Left) < 1e-6 && abs (lim0.Right - lim1.Right) < 1e-6, "the XY x-limits were not restored")
-            Assert.True(abs (lim0.Bottom - lim1.Bottom) < 1e-6 && abs (lim0.Top - lim1.Top) < 1e-6, "the XY y-limits were not restored")
+            let window, plot, toggle = openViewedChart ()
+            let limits () : float list =
+                [ plot.Axes.Bottom.Min; plot.Axes.Bottom.Max; plot.Axes.Left.Min; plot.Axes.Left.Max; plot.Axes.Right.Min; plot.Axes.Right.Max ]
+            let xy = limits ()
+            toggle ()   // → polar
+            toggle ()   // → XY
+            List.iter2 (fun (before : float) (after : float) -> Assert.Equal(before, after, 9)) xy (limits ())
+            Assert.Empty(plot.Axes.Rules)
+            Assert.All(plot.Axes.GetAxes(), fun axis -> Assert.True(axis.IsVisible, "an axis stayed hidden after leaving polar"))
+            Assert.True(plot.Axes.Title.IsVisible, "the title stayed hidden after leaving polar")
+            Assert.True(plot.Grid.IsVisible, "the major grid stayed hidden after leaving polar")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the polar view draws the modelled and the measured series each to its own axis's scale`` () =
+        // Spec 0051 `.manual/004`: one polar radius for 0…0.45 and 300…2700 drew only the measured series.
+        HeadlessSession.run (fun () ->
+            let window, plot, toggle = openViewedChart ()
+            toggle ()   // → polar
+            match polarReaches plot with
+            | [ modelled; measured ] ->
+                Assert.Equal(0.45, modelled, 9)
+                Assert.Equal(0.45, measured, 9)
+            | other -> Assert.Fail($"expected two polar series, got %d{List.length other}")
+            // Moved to the left axis, the measured series shares the modelled one's unit, and the polar view redraws so.
+            let ctrl (name : string) : Control =
+                window.GetVisualDescendants() |> Seq.pick (function :? Control as c when UiDriver.hasId name c -> Some c | _ -> None)
+            // The element picker: Header, X axis, Y left, Y right, Legend, series 0, series 1 → index 6.
+            (ctrl ConstructorUiId.chartWindowElement.value :?> ComboBox).SelectedIndex <- 6
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            (ctrl ConstructorUiId.chartWindowSeriesAxis.value :?> ComboBox).SelectedIndex <- 0
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            match polarReaches plot with
+            | [ modelled; measured ] ->
+                Assert.Equal(0.45, modelled, 9)
+                Assert.Equal(2700.0, measured, 9)
+            | other -> Assert.Fail($"expected two polar series, got %d{List.length other}")
             window.Close())
 
     [<Fact>]

@@ -249,10 +249,32 @@ module ChartStyleTests =
         Assert.True(close -2.0 p180.x)                          // 180°→ (−r, ·)
 
     [<Fact>]
-    let ``polarRadius is the largest visible |y| (with a positive fallback)`` () =
+    let ``the polar radius is the largest visible |y| (with a positive fallback)`` () =
         let s = defaultChartStyleState twoSeries
-        Assert.Equal(1.0, (polarRadius s twoSeries.series).value)   // max |y| across both series = 1.0
+        Assert.Equal(1.0, (polarChartOf s twoSeries.series).radius.value)   // max |y| across both series = 1.0
         // Hiding the series that carries the max shrinks the radius.
         let s2 = setSeriesVisible first HiddenOnChart s
-        Assert.Equal(0.4, (polarRadius s2 twoSeries.series).value)
-        Assert.True((polarRadius s []).value > 0.0)                 // fallback stays positive
+        Assert.Equal(0.4, (polarChartOf s2 twoSeries.series).radius.value)
+        Assert.True((polarChartOf s []).radius.value > 0.0)                 // fallback stays positive
+
+    [<Fact>]
+    let ``a right-axis series is scaled onto the left axis in the polar plot`` () =
+        // The View chart (spec 0051 `.manual/004`): a modelled 0…0.45 intensity on the left, lab counts on the right. One
+        // polar radius for both would shrink the intensity to the centre.
+        let modelled = curve "Intensity" [ 0.0, 0.45; 90.0, 0.05; 180.0, 0.45 ]
+        let measured = curve "Measured — E1" [ 0.0, 2700.0; 90.0, 300.0; 180.0, 2700.0 ]
+        let s = defaultChartStyleState { twoSeries with series = [ modelled; measured ] } |> setSeriesAxisSide second RightAxis
+        let polar = polarChartOf s [ modelled; measured ]
+        Assert.Equal(0.45, polar.radius.value)
+        match polar.series with
+        | [ left; right ] ->
+            Assert.Equal(modelled, left)
+            Assert.Equal("Measured — E1 (scaled to the left axis)", right.name.value)
+            let expected = [ 0.45; 0.05; 0.45 ]
+            List.iter2 (fun (e : float) (p : ExperimentControls.ChartPoint) -> Assert.Equal(e, p.y, 12)) expected right.points
+            Assert.Equal<float list>([ 0.0; 90.0; 180.0 ], right.points |> List.map (fun p -> p.x))
+        | other -> Assert.Fail($"expected two polar series, got %d{List.length other}")
+        // With the left side hidden, the right axis keeps its own units.
+        let rightOnly = polarChartOf (setSeriesVisible first HiddenOnChart s) [ modelled; measured ]
+        Assert.Equal(2700.0, rightOnly.radius.value)
+        Assert.Equal<ExperimentControls.ChartSeries list>([ modelled; measured ], rightOnly.series)
