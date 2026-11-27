@@ -488,8 +488,7 @@ draws.
 - **Measured points were drawn in capture order.** `lp_lp.csv` captured `LP-(AIR#0)-LP-2` at dial
   60, 40, 20, 0, 340, 320 … 80, 60, so XY drew a straight line from 0° to 340° across the chart. This was not part of
   the reported bug, so it went to the operator as a question, with two remedies: dots without a line, or the points
-  sorted by x. The operator chose the sort, then replaced it with unwrapping the readings; see "Measured dial readings
-  unwrapped" below.
+  sorted by x. The operator ruled three times, the last ruling standing; see "The measured line within one turn" below.
 
 ### Results
 
@@ -503,50 +502,66 @@ draws.
   - Without clearing the rule, 50,611 of 422,688 plot pixels differed from the first XY view.
   - With the fix, the polar view draws both series, and the XY view after the round trip equals the first.
 
-## Measured dial readings unwrapped (operator ruling, 2026-11-27)
+## The measured line within one turn (operator rulings, 2026-11-27)
 
-The operator first chose to sort the measured points by x, and the sort was built. The operator then replaced it: a
-run read at 0, 20, … 340, 0 ends at 360, not back at 0. The points stay in capture order, and each reading is moved by
-whole turns to continue from the one before it, checked point by point because a run may take several turns. The
-sort is gone.
+The operator ruled three times on how the measured line is drawn; each ruling replaced the one before.
 
-- **`ChartSeries.unwrappedAngles`** (Controls):
-  - a step of more than half a turn, either way, is a wrap, and every later point moves by a turn against it;
-  - the unrolled run is then moved by whole turns until its lowest reading lies in [0°, 360°).
-- **Both directions count.** Every lab run in `optics-mueller` turns the dial down, for example 60, 40, 20, 0, 340 … 80,
-  60 for the LP and CPL–LP runs, and 100 → 100 for the CPL–CPL and LP–CPL runs. Their wrap is a jump up from 0 to 340,
-  so a rule that caught only drops would leave them as they are.
-- **Placing the run.** Anchored at its first reading, the lab's LP run would run from 60 down to −300, mostly left of
-  the model's 0–360° scan. Moved so its lowest reading is in [0°, 360°), it runs from 420 down to 60 instead: the first
-  readings 60, 40, 20, 0 plot at 420, 400, 380, 360, and 16 of its 19 points share the model's range. A run that
-  starts at 0 and turns up is unchanged, apart from the readings after each wrap.
-- **Only on an angular chart.** `measuredSeriesOpt` takes the chart's `xAxisKind` and unwraps only on `AngularXAxis`.
-  A wavelength chart keeps its readings as read, since a step of 300 nm is not a wrap.
-- **The Data step is unchanged.** `MappedPoints.chartPoints` keeps the readings as read and in file order: the step
-  numbers the points by it and draws them as unjoined dots.
-- **Polar view.** The unwrapped run closes its circle, 340 → 360 → … → 420, since an angle past 360° lands where it
-  should.
+1. Sort the measured points by x. Built, then replaced: a run read at 0, 20 … 340, 0 ends at 360, not back at 0.
+2. Unwrap the readings point by point, so a run may take several turns. Built (`ChartSeries.unwrappedAngles`), then
+   replaced. The lab's runs turn the dial down, from 60 through 0 round to 60, so the unwrapped run covered 60–420°
+   beside the model's 0–360°.
+3. The ruling that stands:
+   - every angular chart's XY view spans 0–360°;
+   - the measured line may go round 0 or 360, but it is drawn within 0–360°: unwrapped, brought back into one turn
+     (mod 360), then sorted by x;
+   - the polar view draws the data as read.
+
+How it is built:
+
+- **Mod 360 alone.** Unwrapping adds whole turns, and mod 360 takes them away again, so unwrapping and then taking
+  mod 360 gives back each reading mod 360. The XY view therefore applies mod 360 and the sort directly, and
+  `unwrappedAngles` is deleted.
+- **`ChartSeries.inOneTurn`** moves an x outside 0–360° into [0°, 360°) by whole turns, then sorts the points by x.
+  The sort is stable, so two readings at one angle keep their capture order. An x inside the range, 360 included,
+  stays where it is, so the model's last point stays at the right edge; a strict mod would move it to 0.
+- **`ExperimentChart.xyViewSeries`** is every series of an angular chart in one turn, and any other chart's series as
+  they are. `ChartPlot.buildCartesianScatters` draws it, so the chart window and the embedded host share it.
+- **`ChartStyle.chartBounds`** is the bounds the XY view fits. An angular chart's x is 0–360° without padding,
+  whatever its data covers. `defaultChartStyleState` and Auto (`ChartPlot.dataBoundsVisible`) both read it, and a
+  pinned range still wins.
+- **The chart data stays as read.** `measuredSeriesOpt` returns the kept points in capture order. The polar view
+  draws them so: the lab's run is a closed loop.
+- **Which charts count as angular.** Every scan variable but the wavelength is an angle (`AngularXAxis`), so
+  incidence (R2) sweeps of 0–90° are drawn on 0–360° too, as the ruling's "all" says.
+- **What the lab's runs look like.** A reading of 0 is drawn at 0, so a run's closing reading lands beside its first
+  (60 twice for the LP runs). The measured line covers 0–340°, and nothing is measured between 340° and 360°.
 
 ### Tests
 
-- **`ChartStyleTests`**, four tests of `unwrappedAngles`:
-  - 0 … 340, 0 becomes 0 … 340, 360, with every point in its capture order;
-  - two turns unroll to 0 … 720;
-  - the lab's run, 60 down through 0 to 60, becomes 420 down to 60;
-  - a run that never wraps keeps its readings, and an empty series is unchanged.
-- **`InverseConstructorTests`**: the sort's test is replaced. It attaches readings 60, 40, 20, 0, 340, 320, 300 and
-  checks the measured series:
-  - on an angular chart it runs 420, 400 … 300 in capture order;
-  - on a non-angular chart it keeps the readings as read;
-  - with the unwrap taken out of `measuredSeriesOpt`, it fails.
+- **`ChartStyleTests`**: the unwrap tests are replaced by four tests.
+  - The lab's run sorts to 0 … 340 within one turn; the two 60° readings keep their capture order, and the chart
+    itself keeps the run as read.
+  - 380, −20, 720, 360 and 0 come to 20, 340, 0, 360 and 0.
+  - A non-angular chart is drawn as it is.
+  - An angular chart's x range is 0–360°, in the default style and in `chartBounds`; any other chart fits its data.
+- **`ExperimentControlsTests`**:
+  - The View chart fixture now has a model over a full turn and a measured run in capture order, from 90 through 0 and
+    round to 90.
+  - A new test renders the window. In XY the bottom axis is 0–360° and the measured line is sorted; in polar the
+    measured points lie at the captured angles in capture order.
+- **`InverseConstructorTests`**: the measured series is the readings as read, in capture order.
+- **Checked without the fix:**
+  - with `buildCartesianScatters` drawing `chart.series`, the new window test fails;
+  - with `chartBounds` fitting the data, the range test fails.
 
 ### Results
 
 - Solution build: 0 errors; the only warnings are the exempt NuGet advisories (NU1902).
 - ELEV gate: OK, 0 findings in 13 projects, run after the product edits.
-- `OpticalConstructor.Ui.Tests`: `ChartStyleTests` 24 of 24, `InverseConstructorTests` 16 of 16,
-  `ExperimentControlsTests` 62 of 62 and `DataStepTests` 13 of 13 passed.
+- `OpticalConstructor.Ui.Tests`, all passed:
+  - `ChartStyleTests` 24 of 24, `ExperimentControlsTests` 63 of 63 and `InverseConstructorTests` 16 of 16;
+  - `DataStepTests` 13 of 13, `EmbeddedChartTests` 6 of 6, `NkDispersionChartTests` 14 of 14 and
+    `ScrollExtentTests` 24 of 24.
 - Real desktop: the two View facts, 2 of 2 passed. On `LP-(AIR#0)-LP-2`:
-  - the XY view draws the measured run in capture order from 420 down to 60, beside the model's 0–360°, with no line
-    across the chart;
-  - the polar view draws it as a closed curve.
+  - the XY view spans 0–360°, with the model across it and the measured line from 0° to 340° in dial order;
+  - the polar view draws the run as captured, a closed loop.

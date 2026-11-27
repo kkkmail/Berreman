@@ -279,36 +279,58 @@ module ChartStyleTests =
         Assert.Equal(2700.0, rightOnly.radius.value)
         Assert.Equal<ExperimentControls.ChartSeries list>([ modelled; measured ], rightOnly.series)
 
-    // ============================ unwrapped dial readings (spec 0051 `.manual/004`) ============================
+    // ============================ the XY view of an angular chart (spec 0051 `.manual/004`) ============================
 
-    /// Dial readings in capture order, each point's y its capture number, so a test sees that no point moved in the list.
+    /// Dial readings in capture order, each point's y its capture number, so a test sees where every point went.
     let private captured (readings : float list) : ExperimentControls.ChartSeries =
         curve "Measured — E1" (readings |> List.mapi (fun index reading -> reading, float index))
 
     let private xsOf (series : ExperimentControls.ChartSeries) : float list = series.points |> List.map (fun p -> p.x)
 
-    /// 0, 20, …, 340: one turn of the dial in 20° steps.
-    let private oneTurn : float list = List.init 18 (fun i -> 20.0 * float i)
+    let private capturesOf (series : ExperimentControls.ChartSeries) : float list = series.points |> List.map (fun p -> p.y)
+
+    /// `lp_lp.csv`'s run: the dial turned down from 60 through 0 and round to 60 again.
+    let private labRun : float list = [ 60.0; 40.0; 20.0; 0.0 ] @ List.init 15 (fun i -> 340.0 - 20.0 * float i)
+
+    /// The model over one turn and the lab's run beside it.
+    let private dialChart : ExperimentChart =
+        { ExperimentChart.emptyExperimentChart with
+            series = [ curve "Intensity" (List.init 19 (fun i -> 20.0 * float i, 0.05 * float i)); captured labRun ]
+            xAxisKind = AngularXAxis }
 
     [<Fact>]
-    let ``a reading back at 0 after 340 is 360, and the points keep their capture order`` () =
-        let unwrapped = (captured (oneTurn @ [ 0.0 ])).unwrappedAngles
-        Assert.Equal<float list>(oneTurn @ [ 360.0 ], xsOf unwrapped)
-        Assert.Equal<float list>(List.init 19 float, unwrapped.points |> List.map (fun p -> p.y))
-        Assert.Equal("Measured — E1", unwrapped.name.value)
+    let ``an angular chart's XY view sorts each series by x within one turn, and the chart keeps the capture order`` () =
+        match dialChart.xyViewSeries with
+        | [ modelled; measured ] ->
+            Assert.Equal(List.head dialChart.series, modelled)
+            Assert.Equal<float list>([ 0.0; 20.0; 40.0; 60.0; 60.0 ] @ List.init 14 (fun i -> 80.0 + 20.0 * float i), xsOf measured)
+            // The two readings at 60 keep their capture order, the first capture before the last.
+            Assert.Equal<float list>([ 3.0; 2.0; 1.0; 0.0; 18.0 ] @ List.init 14 (fun i -> 17.0 - float i), capturesOf measured)
+        | other -> Assert.Fail($"expected two series, got %d{List.length other}")
+        // What the polar view draws.
+        Assert.Equal<float list>(labRun, xsOf (List.item 1 dialChart.series))
 
     [<Fact>]
-    let ``every wrap is found point by point, so two turns unroll to 720`` () =
-        Assert.Equal<float list>(List.init 37 (fun i -> 20.0 * float i), xsOf (captured (oneTurn @ oneTurn @ [ 0.0 ])).unwrappedAngles)
+    let ``a reading outside one turn is moved into it by whole turns, and 360 stays at the turn's end`` () =
+        let chart = { dialChart with series = [ captured [ 380.0; -20.0; 720.0; 360.0; 0.0 ] ] }
+        match chart.xyViewSeries with
+        | [ turned ] ->
+            Assert.Equal<float list>([ 0.0; 0.0; 20.0; 340.0; 360.0 ], xsOf turned)
+            Assert.Equal<float list>([ 2.0; 4.0; 0.0; 1.0; 3.0 ], capturesOf turned)
+        | other -> Assert.Fail($"expected one series, got %d{List.length other}")
 
     [<Fact>]
-    let ``the lab's run turned down through 0 unrolls to one descending turn from 420 to 60`` () =
-        // `lp_lp.csv`: 60, 40, 20, 0, 340, 320 … 80, 60. The jump at 0 is up, so a step of more than half a turn either way
-        // is a wrap; the run is then placed with its lowest reading in [0°, 360°).
-        let lab = [ 60.0; 40.0; 20.0; 0.0 ] @ List.init 15 (fun i -> 340.0 - 20.0 * float i)
-        Assert.Equal<float list>(List.init 19 (fun i -> 420.0 - 20.0 * float i), xsOf (captured lab).unwrappedAngles)
+    let ``a non-angular chart's XY view draws its series as they are`` () =
+        let chart = { wlChart with series = [ curve "Intensity" [ 800.0, 0.1; 400.0, 0.2; 600.0, 0.3 ] ] }
+        Assert.Equal<ExperimentControls.ChartSeries list>(chart.series, chart.xyViewSeries)
 
     [<Fact>]
-    let ``a run that never wraps keeps its readings`` () =
-        Assert.Equal<float list>([ 100.0; 80.0; 60.0; 80.0 ], xsOf (captured [ 100.0; 80.0; 60.0; 80.0 ]).unwrappedAngles)
-        Assert.Equal<ExperimentControls.ChartSeries>(captured [], (captured []).unwrappedAngles)
+    let ``an angular chart's XY view spans 0 to 360 whatever its data covers, and any other chart fits its data`` () =
+        let s = defaultChartStyleState twoSeries
+        Assert.Equal(AutoFitAxis, s.xAxis.fit)
+        Assert.Equal(0.0, s.xAxis.min.value)
+        Assert.Equal(360.0, s.xAxis.max.value)
+        let angular = chartBounds twoSeries (allLeft twoSeries.series)
+        Assert.Equal<ChartAxisRange>({ lower = ChartAxisValue 0.0; upper = ChartAxisValue 360.0 }, angular.x)
+        Assert.Equal<ChartAxisRange>((dataBounds (allLeft twoSeries.series)).yLeft, angular.yLeft)
+        Assert.Equal<ChartBounds>(dataBounds (allLeft wlChart.series), chartBounds wlChart (allLeft wlChart.series))

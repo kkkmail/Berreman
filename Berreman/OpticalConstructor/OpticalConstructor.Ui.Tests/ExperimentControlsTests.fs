@@ -1272,14 +1272,18 @@ module ExperimentControlsTests =
             Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
             window.Close())
 
+    /// The measured run's dial readings in capture order: turned down from 90 through 0 and round to 90 again, as the
+    /// lab's runs were (spec 0051 `.manual/004`).
+    let private viewedReadings : float list = [ 90.0; 45.0; 0.0; 315.0; 270.0; 225.0; 180.0; 135.0; 90.0 ]
+
     /// An experiment's View chart: the modelled intensity on the left axis, the lab's counts on the right (spec 0051
     /// `.manual/003` 3.4).
     let private viewedChart : ExperimentChart.ExperimentChart =
         {
             ExperimentChart.ExperimentChart.series =
                 [
-                    curve "Intensity" [ 0.0, 0.45; 45.0, 0.25; 90.0, 0.05; 135.0, 0.25; 180.0, 0.45 ]
-                    curve "Measured — E1" [ 0.0, 2700.0; 45.0, 1500.0; 90.0, 300.0; 135.0, 1500.0; 180.0, 2700.0 ]
+                    curve "Intensity" (List.init 9 (fun i -> 45.0 * float i, [ 0.45; 0.25; 0.05; 0.25 ].[i % 4]))
+                    curve "Measured — E1" (viewedReadings |> List.map (fun reading -> reading, [ 2700.0; 1500.0; 300.0; 1500.0 ].[int reading / 45 % 4]))
                 ]
             xLabel = ControlCaption "R1 (°)"
             yLabel = ControlCaption "Intensity"
@@ -1331,6 +1335,28 @@ module ExperimentControlsTests =
             Assert.All(plot.Axes.GetAxes(), fun axis -> Assert.True(axis.IsVisible, "an axis stayed hidden after leaving polar"))
             Assert.True(plot.Axes.Title.IsVisible, "the title stayed hidden after leaving polar")
             Assert.True(plot.Grid.IsVisible, "the major grid stayed hidden after leaving polar")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the View chart's XY view spans one turn with each line sorted, and its polar view draws the readings as captured`` () =
+        // Spec 0051 `.manual/004`: drawn in capture order, the run's line crossed the chart from 0 to 315.
+        HeadlessSession.run (fun () ->
+            let window, plot, toggle = openViewedChart ()
+            let drawn () : ScottPlot.Coordinates list list =
+                plot.GetPlottables()
+                |> Seq.choose (function :? ScottPlot.Plottables.Scatter as s when s.IsVisible -> Some (List.ofSeq (s.Data.GetScatterPoints())) | _ -> None)
+                |> List.ofSeq
+            Assert.Equal(0.0, plot.Axes.Bottom.Min, 9)
+            Assert.Equal(360.0, plot.Axes.Bottom.Max, 9)
+            match drawn () with
+            | [ _; measured ] -> Assert.Equal<float list>(List.sort viewedReadings, measured |> List.map (fun p -> p.X))
+            | other -> Assert.Fail($"expected two XY series, got %d{List.length other}")
+            toggle ()   // → polar
+            let angleOf (p : ScottPlot.Coordinates) : float = (atan2 p.Y p.X * 180.0 / System.Math.PI + 360.0) % 360.0
+            match drawn () with
+            | [ _; measured ] -> List.iter2 (fun (reading : float) (p : ScottPlot.Coordinates) -> Assert.Equal(reading, angleOf p, 6)) viewedReadings measured
+            | other -> Assert.Fail($"expected two polar series, got %d{List.length other}")
             window.Close())
 
     [<Fact>]

@@ -47,6 +47,14 @@ module ExperimentChart =
                     cells |> String.concat ",")
             header :: rows |> String.concat "\n"
 
+        /// The series as the XY view draws them: an angular chart's within one turn and sorted by x
+        /// (`ChartSeries.inOneTurn`), any other chart's as they are; the polar view draws them as read (spec 0051
+        /// `.manual/004`).
+        member this.xyViewSeries : ExperimentControls.ChartSeries list =
+            match this.xAxisKind with
+            | AngularXAxis -> this.series |> List.map (fun series -> series.inOneTurn)
+            | NonAngularXAxis -> this.series
+
     /// The empty chart (no experiment built / no run to show).
     let emptyExperimentChart : ExperimentChart =
         {
@@ -406,11 +414,19 @@ module ChartStyle =
             yRight = ChartAxisRange.paddedOver (pointsOn RightAxis |> List.map (fun p -> ChartAxisValue p.y))
         }
 
-    /// The initial style for a chart: all three axes auto-fit to the data (general format; every series
+    /// The bounds a chart's XY view fits the given (series, axis side) pairs to: an angular chart's x is one full turn,
+    /// 0–360°, whatever its data covers (spec 0051 `.manual/004`); any other x fits its data.
+    let chartBounds (chart : ExperimentChart) (series : (ExperimentControls.ChartSeries * AxisSide) list) : ChartBounds =
+        let bounds = dataBounds series
+        match chart.xAxisKind with
+        | AngularXAxis -> { bounds with x = { lower = ChartAxisValue 0.0; upper = ChartAxisValue ExperimentControls.fullTurnDegrees } }
+        | NonAngularXAxis -> bounds
+
+    /// The initial style for a chart: all three axes auto-fit (`chartBounds`; general format; every series
     /// starts on the LEFT axis, so the right axis seeds to the unit fallback), the legend visible at the
     /// upper-right, one default-styled series per curve, and the default font sizes.
     let defaultChartStyleState (chart : ExperimentChart) : ChartStyleState =
-        let bounds = dataBounds (chart.series |> List.map (fun s -> s, LeftAxis))
+        let bounds = chartBounds chart (chart.series |> List.map (fun s -> s, LeftAxis))
         let axis (range : ChartAxisRange) : AxisStyle = { fit = AutoFitAxis; min = range.lower; max = range.upper; format = GeneralFormat }
         let seriesStyles =
             chart.series

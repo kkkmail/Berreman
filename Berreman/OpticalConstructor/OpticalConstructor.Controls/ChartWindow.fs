@@ -83,7 +83,7 @@ module ChartPlot =
         let visible = sided |> List.filter (fun (_, st) -> st.visible = ChartStyle.ShownOnChart)
         (match visible with [] -> sided | v -> v)
         |> List.map (fun (s, st) -> s, st.axisSide)
-        |> ChartStyle.dataBounds
+        |> ChartStyle.chartBounds chart
 
     /// Whether anything currently plots against the right axis (drives whether its limits are pushed).
     let rightAxisOccupancy (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : AxisOccupancy =
@@ -163,9 +163,10 @@ module ChartPlot =
             | PolarProjection -> ())
 
     /// Build the cartesian scatters — one per series, each bound to its assigned (left / right) Y axis.
-    /// Spec 0033 (018): the side is STYLE; n → left, k → right through the paired seed.
+    /// Spec 0033 (018): the side is STYLE; n → left, k → right through the paired seed. Spec 0051 `.manual/004`: an
+    /// angular chart's series within one turn, sorted by x (`xyViewSeries`).
     let buildCartesianScatters (plot : ScottPlot.Plot) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ScottPlot.Plottables.Scatter list =
-        chart.series
+        chart.xyViewSeries
         |> List.mapi (fun i s ->
             let st = ChartStyle.seriesStyleOf (ChartStyle.ChartSeriesIndex i) style
             let xs = s.points |> List.map (fun p -> p.x) |> List.toArray

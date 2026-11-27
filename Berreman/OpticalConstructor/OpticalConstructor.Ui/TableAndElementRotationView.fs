@@ -5932,10 +5932,10 @@ let chartForExperiment (model : TableAndElementRotationModel) (exp : Experiments
 
 type TableAndElementRotationModel with
 
-    /// The experiment's kept points as a series in capture order, its angles unwrapped on an angular chart so its line
-    /// follows the dial through 0° and round every turn; none while it has no data that reads (spec 0051 `.manual/003`
-    /// 3.4, `.manual/004`).
-    member model.measuredSeriesOpt (exp : Experiments.Experiment) (xAxisKind : ExperimentChart.ChartXAxisKind) : ExperimentControls.ChartSeries option =
+    /// The experiment's kept points as a series, as read and in capture order, which the polar view draws as they are
+    /// and the XY view orders within one turn (`ExperimentChart.xyViewSeries`); none while it has no data that reads
+    /// (spec 0051 `.manual/003` 3.4, `.manual/004`).
+    member model.measuredSeriesOpt (exp : Experiments.Experiment) : ExperimentControls.ChartSeries option =
         match exp.dataOpt with
         | Some data ->
             match model.experimentData.readMapped data with
@@ -5945,9 +5945,7 @@ type TableAndElementRotationModel with
                         name = ControlCaption $"Measured — {exp.name.value}"
                         points = (points.keptBy data.exclusions).chartPoints
                     }
-                match xAxisKind with
-                | ExperimentChart.AngularXAxis -> Some series.unwrappedAngles
-                | ExperimentChart.NonAngularXAxis -> Some series
+                Some series
             | Error _ -> None
         | None -> None
 
@@ -5968,7 +5966,7 @@ viewExperimentHook <-
         match model.experimentCollection.experiments |> List.tryFind (fun e -> e.id = id) with
         | Some exp ->
             let chart = chartForExperiment model exp
-            match chart.series, model.measuredSeriesOpt exp chart.xAxisKind with
+            match chart.series, model.measuredSeriesOpt exp with
             | [], _ ->
                 let reason =
                     match chart.description.value with

@@ -151,22 +151,17 @@ module InverseConstructorTests =
         Assert.Equal<DataRowSelection option>(Some AllDataRows, exp.dataOpt |> Option.map (fun data -> data.rows))
 
     [<Fact>]
-    let ``the View chart draws the measured points in capture order, unwrapped through 0 on an angular chart`` () =
-        // Read as the lab's LP–LP run was, the dial turned down through 0 (spec 0051 `.manual/004`).
+    let ``the View chart's measured series is the readings as read, in capture order`` () =
+        // Read as the lab's LP–LP run was, the dial turned down through 0: the polar view draws it so, and the XY view
+        // orders it within one turn itself (spec 0051 `.manual/004`).
         let readings = [ 60.0; 40.0; 20.0; 0.0; 340.0; 320.0; 300.0 ]
         let captured = intensitySeries (readings |> List.mapi (fun index reading -> reading, 0.1 * float index))
         let m, expId = withIntensityExperiment { inverse () with experimentData = mockIntensity (Ok captured) }
         let attached = m |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "captured.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
-        let experiment = List.head attached.experimentCollection.experiments
-        let pointsOn (kind : ExperimentChart.ChartXAxisKind) : ExperimentControls.ChartPoint list =
-            match attached.measuredSeriesOpt experiment kind with
-            | Some series -> series.points
-            | None -> failwith "an attached experiment whose data reads must have a measured series"
         let at (x : float) (index : int) : ExperimentControls.ChartPoint = { x = x; y = 0.1 * float index }
-        Assert.Equal<ExperimentControls.ChartPoint list>(
-            [ 420.0; 400.0; 380.0; 360.0; 340.0; 320.0; 300.0 ] |> List.mapi (fun index x -> at x index),
-            pointsOn ExperimentChart.AngularXAxis)
-        Assert.Equal<ExperimentControls.ChartPoint list>(readings |> List.mapi (fun index x -> at x index), pointsOn ExperimentChart.NonAngularXAxis)
+        match attached.measuredSeriesOpt (List.head attached.experimentCollection.experiments) with
+        | Some series -> Assert.Equal<ExperimentControls.ChartPoint list>(readings |> List.mapi (fun index x -> at x index), series.points)
+        | None -> Assert.Fail("an attached experiment whose data reads must have a measured series")
 
     [<Fact>]
     let ``attaching a malformed intensity file records a typed parse-error status`` () =

@@ -117,6 +117,10 @@ module ExperimentControls =
         | FixedSourceWaveLength of setting : BayNanometers
         | TunableSourceWaveLength of setting : BayNanometers * limits : SourceWaveLengthLimits
 
+    /// The degrees in one turn of a dial, the x range of an angular chart's XY view (spec 0051 `.manual/004`).
+    [<Literal>]
+    let fullTurnDegrees = 360.0
+
     /// One point of a drawn series, in axis-display units.
     [<Softellect.Sys.NumericCarrier("an element of a chart series (R3, a sweep array): the plotted x and y of every point of the run, mapped to the screen in the inline chart's per-point loop")>]
     type ChartPoint =
@@ -139,29 +143,17 @@ module ExperimentControls =
             points : ChartPoint list
         }
 
-        /// This series of angles in degrees with each x moved by whole turns to continue from the point before it, so a
-        /// dial read through 0° (…, 20, 0, 340, …) or back to its start (…, 340, 0 is 360) does not jump across the chart.
-        /// A step of more than half a turn is a wrap, judged point by point, so a run of several turns unrolls in full; the
-        /// unrolled run is then moved by whole turns until its lowest x lies in [0°, 360°) (spec 0051 `.manual/004`).
-        member this.unwrappedAngles : ChartSeries =
-            let fullTurn = 360.0
-            let rec unroll (previous : float) (offset : float) (unrolled : ChartPoint list) (rest : ChartPoint list) : ChartPoint list =
-                match rest with
-                | [] -> List.rev unrolled
-                | point :: later ->
-                    let step = point.x - previous
-                    let offsetNow =
-                        if step > fullTurn / 2.0 then offset - fullTurn
-                        elif step < -fullTurn / 2.0 then offset + fullTurn
-                        else offset
-                    unroll point.x offsetNow ({ point with x = point.x + offsetNow } :: unrolled) later
-            match this.points with
-            | [] -> this
-            | first :: later ->
-                let unrolled = unroll first.x 0.0 [ first ] later
-                let lowest = unrolled |> List.map (fun point -> point.x) |> List.min
-                let placed = -fullTurn * floor (lowest / fullTurn)
-                { this with points = unrolled |> List.map (fun point -> { point with x = point.x + placed }) }
+        /// This series of angles in degrees as an angular chart's XY view draws it (spec 0051 `.manual/004`): an x outside
+        /// 0–360° is moved into it by whole turns, as a dial read through 0° or round several turns reads, and the points
+        /// are sorted by x, so the line joins neighbouring angles rather than successive captures.
+        member this.inOneTurn : ChartSeries =
+            let turned =
+                this.points
+                |> List.map (fun point ->
+                    match point.x >= 0.0 && point.x <= fullTurnDegrees with
+                    | true -> point
+                    | false -> { point with x = point.x - fullTurnDegrees * floor (point.x / fullTurnDegrees) })
+            { this with points = turned |> List.sortBy (fun point -> point.x) }
 
     /// Whether an added experiment is the one loaded in the editor (its row is highlighted).
     type ExperimentRowFocus =
