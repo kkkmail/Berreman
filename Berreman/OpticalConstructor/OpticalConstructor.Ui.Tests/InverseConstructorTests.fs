@@ -151,6 +151,19 @@ module InverseConstructorTests =
         Assert.Equal<DataRowSelection option>(Some AllDataRows, exp.dataOpt |> Option.map (fun data -> data.rows))
 
     [<Fact>]
+    let ``the View chart draws the measured points in dial order, not capture order`` () =
+        // A run read as the lab's LP–LP run was, from 60 down through 0 and back up to 60 (spec 0051 `.manual/004`).
+        let captured = intensitySeries [ 60.0, 0.5; 40.0, 0.7; 20.0, 0.9; 0.0, 1.0; 80.0, 0.3; 60.0, 0.4 ]
+        let m, expId = withIntensityExperiment { inverse () with experimentData = mockIntensity (Ok captured) }
+        let attached = m |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "captured.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
+        let at (x : float) (y : float) : ExperimentControls.ChartPoint = { x = x; y = y }
+        match attached.measuredSeriesOpt (List.head attached.experimentCollection.experiments) with
+        | Some series ->
+            Assert.Equal<ExperimentControls.ChartPoint list>(
+                [ at 0.0 1.0; at 20.0 0.9; at 40.0 0.7; at 60.0 0.5; at 60.0 0.4; at 80.0 0.3 ], series.points)
+        | None -> Assert.Fail("an attached experiment whose data reads must have a measured series")
+
+    [<Fact>]
     let ``attaching a malformed intensity file records a typed parse-error status`` () =
         let proxy = mockIntensity (Error (MeasuredData.MalformedDataFileErr "row 3 is not a valid X,Y pair"))
         let m, expId = withIntensityExperiment { inverse () with experimentData = proxy }

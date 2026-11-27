@@ -5932,7 +5932,9 @@ let chartForExperiment (model : TableAndElementRotationModel) (exp : Experiments
 
 type TableAndElementRotationModel with
 
-    /// The experiment's kept points as a series, or none while it has no data that reads (spec 0051 `.manual/003` 3.4).
+    /// The experiment's kept points as a series in ascending x, the dial reading they were taken at, so its line joins
+    /// neighbouring readings, whatever order the lab captured them in; none while it has no data that reads (spec 0051
+    /// `.manual/003` 3.4, `.manual/004`).
     member model.measuredSeriesOpt (exp : Experiments.Experiment) : ExperimentControls.ChartSeries option =
         match exp.dataOpt with
         | Some data ->
@@ -5941,7 +5943,7 @@ type TableAndElementRotationModel with
                 let series : ExperimentControls.ChartSeries =
                     {
                         name = ControlCaption $"Measured — {exp.name.value}"
-                        points = (points.keptBy data.exclusions).chartPoints
+                        points = (points.keptBy data.exclusions).chartPoints |> List.sortBy (fun point -> point.x)
                     }
                 Some series
             | Error _ -> None

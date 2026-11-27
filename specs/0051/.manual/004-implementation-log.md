@@ -485,12 +485,10 @@ draws.
 - **The chart's plot was not in the UI Automation tree.** The window is plain Avalonia, so the plot had only an
   Avalonia `Name`, and UI Automation did not expose it. `ConstructorUiId.exposeAsFigure` is `figureAttributes` for a
   control built outside FuncUI; the chart window's plot now carries it.
-- **Open question: measured points are drawn in capture order.** `lp_lp.csv` captured `LP-(AIR#0)-LP-2` at dial
-  60, 40, 20, 0, 340, 320 … 80, 60, so XY draws a straight line from 0° to 340° across the chart. This is not part of
-  the reported bug, and the remedy is a product choice, so it is left to the operator:
-  - draw measured points as dots without a line (the usual way to show data against a model), which also suits an
-    experiment of several blocks, whose points share the one measured series today; or
-  - sort the points by x before drawing them.
+- **Measured points were drawn in capture order.** `lp_lp.csv` captured `LP-(AIR#0)-LP-2` at dial
+  60, 40, 20, 0, 340, 320 … 80, 60, so XY drew a straight line from 0° to 340° across the chart. This was not part of
+  the reported bug, so it went to the operator as a question, with two remedies: dots without a line, or the points
+  sorted by x. The operator chose the sort; see "Measured points in dial order" below.
 
 ### Results
 
@@ -503,3 +501,31 @@ draws.
     measured one.
   - Without clearing the rule, 50,611 of 422,688 plot pixels differed from the first XY view.
   - With the fix, the polar view draws both series, and the XY view after the round trip equals the first.
+
+## Measured points in dial order (operator ruling, 2026-11-27)
+
+The operator chose the sort: the View chart draws the measured points in dial order.
+
+- `measuredSeriesOpt` sorts the kept points by x. The sort is stable, so two readings at one dial position keep
+  their capture order. For the lab's captures (`Phone ROI CSV`) x is the dial reading; for the other profiles it is
+  the scanned value or the X column, as `chartPoints` reads it.
+- Only the View chart's series is sorted. `MappedPoints.chartPoints` keeps file order, because the Data step numbers
+  the points by it and pairs each with its exclusion. Its points chart draws unjoined dots, so the order does not show
+  there.
+- The polar view draws the sorted series as well. The measured curve stays open between 340° and 0°, because the run
+  has no reading at 360°.
+
+### Tests
+
+- `InverseConstructorTests`: a new test attaches readings captured at 60, 40, 20, 0, 80, 60. It checks that the View
+  chart's measured series runs 0, 20, 40, 60, 60, 80, with the two 60° readings in capture order. With the sort taken
+  out, it fails.
+
+### Results
+
+- Solution build: 0 errors; the only warnings are the exempt NuGet advisories (NU1902).
+- ELEV gate: OK, 0 findings in 13 projects, run after the product edit.
+- `OpticalConstructor.Ui.Tests`: `InverseConstructorTests` 16 of 16, `ExperimentControlsTests` 62 of 62 and
+  `DataStepTests` 13 of 13 passed.
+- Real desktop: the two View facts, 2 of 2 passed. On `LP-(AIR#0)-LP-2` the XY view draws the measured curve from 0°
+  to 340° beside the model, and the straight line from 0° to 340° is gone.
