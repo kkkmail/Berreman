@@ -1,0 +1,86 @@
+Here are the comments.
+1. The kits – general rules. The pages are overloaded with controls. We have horizontal <top-buttons>: Send kit, Show in Explorer, 
+Copy experiments from another kit, Reload changes, Close kit, Switch to Main / Switch to inverse. Then we have <left-buttons>: Items, 
+Setups, Experiments, Data, Unknowns, Plan, Fit, Results, Publish on the left AND we have <table-buttons> Add, Rotate, Move, Render, 
+Select, Experiments, Details, Library, Materials, which appear horizontally on many pages where it makes no sense for them to appear. 
+Publish is a kit operation, not the experiment based operation and so it belongs to the group of current <top-buttons>. But, current 
+<top-buttons> are NOT needed 99% of the time. So, we must NOT show them all the time. So, when we open a kit, then <left-buttons> MUST 
+be the top HORIZONTAL buttons: Items, Setups, Experiments, [Inverse | Main](remove useless `Switch to`), then when in inverse state show 
+Data, Unknown, ... The last button in that row must have a meaning of kit operations (I am not sure what is the proper name) and all current 
+<top-buttons> + Publish opens up below when this button is chosen. <table-buttons> also have Experiments – it must be removed as it duplicates 
+the primary Experiments button. All dynamic labels on all pages must be selectable + copyable. The matrices, as e.g. in Results must be 
+copyable as CSV(s). The UI severely mixes create new vs view / edit something. The UI must be always in just one state: either view/edit 
+OR create new. See details below. All edits MUST be in place UNDER the thing that we are editing, NOT at the top / bottom / both / somewhere 
+on the page. The user must click edit button to allow editing. Save must be disabled unless the user changes something on a given page. If 
+any item (of any type) was changed, then on cancel the confirmation must be asked. All pages must have help explaining what do they do.
+
+2. Items. Clicking on any item makes its button green and shows item specific information below all items. This is VERY inconvenient. The 
+information about the item must be shown under the item. Second click must make the button grey again and hide the information about it. 
+This is the only place where we choose items from the library and / or materials. Add item from library model is fucked up as it opens in 
+a short list. The library can be large and so it must open in its own window so that all monitor size could be used. Clicking on a selected 
+item (green) unselects it and hided its information. The user must click edit button to be able to change anything.
+
+3. Setups. The Setups is about binding the name, e.g. `[CPL-(LR#45)-CPL]` with some specific setup on the table. There must be no Record 
+experiment and no setup grid. Selected setup is what we can then use in the experiments. There must be a button to copy a setup (the user 
+must provide the name, system prefills the name by adding ` # <N>`, where <N> is auto incremented for a given setup name). There must be 
+a way to rename a setup. The setup can be selected (click on the grey button => it becomes the green button) and unselected (click on the 
+green button). A setup must be edited in place, NOT under all setups. So, a selected setup must just show a line of what it is it for 
+(e.g. `Source, Prep 1, Obj 1, Obj 2, ...` and an edit button (on the same line) and its readonly table (elements can be selected but not 
+changed) UNDER the line in which the setup is located. Clicking edit makes the setup editable. If setup is changed, then the user can 
+either save or cancel (with confirmation if changed). Save must be disabled unless the user changes something. 
+
+4. Experiments. There must be no <table-buttons> and no table on experiments "tab" / page at all. When no setup is selected, then we must 
+not be able to add an experiment => the controls to add experiment must be hidden and the page must say that the setup must be selected 
+first, which is two clicks away. Clicking on the experiment must show its setup and other experiment related data under it, NOT some above 
+all experiments and some below all experiments. This is similar to how Items and setups must show information about an item under it. 
+Attempting to add an experiment with the same setup should show a warning with the choices ok / cancel / show. It is fine to use the same 
+setup in the experiment but the user must confirm that. As in all other cases, the user must explicitly start editing the experiment before 
+it can be changed.
+
+5. Data. This is extremely fucked up page. Why the fuck does the page show which setup is loaded on this page? This page is NOT about setups. 
+We have Experiment matrix. What does it mean, e.g. `LP1 – AIR@0` and where did it come from? If they are some groups due to some common 
+criteria, then we must have a table-like structure with explicit rows and columns (the gridlines must be present) so that each cell contains 
+all the relevant data. Below the Experiment matrix there is all data related to all experiments and clicking on an experiment just jump down. 
+This is fucked up. All the data must be hidden and clicking on the experiment must make it green (select) and show (open) its data and 
+controls immediately UNDER it, as in all other places. As usual, the second click must unselect + hide its data + controls. Experiments that 
+have no data attached must have their unselected buttons be of different color and have the setup name prefixed with the triangle `! ` emoji. 
+The experiment matrix labels, e.g. `LP1 – AIR@0` must be copyable.
+
+6. Unknowns. Why the fuck does the page show which setup is loaded on this page? This page is NOT about setups. I have no fucking clue what 
+this page does. It has a study `QZ-LR` and then it has all setups, which I can select and then create a study after providing a name. But 
+why the fuck do I need to create a study at the same time when I am already looking at the study??? The page must be in either in the state 
+of adding a new study OR in the state of showing a chosen study but NOT in both states at the same time. Clicking on the parameter allows 
+editing it. This MUST happen UNDER the parameter and NOT at the bottom of the page. Some of the parameters have Item and (no link) shown 
+as Scope and Link. They must be editable ONLY when we are in the state of editing that particular parameter.
+
+7. Plan. WTF is this page? What does it do?
+
+8. Fit. WTF is this page? What does it do? How do I create what’s on this page and what for???
+
+9. In general, how do I construct an inverse problem? There must be a step by step guide how to do that.
+
+10. The app MUST remember the last open folder. Since a kit is the folder, then the last open folder is the folder ABOVE the kit.
+
+11. All "static" buttons (see below for "dynamic buttons") must have tooltips explaining what they do. Look how it is done in MS Word. So 
+that not to clutter the view, the tooltips must appear after some small delay, configurable, default to about 1 seconds, as in MS Word. Add 
+button options at the bottom of the main screen – optical constructor – that will be the place to deal with options. I opened the kit 
+optics-mueller. The subsequent comments are about it. 
+
+12. "Dynamic buttons" – these are the buttons that appear in Items, Setups, etc. and contain a dynamically constructed kit specific 
+information, e.g. `Items => [AIR – Empty slot (air) v1 – revision 1]`, `Setups => [CPL-(AIR#0)-CPL]`. They must support right click with 
+context menu. The menu must have actions: `Copy name` (to copy the dynamic button name into the clipboard). We also need a rename 
+functionality, which must be covered by edit functionality AND via context menu here. 
+
+13. I opened a kit `absorbing-biaxian-noisy`. Clicking on any View button in Experiments results in `No chart for ...` error. If there 
+is truly no chart for a given experiment, then this button must be disabled.
+
+14. It is now completely unobvious how to create a simple direct problem with nice charts, as before. Sure this must be covered by the 
+kit, but how exactly. To clarify that create severa more kits in the data folder (as the other two). Both are direct experiments. Use 
+these FSX as starting points for these kits: C:\GitHub\Berreman\Berreman\Analytics\Examples\MultilayerThinFilm_02.fsx (two charts in one kit), 
+C:\GitHub\Berreman\Berreman\Analytics\Examples\LangasiteOnSilicon.fsx (it has 4 charts – do the first 2 in one kit).
+
+15. Using just the folder name for a kit is inconvenient. Let’s use a dotted marker: `.optics-kit` placed in the kit folder to mark the 
+location of the kit. Ensure that all test kits in data have that file. I am sure that will find the usage for that file. For now let’s 
+just save created and last saved information there. The user will then just open that file instead of opening a folder.
+
+Write a plan how to implement all that into the next NNN MD in C:\GitHub\Berreman\specs\0051\.manual\ folder. Make no other changes.
