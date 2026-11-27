@@ -488,7 +488,8 @@ draws.
 - **Measured points were drawn in capture order.** `lp_lp.csv` captured `LP-(AIR#0)-LP-2` at dial
   60, 40, 20, 0, 340, 320 … 80, 60, so XY drew a straight line from 0° to 340° across the chart. This was not part of
   the reported bug, so it went to the operator as a question, with two remedies: dots without a line, or the points
-  sorted by x. The operator chose the sort; see "Measured points in dial order" below.
+  sorted by x. The operator chose the sort, then replaced it with unwrapping the readings; see "Measured dial readings
+  unwrapped" below.
 
 ### Results
 
@@ -502,30 +503,50 @@ draws.
   - Without clearing the rule, 50,611 of 422,688 plot pixels differed from the first XY view.
   - With the fix, the polar view draws both series, and the XY view after the round trip equals the first.
 
-## Measured points in dial order (operator ruling, 2026-11-27)
+## Measured dial readings unwrapped (operator ruling, 2026-11-27)
 
-The operator chose the sort: the View chart draws the measured points in dial order.
+The operator first chose to sort the measured points by x, and the sort was built. The operator then replaced it: a
+run read at 0, 20, … 340, 0 ends at 360, not back at 0. The points stay in capture order, and each reading is moved by
+whole turns to continue from the one before it, checked point by point because a run may take several turns. The
+sort is gone.
 
-- `measuredSeriesOpt` sorts the kept points by x. The sort is stable, so two readings at one dial position keep
-  their capture order. For the lab's captures (`Phone ROI CSV`) x is the dial reading; for the other profiles it is
-  the scanned value or the X column, as `chartPoints` reads it.
-- Only the View chart's series is sorted. `MappedPoints.chartPoints` keeps file order, because the Data step numbers
-  the points by it and pairs each with its exclusion. Its points chart draws unjoined dots, so the order does not show
-  there.
-- The polar view draws the sorted series as well. The measured curve stays open between 340° and 0°, because the run
-  has no reading at 360°.
+- **`ChartSeries.unwrappedAngles`** (Controls):
+  - a step of more than half a turn, either way, is a wrap, and every later point moves by a turn against it;
+  - the unrolled run is then moved by whole turns until its lowest reading lies in [0°, 360°).
+- **Both directions count.** Every lab run in `optics-mueller` turns the dial down, for example 60, 40, 20, 0, 340 … 80,
+  60 for the LP and CPL–LP runs, and 100 → 100 for the CPL–CPL and LP–CPL runs. Their wrap is a jump up from 0 to 340,
+  so a rule that caught only drops would leave them as they are.
+- **Placing the run.** Anchored at its first reading, the lab's LP run would run from 60 down to −300, mostly left of
+  the model's 0–360° scan. Moved so its lowest reading is in [0°, 360°), it runs from 420 down to 60 instead: the first
+  readings 60, 40, 20, 0 plot at 420, 400, 380, 360, and 16 of its 19 points share the model's range. A run that
+  starts at 0 and turns up is unchanged, apart from the readings after each wrap.
+- **Only on an angular chart.** `measuredSeriesOpt` takes the chart's `xAxisKind` and unwraps only on `AngularXAxis`.
+  A wavelength chart keeps its readings as read, since a step of 300 nm is not a wrap.
+- **The Data step is unchanged.** `MappedPoints.chartPoints` keeps the readings as read and in file order: the step
+  numbers the points by it and draws them as unjoined dots.
+- **Polar view.** The unwrapped run closes its circle, 340 → 360 → … → 420, since an angle past 360° lands where it
+  should.
 
 ### Tests
 
-- `InverseConstructorTests`: a new test attaches readings captured at 60, 40, 20, 0, 80, 60. It checks that the View
-  chart's measured series runs 0, 20, 40, 60, 60, 80, with the two 60° readings in capture order. With the sort taken
-  out, it fails.
+- **`ChartStyleTests`**, four tests of `unwrappedAngles`:
+  - 0 … 340, 0 becomes 0 … 340, 360, with every point in its capture order;
+  - two turns unroll to 0 … 720;
+  - the lab's run, 60 down through 0 to 60, becomes 420 down to 60;
+  - a run that never wraps keeps its readings, and an empty series is unchanged.
+- **`InverseConstructorTests`**: the sort's test is replaced. It attaches readings 60, 40, 20, 0, 340, 320, 300 and
+  checks the measured series:
+  - on an angular chart it runs 420, 400 … 300 in capture order;
+  - on a non-angular chart it keeps the readings as read;
+  - with the unwrap taken out of `measuredSeriesOpt`, it fails.
 
 ### Results
 
 - Solution build: 0 errors; the only warnings are the exempt NuGet advisories (NU1902).
-- ELEV gate: OK, 0 findings in 13 projects, run after the product edit.
-- `OpticalConstructor.Ui.Tests`: `InverseConstructorTests` 16 of 16, `ExperimentControlsTests` 62 of 62 and
-  `DataStepTests` 13 of 13 passed.
-- Real desktop: the two View facts, 2 of 2 passed. On `LP-(AIR#0)-LP-2` the XY view draws the measured curve from 0°
-  to 340° beside the model, and the straight line from 0° to 340° is gone.
+- ELEV gate: OK, 0 findings in 13 projects, run after the product edits.
+- `OpticalConstructor.Ui.Tests`: `ChartStyleTests` 24 of 24, `InverseConstructorTests` 16 of 16,
+  `ExperimentControlsTests` 62 of 62 and `DataStepTests` 13 of 13 passed.
+- Real desktop: the two View facts, 2 of 2 passed. On `LP-(AIR#0)-LP-2`:
+  - the XY view draws the measured run in capture order from 420 down to 60, beside the model's 0–360°, with no line
+    across the chart;
+  - the polar view draws it as a closed curve.

@@ -278,3 +278,37 @@ module ChartStyleTests =
         let rightOnly = polarChartOf (setSeriesVisible first HiddenOnChart s) [ modelled; measured ]
         Assert.Equal(2700.0, rightOnly.radius.value)
         Assert.Equal<ExperimentControls.ChartSeries list>([ modelled; measured ], rightOnly.series)
+
+    // ============================ unwrapped dial readings (spec 0051 `.manual/004`) ============================
+
+    /// Dial readings in capture order, each point's y its capture number, so a test sees that no point moved in the list.
+    let private captured (readings : float list) : ExperimentControls.ChartSeries =
+        curve "Measured — E1" (readings |> List.mapi (fun index reading -> reading, float index))
+
+    let private xsOf (series : ExperimentControls.ChartSeries) : float list = series.points |> List.map (fun p -> p.x)
+
+    /// 0, 20, …, 340: one turn of the dial in 20° steps.
+    let private oneTurn : float list = List.init 18 (fun i -> 20.0 * float i)
+
+    [<Fact>]
+    let ``a reading back at 0 after 340 is 360, and the points keep their capture order`` () =
+        let unwrapped = (captured (oneTurn @ [ 0.0 ])).unwrappedAngles
+        Assert.Equal<float list>(oneTurn @ [ 360.0 ], xsOf unwrapped)
+        Assert.Equal<float list>(List.init 19 float, unwrapped.points |> List.map (fun p -> p.y))
+        Assert.Equal("Measured — E1", unwrapped.name.value)
+
+    [<Fact>]
+    let ``every wrap is found point by point, so two turns unroll to 720`` () =
+        Assert.Equal<float list>(List.init 37 (fun i -> 20.0 * float i), xsOf (captured (oneTurn @ oneTurn @ [ 0.0 ])).unwrappedAngles)
+
+    [<Fact>]
+    let ``the lab's run turned down through 0 unrolls to one descending turn from 420 to 60`` () =
+        // `lp_lp.csv`: 60, 40, 20, 0, 340, 320 … 80, 60. The jump at 0 is up, so a step of more than half a turn either way
+        // is a wrap; the run is then placed with its lowest reading in [0°, 360°).
+        let lab = [ 60.0; 40.0; 20.0; 0.0 ] @ List.init 15 (fun i -> 340.0 - 20.0 * float i)
+        Assert.Equal<float list>(List.init 19 (fun i -> 420.0 - 20.0 * float i), xsOf (captured lab).unwrappedAngles)
+
+    [<Fact>]
+    let ``a run that never wraps keeps its readings`` () =
+        Assert.Equal<float list>([ 100.0; 80.0; 60.0; 80.0 ], xsOf (captured [ 100.0; 80.0; 60.0; 80.0 ]).unwrappedAngles)
+        Assert.Equal<ExperimentControls.ChartSeries>(captured [], (captured []).unwrappedAngles)

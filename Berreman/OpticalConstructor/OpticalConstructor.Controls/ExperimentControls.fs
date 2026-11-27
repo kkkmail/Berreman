@@ -139,6 +139,30 @@ module ExperimentControls =
             points : ChartPoint list
         }
 
+        /// This series of angles in degrees with each x moved by whole turns to continue from the point before it, so a
+        /// dial read through 0° (…, 20, 0, 340, …) or back to its start (…, 340, 0 is 360) does not jump across the chart.
+        /// A step of more than half a turn is a wrap, judged point by point, so a run of several turns unrolls in full; the
+        /// unrolled run is then moved by whole turns until its lowest x lies in [0°, 360°) (spec 0051 `.manual/004`).
+        member this.unwrappedAngles : ChartSeries =
+            let fullTurn = 360.0
+            let rec unroll (previous : float) (offset : float) (unrolled : ChartPoint list) (rest : ChartPoint list) : ChartPoint list =
+                match rest with
+                | [] -> List.rev unrolled
+                | point :: later ->
+                    let step = point.x - previous
+                    let offsetNow =
+                        if step > fullTurn / 2.0 then offset - fullTurn
+                        elif step < -fullTurn / 2.0 then offset + fullTurn
+                        else offset
+                    unroll point.x offsetNow ({ point with x = point.x + offsetNow } :: unrolled) later
+            match this.points with
+            | [] -> this
+            | first :: later ->
+                let unrolled = unroll first.x 0.0 [ first ] later
+                let lowest = unrolled |> List.map (fun point -> point.x) |> List.min
+                let placed = -fullTurn * floor (lowest / fullTurn)
+                { this with points = unrolled |> List.map (fun point -> { point with x = point.x + placed }) }
+
     /// Whether an added experiment is the one loaded in the editor (its row is highlighted).
     type ExperimentRowFocus =
         | LoadedInEditor

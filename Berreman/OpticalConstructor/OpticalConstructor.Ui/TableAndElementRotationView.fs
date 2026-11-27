@@ -5932,10 +5932,10 @@ let chartForExperiment (model : TableAndElementRotationModel) (exp : Experiments
 
 type TableAndElementRotationModel with
 
-    /// The experiment's kept points as a series in ascending x, the dial reading they were taken at, so its line joins
-    /// neighbouring readings, whatever order the lab captured them in; none while it has no data that reads (spec 0051
-    /// `.manual/003` 3.4, `.manual/004`).
-    member model.measuredSeriesOpt (exp : Experiments.Experiment) : ExperimentControls.ChartSeries option =
+    /// The experiment's kept points as a series in capture order, its angles unwrapped on an angular chart so its line
+    /// follows the dial through 0° and round every turn; none while it has no data that reads (spec 0051 `.manual/003`
+    /// 3.4, `.manual/004`).
+    member model.measuredSeriesOpt (exp : Experiments.Experiment) (xAxisKind : ExperimentChart.ChartXAxisKind) : ExperimentControls.ChartSeries option =
         match exp.dataOpt with
         | Some data ->
             match model.experimentData.readMapped data with
@@ -5943,9 +5943,11 @@ type TableAndElementRotationModel with
                 let series : ExperimentControls.ChartSeries =
                     {
                         name = ControlCaption $"Measured — {exp.name.value}"
-                        points = (points.keptBy data.exclusions).chartPoints |> List.sortBy (fun point -> point.x)
+                        points = (points.keptBy data.exclusions).chartPoints
                     }
-                Some series
+                match xAxisKind with
+                | ExperimentChart.AngularXAxis -> Some series.unwrappedAngles
+                | ExperimentChart.NonAngularXAxis -> Some series
             | Error _ -> None
         | None -> None
 
@@ -5966,7 +5968,7 @@ viewExperimentHook <-
         match model.experimentCollection.experiments |> List.tryFind (fun e -> e.id = id) with
         | Some exp ->
             let chart = chartForExperiment model exp
-            match chart.series, model.measuredSeriesOpt exp with
+            match chart.series, model.measuredSeriesOpt exp chart.xAxisKind with
             | [], _ ->
                 let reason =
                     match chart.description.value with
