@@ -413,5 +413,5 @@ Of the working tree after the ELEV gate's fixes; `009` has the same table with t
 - `OpticalConstructor.Ui.Tests`, whole: 1028 of 1029, 1 skipped (AT-2's `Explicit` five-seed ensemble).
 - `ui-smoke`: 273 of 273.
 - `BerremanTests.MuellerReconstructionTests`: 25 of 25; the whole solver suite was not run, as no solver project changed.
-- `OpticalConstructor.Desktop.Tests`, real desktop: DESKTOP_RESULT.
+- `OpticalConstructor.Desktop.Tests`, real desktop: 28 of 29, 1 skipped (Show in Explorer, for the account reason in `005` and `009`).
 - Every changed file is LF. Nothing is committed by the agent: the operator commits.

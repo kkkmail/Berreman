@@ -35,7 +35,7 @@ Every figure is of the working tree as the operator will find it: after this sur
 | `OpticalConstructor.Ui.Tests`, `ui-smoke` | 273 of 273 passed |
 | AT-1 to AT-4: the built kits equal the committed ones, file by file; AT-3 and AT-4 also open read-only | 8 of 8 passed |
 | `BerremanTests.MuellerReconstructionTests`, the one solver class over the changed `CommittedKits` | 25 of 25 passed |
-| `OpticalConstructor.Desktop.Tests`, real desktop | DESKTOP_RESULT |
+| `OpticalConstructor.Desktop.Tests`, real desktop | 28 of 29 passed, 0 failed. 1 skipped: Show in Explorer, for the account reason below |
 
 `BerremanTests` as a whole (about 52 minutes) was not run: no solver project changed, and `BerremanTestSupport` only
 gained the two new kits' cases.
