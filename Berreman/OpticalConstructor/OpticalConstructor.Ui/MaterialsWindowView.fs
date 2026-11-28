@@ -1100,8 +1100,8 @@ let private selectModeRows (m : MaterialsWindowModel) (dispatch : MaterialsWindo
                   CommandControls.actionCommand ConstructorUiId.materialsSelectCloseButton (ControlCaption "Close") NegativeCommand (fun () -> dispatch CancelSelect)
               ]
           ] :> IView
-          (TextBlock.create [
-              ConstructorUiId.materialsSelectConstraint.automationAttribute<TextBlock> ()
+          (SelectableTextBlock.create [
+              ConstructorUiId.materialsSelectConstraint.automationAttribute<SelectableTextBlock> ()
               TextBlock.fontWeight FontWeight.SemiBold
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
@@ -1230,8 +1230,8 @@ let private messageRow (m : MaterialsWindowModel) : IView list =
     match m.lastError with
     | None -> []
     | Some err ->
-        [ TextBlock.create [
-              ConstructorUiId.materialsWindowMessage.automationAttribute<TextBlock> ()
+        [ SelectableTextBlock.create [
+              ConstructorUiId.materialsWindowMessage.automationAttribute<SelectableTextBlock> ()
               TextBlock.foreground (brush messageColor)
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
@@ -1248,9 +1248,9 @@ type MaterialsWindowModel with
         match captionOpt with
         | None -> []
         | Some caption ->
-            [ TextBlock.create [
-                  ConstructorUiId.materialsExportStatusText.automationAttribute<TextBlock> ()
-                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
+            [ SelectableTextBlock.create [
+                  ConstructorUiId.materialsExportStatusText.automationAttribute<SelectableTextBlock> ()
+                  AttrBuilder<SelectableTextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
                   TextBlock.text caption.value
                   TextBlock.textWrapping TextWrapping.Wrap
                   match this.entryExportError with
@@ -1266,9 +1266,9 @@ type MaterialsWindowModel with
         match captionOpt with
         | None -> []
         | Some caption ->
-            [ TextBlock.create [
-                  ConstructorUiId.materialsImportStatusText.automationAttribute<TextBlock> ()
-                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
+            [ SelectableTextBlock.create [
+                  ConstructorUiId.materialsImportStatusText.automationAttribute<SelectableTextBlock> ()
+                  AttrBuilder<SelectableTextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
                   TextBlock.text caption.value
                   TextBlock.textWrapping TextWrapping.Wrap
                   match this.importError with
@@ -1335,8 +1335,8 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
                 | None -> " (view-only)"
         let viewOnlyNote : IView list =
             if viewingOlder then
-                [ TextBlock.create [
-                      ConstructorUiId.materialsViewOnlyNote.automationAttribute<TextBlock> ()
+                [ SelectableTextBlock.create [
+                      ConstructorUiId.materialsViewOnlyNote.automationAttribute<SelectableTextBlock> ()
                       TextBlock.foreground (brush NeutralCommand.outline)
                       TextBlock.textWrapping TextWrapping.Wrap
                       TextBlock.maxWidth 380.0

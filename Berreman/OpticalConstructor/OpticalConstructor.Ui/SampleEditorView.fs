@@ -897,8 +897,8 @@ let private layerRowView
                         TextBlock.width 230.0
                         TextBlock.verticalAlignment VerticalAlignment.Center
                     ] :> IView
-                    TextBlock.create [
-                        thicknessId.automationAttribute<TextBlock> ()
+                    SelectableTextBlock.create [
+                        thicknessId.automationAttribute<SelectableTextBlock> ()
                         TextBlock.text layer.thickness.nanometreCaption.value
                         TextBlock.width 90.0
                         TextBlock.verticalAlignment VerticalAlignment.Center
@@ -1129,8 +1129,8 @@ let private qwotRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
                 TextBox.onTextChanged (ControlCaption >> SetQwotText >> dispatch)
             ] :> IView
             (ControlCaption "→ t = λ/(4n) =").sampleEditorLabel
-            TextBlock.create [
-                ConstructorUiId.qwotDerivedText.automationAttribute<TextBlock> ()
+            SelectableTextBlock.create [
+                ConstructorUiId.qwotDerivedText.automationAttribute<SelectableTextBlock> ()
                 TextBlock.text derivedLabel.value
                 TextBlock.verticalAlignment VerticalAlignment.Center
             ] :> IView
@@ -1138,8 +1138,8 @@ let private qwotRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit)
     ] :> IView
 
 let private statusRow (m : SampleEditorModel) : IView =
-    TextBlock.create [
-        ConstructorUiId.sampleEditorStatus.automationAttribute<TextBlock> ()
+    SelectableTextBlock.create [
+        ConstructorUiId.sampleEditorStatus.automationAttribute<SelectableTextBlock> ()
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
@@ -1227,8 +1227,8 @@ let sampleEditorView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit
                                         StackPanel.margin (Avalonia.Thickness(0.0, 0.0, 0.0, 4.0))
                                         StackPanel.children [
                                             (ControlCaption "Films (expanded):").sampleEditorLabel
-                                            TextBlock.create [
-                                                ConstructorUiId.sampleFilmsCount.automationAttribute<TextBlock> ()
+                                            SelectableTextBlock.create [
+                                                ConstructorUiId.sampleFilmsCount.automationAttribute<SelectableTextBlock> ()
                                                 TextBlock.text (string m.filmsCount)
                                                 TextBlock.verticalAlignment VerticalAlignment.Center
                                             ] :> IView

@@ -63,41 +63,23 @@ module MainWorkbenchTests =
     let private mountMain (model0 : TableAndElementRotationModel) : HostWindow =
         let window = HostWindow(Width = 980.0, Height = 1050.0)
         window.Closed.Add(fun _ -> model0.kit.close () |> SceneTestFixture.kitSuccess)
-        Program.mkSimple (fun () -> model0) updateTableAndElementRotation mainView
+        Program.mkSimple (fun () -> model0) updateTableAndElementRotation UiDriver.editableTableView
         |> Program.withHost window
         |> Program.run
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window
 
-    /// A recording launcher pair (the functional-proxy seam — tests observe which window a
-    /// strip button requested without opening one): the Materials-window request (spec 0038
-    /// step 013) and the Library-window request (step 015) each record their tag.
-    let private recordingLaunchers () : ResizeArray<string> * EditorLaunchers =
-        let calls = ResizeArray<string>()
-        let launchers : EditorLaunchers =
-            {
-                openMaterialsWindow = fun _ _ _ -> calls.Add "materials-window"
-                openLibraryWindow = fun _ _ _ _ _ _ _ -> calls.Add "library-window"
-                // Spec 0038 (017): the Choose… Select-state open — recorded, never a real
-                // window; the returned handle records the staleness close like the real one.
-                openLibrarySelectWindow =
-                    fun _ _ _ _ _ _ _ _ _ _ ->
-                        calls.Add "library-select-window"
-                        Some (fun () -> calls.Add "library-select-close")
-            }
-        calls, launchers
-
     // ============================ pure: bay roster ============================
 
     [<Fact>]
-    let ``the ribbon offers NO workbench bay any more — Materials and Library are the strip-button windows`` () =
+    let ``the ribbon offers NO workbench bay any more — Materials and Library are the Launcher's windows`` () =
         // Spec 0038 steps 013/015: the Materials bay left the ribbon at step 013 and the
         // Library (samples workbench) bay leaves with step 015 — both workbenches are
         // single-instance WINDOWS now, and no full-surface bay remains.
         Assert.DoesNotContain(Ribbon.BayName "Materials", BayNames.allBayNames)
         Assert.DoesNotContain(Ribbon.BayName "Library", BayNames.allBayNames)
-        Assert.Contains(BayNames.selector, BayNames.allBayNames)
+        Assert.DoesNotContain(Ribbon.BayName "Select", BayNames.allBayNames)
         Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
         let m = freshMain ()
         try
@@ -137,22 +119,6 @@ module MainWorkbenchTests =
         Assert.Contains(after, fun (c : MaterialCategory) -> c.name.value = "Glazing")
         Assert.DoesNotContain(after, fun (c : MaterialCategory) -> c.name.value = "Glass")
 
-    // ============================ pure: the strip-button launcher seam ============================
-
-    [<Fact>]
-    let ``the Materials and Library strip buttons reach their launchers as pure launches`` () =
-        let calls, launchers = recordingLaunchers ()
-        let m = { freshMain () with launchers = launchers }
-        try
-            let afterMaterials = updateTableAndElementRotation OpenMaterialsWindow m
-            Assert.Equal<string list>([ "materials-window" ], List.ofSeq calls)
-            Assert.Equal<TableAndElementRotationModel>(m, afterMaterials)
-            calls.Clear()
-            let afterLibrary = updateTableAndElementRotation OpenLibraryWindow m
-            Assert.Equal<string list>([ "library-window" ], List.ofSeq calls)
-            Assert.Equal<TableAndElementRotationModel>(m, afterLibrary)
-        finally m.kit.close () |> SceneTestFixture.kitSuccess
-
     // ============================ pure: the Details-bay band projection ============================
 
     [<Fact>]
@@ -185,7 +151,7 @@ module MainWorkbenchTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``headless acceptance: both workbench tabs are gone, both strip buttons ride the ribbon row, and the table canvas persists`` () =
+    let ``headless acceptance: both workbench tabs are gone, the strip buttons too, and the table canvas persists`` () =
         HeadlessSession.run (fun () ->
             let stores = freshStores ()
             let window = mountMain (mainWith stores)
@@ -194,10 +160,9 @@ module MainWorkbenchTests =
                              "the Materials bay tab must be gone from the ribbon")
                 Assert.False(isPresent window (ConstructorUiId.ribbonTab (ConstructorUiKey "Library")).value,
                              "the Library bay tab must be gone from the ribbon")
-                Assert.True(isPresent window ConstructorUiId.openMaterialsWindowButton.value,
-                            "the ribbon strip row must carry the right-aligned Materials… button")
-                Assert.True(isPresent window ConstructorUiId.openLibraryWindowButton.value,
-                            "the ribbon strip row must carry the right-aligned Library… button")
+                // Spec 0051 `.manual/007` 2.3: the Launcher alone opens the Materials and Library windows.
+                Assert.False(isPresent window "OpenMaterialsWindowButton", "the ribbon row carries no Materials… button")
+                Assert.False(isPresent window "OpenLibraryWindowButton", "the ribbon row carries no Library… button")
                 Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "the default bay keeps the table canvas below the ribbon strip")
                 clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.details.value)).value
                 Assert.True(isPresent window ConstructorUiId.tableElementCanvas.value, "an in-pane bay keeps the table canvas below the strip")

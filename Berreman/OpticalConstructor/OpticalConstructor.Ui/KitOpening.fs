@@ -195,7 +195,7 @@ let openKitAt
     openKitWith KitIdProvider.system folder access clock author imports
 
 /// Opens a folder that is already a kit read-write and never initialises one, so Open kit… can offer Make this a kit (spec 0050 S5.2).
-/// A folder without .kit-json is NotAKitFolderErr and a kit open elsewhere KitLockedErr; neither writes anything.
+/// A folder without .optics-kit is NotAKitFolderErr and a kit open elsewhere KitLockedErr; neither writes anything.
 let openExistingKitAt
     (folder : KitFolder)
     (clock : ClockProvider)
@@ -216,33 +216,93 @@ let startPick<'Picked> (pick : Async<'Picked option>) (onPicked : 'Picked -> uni
     }
     |> Async.StartImmediate
 
+/// Where kit dialogs start and how a kit opened by any route is remembered: the folder above the last kit, else the
+/// Kits folder (spec 0051 `.manual/007` 3.4). The composition root bakes `environment.json` into it; a test supplies
+/// `fixedAt`.
+[<ReferenceEquality>]
+type KitFolderMemory =
+    {
+        /// The folder the next kit dialog starts in.
+        startFolder : unit -> FolderName
+        /// Records the folder above an opened or created kit.
+        rememberKit : KitFolder -> unit
+    }
+
+    /// A memory that always starts in `folder` and records nothing.
+    static member fixedAt (folder : FolderName) : KitFolderMemory =
+        {
+            startFolder = fun () -> folder
+            rememberKit = ignore
+        }
+
+    /// The memory kept in the environment file under `kitParentFolderKey`, starting in `fallback` until a kit is
+    /// recorded; a write failure is logged, never raised, as a remembered folder is a convenience.
+    static member ofEnvironment (file : FileName) (fallback : FolderName) : KitFolderMemory =
+        {
+            startFolder =
+                fun () ->
+                    UserEnvironment.EnvironmentSettings.load file
+                    |> UserEnvironment.lastFolder UserEnvironment.kitParentFolderKey
+                    |> Option.defaultValue fallback
+            rememberKit =
+                fun kit ->
+                    let settings = UserEnvironment.EnvironmentSettings.load file
+                    let updated = UserEnvironment.rememberKitParent kit settings
+                    if updated <> settings then
+                        match updated.save file with
+                        | Ok () -> ()
+                        | Error error -> Logger.logError $"KitFolderMemory.rememberKit: could not save the environment: {error.describe}"
+        }
+
 /// Adapts a window's storage provider to the kit-folder picker seam (spec 0050 S4.3).
 type KitFolderPicker with
 
-    /// Picks one local folder; cancellation, non-local selections and provider failures return None (spec 0050 S4.3).
-    static member ofWindow (owner : TopLevel) (suggested : FolderName) : KitFolderPicker =
+    /// Picks one local folder, or for `ChooseKitFile` one `.optics-kit` file whose folder is the kit, starting where
+    /// `memory` says and recording the kit it answers; cancellation, non-local selections and provider failures return
+    /// None (spec 0050 S4.3; 0051 `.manual/007` 3.3, 3.4).
+    static member ofWindow (owner : TopLevel) (memory : KitFolderMemory) : KitFolderPicker =
+        let localFolderOf (item : IStorageItem) : KitFolder option =
+            match item.TryGetLocalPath () |> Option.ofObj with
+            | Some path -> Some (KitFolder (FolderName path))
+            | None -> None
         {
             pickKitFolder = fun question ->
                 async {
                     try
-                        let options = FolderPickerOpenOptions(Title = question.title, AllowMultiple = false)
                         let! start =
-                            StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, suggested.value)
+                            StorageProviderExtensions.TryGetFolderFromPathAsync(owner.StorageProvider, (memory.startFolder ()).value)
                             |> Async.AwaitTask
-                        match Option.ofObj start with
-                        | Some folder -> options.SuggestedStartLocation <- folder
-                        | None -> ()
-                        let! folders = owner.StorageProvider.OpenFolderPickerAsync options |> Async.AwaitTask
-                        return
-                            folders
-                            |> Seq.tryHead
-                            |> Option.bind (fun folder ->
-                                match folder.TryGetLocalPath () |> Option.ofObj with
-                                | Some path ->
-                                    let location = FolderName path
-                                    let picked = KitFolder location
-                                    Some picked
-                                | None -> None)
+                        let! pickedOpt =
+                            match question with
+                            | ChooseKitFile ->
+                                async {
+                                    let kitFiles = FilePickerFileType($"Optics kit (*{KitFile.extension.value})", Patterns = [ $"*{KitFile.extension.value}" ])
+                                    let options = FilePickerOpenOptions(Title = question.title, AllowMultiple = false, FileTypeFilter = [ kitFiles ])
+                                    match Option.ofObj start with
+                                    | Some folder -> options.SuggestedStartLocation <- folder
+                                    | None -> ()
+                                    let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
+                                    return
+                                        files
+                                        |> Seq.tryHead
+                                        |> Option.bind (fun file ->
+                                            file.TryGetLocalPath ()
+                                            |> Option.ofObj
+                                            |> Option.bind (fun path -> Path.GetDirectoryName path |> Option.ofObj)
+                                            |> Option.map (fun folder -> KitFolder (FolderName folder)))
+                                }
+                            | ChooseKitFolder
+                            | ChooseUnpackFolder ->
+                                async {
+                                    let options = FolderPickerOpenOptions(Title = question.title, AllowMultiple = false)
+                                    match Option.ofObj start with
+                                    | Some folder -> options.SuggestedStartLocation <- folder
+                                    | None -> ()
+                                    let! folders = owner.StorageProvider.OpenFolderPickerAsync options |> Async.AwaitTask
+                                    return folders |> Seq.tryHead |> Option.bind (fun folder -> localFolderOf folder)
+                                }
+                        pickedOpt |> Option.iter memory.rememberKit
+                        return pickedOpt
                     with _ -> return None
                 }
         }

@@ -47,6 +47,8 @@ type CommandEmphasis =
     | ArmedCommand
     | PendingCommand
     | MenuCommand
+    /// An entry that needs attention, the Data page's experiment with no data (spec 0051 `.manual/007` 7.4).
+    | AttentionCommand
 
     member this.fill : Color =
         match this with
@@ -57,11 +59,13 @@ type CommandEmphasis =
         | ArmedCommand -> Color.FromRgb(204uy, 232uy, 255uy)
         | PendingCommand -> Color.FromRgb(255uy, 224uy, 160uy)
         | MenuCommand -> Color.FromRgb(255uy, 255uy, 255uy)
+        | AttentionCommand -> Color.FromRgb(255uy, 210uy, 140uy)
 
     member this.outline : Color =
         match this with
         | ArmedCommand -> Color.FromRgb(0uy, 120uy, 212uy)
         | MenuCommand -> Color.FromRgb(255uy, 255uy, 255uy)
+        | AttentionCommand -> Color.FromRgb(190uy, 120uy, 30uy)
         | NeutralCommand | PositiveCommand | NegativeCommand | ChosenCommand | PendingCommand -> Color.FromRgb(120uy, 120uy, 120uy)
 
 /// Whether a choice is the chosen one; the model alone decides it (spec 0051 `.manual/003` 1.2 item 5).
@@ -206,8 +210,22 @@ module CommandControls =
         let overridden = extras |> List.map (fun (attr : IAttr<'Control>) -> (attr :> IAttr).UniqueName) |> Set.ofList
         (defaults |> List.filter (fun (attr : IAttr<'Control>) -> not (overridden.Contains (attr :> IAttr).UniqueName))) @ extras
 
-    let private commandAttributes (id : ConstructorUiId) (caption : ControlCaption) (content : IView) (emphasis : CommandEmphasis) (availability : ControlAvailability) : IAttr<CommandButton> list =
+    /// The command's tooltip and UIA help text, shown on a withheld command too: its id's entry in the catalogue, else, for
+    /// a dynamic button, its full caption, which the button may clip (spec 0051 `.manual/007` 1.5).
+    let private helpAttributes<'Control when 'Control :> Control> (id : ConstructorUiId) (caption : ControlCaption) : IAttr<'Control> list =
+        let text =
+            match id.helpOpt with
+            | Some help -> help.value
+            | None -> caption.value
         [
+            AttrBuilder<'Control>.CreateProperty<obj>(ToolTip.TipProperty, box text, ValueNone)
+            AttrBuilder<'Control>.CreateProperty<bool>(ToolTip.ShowOnDisabledProperty, true, ValueNone)
+            AttrBuilder<'Control>.CreateProperty<string>(AutomationProperties.HelpTextProperty, text, ValueNone)
+        ]
+
+    let private commandAttributes (id : ConstructorUiId) (caption : ControlCaption) (content : IView) (emphasis : CommandEmphasis) (availability : ControlAvailability) : IAttr<CommandButton> list =
+        helpAttributes<CommandButton> id caption
+        @ [
             id.automationAttribute<CommandButton> ()
             AttrBuilder<CommandButton>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
             AttrBuilder<CommandButton>.CreateProperty<CommandEmphasis>(CommandButton.EmphasisProperty, emphasis, ValueNone)
@@ -281,7 +299,8 @@ module CommandControls =
             onChoose ()
         ViewBuilder.Create<ChoiceToggle>(
             merged
-                [
+                (helpAttributes<ChoiceToggle> id caption
+                @ [
                     id.automationAttribute<ChoiceToggle> ()
                     AttrBuilder<ChoiceToggle>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
                     AttrBuilder<ChoiceToggle>.CreateProperty<CommandEmphasis>(ChoiceToggle.ChosenEmphasisProperty, chosenLook, ValueNone)
@@ -294,7 +313,7 @@ module CommandControls =
                     ToggleButton.padding (Thickness(12.0, 5.0))
                     ToggleButton.verticalAlignment VerticalAlignment.Center
                     ToggleButton.onClick (choose, SubPatchOptions.Always)
-                ]
+                ])
                 extras)
         |> Avalonia.FuncUI.DSL.View.withKey id.value
         :> IView
@@ -325,8 +344,8 @@ module CommandControls =
         match reasonOpt with
         | Some reason ->
             [
-                TextBlock.create [
-                    id.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    id.automationAttribute<SelectableTextBlock> ()
                     TextBlock.text reason.value
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.fontSize 11.0

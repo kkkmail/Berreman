@@ -20,7 +20,9 @@
         <!-- Spec 0038 (step 044): the ONE consolidated automation-id module (per-surface sub-modules
              of [<Literal>] ids). Compiled FIRST so every control / view / window / test resolves it. -->
         <Compile Include="UiIds.fs" />
+        <Compile Include="CommandHelpTexts.fs" />
         <Compile Include="CommandControls.fs" />
+        <Compile Include="PageControls.fs" />
         <!-- Spec 0046: the min-width layout panel (content scrolls, never clips) and the fit-to-screen rule. -->
         <Compile Include="WindowLayout.fs" />
         <Compile Include="RotationControls.fs" />
@@ -35,7 +37,6 @@
         <!-- Spec 0027 (024): the Library bay — a kind-constrained list/tree of choosable entries
              (Samples / Sources / Detectors / Polarizers); selecting an entry binds the element's
              valueId. Domain-free (rows are host-flattened). -->
-        <Compile Include="LibraryControls.fs" />
         <!-- Spec 0027 (026): the reusable layer-stack BAND view (the Details bay) — a vertical stack of
              coloured rectangles sized by thickness, labelled with material + thickness. Domain-free (the
              host flattens a sample's system into bands). -->

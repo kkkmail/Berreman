@@ -1,0 +1,72 @@
+{
+  "categoryOpt": null,
+  "contentHash": "73ff54dd443250279760bf392c2d7795a9ff9a98cb8f0fa8a3459cc82aedcbdf",
+  "descriptionOpt": "100 quarter-wave pairs at 600 nm of transparent glass n = 1.75 and n = 1.50, on n = 1.50 glass (MultilayerThinFilm_02.fsx).",
+  "id": "75df80f3-28bf-4bb9-9268-0825308ff421",
+  "name": "Quarter-wave glass n = 1.75 / 1.50 multilayer (100 pairs) on glass",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [
+            {
+              "Case": "Repeated",
+              "Fields": [
+                {
+                  "cell": [
+                    {
+                      "materialId": {
+                        "materialId": "7bd71d63-98a6-4096-849d-b0c95e876966",
+                        "version": 1
+                      },
+                      "orientation": "PrimaryAxes",
+                      "thickness": {
+                        "Case": "Thickness",
+                        "Fields": [
+                          8.571428571428572E-08
+                        ]
+                      }
+                    },
+                    {
+                      "materialId": {
+                        "materialId": "0eedbd4b-ad1c-4bfe-8f6d-ae573b4a422d",
+                        "version": 1
+                      },
+                      "orientation": "PrimaryAxes",
+                      "thickness": {
+                        "Case": "Thickness",
+                        "Fields": [
+                          1.0000000000000001E-07
+                        ]
+                      }
+                    }
+                  ],
+                  "count": 100
+                }
+              ]
+            }
+          ],
+          "lower": {
+            "materialId": "0eedbd4b-ad1c-4bfe-8f6d-ae573b4a422d",
+            "version": 1
+          },
+          "substrate": null
+        },
+        "substrate": "ThinFilm",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

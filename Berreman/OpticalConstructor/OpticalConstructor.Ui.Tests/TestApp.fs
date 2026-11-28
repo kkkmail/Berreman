@@ -43,7 +43,16 @@ module HeadlessSession =
     let private session =
         lazy HeadlessUnitTestSession.GetOrStartForAssembly(typeof<TestAppBuilder>.Assembly)
 
+    /// Tooltips shown off: a headless press teleports the pointer, so a tooltip opened over the last pressed command
+    /// would take the next press. Every command still carries its tip, which the automation contract checks (spec 0051
+    /// `.manual/007` 1.5).
+    let private quietToolTips : Lazy<unit> =
+        lazy (
+            let style = Avalonia.Styling.Style(fun selector -> Avalonia.Styling.Selectors.Is<Avalonia.Controls.Control>(selector))
+            style.Setters.Add(Avalonia.Styling.Setter(Avalonia.Controls.ToolTip.ServiceEnabledProperty, box false))
+            Application.Current.Styles.Add style)
+
     /// Run `action` on the headless UI thread, blocking until it completes and
     /// rethrowing any exception or assertion failure it raised.
     let run (action : unit -> unit) : unit =
-        session.Value.Dispatch(Action(action), CancellationToken.None).GetAwaiter().GetResult()
+        session.Value.Dispatch(Action(fun () -> quietToolTips.Force(); action ()), CancellationToken.None).GetAwaiter().GetResult()

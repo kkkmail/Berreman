@@ -293,8 +293,8 @@ let importDialogView (m : ImportDialogModel) (dispatch : ImportDialogMsg -> unit
             ]
             match m.lastError with
             | Some error ->
-                TextBlock.create [
-                    ConstructorUiId.importDialogMessage.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.importDialogMessage.automationAttribute<SelectableTextBlock> ()
                     TextBlock.dock Dock.Bottom
                     TextBlock.text error.caption.value
                     TextBlock.textWrapping TextWrapping.Wrap
@@ -303,8 +303,8 @@ let importDialogView (m : ImportDialogModel) (dispatch : ImportDialogMsg -> unit
                 |> View.withKey ConstructorUiId.importDialogMessage.value
                 :> IView
             | None -> ()
-            TextBlock.create [
-                ConstructorUiId.importDialogHeading.automationAttribute<TextBlock> ()
+            SelectableTextBlock.create [
+                ConstructorUiId.importDialogHeading.automationAttribute<SelectableTextBlock> ()
                 TextBlock.dock Dock.Top
                 TextBlock.text $"{m.context.request.heading.value}\nNothing is imported until you press Apply."
                 TextBlock.textWrapping TextWrapping.Wrap
@@ -323,8 +323,8 @@ let importDialogView (m : ImportDialogModel) (dispatch : ImportDialogMsg -> unit
                         | 0 -> []
                         | count ->
                             [
-                                TextBlock.create [
-                                    ConstructorUiId.importUnaskedSummary.automationAttribute<TextBlock> ()
+                                SelectableTextBlock.create [
+                                    ConstructorUiId.importUnaskedSummary.automationAttribute<SelectableTextBlock> ()
                                     TextBlock.textWrapping TextWrapping.Wrap
                                     TextBlock.margin (Thickness(0.0, 0.0, 0.0, 8.0))
                                     TextBlock.text (

@@ -228,7 +228,7 @@ module SourceAndDetectorMoveTests =
                     latest.Value <- m
                     state.Set m
                 dispatchRef.Value <- dispatch
-                mainView state.Current dispatch)
+                UiDriver.editableTableView state.Current dispatch)
         let window = Window(Width = 1200.0, Height = 1050.0, Content = comp)
         window.Show()
         Dispatcher.UIThread.RunJobs()

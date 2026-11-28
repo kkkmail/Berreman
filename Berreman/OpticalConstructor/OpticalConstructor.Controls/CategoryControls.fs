@@ -13,7 +13,7 @@ open Avalonia.FuncUI.Types
 /// name box per row and Add / Rename(save) / Remove verbs; a BUILT-IN row's name stays editable but
 /// its Remove verb is OMITTED (removed, not greyed), matching the `MaterialsControls` view-only-Edit
 /// precedent; an inline block-message slot surfaces the store's typed refusals (`CategoryStillReferencedErr`
-/// / `BuiltInNotRemovableErr`). This control is DOMAIN-FREE (matching `MaterialsControls` / `LibraryControls`):
+/// / `BuiltInNotRemovableErr`). This control is DOMAIN-FREE (matching `MaterialsControls`):
 /// the host flattens the editor's working `MaterialCategory` rows into `Row`s and injects the behaviour
 /// as a `Handlers` function record (the functional-proxy seam; a test substitutes stubs). The control
 /// renders the rows it is given and never touches a proxy (the host flattens and dispatches).
@@ -124,7 +124,7 @@ module CategoryControls =
         ] :> IView
 
     /// The inline block-message slot — the store's typed refusal (`CategoryStillReferencedErr` /
-    /// `BuiltInNotRemovableErr`), shown only while a message is present (the `LibraryControls.confirmPanel`
+    /// `BuiltInNotRemovableErr`), shown only while a message is present (the `MaterialsControls` confirm
     /// precedent — no message means the control is absent, not an empty box).
     let private blockMessagePanel (state : CategoryControlsState) : IView list =
         match state.blockMessage with
@@ -139,8 +139,8 @@ module CategoryControls =
                     Border.padding (Thickness 8.0)
                     Border.margin (Thickness(0.0, 2.0, 0.0, 2.0))
                     Border.child (
-                        TextBlock.create [
-                            ConstructorUiId.categoryBlockMessage.automationAttribute<TextBlock> ()
+                        SelectableTextBlock.create [
+                            ConstructorUiId.categoryBlockMessage.automationAttribute<SelectableTextBlock> ()
                             TextBlock.text message.value
                             TextBlock.textWrapping TextWrapping.Wrap
                             TextBlock.maxWidth 360.0

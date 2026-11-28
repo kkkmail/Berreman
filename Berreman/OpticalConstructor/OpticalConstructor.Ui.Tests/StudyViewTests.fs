@@ -74,6 +74,36 @@ module StudyViewTests =
     let private withStudyWindow (model : TableAndElementRotationModel) (check : Window -> unit) : unit =
         withRecordingStudyWindow model ignore check
 
+    /// The Unknowns page with the kit's one study chosen and in Edit, where its parameters, sessions and experiments are
+    /// changed (spec 0051 `.manual/007` 8.2).
+    let private inStudyEdit (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let onPage = model |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep)
+        let chosen =
+            match onPage.selectedStudyOpt, onPage.kitStudies with
+            | Some _, _ -> onPage
+            | None, study :: _ -> onPage |> updateTableAndElementRotation (SelectStudy study.name)
+            | None, [] -> failwith "the kit must hold a study"
+        let editing = chosen |> updateTableAndElementRotation BeginPageEdit
+        Assert.Equal<PageMode>(EditingPageEntry, editing.pageMode)
+        editing
+
+    /// The fit runs a history lists: its entries, without the chosen one's details under it (spec 0051 `.manual/007` 8.4).
+    let private fitRunRowsIn (history : StackPanel) : int =
+        history.Children |> Seq.filter (fun child -> (AutomationProperties.GetAutomationId child |> string).StartsWith "FitRunRow_") |> Seq.length
+
+    /// The Kit page with `run` chosen under Publish: a press on it, unless it already is (spec 0051 `.manual/007` 2.2).
+    let private publishing (run : FitRun) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let onKit = model |> updateTableAndElementRotation (ShowFlowStep KitFlowStep)
+        match onKit.studySurface.fitRunOpt, onKit.studySurface.studyOpt with
+        | Some name, Some study when name = run.name && study = run.study -> onKit
+        | _ -> onKit |> updateTableAndElementRotation (ChoosePublishRun run.name)
+
+    /// The Fit page's New fit run… form over the chosen study (spec 0051 `.manual/007` 8.4).
+    let private inNewFitRun (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let creating = model |> updateTableAndElementRotation (ShowFlowStep FitFlowStep) |> updateTableAndElementRotation BeginPageCreate
+        Assert.Equal<PageMode>(CreatingPageEntry, creating.pageMode)
+        creating
+
     let private withGainCalibrationRuns (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         [ ExperimentName "E1"; ExperimentName "E3" ]
         |> List.fold (fun (state : TableAndElementRotationModel) name ->
@@ -102,7 +132,7 @@ module StudyViewTests =
         UiDriver.ById.clickOn window id
 
     let private gridOf (window : Window) : Grid =
-        Assert.IsType<Grid>(UiDriver.ById.findControl window ConstructorUiId.studyUnknownsGrid)
+        UiDriver.gridIn (UiDriver.ById.findControl window ConstructorUiId.studyUnknownsGrid)
 
     let private rowNumber (window : Window) (reference : StudyParameterRef) : int =
         let box = UiDriver.ById.findControl window (ConstructorUiId.studyParameterRow reference)
@@ -117,7 +147,7 @@ module StudyViewTests =
         grid.Children |> Seq.find (fun control -> Grid.GetRow control = row && Grid.GetColumn control = column)
 
     let private cellText (grid : Grid) (row : int) (column : int) : string =
-        Assert.IsType<TextBlock>(cellAt grid row column).Text
+        UiDriver.cellTextOf (cellAt grid row column)
 
     let private fitModelWith (runs : FitRun list) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
         for run in runs do model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
@@ -318,9 +348,8 @@ module StudyViewTests =
         Assert.Equal("FlowUnknownsStep", ConstructorUiId.flowUnknownsStep.value)
         Assert.Equal("StudyUnknownsPanel", ConstructorUiId.studyUnknownsPanel.value)
         Assert.Equal("StudyList", ConstructorUiId.studyList.value)
-        Assert.Equal("StudyStatusLine", ConstructorUiId.studyStatusLine.value)
         Assert.Equal("NewStudyNameField", ConstructorUiId.newStudyNameField.value)
-        Assert.Equal("CreateStudyButton", ConstructorUiId.createStudyButton.value)
+        Assert.Equal("NewStudyButton", ConstructorUiId.newStudyButton.value)
         Assert.Equal("StudyExperimentsText", ConstructorUiId.studyExperimentsText.value)
         Assert.Equal("StudyUnknownsGrid", ConstructorUiId.studyUnknownsGrid.value)
         Assert.Equal("StudySessionGrid", ConstructorUiId.studySessionGrid.value)
@@ -351,7 +380,7 @@ module StudyViewTests =
         Assert.Equal("FitResultsProductCheckTab", ConstructorUiId.fitResultsProductCheckTab.value)
         Assert.Equal("FitResultsProfileTab", ConstructorUiId.fitResultsProfileTab.value)
         Assert.Equal("FitResultsTable", ConstructorUiId.fitResultsTable.value)
-        Assert.Equal("FlowPublishStep", ConstructorUiId.flowPublishStep.value)
+        Assert.Equal("FlowKitStep", ConstructorUiId.flowKitStep.value)
         Assert.Equal("StudyPublishPanel", ConstructorUiId.studyPublishPanel.value)
         Assert.Equal("PublishCalibrationPreview", ConstructorUiId.publishCalibrationPreview.value)
         Assert.Equal("PublishCalibrationButton", ConstructorUiId.publishCalibrationButton.value)
@@ -387,11 +416,11 @@ module StudyViewTests =
             Assert.Equal($"StudyParameterLink_{suffix}", (ConstructorUiId.studyParameterLinkChoice reference).value)
 
     [<Fact>]
-    let ``each session of the study offers its gain models, and choosing one sends SetSessionGainModel`` () : unit =
+    let ``each session of the study offers its gain models in Edit, a choice drafts it and Save writes it`` () : unit =
         HeadlessSession.run (fun () ->
             let model = TestAppScope.studyKitIn owner
             try
-                let shown = model |> withGainCalibrationRuns |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep)
+                let shown = model |> withGainCalibrationRuns |> inStudyEdit
                 let study = StudyName "QZ-LR"
                 let session = SessionName "Session 1"
                 let e1 = ExperimentName "E1"
@@ -407,24 +436,24 @@ module StudyViewTests =
                     | StudyCommand command -> messages.Add command
                     | _ -> ()
                 withRecordingStudyWindow shown record (fun window ->
-                    let grid = Assert.IsType<Grid>(UiDriver.ById.findControl window ConstructorUiId.studySessionGrid)
-                    Assert.Equal("Sessions and gains", AutomationProperties.GetName grid)
+                    let grid = UiDriver.gridIn (UiDriver.ById.findControl window ConstructorUiId.studySessionGrid)
                     Assert.Equal(3, grid.ColumnDefinitions.Count)
                     Assert.All(grid.ColumnDefinitions, fun column -> Assert.Equal<GridUnitType>(GridUnitType.Auto, column.Width.GridUnitType))
                     Assert.Equal(2, grid.RowDefinitions.Count)
                     Assert.Equal<string list>([ "Session"; "Experiments"; "Gain" ], [ for column in 0 .. 2 -> cellText grid 0 column ])
                     for column in 0 .. 2 do
-                        Assert.Equal<FontWeight>(FontWeight.SemiBold, Assert.IsType<TextBlock>(cellAt grid 0 column).FontWeight)
+                        Assert.Equal<FontWeight>(FontWeight.SemiBold, (UiDriver.cellTextBlockOf (cellAt grid 0 column)).FontWeight)
                     Assert.Equal("Session 1", cellText grid 1 0)
                     Assert.Equal("E1, E2, E3", cellText grid 1 1)
                     let gain = Assert.IsType<ComboBox>(UiDriver.ById.findControl window (ConstructorUiId.studySessionGainChoice session))
-                    Assert.Same(cellAt grid 1 2, gain)
+                    Assert.Contains<Visual>(cellAt grid 1 2, gain.GetVisualAncestors())
                     Assert.False(System.String.IsNullOrWhiteSpace(AutomationProperties.GetName gain))
                     Assert.True gain.IsEffectivelyEnabled
                     Assert.Equal<string list>([ "Free"; "Anchored to E1, E3"; "Interpolated from E1 to E3" ], gain.Items |> Seq.cast<string> |> Seq.toList)
                     Assert.Equal("Free", Assert.IsType<string> gain.SelectedItem)
                     Assert.Empty messages
-                    for index, expected in [ 1, AnchoredSessionGain [ e1; e3 ]; 2, InterpolatedSessionGain repeats; 0, FreeSessionGain ] do
+                    // Spec 0051 `.manual/007` 8.2: a choice drafts the gain; the study in the kit waits for Save.
+                    for index, expected in [ 2, InterpolatedSessionGain repeats; 0, FreeSessionGain; 1, AnchoredSessionGain [ e1; e3 ] ] do
                         messages.Clear()
                         gain.SelectedIndex <- index
                         Dispatcher.UIThread.RunJobs()
@@ -435,15 +464,21 @@ module StudyViewTests =
                             Assert.Equal<SessionGainModel>(expected, setting.model)
                         | _ -> Assert.Fail "The gain choice must send SetSessionGainModel"
                         let recorded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.exactlyOne
-                        Assert.Equal<SessionGainModel>(expected, recorded.gainModelOf session)
-                        Assert.Equal(expected.caption.value, Assert.IsType<string> gain.SelectedItem))
+                        Assert.Equal<SessionGainModel>(FreeSessionGain, recorded.gainModelOf session)
+                        Assert.Equal(expected.caption.value, Assert.IsType<string> gain.SelectedItem)
+                    pressStudyBox window ConstructorUiId.pageSaveButton
+                    let saved = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.exactlyOne
+                    Assert.Equal<SessionGainModel>(AnchoredSessionGain [ e1; e3 ], saved.gainModelOf session))
                 let emptyStudy =
                     {
                         List.exactlyOne shown.kitStudies with experiments = []
                     }
                 let empty =
                     {
-                        shown with kitStudies = [ emptyStudy ]
+                        shown with
+                            kitStudies = [ emptyStudy ]
+                            pageMode = BrowsingPage
+                            studyEditOpt = None
                     }
                 withStudyWindow empty (fun window ->
                     Assert.Contains("This study's experiments form no session.", studyPanelTexts window ConstructorUiId.studyUnknownsPanel)
@@ -451,16 +486,15 @@ module StudyViewTests =
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
-    let ``the Fit step's mode choice sends SetFitMode`` () : unit =
+    let ``the New fit run form's mode choice drafts the mode, and the study keeps its own until a run starts`` () : unit =
         HeadlessSession.run (fun () ->
             let model = TestAppScope.studyKitIn owner
             try
-                let shown = model |> withGainCalibrationRuns |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)
-                let study = StudyName "QZ-LR"
-                let messages = ResizeArray<StudyMsg> ()
+                let shown = model |> withGainCalibrationRuns |> inNewFitRun
+                let messages = ResizeArray<FitMode> ()
                 let record (message : TableAndElementRotationMsg) : unit =
                     match message with
-                    | StudyCommand command -> messages.Add command
+                    | SetFitRunDraftMode mode -> messages.Add mode
                     | _ -> ()
                 withRecordingStudyWindow shown record (fun window ->
                     let joint = ConstructorUiId.studyFitModeChoice JointFit
@@ -476,16 +510,14 @@ module StudyViewTests =
                     let runBox = UiDriver.ById.findControl window ConstructorUiId.studyRunFitButton
                     Assert.True((SlotBarTests.topLeftOf window modeBox).Y + modeBox.Bounds.Height <= (SlotBarTests.topLeftOf window runBox).Y)
                     Assert.Empty messages
+                    // Spec 0051 `.manual/007` 8.4: the mode is the form's draft; the study takes it when a run starts.
+                    let before = (model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.exactlyOne).settings.mode
                     for mode in [ StagedFit; JointFit ] do
                         messages.Clear()
                         pressStudyBox window (ConstructorUiId.studyFitModeChoice mode)
-                        match Assert.Single messages with
-                        | SetFitMode (name, chosen) ->
-                            Assert.Equal<StudyName>(study, name)
-                            Assert.Equal<FitMode>(mode, chosen)
-                        | _ -> Assert.Fail "The mode choice must send SetFitMode"
+                        Assert.Equal<FitMode list>([ mode ], List.ofSeq messages)
                         let recorded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.exactlyOne
-                        Assert.Equal<FitMode>(mode, recorded.settings.mode)
+                        Assert.Equal<FitMode>(before, recorded.settings.mode)
                         Assert.Equal(PositiveCommand.fill, fitBoxColor window (ConstructorUiId.studyFitModeChoice mode))
                         for other in FitMode.all |> List.filter ((<>) mode) do
                             Assert.NotEqual(PositiveCommand.fill, fitBoxColor window (ConstructorUiId.studyFitModeChoice other)))
@@ -508,7 +540,7 @@ module StudyViewTests =
                     }
                 let linked = opened |> updateTableAndElementRotation (StudyCommand (LinkParameters (study.name, link)))
                 Assert.Equal<ControlCaption option>(None, linked.kitRefusalOpt)
-                let shown = linked |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep)
+                let shown = linked |> inStudyEdit
                 let material = List.exactlyOne study.materials
                 Assert.Equal(15, material.parameters.Length)
                 Assert.Equal<ControlCaption>(ControlCaption "CPL1 c2.retardance", shown.studyParameterCaption link.leader)
@@ -551,6 +583,8 @@ module StudyViewTests =
                     Assert.Equal("1000", cellText grid gainRow 3)
                     Assert.Equal("[100, 10000]", cellText grid gainRow 4)
                     Assert.Equal("—", cellText grid gainRow 5)
+                    // Spec 0051 `.manual/007` 8.2: an unknown's scope and link are its editor's, opened by its row.
+                    pressStudyBox window (ConstructorUiId.studyParameterRow gain)
                     let scope = Assert.IsType<ComboBox>(UiDriver.ById.findControl window (ConstructorUiId.studyParameterScopeChoice gain))
                     Assert.Equal("Session", Assert.IsType<string>(scope.SelectedItem))
                     Assert.Equal<string list>(ParameterScope.all |> List.map _.text, scope.Items |> Seq.cast<string> |> List.ofSeq)
@@ -561,49 +595,56 @@ module StudyViewTests =
                     let darkOffset = ParameterName "darkOffset"
                     let known = ItemParameterRef (phone.id, darkOffset)
                     Assert.Equal("—", cellText grid (rowNumber window known) 6)
-                    Assert.Equal("Experiments: E1, E2, E3", Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyExperimentsText).Text)
+                    Assert.Equal("Experiments: E1, E2, E3", Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyExperimentsText).Text)
                     scope.SelectedIndex <- ParameterScope.all |> List.findIndex ((=) ExperimentScope)
                     Dispatcher.UIThread.RunJobs()
+                    // Spec 0051 `.manual/007` 8.2: the scope is the Edit's draft until Save writes the study.
+                    pressStudyBox window ConstructorUiId.pageSaveButton
                     let recorded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.exactlyOne
                     Assert.Equal<ParameterScope>(ExperimentScope, recorded.scopeOf gain))
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``typing a study name and pressing Create study records the study in the kit`` () : unit =
+    let ``pressing New study, typing its name and pressing Create records the study in the kit`` () : unit =
         HeadlessSession.run (fun () ->
             let model = TestAppScope.studyKitIn owner
             try
                 withStudyWindow model (fun window ->
+                    // Spec 0051 `.manual/007` 8.1: New study is the Unknowns page's Creating; Create writes it once.
                     pressStudyBox window ConstructorUiId.flowUnknownsStep
+                    pressStudyBox window ConstructorUiId.newStudyButton
                     typeField window ConstructorUiId.newStudyNameField "LR"
                     let e1 = ExperimentName "E1"
                     pressStudyBox window (ConstructorUiId.newStudyExperimentToggle e1)
-                    pressStudyBox window ConstructorUiId.createStudyButton
+                    pressStudyBox window ConstructorUiId.pageSaveButton
                     let name = StudyName "LR"
                     let recorded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.find (fun study -> study.name = name)
                     Assert.Equal<ExperimentName list>([ e1 ], recorded.experiments)
                     let folder = model.kitFolderOpt |> Option.defaultWith (fun () -> failwith "The study kit must have a folder")
                     Assert.True(File.Exists(Path.Combine(folder.value.value, "LR.study-json")))
                     Assert.Equal("LR", UiDriver.ById.captionOf window (ConstructorUiId.studyChoice name))
-                    Assert.Equal("Experiments: E1", Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyExperimentsText).Text)
+                    Assert.Equal("Experiments: E1", Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyExperimentsText).Text)
+                    // Spec 0051 `.manual/007` 8.2: the study's Edit adds an experiment, and Save writes it.
                     let e2 = ExperimentName "E2"
+                    pressStudyBox window ConstructorUiId.pageEditButton
                     pressStudyBox window (ConstructorUiId.addExperimentToStudyButton e2)
+                    UiDriver.ById.assertAbsent window (ConstructorUiId.addExperimentToStudyButton e2)
+                    pressStudyBox window ConstructorUiId.pageSaveButton
                     let expanded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.find (fun study -> study.name = name)
-                    Assert.Equal<ExperimentName list>([ e1; e2 ], expanded.experiments)
-                    UiDriver.ById.assertAbsent window (ConstructorUiId.addExperimentToStudyButton e2))
+                    Assert.Equal<ExperimentName list>([ e1; e2 ], expanded.experiments))
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``pressing a study parameter's row, Unknown and Set frees it in the kit`` () : unit =
+    let ``pressing a study parameter's row in Edit, Unknown, Set and Save frees it in the kit`` () : unit =
         HeadlessSession.run (fun () ->
             let model = TestAppScope.studyKitIn owner
             try
                 let phone = itemNamed (ItemLabel "Phone") model
                 let name = ParameterName "darkOffset"
                 let reference = ItemParameterRef (phone.id, name)
-                withStudyWindow (model |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep)) (fun window ->
+                withStudyWindow (model |> inStudyEdit) (fun window ->
                     pressStudyBox window (ConstructorUiId.studyParameterRow reference)
                     Assert.Single(UiDriver.ById.controlsWithId window ConstructorUiId.parameterEditPanel) |> ignore
                     Assert.Equal("Known", UiDriver.ById.captionOf window ConstructorUiId.parameterEditKnownChoice)
@@ -611,6 +652,13 @@ module StudyViewTests =
                     typeField window ConstructorUiId.parameterEditLowerField "-1"
                     typeField window ConstructorUiId.parameterEditUpperField "1"
                     pressStudyBox window ConstructorUiId.parameterEditSetButton
+                    // Spec 0051 `.manual/007` 8.2: the item's parameter is the study Edit's draft until Save.
+                    let unsaved = model.kit.proxy.readItems () |> SceneTestFixture.kitSuccess |> List.find (fun item -> item.id = phone.id)
+                    Assert.Equal<Item>(phone, unsaved)
+                    let grid = gridOf window
+                    Assert.Equal("Unknown", cellText grid (rowNumber window reference) 2)
+                    Assert.Equal("[-1, 1]", cellText grid (rowNumber window reference) 4)
+                    pressStudyBox window ConstructorUiId.pageSaveButton
                     let recorded = model.kit.proxy.readItems () |> SceneTestFixture.kitSuccess |> List.find (fun item -> item.id = phone.id)
                     match recorded.tryFindParameter name with
                     | Some { state = UnknownParameter unknown } ->
@@ -619,10 +667,7 @@ module StudyViewTests =
                         Assert.Equal<ParameterValue>(ParameterValue 0.0, unknown.start)
                     | _ -> Assert.Fail "Phone.darkOffset must be stored as Unknown"
                     let folder = model.kitFolderOpt |> Option.defaultWith (fun () -> failwith "The study kit must have a folder")
-                    Assert.True(File.Exists(Path.Combine(folder.value.value, "Phone.item-json")))
-                    let grid = gridOf window
-                    Assert.Equal("Unknown", cellText grid (rowNumber window reference) 2)
-                    Assert.Equal("[-1, 1]", cellText grid (rowNumber window reference) 4))
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, "Phone.item-json"))))
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
@@ -661,7 +706,8 @@ module StudyViewTests =
                 let shown = prefitModelWithData model
                 let expectedRuns = [ ExperimentName "E1"; ExperimentName "E2"; ExperimentName "E3" ]
                 Assert.Equal<ConstructorFlowStep>(FitFlowStep, shown.flowStep)
-                withStudyWindow shown (fun window ->
+                // Spec 0051 `.manual/007` 8.4: the checks are the New fit run… form's.
+                withStudyWindow (shown |> updateTableAndElementRotation BeginPageCreate) (fun window ->
                     Assert.Single(UiDriver.ById.controlsWithId window ConstructorUiId.studyFitPanel) |> ignore
                     let prefits = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.studyPrefitList)
                     Assert.Equal<string list>(
@@ -678,9 +724,9 @@ module StudyViewTests =
         HeadlessSession.run (fun () ->
             let model = TestAppScope.studyKitIn owner
             try
-                withStudyWindow (prefitModelWithData model) (fun window ->
+                withStudyWindow (prefitModelWithData model |> updateTableAndElementRotation BeginPageCreate) (fun window ->
                     let textOf (name : ExperimentName) : string =
-                        Assert.IsType<TextBlock>(UiDriver.ById.findControl window (ConstructorUiId.studyPrefitRow name)).Text
+                        Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window (ConstructorUiId.studyPrefitRow name)).Text
                     let ready = ExperimentName "E1"
                     let missing = ExperimentName "E2"
                     let inconsistent = ExperimentName "E3"
@@ -710,7 +756,7 @@ module StudyViewTests =
                 for tab in FitResultsTab.all do
                     let shown = selected |> updateTableAndElementRotation (ShowResultsTab tab)
                     withStudyWindow shown (fun window ->
-                        let title = Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.fitResultsRunText)
+                        let title = Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.fitResultsRunText)
                         Assert.Equal($"Fit run {run.name.value} — Stage 2 (objects), linear", title.Text)
                         let strip = Assert.IsType<WrapPanel>(UiDriver.ById.findControl window ConstructorUiId.fitResultsTabStrip)
                         Assert.Equal(6, strip.Children.Count)
@@ -799,7 +845,7 @@ module StudyViewTests =
                 withStudyWindow empty (fun window ->
                     let panel = UiDriver.ById.findControl window ConstructorUiId.studyResultsPanel
                     let texts = panel.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Some text.Text | _ -> None)
-                    Assert.Contains("No fit run yet: run the fit in the Fit step.", texts)
+                    Assert.Contains("Choose a fit run in Fit first: press Fit, then the run.", texts)
                     Assert.Empty(UiDriver.ById.controlsWithId window ConstructorUiId.fitResultsTabStrip))
             finally
                 System.Globalization.CultureInfo.CurrentCulture <- previousCulture
@@ -840,10 +886,7 @@ module StudyViewTests =
                 System.Globalization.CultureInfo.CurrentCulture <- System.Globalization.CultureInfo.GetCultureInfo "fr-FR"
                 let run = calibrationViewRunOf model
                 model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
-                let loaded =
-                    model
-                    |> updateTableAndElementRotation ReloadKitChanges
-                    |> updateTableAndElementRotation (ShowFlowStep PublishFlowStep)
+                let loaded = model |> updateTableAndElementRotation ReloadKitChanges |> publishing run
                 withStudyWindow loaded (fun window ->
                     Assert.Equal<string list>([ "CPL1 → revision 2: c2.retardance = 1.55 ± 0.002" ],
                                               studyPanelTexts window ConstructorUiId.publishCalibrationPreview)
@@ -874,7 +917,7 @@ module StudyViewTests =
                 withStudyWindow invalid (fun window ->
                     Assert.Equal<string list>([ error.describe ], studyPanelTexts window ConstructorUiId.publishCalibrationPreview)
                     let panel = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.publishCalibrationPreview)
-                    let text = Assert.IsType<TextBlock>(Assert.Single panel.Children)
+                    let text = Assert.IsAssignableFrom<TextBlock>(Assert.Single panel.Children)
                     Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(text.Foreground).Color)
                     UiDriver.ById.assertAbsent window ConstructorUiId.publishCalibrationButton)
                 let empty =
@@ -882,7 +925,9 @@ module StudyViewTests =
                         loaded with kitFitRuns = []
                     }
                 withStudyWindow empty (fun window ->
-                    Assert.Contains("No fit run yet: run the fit in the Fit step.", studyPanelTexts window ConstructorUiId.studyPublishPanel)
+                    Assert.Equal(
+                        "No fit run yet: a study's fit runs are made on the Fit page, in Inverse.",
+                        UiDriver.ById.textOf window ConstructorUiId.publishNothingText)
                     UiDriver.ById.assertAbsent window ConstructorUiId.publishCalibrationButton
                     UiDriver.ById.assertAbsent window ConstructorUiId.promotionList)
                 let promoted = StudyPublishViewFixture.publicationModelWithSubjects loaded
@@ -900,7 +945,7 @@ module StudyViewTests =
                         Assert.Equal("Promote", UiDriver.ById.captionOf window id)
                         Assert.Equal(PositiveCommand.fill, fitBoxColor window id)
                         pressStudyBox window id
-                        let status = Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyStatusLine).Text
+                        let status = Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.kitStatus).Text
                         Assert.StartsWith("Promoted to the library as ", status))
                 Assert.Equal<Result<MaterialEntry option, MaterialError>>(originalMaterial, promoted.materials.resolveVersion opened.version)
                 let envelopes = promoted.kit.proxy.listSnapshots () |> SceneTestFixture.kitSuccess
@@ -925,15 +970,15 @@ module StudyViewTests =
             try
                 let run = calibrationViewRunOf model
                 model.kit.proxy.writeFitRun run |> SceneTestFixture.kitSuccess
-                let loaded = model |> updateTableAndElementRotation ReloadKitChanges
+                let loaded = model |> updateTableAndElementRotation ReloadKitChanges |> publishing run
                 let first = itemNamed (ItemLabel "CPL1") loaded
                 let file = KitRelativePath "CPL1.item-json"
                 let before = model.kit.proxy.readLabFile file |> SceneTestFixture.kitSuccess
                 withStudyWindow loaded (fun window ->
-                    pressStudyBox window ConstructorUiId.flowPublishStep
+                    pressStudyBox window ConstructorUiId.flowKitStep
                     pressStudyBox window ConstructorUiId.publishCalibrationButton
                     Assert.Equal("Published the calibration of CPL1 from QZ-LR@20261101T120000Z.",
-                                 Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyStatusLine).Text)
+                                 Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.kitStatus).Text)
                     UiDriver.ById.assertAbsent window ConstructorUiId.publishCalibrationButton
                     // Spec 0051 `.manual/003` 4.5: a published run says so once, as an outcome.
                     Assert.Contains(
@@ -963,7 +1008,7 @@ module StudyViewTests =
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
 
     [<Fact>]
-    let ``the Fit step offers Run joint and the two stages on one wrapping row and lists the study's fit runs, oldest first`` () : unit =
+    let ``the Fit page lists the study's fit runs, newest first, and its New fit run… form offers each mode's runs on one wrapping row`` () : unit =
         HeadlessSession.run (fun () ->
             let model = TestAppScope.studyKitIn owner
             try
@@ -972,14 +1017,18 @@ module StudyViewTests =
                 let secondStamp = ClockTime (first.stamp.value.AddHours 1.0)
                 let second = StudyFitViewFixture.fitViewRunOf study secondStamp
                 let shown = fitModelWith [ second; first ] model
-                withStudyWindow shown (fun window ->
-                    let ids = [ ConstructorUiId.studyRunFitButton; ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ]
-                    let buttons = ids |> List.map (UiDriver.ById.findControl window)
+                // Spec 0051 `.manual/007` 8.4: the form runs the stages its mode has, then Cancel, on one wrapping row.
+                let formOf (mode : FitMode) : TableAndElementRotationModel =
+                    shown |> updateTableAndElementRotation BeginPageCreate |> updateTableAndElementRotation (SetFitRunDraftMode mode)
+                for mode, ids, captions in
+                    [ JointFit, [ ConstructorUiId.studyRunFitButton ], [ "Run joint" ]
+                      StagedFit, [ ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ], [ "Run stage 1 (calibration)"; "Run stage 2 (objects)" ] ] do
+                  withStudyWindow (formOf mode) (fun window ->
+                    let buttons = (ids @ [ ConstructorUiId.pageCancelButton ]) |> List.map (UiDriver.ById.findControl window)
                     let row = Assert.IsType<WrapPanel>(buttons.Head.Parent)
                     Assert.Equal<Orientation>(Orientation.Horizontal, row.Orientation)
                     Assert.Equal<Control list>(buttons, row.Children |> Seq.toList)
-                    Assert.Equal<string list>([ "Run joint"; "Run stage 1 (calibration)"; "Run stage 2 (objects)" ], ids |> List.map (UiDriver.ById.captionOf window))
-                    Assert.Equal<string list>([ "Run joint"; "Run stage 1 (calibration)"; "Run stage 2 (objects)" ], buttons |> List.map AutomationProperties.GetName)
+                    Assert.Equal<string list>(captions @ [ "Cancel" ], buttons |> List.map AutomationProperties.GetName)
                     for button in buttons do
                         Assert.Same(row, button.Parent)
                         Assert.True button.IsEffectivelyEnabled
@@ -991,29 +1040,35 @@ module StudyViewTests =
                             $"Fit verbs must read left to right, then down: {left.Bounds} before {right.Bounds}")
                     for button in buttons do
                         Assert.True(button.Bounds.Right <= row.Bounds.Width, $"{button.Bounds} must lie within its row {row.Bounds}")
-                    Assert.Equal("fixed", UiDriver.ById.captionOf window ConstructorUiId.studyCalibrationFixedChoice)
-                    Assert.Equal("as priors", UiDriver.ById.captionOf window ConstructorUiId.studyCalibrationPriorChoice)
-                    let fixedBox = UiDriver.ById.findControl window ConstructorUiId.studyCalibrationFixedChoice
-                    let priorBox = UiDriver.ById.findControl window ConstructorUiId.studyCalibrationPriorChoice
-                    Assert.Same(fixedBox.Parent, priorBox.Parent)
-                    Assert.True(fixedBox.Bounds.Right < priorBox.Bounds.Left)
-                    Assert.True((SlotBarTests.topLeftOf window fixedBox).Y >= (SlotBarTests.topLeftOf window buttons.Head).Y + buttons.Head.Bounds.Height)
-                    Assert.Equal(PositiveCommand.fill, fitBoxColor window ConstructorUiId.studyCalibrationFixedChoice)
-                    Assert.NotEqual(PositiveCommand.fill, fitBoxColor window ConstructorUiId.studyCalibrationPriorChoice)
+                    // A staged fit says how stage 2 holds the calibration, above its runs; a joint fit has no stage 2.
+                    match mode with
+                    | StagedFit ->
+                        Assert.Equal("fixed", UiDriver.ById.captionOf window ConstructorUiId.studyCalibrationFixedChoice)
+                        Assert.Equal("as priors", UiDriver.ById.captionOf window ConstructorUiId.studyCalibrationPriorChoice)
+                        let fixedBox = UiDriver.ById.findControl window ConstructorUiId.studyCalibrationFixedChoice
+                        let priorBox = UiDriver.ById.findControl window ConstructorUiId.studyCalibrationPriorChoice
+                        Assert.Same(fixedBox.Parent, priorBox.Parent)
+                        Assert.True(fixedBox.Bounds.Right < priorBox.Bounds.Left)
+                        Assert.True((SlotBarTests.topLeftOf window fixedBox).Y + fixedBox.Bounds.Height <= (SlotBarTests.topLeftOf window buttons.Head).Y)
+                        Assert.Equal(PositiveCommand.fill, fitBoxColor window ConstructorUiId.studyCalibrationFixedChoice)
+                        Assert.NotEqual(PositiveCommand.fill, fitBoxColor window ConstructorUiId.studyCalibrationPriorChoice)
+                    | JointFit -> UiDriver.ById.assertAbsent window ConstructorUiId.studyCalibrationFixedChoice
+                    let prefits = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.studyPrefitList)
+                    Assert.Equal<string list>(study.experiments |> List.map (fun name -> (ConstructorUiId.studyPrefitRow name).value),
+                                             prefits.Children |> Seq.map AutomationProperties.GetAutomationId |> List.ofSeq)
+                    Assert.Equal("E1: ready, 4 point(s)", Assert.IsAssignableFrom<TextBlock>(prefits.Children[0]).Text)
+                    Assert.Contains("E2: no data is attached:", Assert.IsAssignableFrom<TextBlock>(prefits.Children[1]).Text)
+                    Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(Assert.IsAssignableFrom<TextBlock>(prefits.Children[1]).Foreground).Color)
+                    Assert.Equal("E3: ready, 4 point(s)", Assert.IsAssignableFrom<TextBlock>(prefits.Children[2]).Text))
+                withStudyWindow shown (fun window ->
                     let history = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.fitRunHistory)
+                    // Spec 0051 `.manual/007` 8.4: the study's fit runs, newest first.
                     Assert.Equal<string list>(
-                        [ (ConstructorUiId.fitRunRow first.name).value; (ConstructorUiId.fitRunRow second.name).value ],
+                        [ (ConstructorUiId.fitRunRow second.name).value; (ConstructorUiId.fitRunRow first.name).value ],
                         history.Children |> Seq.map AutomationProperties.GetAutomationId |> List.ofSeq)
                     for run in [ first; second ] do
                         Assert.Equal($"{run.name.value} — {run.stage.text}, {run.engine.text}, {run.runs.Length} run(s)",
                                      UiDriver.ById.captionOf window (ConstructorUiId.fitRunRow run.name))
-                    let prefits = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.studyPrefitList)
-                    Assert.Equal<string list>(study.experiments |> List.map (fun name -> (ConstructorUiId.studyPrefitRow name).value),
-                                             prefits.Children |> Seq.map AutomationProperties.GetAutomationId |> List.ofSeq)
-                    Assert.Equal("E1: ready, 4 point(s)", Assert.IsType<TextBlock>(prefits.Children[0]).Text)
-                    Assert.Contains("E2: no data is attached:", Assert.IsType<TextBlock>(prefits.Children[1]).Text)
-                    Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(Assert.IsType<TextBlock>(prefits.Children[1]).Foreground).Color)
-                    Assert.Equal("E3: ready, 4 point(s)", Assert.IsType<TextBlock>(prefits.Children[2]).Text)
                     pressStudyBox window (ConstructorUiId.fitRunRow first.name)
                     Assert.Equal(PositiveCommand.fill, fitBoxColor window (ConstructorUiId.fitRunRow first.name))
                     pressStudyBox window (ConstructorUiId.fitRunRow second.name)
@@ -1035,9 +1090,9 @@ module StudyViewTests =
                     {
                         shown with kitFitRuns = [ first; latestWithOlderData ]
                     }
-                withStudyWindow changed (fun window ->
+                withStudyWindow (changed |> updateTableAndElementRotation BeginPageCreate) (fun window ->
                     let e1 = ExperimentName "E1"
-                    let text = Assert.IsType<TextBlock>(UiDriver.ById.findControl window (ConstructorUiId.studyPrefitRow e1)).Text
+                    let text = Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window (ConstructorUiId.studyPrefitRow e1)).Text
                     Assert.Equal("E1: ready, 4 point(s) — data changed since the last fit run", text))
                 let emptyStudy =
                     {
@@ -1050,10 +1105,10 @@ module StudyViewTests =
                             kitStudies = [ emptyStudy ]
                     }
                 withStudyWindow empty (fun window ->
+                    Assert.Contains("No fit run yet: New fit run… runs the study.", studyPanelTexts window ConstructorUiId.studyFitPanel))
+                withStudyWindow (empty |> updateTableAndElementRotation BeginPageCreate) (fun window ->
                     let prefits = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.studyPrefitList)
-                    Assert.Equal("The study holds no run a fit reads.", Assert.IsType<TextBlock>(Assert.Single prefits.Children).Text)
-                    let history = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.fitRunHistory)
-                    Assert.Equal("No fit run yet.", Assert.IsType<TextBlock>(Assert.Single history.Children).Text))
+                    Assert.Equal("The study holds no run a fit reads.", Assert.IsAssignableFrom<TextBlock>(Assert.Single prefits.Children).Text))
                 let missing = ExperimentName "Absent"
                 let invalidStudy =
                     {
@@ -1063,9 +1118,9 @@ module StudyViewTests =
                     {
                         shown with kitStudies = [ invalidStudy ]
                     }
-                withStudyWindow invalid (fun window ->
+                withStudyWindow (invalid |> updateTableAndElementRotation BeginPageCreate) (fun window ->
                     let prefits = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.studyPrefitList)
-                    let text = Assert.IsType<TextBlock>(Assert.Single prefits.Children)
+                    let text = Assert.IsAssignableFrom<TextBlock>(Assert.Single prefits.Children)
                     Assert.Contains(missing.value, text.Text)
                     Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(text.Foreground).Color))
             finally model.kit.close () |> SceneTestFixture.kitSuccess)
@@ -1114,24 +1169,25 @@ module StudyViewTests =
                 let report (message : StudyFitMsg) : unit =
                     send (StudyFit message)
                     Dispatcher.UIThread.RunJobs()
+                // Spec 0051 `.manual/007` 8.4: Run sends `StartFitRun`, and the study takes the form's settings as it starts.
                 let assertRequest (stage : FitStage) (calibrationUse : CalibrationUse) : unit =
-                    let request =
-                        messages |> Seq.choose (function StudyFit (RunFit request) -> Some request | _ -> None) |> Seq.last
-                    Assert.Equal<StudyName>(study.name, request.study)
-                    Assert.Equal<FitStage>(stage, request.stage)
-                    Assert.Equal<CalibrationUse>(calibrationUse, request.calibrationUse)
+                    let started = messages |> Seq.choose (function StartFitRun started -> Some started | _ -> None) |> Seq.last
+                    Assert.Equal<FitStage>(stage, started)
+                    let recorded = model.kit.proxy.readStudies () |> SceneTestFixture.kitSuccess |> List.find (fun held -> held.name = study.name)
+                    Assert.Equal<CalibrationUse>(calibrationUse, recorded.settings.calibrationUse)
                 try
                     window.Show()
                     Dispatcher.UIThread.RunJobs()
-                    pressStudyBox window ConstructorUiId.studyCalibrationPriorChoice
-                    Assert.Equal(PositiveCommand.fill, fitBoxColor window ConstructorUiId.studyCalibrationPriorChoice)
+                    // Spec 0051 `.manual/007` 8.4: each run is a New fit run…, which closes as the run starts.
+                    pressStudyBox window ConstructorUiId.newFitRunButton
+                    pressStudyBox window (ConstructorUiId.studyFitModeChoice JointFit)
                     pressStudyBox window ConstructorUiId.studyRunFitButton
                     Assert.Single jobs |> ignore
-                    assertRequest JointStage CalibrationAsPrior
+                    assertRequest JointStage study.settings.calibrationUse
                     Assert.True(Assert.IsType<ProgressBar>(UiDriver.ById.findControl window ConstructorUiId.studyFitProgressBar).IsIndeterminate)
                     UiDriver.ById.findControl window ConstructorUiId.studyFitCancelButton |> ignore
-                    for id in [ ConstructorUiId.studyRunFitButton; ConstructorUiId.studyRunStageOneButton; ConstructorUiId.studyRunStageTwoButton ] do
-                        Assert.False((UiDriver.ById.findControl window id).IsEffectivelyEnabled)
+                    // While a fit runs, the page offers no other.
+                    UiDriver.ById.assertAbsent window ConstructorUiId.newFitRunButton
                     let progress : JobProgress =
                         {
                             completed = JobStepCount 3
@@ -1139,7 +1195,7 @@ module StudyViewTests =
                             elapsed = JobElapsed (System.TimeSpan.FromSeconds 0.2)
                         }
                     report (StudyFitProgressed progress)
-                    Assert.Contains("3 iterations", Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyFitProgressText).Text)
+                    Assert.Contains("3 iterations", Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyFitProgressText).Text)
                     pressStudyBox window ConstructorUiId.studyFitCancelButton
                     Assert.Single cancels |> ignore
                     Assert.Single jobs |> ignore
@@ -1147,6 +1203,8 @@ module StudyViewTests =
                     UiDriver.ById.assertAbsent window ConstructorUiId.studyFitProgressBar
                     UiDriver.ById.assertAbsent window ConstructorUiId.studyFitCancelButton
                     Assert.Equal<FitRun list>([ first; second ], model.kit.proxy.readFitRuns study.name |> SceneTestFixture.kitSuccess)
+                    pressStudyBox window ConstructorUiId.newFitRunButton
+                    pressStudyBox window (ConstructorUiId.studyFitModeChoice StagedFit)
                     pressStudyBox window ConstructorUiId.studyCalibrationFixedChoice
                     pressStudyBox window ConstructorUiId.studyRunStageOneButton
                     Assert.Equal(2, jobs.Count)
@@ -1158,21 +1216,23 @@ module StudyViewTests =
                         }
                     report (StudyFitEnded (Ok completed))
                     let history = Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.fitRunHistory)
-                    Assert.Equal(3, history.Children.Count)
+                    Assert.Equal(3, fitRunRowsIn history)
                     Assert.Equal(PositiveCommand.fill, fitBoxColor window (ConstructorUiId.fitRunRow completed.name))
                     Assert.Equal<FitRun list>([ first; second; completed ], model.kit.proxy.readFitRuns study.name |> SceneTestFixture.kitSuccess)
                     UiDriver.ById.assertAbsent window ConstructorUiId.studyFitProgressBar
+                    // The study took the staged mode when stage 1 started, so the next form opens on it.
+                    pressStudyBox window ConstructorUiId.newFitRunButton
                     pressStudyBox window ConstructorUiId.studyCalibrationPriorChoice
                     pressStudyBox window ConstructorUiId.studyRunStageTwoButton
                     Assert.Equal(3, jobs.Count)
                     assertRequest ObjectStage CalibrationAsPrior
                     let error = FitRunRaisedErr "recorded fit failed"
                     report (StudyFitEnded (Error error))
-                    let errorText = Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyFitErrorText)
+                    let errorText = Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.studyFitErrorText)
                     Assert.Equal(error.describe, errorText.Text)
                     Assert.Equal(MaterialsWindowView.messageColor, Assert.IsType<SolidColorBrush>(errorText.Foreground).Color)
                     UiDriver.ById.assertAbsent window ConstructorUiId.studyFitCancelButton
-                    Assert.Equal(3, Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.fitRunHistory).Children.Count)
+                    Assert.Equal(3, fitRunRowsIn (Assert.IsType<StackPanel>(UiDriver.ById.findControl window ConstructorUiId.fitRunHistory)))
                 finally
                     window.Close()
                     Dispatcher.UIThread.RunJobs()

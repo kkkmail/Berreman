@@ -114,7 +114,7 @@ module KitArchive =
         | KitZipTargetNotEmptyErr of reason : string
         /// The zip would be written inside the kit it holds (spec 0050 S6).
         | KitZipInsideKitErr of reason : string
-        /// The zip holds no `.kit-json` at its root (spec 0050 S6).
+        /// The zip holds no `.optics-kit` at its root (spec 0050 S6).
         | KitZipHoldsNoKitErr of reason : string
 
         member this.describe : string =
@@ -463,7 +463,7 @@ module KitArchive =
                     let job : KitZipJob = { kit = kit; entries = kitFile.sentEntries tree; zip = zip }
                     this.writeKitZip job observer)
 
-        /// Extracts a zip holding `.kit-json` at its root, never its app cache: a foreign `.oc/lock` would make the
+        /// Extracts a zip holding `.optics-kit` at its root, never its app cache: a foreign `.oc/lock` would make the
         /// received kit look open elsewhere. A zip without one is KitZipHoldsNoKitErr, and nothing is written (spec 0050 S6).
         member this.receiveKit
             (zip : FileName)

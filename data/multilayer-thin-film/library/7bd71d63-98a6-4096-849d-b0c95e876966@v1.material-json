@@ -1,0 +1,38 @@
+{
+  "categoryOpt": "2a4b6c8d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
+  "contentHash": "64317f6f2b7e69226fa5ad36c82af7088a0ed3b4d9744323c0aa33ec4db782f8",
+  "descriptionOpt": null,
+  "id": "7bd71d63-98a6-4096-849d-b0c95e876966",
+  "name": "Transparent glass (n = 1.75)",
+  "payload": {
+    "Case": "MaterialPayload",
+    "Fields": [
+      {
+        "active": null,
+        "eps": {
+          "Case": "EpsWithoutDispValue",
+          "Fields": [
+            {
+              "Case": "IsotropicTransparent",
+              "Fields": [
+                1.75
+              ]
+            }
+          ]
+        },
+        "magnetic": null
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 1,
+    "version": 1
+  },
+  "version": 1
+}

@@ -1,5 +1,5 @@
-/// The kit window: the kit bar above the workbench, showing the kit, its Kit menu, the constructor and its switch, the
-/// reload offer and the kit status, every control under its `ConstructorUiId` (spec 0050 S5.3).
+/// The kit window: the page row above the shown page, with the reload offer and a running send while there is one, and
+/// the Kit page with the kit's own operations and Publish (spec 0050 S5.3; 0051 `.manual/007` Phase 2).
 module OpticalConstructor.Ui.KitWindowView
 
 open Avalonia
@@ -15,144 +15,7 @@ open OpticalConstructor.Domain.KitArchive
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.TableAndElementRotationView
-
-type TableAndElementRotationModel with
-
-    /// `Kit:` and the kit's caption, which wraps: it is the dock's fill, never a horizontal stack's child
-    /// (spec 0050 S5.3; AGENTS.md).
-    member internal model.kitCaptionRow : IView =
-        DockPanel.create [
-            DockPanel.children [
-                TextBlock.create [
-                    TextBlock.dock Dock.Left
-                    TextBlock.fontWeight FontWeight.SemiBold
-                    TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                    TextBlock.text "Kit:"
-                ]
-                TextBlock.create [
-                    ConstructorUiId.kitCaptionText.automationAttribute<TextBlock> ()
-                    TextBlock.textWrapping TextWrapping.Wrap
-                    TextBlock.text model.kitCaption.value
-                ]
-            ]
-        ] :> IView
-
-    /// The last kit read or write that needs telling: a done step in the text colour, a refusal in firebrick; the one
-    /// control carrying `kitStatus`, whichever bay is open (spec 0050 S5.3; 0051 `.manual/003` 5.1).
-    member internal model.kitStatusRows : IView list =
-        match model.kitStatus with
-        | Some status ->
-            let colour =
-                match status with
-                | KitStatusDone _ -> Color.FromRgb(40uy, 40uy, 40uy)
-                | KitStatusRefused _ -> Color.FromRgb(178uy, 34uy, 34uy)
-            [
-                TextBlock.create [
-                    ConstructorUiId.kitStatus.automationAttribute<TextBlock> ()
-                    TextBlock.foreground (MaterialsWindowView.brush colour)
-                    TextBlock.textWrapping TextWrapping.Wrap
-                    TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0))
-                    TextBlock.text status.caption.value
-                ]
-                |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitStatus.value
-                :> IView
-            ]
-        | None -> []
-
-/// The Kit menu as the bar's verb row, then the constructor and its switch (spec 0050 S5.3; 001 §O). A row, not an
-/// Avalonia `Menu`: a popup cannot be proven headless, as the model-driven element menu shows.
-let private kitMenuRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    // Spec 0050 S6: the save dialog suggests `<kit name>.zip`, and a cancelled dialog sends nothing. Hidden while a
-    // send runs, one per window.
-    let sendKit : IView list =
-        match model.kitFolderOpt with
-        | Some _ when not model.kitSend.job.isRunning ->
-            [
-                CommandControls.verbCommand ConstructorUiId.sendKitButton (ControlCaption "Send kit…") (fun () ->
-                    model.kitShell.zipPicker.pickZipToWriteThen model.kit.kitFile.name.zipFileName (SendKit >> dispatch))
-            ]
-        | Some _
-        | None -> []
-    let showInExplorer : IView list =
-        match model.kitFolderOpt with
-        | Some _ ->
-            [ CommandControls.verbCommand ConstructorUiId.kitShowInExplorerButton (ControlCaption "Show in Explorer") (fun () -> dispatch ShowKitInExplorer) ]
-        | None -> []
-    // Spec 0050 S6: offered while the kit takes writes and no source is open; a cancelled dialog sends nothing.
-    let copyExperiments : IView list =
-        match model.kitWrites, model.kitCopyOpt with
-        | ControlOffered, None ->
-            [
-                CommandControls.verbCommand ConstructorUiId.kitCopyExperimentsButton (ControlCaption "Copy experiments from another kit…") (fun () ->
-                    model.kitShell.kitPicker.pickThen OpticalConstructor.Domain.KitFolders.ChooseKitFolder (OpenCopySource >> dispatch))
-            ]
-        | ControlOffered, Some _
-        | ControlWithheld, _ -> []
-    let modeText (caption : ControlCaption) : IView =
-        TextBlock.create [
-            ConstructorUiId.kitModeText.automationAttribute<TextBlock> ()
-            TextBlock.verticalAlignment VerticalAlignment.Center
-            TextBlock.margin (Thickness(8.0, 0.0, 8.0, 4.0))
-            TextBlock.text caption.value
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.kitModeText.value
-        :> IView
-    let switchButton (label : ControlCaption) (target : ConstructorMode) : IView =
-        CommandControls.verbCommand ConstructorUiId.kitSwitchModeButton label (fun () -> dispatch (SwitchConstructorMode target))
-    let kitVerbs : IView list =
-        [
-            CommandControls.verbCommand ConstructorUiId.kitReloadChangesButton (ControlCaption "Reload changes") (fun () -> dispatch (CheckKitChanges KitCheckOnRequest))
-            CommandControls.verbCommand ConstructorUiId.kitCloseButton (ControlCaption "Close kit") (fun () -> dispatch CloseKit)
-        ]
-    let constructorItems : IView list =
-        match model.constructorMode with
-        | ForwardConstructor -> [ modeText (ControlCaption "Main constructor"); switchButton (ControlCaption "Switch to Inverse") InverseConstructor ]
-        | InverseConstructor -> [ modeText (ControlCaption "Inverse constructor"); switchButton (ControlCaption "Switch to Main") ForwardConstructor ]
-    WrapPanel.create [
-        WrapPanel.orientation Orientation.Horizontal
-        WrapPanel.children (sendKit @ showInExplorer @ copyExperiments @ kitVerbs @ constructorItems)
-    ] :> IView
-
-/// The kit's naming template in a field that fills the row, Save template right of it while the kit takes writes
-/// (spec 0050 S8.3; 001 §J). A dock, never a horizontal stack, so the field is bounded by the bar's width (AGENTS.md).
-let private namingTemplateRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let saveTemplate : IView list =
-        match model.kitWrites with
-        | ControlOffered ->
-            [
-                Border.create [
-                    Border.dock Dock.Right
-                    Border.child (
-                        CommandControls.verbCommand ConstructorUiId.saveNamingTemplateButton (ControlCaption "Save template") (fun () ->
-                            dispatch SaveNamingTemplate))
-                ]
-            ]
-        | ControlWithheld -> []
-    DockPanel.create [
-        DockPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-        DockPanel.children (
-            [
-                TextBlock.create [
-                    TextBlock.dock Dock.Left
-                    TextBlock.fontWeight FontWeight.SemiBold
-                    TextBlock.verticalAlignment VerticalAlignment.Center
-                    TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                    TextBlock.text "Naming template:"
-                ]
-                :> IView
-            ]
-            @ saveTemplate
-            @ [
-                TextBox.create [
-                    yield! ConstructorUiId.namingTemplateField.inputAttributes<TextBox> ()
-                    TextBox.verticalAlignment VerticalAlignment.Center
-                    TextBox.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                    TextBox.text model.namingTemplateText.value
-                    TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetNamingTemplateText >> dispatch))
-                ]
-                :> IView
-            ])
-    ] :> IView
+open OpticalConstructor.Ui.KitPageFrame
 
 /// The running send's progress row directly under the Kit menu, its Cancel ending the send before its next file
 /// (spec 0050 S6; .spec-md §10.2). Nothing while no send runs.
@@ -272,8 +135,8 @@ let private kitCopyRows (model : TableAndElementRotationModel) (dispatch : Table
                 StackPanel.orientation Orientation.Vertical
                 StackPanel.children (
                 [
-                    TextBlock.create [
-                        ConstructorUiId.kitCopySourceText.automationAttribute<TextBlock> ()
+                    SelectableTextBlock.create [
+                        ConstructorUiId.kitCopySourceText.automationAttribute<SelectableTextBlock> ()
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0))
                         TextBlock.text $"Copy from {copySource.source.kitFile.name.value}: choose the experiments to copy."
@@ -331,8 +194,8 @@ let private kitChangesRows (model : TableAndElementRotationModel) (dispatch : Ta
             StackPanel.create [
                 StackPanel.orientation Orientation.Vertical
                 StackPanel.children [
-                    TextBlock.create [
-                        ConstructorUiId.kitChangesText.automationAttribute<TextBlock> ()
+                    SelectableTextBlock.create [
+                        ConstructorUiId.kitChangesText.automationAttribute<SelectableTextBlock> ()
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0))
                         TextBlock.text $"Changed outside the app: {names}. Reload them, or keep your version?"
@@ -358,66 +221,210 @@ let private kitChangesRows (model : TableAndElementRotationModel) (dispatch : Ta
             :> IView
         ]
 
-/// The kit window as a pure projection of the workbench model: the kit bar docked above, the flow strip left of the
-/// step's surface, keyed so a change between surfaces recreates it and Setups ↔ Experiments keeps the workbench
-/// (spec 0050 S5.3, S7.2, S9.3, S11.5, S14.2).
+/// The page row: Items, Setups and Experiments, the switch to the other constructor, the Inverse pages in Inverse, then
+/// Kit; the shown page is chosen, and the row wraps at the window's width (spec 0050 S7.2; 0051 `.manual/007` 2.1, D1).
+let private pageRowView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    let stepBox (step : ConstructorFlowStep) : IView =
+        CommandControls.choiceCommand step.flowUiId step.caption (if step = model.flowStep then ChosenChoice else UnchosenChoice) (fun () ->
+            dispatch (ShowFlowStep step))
+    let switch : IView =
+        match model.constructorMode with
+        | ForwardConstructor ->
+            CommandControls.verbCommand ConstructorUiId.kitSwitchModeButton (ControlCaption "Inverse") (fun () -> dispatch (SwitchConstructorMode InverseConstructor))
+        | InverseConstructor ->
+            CommandControls.verbCommand ConstructorUiId.kitSwitchModeButton (ControlCaption "Main") (fun () -> dispatch (SwitchConstructorMode ForwardConstructor))
+    let steps = ConstructorFlowStep.stepsOf model.constructorMode
+    let first = steps |> List.filter (fun step -> List.contains step [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ])
+    let rest = steps |> List.filter (fun step -> not (List.contains step [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ]))
+    WrapPanel.create [
+        yield! ConstructorUiId.pageRow.groupAttributes<WrapPanel> ()
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.margin (Thickness(8.0, 6.0, 8.0, 2.0))
+        WrapPanel.children ((first |> List.map stepBox) @ [ switch ] @ (rest |> List.map stepBox))
+    ]
+    :> IView
+
+/// A wrapping line of the Kit page.
+let private kitLine (id : ConstructorUiId) (text : ControlCaption) : IView =
+    PageControls.copyableText id text [ SelectableTextBlock.margin (Thickness(0.0, 1.0, 0.0, 1.0)) ]
+
+/// A semi-bold heading of a Kit page block.
+let private kitHeading (text : ControlCaption) : IView =
+    TextBlock.create [
+        TextBlock.fontWeight FontWeight.SemiBold
+        TextBlock.margin (Thickness(0.0, 10.0, 0.0, 2.0))
+        TextBlock.text text.value
+    ]
+    :> IView
+
+/// The kit's verbs: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes and Close kit
+/// (spec 0050 S5.3, S6; 0051 `.manual/007` 2.2).
+let private kitVerbsRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    // Spec 0050 S6: the save dialog suggests `<kit name>.zip`, and a cancelled dialog sends nothing. Hidden while a
+    // send runs, one per window.
+    let sendKit : IView list =
+        match model.kitFolderOpt with
+        | Some _ when not model.kitSend.job.isRunning ->
+            [
+                CommandControls.verbCommand ConstructorUiId.sendKitButton (ControlCaption "Send kit…") (fun () ->
+                    model.kitShell.zipPicker.pickZipToWriteThen model.kit.kitFile.name.zipFileName (SendKit >> dispatch))
+            ]
+        | Some _
+        | None -> []
+    let showInExplorer : IView list =
+        match model.kitFolderOpt with
+        | Some _ ->
+            [ CommandControls.verbCommand ConstructorUiId.kitShowInExplorerButton (ControlCaption "Show in Explorer") (fun () -> dispatch ShowKitInExplorer) ]
+        | None -> []
+    // Spec 0050 S6: offered while the kit takes writes and no source is open; a cancelled dialog sends nothing.
+    let copyExperiments : IView list =
+        match model.kitWrites, model.kitCopyOpt with
+        | ControlOffered, None ->
+            [
+                CommandControls.verbCommand ConstructorUiId.kitCopyExperimentsButton (ControlCaption "Copy experiments from another kit…") (fun () ->
+                    model.kitShell.kitPicker.pickThen OpticalConstructor.Domain.KitFolders.ChooseKitFile (OpenCopySource >> dispatch))
+            ]
+        | ControlOffered, Some _
+        | ControlWithheld, _ -> []
+    WrapPanel.create [
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.children (
+            sendKit
+            @ showInExplorer
+            @ copyExperiments
+            @ [
+                CommandControls.verbCommand ConstructorUiId.kitReloadChangesButton (ControlCaption "Reload changes") (fun () -> dispatch (CheckKitChanges KitCheckOnRequest))
+                CommandControls.verbCommand ConstructorUiId.kitCloseButton (ControlCaption "Close kit") (fun () -> dispatch CloseKit)
+                CommandControls.verbCommand ConstructorUiId.kitGuideButton (ControlCaption "Guide…") (fun () -> model.kitShell.openGuide ())
+            ])
+    ]
+    :> IView
+
+/// The naming template: read-only with Edit, or, in Editing, its field and Save and Cancel (spec 0050 S8.3; 0051
+/// `.manual/007` 2.2).
+let private namingTemplateRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    match model.pageMode with
+    | EditingPageEntry ->
+        [
+            TextBox.create [
+                yield! ConstructorUiId.namingTemplateField.inputAttributes<TextBox> ()
+                TextBox.horizontalAlignment HorizontalAlignment.Stretch
+                TextBox.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                TextBox.text model.namingTemplateText.value
+                TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetNamingTemplateText >> dispatch))
+            ]
+            :> IView
+            model.draftActions (ControlCaption "Save") dispatch
+        ]
+    | BrowsingPage
+    | CreatingPageEntry ->
+        let edit : IView list =
+            match model.kitWrites with
+            | ControlOffered -> [ CommandControls.verbCommand ConstructorUiId.pageEditButton (ControlCaption "Edit") (fun () -> dispatch BeginPageEdit) ]
+            | ControlWithheld -> []
+        [
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children (
+                    PageControls.copyableText ConstructorUiId.namingTemplateText model.kit.kitFile.namingTemplate.caption [
+                        SelectableTextBlock.verticalAlignment VerticalAlignment.Center
+                        SelectableTextBlock.margin (Thickness(0.0, 0.0, 10.0, 4.0))
+                    ]
+                    :: edit)
+            ]
+            :> IView
+        ]
+
+/// Publish: the kit's fit runs as dynamic buttons, the chosen one's calibration preview and promotions under it (spec
+/// 0050 S11.5; 0051 `.manual/007` 2.2, 8.6).
+let private publishRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    match model.kitFitRuns |> List.sortByDescending (fun run -> run.stamp) with
+    | [] -> [ kitLine ConstructorUiId.publishNothingText (ControlCaption "No fit run yet: a study's fit runs are made on the Fit page, in Inverse.") ]
+    | runs ->
+        let chosen (run : OpticalConstructor.Domain.FitRuns.FitRun) : bool =
+            model.studySurface.fitRunOpt = Some run.name && model.studySurface.studyOpt = Some run.study
+        let row (run : OpticalConstructor.Domain.FitRuns.FitRun) : IView =
+            let caption = ControlCaption $"{run.name.value} — study {run.study.value}, {run.stage.text}"
+            let menu = model.entryMenuOf run.name.caption None RenameAvailable dispatch
+            PageControls.entryToggle (ConstructorUiId.fitRunRow run.name) caption (if chosen run then ChosenChoice else UnchosenChoice) NeutralCommand ControlOffered menu (fun () ->
+                dispatch (ChoosePublishRun run.name)) []
+        let under (run : OpticalConstructor.Domain.FitRuns.FitRun) : IView list =
+            match chosen run, model.kitStudies |> List.tryFind (fun study -> study.name = run.study) with
+            | true, Some study -> underEntry (ConstructorUiKey $"PublishRun_{run.name.value}") (StudyPublishView.publishRunRows model study run dispatch)
+            | true, None -> underEntry (ConstructorUiKey $"PublishRun_{run.name.value}") [ kitLine ConstructorUiId.publishNothingText (ControlCaption $"The kit holds no study {run.study.value}.") ]
+            | false, _ -> []
+        [
+            StackPanel.create [
+                yield! ConstructorUiId.studyPublishPanel.groupAttributes<StackPanel> ()
+                StackPanel.orientation Orientation.Vertical
+                StackPanel.children (entryRows runs row under)
+            ]
+            :> IView
+        ]
+
+/// The Kit page: the kit's name, folder and stamps, its verbs, the copy source while one is open, the naming template,
+/// and Publish (spec 0050 S5.3, S6, S8.3, S11.5; 0051 `.manual/007` 2.2).
+let private kitPageView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    let stamp (time : ClockTime) : string = time.value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+    let folder =
+        match model.kitFolderOpt with
+        | Some kitFolder -> ControlCaption $"Folder: {kitFolder.value.value}"
+        | None -> ControlCaption "Folder: none (a scratch kit)"
+    let content =
+        model.pageHeader dispatch
+        @ [
+            kitLine ConstructorUiId.kitCaptionText model.kitCaption
+            kitLine ConstructorUiId.kitFolderText folder
+            kitLine ConstructorUiId.kitCreatedText (ControlCaption $"Created: {stamp model.kit.kitFile.created}")
+            kitLine ConstructorUiId.kitModifiedText (ControlCaption $"Last saved: {stamp model.kit.kitFile.modified}")
+            kitVerbsRow model dispatch
+        ]
+        @ kitSendRows model dispatch
+        @ kitCopyRows model dispatch
+        @ [ kitHeading (ControlCaption "Naming template") ]
+        @ namingTemplateRows model dispatch
+        @ [ kitHeading (ControlCaption "Publish") ]
+        @ publishRows model dispatch
+    pageScroll ConstructorUiId.kitPagePanel content
+
+/// The kit window as a pure projection of the workbench model: the page row, the reload offer while files changed
+/// outside the app and a running send's progress, then the shown page, keyed so a change of page recreates it (spec 0050
+/// S5.3, S7.2, S9.3, S11.5, S14.2; 0051 `.manual/007` 2.1, 2.2).
 let kitWindowView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    // `View.withKey` keys a typed view, so the surface sits in a keyed `Border`, as `Ribbon.ribbonView`'s pane does.
+    let keyed (key : string) (view : IView) : IView =
+        Border.create [ Border.child view ] |> Avalonia.FuncUI.DSL.View.withKey key :> IView
     let surface : IView =
         match model.flowStep with
-        | ItemsFlowStep ->
-            Border.create [ Border.child (ItemsPanelView.itemsPanelView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "items"
-            :> IView
+        | ItemsFlowStep -> keyed "items" (ItemsPanelView.itemsPanelView model dispatch)
+        | SetupsFlowStep -> keyed "setups" (SetupsPageView.setupsPageView model dispatch)
+        | ExperimentsFlowStep -> keyed "experiments" (ExperimentsPageView.experimentsPageView model dispatch)
+        | DataFlowStep -> keyed "data" (DataStepView.dataStepView model dispatch)
+        | UnknownsFlowStep -> keyed "unknowns" (StudyUnknownsView.studyUnknownsView model dispatch)
+        | PlanFlowStep -> keyed "plan" (PlanView.planView model dispatch)
+        | FitFlowStep -> keyed "fit" (StudyFitView.studyFitView model dispatch)
+        | ResultsFlowStep -> keyed "results" (StudyResultsView.studyResultsView model dispatch)
+        | KitFlowStep -> keyed "kit" (kitPageView model dispatch)
+    // The reload offer and a running send concern whatever page is shown (spec 0051 `.manual/007` 1.7).
+    let banners : IView list =
+        match model.flowStep with
+        | KitFlowStep -> kitChangesRows model dispatch
+        | ItemsFlowStep
         | SetupsFlowStep
-        | ExperimentsFlowStep ->
-            Border.create [ Border.child (mainView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "workbench"
-            :> IView
-        | DataFlowStep ->
-            Border.create [ Border.child (DataStepView.dataStepView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "data"
-            :> IView
-        | UnknownsFlowStep ->
-            Border.create [ Border.child (StudyUnknownsView.studyUnknownsView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "unknowns"
-            :> IView
-        | PlanFlowStep ->
-            Border.create [ Border.child (PlanView.planView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "plan"
-            :> IView
-        | FitFlowStep ->
-            Border.create [ Border.child (StudyFitView.studyFitView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "fit"
-            :> IView
-        | ResultsFlowStep ->
-            Border.create [ Border.child (StudyResultsView.studyResultsView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "results"
-            :> IView
-        | PublishFlowStep ->
-            Border.create [ Border.child (StudyPublishView.studyPublishView model dispatch) ]
-            |> Avalonia.FuncUI.DSL.View.withKey "publish"
-            :> IView
+        | ExperimentsFlowStep
+        | DataFlowStep
+        | UnknownsFlowStep
+        | PlanFlowStep
+        | FitFlowStep
+        | ResultsFlowStep -> kitChangesRows model dispatch @ kitSendRows model dispatch
     DockPanel.create [
         DockPanel.children [
             StackPanel.create [
                 StackPanel.dock Dock.Top
                 yield! ConstructorUiId.kitBar.groupAttributes<StackPanel> ()
                 StackPanel.orientation Orientation.Vertical
-                StackPanel.margin (Thickness(8.0, 6.0, 8.0, 2.0))
-                StackPanel.children (
-                    [ model.kitCaptionRow; kitMenuRow model dispatch; namingTemplateRow model dispatch ]
-                    @ kitSendRows model dispatch
-                    @ kitCopyRows model dispatch
-                    @ kitChangesRows model dispatch
-                    @ model.kitStatusRows)
-            ]
-            // Scrolls: the bar above can leave a short window too little height for the strip (spec 0050 S7.2; AGENTS.md).
-            ScrollViewer.create [
-                ScrollViewer.dock Dock.Left
-                ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
-                ScrollViewer.content (FlowStripView.flowStripView model dispatch)
+                StackPanel.children (pageRowView model dispatch :: (banners |> List.map (fun banner -> Border.create [ Border.margin (Thickness(8.0, 0.0, 8.0, 2.0)); Border.child banner ] :> IView)))
             ]
             surface
         ]
-    ] :> IView
+    ]
+    :> IView

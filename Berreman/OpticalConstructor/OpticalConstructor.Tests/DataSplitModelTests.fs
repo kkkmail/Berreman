@@ -354,6 +354,26 @@ module DataSplitModelTests =
             Assert.Equal<TableAndElementRotationModel>(expected, applied))
 
     [<Fact>]
+    let ``on the Data page a split is the page's Creating, and Apply or Cancel returns the page to Browsing`` () : unit =
+        // Spec 0051 `.manual/007` 1.2, 7.5: Create writes, then the page browses, its matrix entries offered again.
+        withSplitKit (fun _ kit ->
+            // The Data page is the Inverse constructor's.
+            let onData =
+                { kit.committed with constructorMode = InverseConstructor; pageMode = BrowsingPage }
+                |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
+            Assert.Equal<ConstructorFlowStep>(DataFlowStep, onData.flowStep)
+            Assert.Equal<PageMode>(BrowsingPage, onData.pageMode)
+            let split = onData |> updateTableAndElementRotation (SplitByColumn (kit.phoneRoiFile, ImportProfileName.phoneRoiCsv))
+            Assert.Equal<ControlCaption option>(None, split.kitRefusalOpt)
+            Assert.Equal<ConstructorFlowStep>(DataFlowStep, split.flowStep)
+            Assert.Equal<PageMode>(CreatingPageEntry, split.pageMode)
+            Assert.Equal<PageMode>(BrowsingPage, (split |> updateTableAndElementRotation CancelDataSplit).pageMode)
+            let applied = split |> updateTableAndElementRotation MatchByTemplate
+            Assert.Equal<ControlCaption option>(None, applied.kitRefusalOpt)
+            Assert.Equal<DataSplitState option>(None, applied.dataSplitOpt)
+            Assert.Equal<PageMode>(BrowsingPage, applied.pageMode))
+
+    [<Fact>]
     let ``a ticked offer records its setup when the kit lacks it and a new experiment of the draft's scan with its rows`` () : unit =
         withSplitKit (fun folder kit ->
             let heldSetup = Assert.Single(kit.committed.kitSetups)

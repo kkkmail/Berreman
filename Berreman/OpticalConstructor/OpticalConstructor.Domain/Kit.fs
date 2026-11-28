@@ -119,7 +119,7 @@ module Kit =
 
         member this.value : string = let (SendExcludeGlob text) = this in text
 
-    /// The name a kit's import profile is stored and picked under (spec 0050 S9.1; S9.2 keeps the profiles in `.kit-json`).
+    /// The name a kit's import profile is stored and picked under (spec 0050 S9.1; S9.2 keeps the profiles in `.optics-kit`).
     type ImportProfileName =
         | ImportProfileName of string
 
@@ -427,7 +427,7 @@ module Kit =
 
         static member currentSchemaVersion : FileSchemaVersion = FileSchemaVersion 1
 
-        static member extension : FileExtension = FileExtension ".kit-json"
+        static member extension : FileExtension = FileExtension ".optics-kit"
 
         static member fileName : FileName = (FileStem.ofText "").withExtension KitFile.extension
 
@@ -456,6 +456,13 @@ module Kit =
         | KitFolder of FolderName
 
         member this.value : FolderName = let (KitFolder folder) = this in folder
+
+        /// The folder above the kit, where the next kit dialog starts (spec 0051 `.manual/007` 3.4); none for a root.
+        member this.parentFolderOpt : FolderName option =
+            match System.IO.Path.GetDirectoryName(System.IO.Path.TrimEndingDirectorySeparator this.value.value) |> Option.ofObj with
+            | Some parent when parent <> "" -> Some (FolderName parent)
+            | Some _
+            | None -> None
 
     /// The access mode chosen when opening a kit (spec 0050 S4.1).
     type KitAccess =
@@ -1377,6 +1384,19 @@ module Kit =
                 Ok (SetupName text)
 
         member this.fileStem : FileStem = FileStem.ofText this.value
+
+        /// The name Copy… suggests: `<base> # <N>`, `<base>` this name without a trailing ` # <digits>` and `<N>` the
+        /// first number from 1 whose file no taken name has, ignoring case (spec 0051 `.manual/007` 5.4, D15).
+        member this.copyNameAmong (taken : SetupName list) : SetupName =
+            let suffixed = System.Text.RegularExpressions.Regex.Match(this.value, @"^(.*) # \d+$")
+            let baseText = if suffixed.Success then suffixed.Groups[1].Value else this.value
+            let takenStems = taken |> List.map (fun held -> held.fileStem.value)
+            let rec firstFree (number : int) : SetupName =
+                let candidate = SetupName $"{baseText} # {number.ToString(CultureInfo.InvariantCulture)}"
+                if takenStems |> List.exists (fun stem -> String.Equals(stem, candidate.fileStem.value, StringComparison.OrdinalIgnoreCase)) then
+                    firstFree (number + 1)
+                else candidate
+            firstFree 1
 
         /// The first free name by `FileStem.firstFreeText`, because a setup's file is named by its name (spec 0050 S8.2).
         member this.nextFreeAmong (taken : SetupName list) : SetupName =

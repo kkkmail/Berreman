@@ -2,7 +2,7 @@
 /// Covers the library and kit composition and headless rendering through the root window factory.
 /// Each opened window closes before the next probe to release its app-global registry key.
 /// Spec 0050 Close: the composed app goes from the Launcher through the start screen to a kit under the test output in
-/// each mode, and each committed kit opens read-only from the start screen and writes nothing, every flow-strip step shown.
+/// each mode, and each committed kit opens read-only from the start screen and writes nothing, every page shown.
 namespace OpticalConstructor.Ui.Tests
 
 open OpticalConstructor.Tests
@@ -136,16 +136,13 @@ module WireUiFinalCompositionTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``both faceted windows render in Select state over the app scope`` () =
+    let ``the Materials window renders in Select state over the app scope`` () =
         HeadlessSession.run (fun () ->
             let ctx = TestAppScope.freshAppContext owner
-            // The SAME Materials / Library windows the launcher opens Browse, opened in Select state
-            // (the step-016 mode) over the app scope — the second of the "both modes" the acceptance
-            // enumerates. The modeless-default modality means an ordinary Show (no modal block).
+            // The SAME Materials window the launcher opens Browse, opened in Select state (the step-016 mode, the sample
+            // editor's material pick) over the app scope. The modeless-default modality means an ordinary Show.
             let materialSelect : SelectionContext<MaterialLibrary.MaterialEntry> = selectContext Placement.Sample
-            showAssertClose (MaterialsWindow(ctx.materials, ctx.categories, ctx.catalogueImports, mode = Select materialSelect))
-            let librarySelect : SelectionContext<Library.LibraryEntry> = selectContext Placement.Sample
-            showAssertClose (LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, ctx.libraryBackups, ctx.catalogueImports, mode = Select librarySelect)))
+            showAssertClose (MaterialsWindow(ctx.materials, ctx.categories, ctx.catalogueImports, mode = Select materialSelect)))
 
     // ======================== spec 0050 Close: the composed app, end to end (gate `ui-smoke`) ========================
 
@@ -196,27 +193,27 @@ module WireUiFinalCompositionTests =
             let button = Assert.IsType<Button>(findControl launcher id)
             button.RaiseEvent(RoutedEventArgs(Button.ClickEvent)))
 
-    /// The surface each flow-strip step shows (spec 0050 S7.2, S9.3, S11.5, S14.2).
+    /// The surface each page of the page row shows (spec 0050 S7.2, S9.3, S11.5, S14.2; spec 0051 `.manual/007` 2.1).
     let private flowSurfaces : (Scene.ConstructorFlowStep * ConstructorUiId) list =
         [
             Scene.ItemsFlowStep, ConstructorUiId.itemsPanel
-            Scene.SetupsFlowStep, ConstructorUiId.tableElementCanvas
-            Scene.ExperimentsFlowStep, ConstructorUiId.ribbonPane Scene.BayNames.experiments.uiKey
+            Scene.SetupsFlowStep, ConstructorUiId.setupsPagePanel
+            Scene.ExperimentsFlowStep, ConstructorUiId.experimentsPagePanel
             Scene.DataFlowStep, ConstructorUiId.dataStepPanel
             Scene.UnknownsFlowStep, ConstructorUiId.studyUnknownsPanel
             Scene.PlanFlowStep, ConstructorUiId.planPanel
             Scene.FitFlowStep, ConstructorUiId.studyFitPanel
             Scene.ResultsFlowStep, ConstructorUiId.studyResultsPanel
-            Scene.PublishFlowStep, ConstructorUiId.studyPublishPanel
+            Scene.KitFlowStep, ConstructorUiId.kitPagePanel
         ]
 
-    /// The window's flow strip holds one box per step of `mode`, in its order, and none of another step; pressing each
-    /// box, in order, shows its step's surface (spec 0050 S7.2, S9.3, S11.5, S14.2).
+    /// The window's page row holds one button per page of `mode`, in its order, and none of another page; pressing each,
+    /// in order, shows its page (spec 0050 S7.2, S9.3, S11.5, S14.2; spec 0051 `.manual/007` 2.1).
     let private pressEveryFlowStep (window : Window) (mode : Scene.ConstructorMode) : unit =
         Assert.Equal<Scene.ConstructorFlowStep list>(Scene.ConstructorFlowStep.all, flowSurfaces |> List.map fst)
         let steps = Scene.ConstructorFlowStep.stepsOf mode
         let stepIds = Scene.ConstructorFlowStep.all |> List.map (fun step -> step.flowUiId.value)
-        let strip = findControl window ConstructorUiId.flowStrip
+        let strip = findControl window ConstructorUiId.pageRow
         let boxIds =
             strip.GetVisualDescendants()
             |> Seq.choose (function
@@ -229,8 +226,8 @@ module WireUiFinalCompositionTests =
             match List.contains step steps, tryControlOf window step.flowUiId with
             | true, Some _
             | false, None -> ()
-            | true, None -> Assert.Fail $"the flow strip must hold {step.flowUiId.value}"
-            | false, Some _ -> Assert.Fail $"the flow strip must not hold {step.flowUiId.value}"
+            | true, None -> Assert.Fail $"the page row must hold {step.flowUiId.value}"
+            | false, Some _ -> Assert.Fail $"the page row must not hold {step.flowUiId.value}"
         for step, surface in flowSurfaces |> List.filter (fun (step, _) -> List.contains step steps) do
             pressBoxIn window step.flowUiId
             let shown = findControl window surface
@@ -238,7 +235,7 @@ module WireUiFinalCompositionTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: the composed app goes from the Launcher through the start screen to a kit under the test output and shows every flow-strip step of its mode`` () : unit =
+    let ``acceptance: the composed app goes from the Launcher through the start screen to a kit under the test output and shows every page of its mode`` () : unit =
         HeadlessSession.run (fun () ->
             let locations = TestAppScope.fileLocations owner
             // Composed as `Program.fs:Startup` composes the app.
@@ -251,7 +248,7 @@ module WireUiFinalCompositionTests =
                 |> Option.defaultWith (fun () -> failwith $"{locations.libraryConnection.value} must name a library file")
             Assert.True(File.Exists libraryFile.value, $"the library database {libraryFile.value} must exist")
             let kit = TestAppScope.freshKitFolder owner
-            let kitFile = Path.Combine(kit.value.value, ".kit-json")
+            let kitFile = Path.Combine(kit.value.value, ".optics-kit")
             let lockFile = Path.Combine(kit.value.value, ".oc", "lock")
             let launcher = LauncherWindow(locations, WorkbenchSettings.defaults, Ok ctx, fun _ -> TestAppScope.kitPickerOf kit)
             let opened = ResizeArray<Window>()
@@ -274,7 +271,7 @@ module WireUiFinalCompositionTests =
                 let inverse =
                     Assert.IsType<InverseConstructorWindow>(Assert.Single(windowsOpenedBy (fun () -> pressBoxIn inverseStart ConstructorUiId.newKitButton)))
                 Assert.False(inverseStart.IsVisible, "the start screen must close once its kit opens")
-                Assert.True(File.Exists kitFile, "New kit… must write the kit's .kit-json")
+                Assert.True(File.Exists kitFile, "New kit… must write the kit's .optics-kit")
                 Assert.True(File.Exists lockFile, "the open kit must hold its lock")
                 match (ctx.kitHistory.readHistory ()).entries with
                 | first :: _ -> Assert.Equal<KitFolder>(kit, first.folder)
@@ -299,9 +296,9 @@ module WireUiFinalCompositionTests =
 
                 let dataLocations =
                     Assert.IsType<DataLocationsWindow>(Assert.Single(clickLauncherButton launcher ConstructorUiId.launcherDataLocationsLink))
-                let libraryPath = Assert.IsType<TextBlock>(findControl dataLocations (ConstructorUiId.dataLocationPathText LibraryDatabaseLocation))
+                let libraryPath = Assert.IsAssignableFrom<TextBlock>(findControl dataLocations (ConstructorUiId.dataLocationPathText LibraryDatabaseLocation))
                 Assert.Equal(libraryFile.value, libraryPath.Text)
-                let kitsPath = Assert.IsType<TextBlock>(findControl dataLocations (ConstructorUiId.dataLocationPathText KitsLocation))
+                let kitsPath = Assert.IsAssignableFrom<TextBlock>(findControl dataLocations (ConstructorUiId.dataLocationPathText KitsLocation))
                 Assert.Equal(locations.kitsFolder.value, kitsPath.Text)
             finally
                 // Every window the fact opened closes, so no window registry key outlives it.
@@ -310,7 +307,7 @@ module WireUiFinalCompositionTests =
                 Dispatcher.UIThread.RunJobs())
 
     /// Opens `kit` read-only from the start screen against an empty library, mounts its Inverse window as `KitWindowTests`
-    /// mounts its screens and presses every flow-strip step, then closes the window and the kit as `KitAcceptanceTests`
+    /// mounts its screens and presses every page, then closes the window and the kit as `KitAcceptanceTests`
     /// does and checks nothing was written under `data/` (spec 0050 S12.2, Close).
     let private showCommittedReadOnly (kit : CommittedKit) : unit =
         HeadlessSession.run (fun () ->
@@ -326,8 +323,9 @@ module WireUiFinalCompositionTests =
                 try
                     window.Show()
                     Dispatcher.UIThread.RunJobs()
-                    let caption = Assert.IsType<TextBlock>(findControl window ConstructorUiId.kitCaptionText)
-                    Assert.Contains(" (read-only)", caption.Text)
+                    // Spec 0051 `.manual/007` 2.2: the kit's caption is the Kit page's.
+                    pressBoxIn window ConstructorUiId.flowKitStep
+                    Assert.Contains(" (read-only)", UiDriver.textOfControl (findControl window ConstructorUiId.kitCaptionText))
                     pressEveryFlowStep window Scene.InverseConstructor
                 finally
                     window.Close()
@@ -338,10 +336,20 @@ module WireUiFinalCompositionTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: the committed optics-mueller kit opens read-only from the start screen, shows every flow-strip step and writes nothing`` () : unit =
+    let ``acceptance: the committed optics-mueller kit opens read-only from the start screen, shows every page and writes nothing`` () : unit =
         showCommittedReadOnly OpticsMuellerKit
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: the committed absorbing-biaxial-noisy kit opens read-only from the start screen, shows every flow-strip step and writes nothing`` () : unit =
+    let ``acceptance: the committed absorbing-biaxial-noisy kit opens read-only from the start screen, shows every page and writes nothing`` () : unit =
         showCommittedReadOnly AbsorbingBiaxialNoisyKit
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the committed multilayer-thin-film kit opens read-only from the start screen, shows every page and writes nothing`` () : unit =
+        showCommittedReadOnly MultilayerThinFilmKit
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the committed langasite-on-silicon kit opens read-only from the start screen, shows every page and writes nothing`` () : unit =
+        showCommittedReadOnly LangasiteOnSiliconKit

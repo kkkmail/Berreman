@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "b975edf766bc3f67170a1c9fea119ce7f25fcf6ebee744fae29e4671a11792b5",
+  "descriptionOpt": "An ideal polarizer bound to a library polarizer preset (PolarizerPresetBinding): the preset's linear, circular or constant-Mueller behaviour, with no parameters of its own.",
+  "id": "d47e5ce3-3e74-5058-848e-3aa54930e377",
+  "name": "Ideal polarizer (preset binding)",
+  "payload": {
+    "Case": "ItemModelPayload",
+    "Fields": [
+      "IdealPolarizerItemModel"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 7,
+    "version": 1
+  },
+  "version": 1
+}

@@ -21,7 +21,7 @@ type FacetOption =
 /// The reusable MATERIALS control (Spec 0033, step 015 — UICOMP_XDUO_0001, the materials-workbench
 /// list surface): a searchable materials list with a search box, category and dispersion facet
 /// selectors, and Add / Edit / Remove / View verbs over the selected entry. This control is
-/// DOMAIN-FREE (matching `LibraryControls` / `ExperimentControls`): the host runs the search seam
+/// DOMAIN-FREE (matching `ExperimentControls`): the host runs the search seam
 /// (`MaterialProxy.searchMaterials` over a `MaterialQuery`) and flattens the result into `Row`s and
 /// the facets into `FacetOption`s; the control renders the rows it is given and never touches a
 /// proxy. Behaviour is injected as a `Handlers` function record (the functional-proxy seam; tests

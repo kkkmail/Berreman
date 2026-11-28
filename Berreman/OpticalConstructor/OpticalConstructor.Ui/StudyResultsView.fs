@@ -17,37 +17,21 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.KitPageFrame
 
 /// Projects the selected study's chosen or latest stored fit run without running a fit (spec 0050 S11.5).
 let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let number (value : float) : string = value.ToString("G6", CultureInfo.InvariantCulture)
-    let line (caption : ControlCaption) : IView =
-        TextBlock.create [ TextBlock.text caption.value ] :> IView
-    let cell (row : int) (column : int) (weight : FontWeight) (caption : ControlCaption) : IView =
-        TextBlock.create [
-            TextBlock.row row
-            TextBlock.column column
-            TextBlock.fontWeight weight
-            TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
-            TextBlock.text caption.value
-        ] :> IView
-    // Spec 0051 `.manual/003` 4.3: a table scrolls sideways in its own scroller, never the page.
-    let table (headers : ControlCaption list) (rows : ControlCaption list list) : IView =
-        ScrollViewer.create [
-            ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
-            ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
-            ScrollViewer.content (
-                Grid.create [
-                    Grid.horizontalAlignment HorizontalAlignment.Left
-                    Grid.columnDefinitions (List.replicate headers.Length "Auto" |> String.concat ",")
-                    Grid.rowDefinitions (List.replicate (rows.Length + 1) "Auto" |> String.concat ",")
-                    Grid.children (
-                        (headers |> List.mapi (fun column caption -> cell 0 column FontWeight.SemiBold caption))
-                        @ (rows |> List.mapi (fun row captions ->
-                            captions |> List.mapi (fun column caption ->
-                                cell (row + 1) column FontWeight.Normal caption)) |> List.concat))
-                ])
-        ] :> IView
+    let line (caption : ControlCaption) : IView = PageControls.copyableLine caption []
+    // Spec 0051 `.manual/007` 1.4, 8.5: every table has gridlines and Copy as CSV, and scrolls sideways on its own.
+    let table (id : ConstructorUiId) (headers : ControlCaption list) (rows : ControlCaption list list) : IView =
+        let grid : GridTable =
+            {
+                id = id
+                header = headers
+                rows = rows |> List.map (fun cells -> CellsGridRow (cells |> List.map TextGridCell))
+            }
+        PageControls.gridTableView grid (fun text -> dispatch (CopyToClipboard text))
     let itemLabels (items : ItemId list) (separator : string) : string =
         items |> List.map (fun item -> (item.labelAmong model.kitItems).value) |> String.concat separator
     let coordinateCaption (coordinate : FitCoordinate) : ControlCaption =
@@ -56,7 +40,7 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
             entries |> List.map (fun entry -> (model.fitEntryCaption entry).value) |> String.concat ", " |> ControlCaption
         | ElementCoordinate (row, column) -> ControlCaption $"m{row.value}{column.value}"
         | FringeVisibilityCoordinate -> ControlCaption "fringe visibility"
-    let problemRows (problem : FitProblemQuality) : IView list =
+    let problemRows (position : int) (problem : FitProblemQuality) : IView list =
         let subject =
             match problem.subject with
             | StudyEntriesProblem -> "Study residual"
@@ -79,7 +63,7 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
                         coordinates.[row]
                         :: (values |> Array.map (fun value -> ControlCaption (value.ToString("F3", CultureInfo.InvariantCulture))) |> Array.toList))
                     |> Array.toList
-                table (ControlCaption "" :: coordinates) rows
+                table (ConstructorUiId.fitCorrelationGrid (ConstructorUiPosition (position + 1))) (ControlCaption "" :: coordinates) rows
         [ line summary; correlation ]
     let profileRows (profile : ParameterProfile) : IView list =
         let reasons =
@@ -116,8 +100,8 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
                             |> Option.map (fun value -> ControlCaption (number value.value))
                             |> Option.defaultValue (ControlCaption "undetermined")
                         [ model.fitEntryCaption reference; ControlCaption (number entry.start.value); ControlCaption (number entry.fitted.value); sigma ])
-                [ table [ ControlCaption "Parameter"; ControlCaption "Start"; ControlCaption "Fitted"; ControlCaption "σ" ] rows ]
-        | CorrelationResultsTab -> run.results.problems |> List.collect problemRows
+                [ table ConstructorUiId.fitValuesGrid [ ControlCaption "Parameter"; ControlCaption "Start"; ControlCaption "Fitted"; ControlCaption "σ" ] rows ]
+        | CorrelationResultsTab -> run.results.problems |> List.mapi problemRows |> List.concat
         | ResidualsResultsTab ->
             run.results.runResiduals |> List.map (fun residual ->
                 let count = residual.residuals.value.Length.ToString("G6", CultureInfo.InvariantCulture)
@@ -137,7 +121,7 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
         | ProfileResultsTab -> run.results.profiles |> List.collect profileRows
     let selected : IView list =
         match model.selectedFitRunOpt with
-        | None -> [ line (ControlCaption "No fit run yet: run the fit in the Fit step.") ]
+        | None -> [ line (ControlCaption "Choose a fit run in Fit first: press Fit, then the run.") ]
         | Some run ->
             let runCaption = ControlCaption $"Fit run {run.name.value} — {run.stage.text}, {run.engine.text}"
             let rows =
@@ -145,9 +129,9 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
                 | [] -> [ line (ControlCaption "Nothing to show for this fit run.") ]
                 | rows -> rows
             [
-                TextBlock.create [
-                    ConstructorUiId.fitResultsRunText.automationAttribute<TextBlock> ()
-                    AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, runCaption.value, ValueNone)
+                SelectableTextBlock.create [
+                    ConstructorUiId.fitResultsRunText.automationAttribute<SelectableTextBlock> ()
+                    AttrBuilder<SelectableTextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, runCaption.value, ValueNone)
                     TextBlock.text runCaption.value
                 ]
                 WrapPanel.create [
@@ -181,7 +165,7 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
                         AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study results", ValueNone)
                         StackPanel.orientation Orientation.Vertical
                         StackPanel.margin 8.0
-                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+                        StackPanel.children (model.pageHeader dispatch @ StudyUnknownsView.studyContextRows model @ selected)
                     ])
             ])
     ] :> IView

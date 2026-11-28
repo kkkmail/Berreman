@@ -1,5 +1,6 @@
-/// The study's Unknowns step: owners, states, bounds, priors, scopes and links, with the shared parameter editor
-/// (001 §O; spec 0050 S11.5).
+/// The Unknowns page: the kit's studies as dynamic buttons, the chosen one's experiments, parameters and sessions under
+/// its row, edited in place, each parameter's editor right under it; New study creates (001 §O; spec 0050 S11.5; 0051
+/// `.manual/007` 8.2).
 module OpticalConstructor.Ui.StudyUnknownsView
 
 open Avalonia
@@ -15,376 +16,375 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.KitPageFrame
 
-/// The study selection and last command status shared by every study surface (spec 0050 S11.5).
-let studyBarView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let choices : IView list =
-        match model.kitStudies with
-        | [] -> [ TextBlock.create [ TextBlock.text "This kit holds no study yet." ] ]
-        | studies ->
-            studies
-            |> List.map (fun study ->
-                let id = ConstructorUiId.studyChoice study.name
-                let caption = study.name.caption
-                let select () = dispatch (SelectStudy study.name)
-                CommandControls.choiceCommand id caption (if model.studySurface.studyOpt = Some study.name then ChosenChoice else UnchosenChoice) select)
-    let status : IView list =
-        match model.kitStatus with
-        | None -> []
-        | Some told ->
-            [
-                TextBlock.create [
-                    ConstructorUiId.studyStatusLine.automationAttribute<TextBlock> ()
-                    TextBlock.textWrapping TextWrapping.Wrap
-                    TextBlock.text told.caption.value
-                ]
-            ]
-    StackPanel.create [
-        StackPanel.children (
-            [
-                TextBlock.create [ TextBlock.text "Study:"; TextBlock.fontWeight FontWeight.SemiBold ]
-                WrapPanel.create [
-                    yield! ConstructorUiId.studyList.groupAttributes<WrapPanel> ()
-                    WrapPanel.children choices
-                ]
-            ] @ status)
-    ] :> IView
+/// A semi-bold heading of a block of the page.
+let private studyHeading (text : ControlCaption) : IView =
+    TextBlock.create [
+        TextBlock.fontWeight FontWeight.SemiBold
+        TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
+        TextBlock.text text.value
+    ]
+    :> IView
 
-let private newStudyFormRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
-    match model.kitWrites with
-    | ControlWithheld -> []
-    | ControlOffered ->
-        let chosen = model.studySurface.newStudyExperiments
-        // Spec 0051 `.manual/003` 3.6: Create study stays in place, withheld with its reason until the study is named.
-        let create : IView list =
-            let chosenKey = chosen |> List.map _.fileStem.value |> String.concat ","
-            let button (availability : ControlAvailability) (key : string) (onCreate : unit -> unit) : IView =
-                Border.create [
-                    Border.horizontalAlignment HorizontalAlignment.Left
-                    Border.child (CommandControls.actionCommandWhen availability ConstructorUiId.createStudyButton (ControlCaption "Create study") PositiveCommand onCreate)
-                ]
-                // Spec 0050 S11.5: actionButton retains its handler per key; every draft needs its own closure.
-                |> View.withKey $"CreateStudy_{key}_{chosenKey}"
-                :> IView
-            match StudyName.tryCreate model.studySurface.newStudyName.value with
-            | Error _ ->
-                button ControlWithheld "" ignore
-                :: CommandControls.withheldReason ConstructorUiId.createStudyReason (Some (ControlCaption "Type the new study's name first."))
-            | Ok name -> [ button ControlOffered name.value (fun () -> dispatch (StudyCommand (CreateStudy (name, chosen)))) ]
-        [
-            DockPanel.create [
-                DockPanel.margin (Thickness(0.0, 8.0, 0.0, 4.0))
-                DockPanel.children [
-                    TextBlock.create [
-                        TextBlock.dock Dock.Left
-                        TextBlock.verticalAlignment VerticalAlignment.Center
-                        TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                        TextBlock.text "New study:"
-                    ]
-                    TextBox.create [
-                        yield! ConstructorUiId.newStudyNameField.inputAttributes<TextBox> ()
-                        TextBox.width 220.0
-                        TextBox.horizontalAlignment HorizontalAlignment.Left
-                        TextBox.text model.studySurface.newStudyName.value
-                        TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetNewStudyName >> dispatch))
-                    ]
-                ]
-            ]
-            WrapPanel.create [
-                WrapPanel.children (
-                    model.experimentCollection.experiments
-                    |> List.map (fun experiment ->
-                        let id = ConstructorUiId.newStudyExperimentToggle experiment.name
-                        let caption = experiment.name.caption
-                        let toggle () = dispatch (ToggleNewStudyExperiment experiment.name)
-                        CommandControls.choiceCommand id caption (if List.contains experiment.name chosen then ChosenChoice else UnchosenChoice) toggle))
-            ]
-        ] @ create
+type TableAndElementRotationModel with
 
-let private studyOfferRows
+    /// The study as the page shows it: its working copy while it is edited, else as held (spec 0051 `.manual/007` 8.2).
+    member model.shownStudy (study : Study) : Study =
+        match model.studyEditOpt with
+        | Some edit when edit.draft.name = study.name -> edit.draft
+        | Some _
+        | None -> study
+
+    /// The kit's items with the edited study's working copies over them (spec 0051 `.manual/007` 8.2).
+    member model.studyItems : Item list =
+        match model.studyEditOpt with
+        | Some edit -> model.kitItems |> List.map (fun item -> edit.items |> List.tryFind (fun held -> held.id = item.id) |> Option.defaultValue item)
+        | None -> model.kitItems
+
+    /// The study's parameters: those of the items its experiments use, then those of the materials it opens, each with
+    /// its owner (spec 0050 S11.5).
+    member model.studyParameterRows (study : Study) : (StudyParameterRef * Parameter * ControlCaption) list =
+        let used =
+            model.studyContext.itemsUsedBy study
+            |> List.map (fun item -> model.studyItems |> List.tryFind (fun held -> held.id = item.id) |> Option.defaultValue item)
+        (used |> List.collect (fun item ->
+            item.parameters |> List.map (fun parameter -> ItemParameterRef (item.id, parameter.name), parameter, item.label.caption)))
+        @ (study.materials |> List.collect (fun material ->
+            let owner = ControlCaption $"{material.name.value} v{material.version.version.value}"
+            material.parameters |> List.map (fun parameter -> MaterialParameterRef (material.version, parameter.name), parameter, owner)))
+
+/// The open parameter's editor: its state, value, bounds and prior, then, for an unknown, its scope and its link, each
+/// writing into the study's draft (spec 0050 S11.5; 0051 `.manual/007` 8.2).
+let private parameterEditorRows
     (model : TableAndElementRotationModel)
     (study : Study)
-    (used : Item list)
+    (draft : ParameterEditDraft)
+    (unknowns : StudyParameterRef list)
     (dispatch : TableAndElementRotationMsg -> unit)
     : IView list =
-    match model.kitWrites with
-    | ControlWithheld -> []
-    | ControlOffered ->
-        let experiments =
-            model.experimentCollection.experiments
-            |> List.filter (fun experiment -> not (List.contains experiment.name study.experiments))
-            |> List.map (fun experiment ->
-                CommandControls.verbCommand (ConstructorUiId.addExperimentToStudyButton experiment.name)
-                    (ControlCaption $"Add {experiment.name.value}")
-                    (fun () -> dispatch (StudyCommand (AddExperimentsToStudy (study.name, [ experiment.name ])))))
-        let materials =
-            used
-            |> List.collect (fun item ->
-                match model.tryItemModelChoice item with
-                | Some (StackSampleChoice (_, _, sample)) -> sample.structure.referencedMaterialVersions |> Set.toList
-                | _ -> [])
-            |> List.distinct
-            |> List.filter (fun version -> not (study.materials |> List.exists (fun opened -> opened.version = version)))
-            |> List.map (fun version ->
-                let caption =
-                    match model.materials.resolveVersion version with
-                    | Ok (Some entry) -> $"{entry.name.value} v{version.version.value}"
-                    | Ok None | Error _ -> $"{version.materialId.value} v{version.version.value}"
-                CommandControls.verbCommand (ConstructorUiId.openMaterialButton version) (ControlCaption $"Open {caption}")
-                    (fun () -> dispatch (StudyCommand (OpenMaterial (study.name, version)))))
-        [
-            WrapPanel.create [ WrapPanel.children (experiments @ materials) ]
-            |> View.withKey $"StudyOffers_{study.name.fileStem.value}"
-            :> IView
-        ]
-
-let private studyParameterGrid
-    (model : TableAndElementRotationModel)
-    (study : Study)
-    (rows : (StudyParameterRef * Parameter * ControlCaption) list)
-    (dispatch : TableAndElementRotationMsg -> unit)
-    : IView =
-    let cell (row : int) (column : int) (weight : FontWeight) (caption : ControlCaption) : IView =
-        TextBlock.create [
-            TextBlock.row row
-            TextBlock.column column
-            TextBlock.fontWeight weight
-            TextBlock.verticalAlignment VerticalAlignment.Center
-            TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
-            TextBlock.text caption.value
-        ] :> IView
-    let unknowns =
-        rows |> List.choose (fun (reference, parameter, _) ->
-            match parameter.state with
-            | UnknownParameter _ -> Some reference
-            | KnownParameter _ | CalibratedParameter _ -> None)
-    let rowView (index : int) (entry : StudyParameterRef * Parameter * ControlCaption) : IView list =
-        let reference, parameter, owner = entry
-        let row = index + 1
-        let cells = parameter.gridCells
-        let scope : IView =
-            match parameter.state with
-            | KnownParameter _ | CalibratedParameter _ -> cell row 6 FontWeight.Normal (ControlCaption "—")
-            | UnknownParameter _ ->
+    let setWith (state : ParameterState) : TableAndElementRotationMsg =
+        match draft.parameter with
+        | ItemParameterRef (id, name) -> SetParameterState (id, name, state)
+        | MaterialParameterRef (version, name) ->
+            let parameter : Parameter = { name = name; state = state }
+            StudyCommand (SetOpenedMaterialParameter (study.name, version, parameter))
+    let reference = draft.parameter
+    let scopeAndLink : IView list =
+        match List.contains reference unknowns with
+        | false -> []
+        | true ->
+            let scope =
                 ComboBox.create [
                     yield! (ConstructorUiId.studyParameterScopeChoice reference).inputAttributes<ComboBox> ()
-                    ComboBox.row row
-                    ComboBox.column 6
                     ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
-                    ComboBox.isEnabled model.kitWrites.isEnabled
                     ComboBox.dataItems (ParameterScope.all |> List.map _.text)
                     ComboBox.selectedIndex (ParameterScope.all |> List.findIndex ((=) (study.scopeOf reference)))
                     ComboBox.onSelectedIndexChanged ((fun index ->
                         match ParameterScope.all |> List.tryItem index with
                         | Some scope when scope <> study.scopeOf reference ->
-                            let scoped : ScopedParameter =
-                                {
-                                    parameter = reference
-                                    scope = scope
-                                }
+                            let scoped : ScopedParameter = { parameter = reference; scope = scope }
                             dispatch (StudyCommand (SetParameterScope (study.name, scoped)))
                         | _ -> ()), SubPatchOptions.Always)
-                ] :> IView
-        let link : IView =
-            match study.links |> List.tryFind (fun link -> link.follower = reference) with
-            | Some link -> cell row 7 FontWeight.Normal (ControlCaption $"= {(model.studyParameterCaption link.leader).value}")
-            | None ->
-                match parameter.state with
-                | KnownParameter _ | CalibratedParameter _ -> cell row 7 FontWeight.Normal (ControlCaption "—")
-                | UnknownParameter _ ->
+                ]
+                :> IView
+            let link : IView =
+                match study.links |> List.tryFind (fun link -> link.follower = reference) with
+                | Some link -> PageControls.copyableLine (ControlCaption $"Linked: = {(model.studyParameterCaption link.leader).value}") []
+                | None ->
                     let leaders = unknowns |> List.filter ((<>) reference)
                     ComboBox.create [
                         yield! (ConstructorUiId.studyParameterLinkChoice reference).inputAttributes<ComboBox> ()
-                        ComboBox.row row
-                        ComboBox.column 7
                         ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
-                        ComboBox.isEnabled model.kitWrites.isEnabled
                         ComboBox.dataItems ("(no link)" :: (leaders |> List.map (fun leader -> (model.studyParameterCaption leader).value)))
                         ComboBox.selectedIndex 0
                         ComboBox.onSelectedIndexChanged ((fun index ->
                             if index > 0 then
                                 leaders |> List.tryItem (index - 1) |> Option.iter (fun leader ->
-                                    let link : ParameterLink =
-                                        {
-                                            follower = reference
-                                            leader = leader
-                                        }
+                                    let link : ParameterLink = { follower = reference; leader = leader }
                                     dispatch (StudyCommand (LinkParameters (study.name, link))))),
                             SubPatchOptions.Always)
-                    ] :> IView
-        [
-            cell row 0 FontWeight.Normal owner
-            Border.create [
-                Border.row row
-                Border.column 1
-                Border.child (
-                    CommandControls.verbCommand (ConstructorUiId.studyParameterRow reference) parameter.name.caption
-                        (fun () -> dispatch (EditStudyParameter reference)))
+                    ]
+                    :> IView
+            [
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.children [
+                        TextBlock.create [ TextBlock.text "Scope:"; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.margin (Thickness(0.0, 0.0, 6.0, 4.0)) ]
+                        scope
+                        TextBlock.create [ TextBlock.text "Link:"; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.margin (Thickness(0.0, 0.0, 6.0, 4.0)) ]
+                        link
+                    ]
+                ]
+                :> IView
             ]
-            cell row 2 FontWeight.Normal cells.state
-            cell row 3 FontWeight.Normal cells.value
-            cell row 4 FontWeight.Normal cells.bounds
-            cell row 5 FontWeight.Normal cells.sigma
-            scope
-            link
-        ]
-    let headers =
-        [
-            ControlCaption "Owner"
-            ControlCaption "Parameter"
-            ControlCaption "State"
-            ControlCaption "Value"
-            ControlCaption "Bounds"
-            ControlCaption "σ"
-            ControlCaption "Scope"
-            ControlCaption "Link"
-        ]
-        |> List.mapi (fun column caption -> cell 0 column FontWeight.SemiBold caption)
-    Grid.create [
-        yield! ConstructorUiId.studyUnknownsGrid.groupAttributes<Grid> ()
-        Grid.margin (Thickness(0.0, 6.0, 0.0, 4.0))
-        Grid.columnDefinitions "Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-        Grid.rowDefinitions (List.replicate (rows.Length + 1) "Auto" |> String.concat ",")
-        Grid.children (headers @ (rows |> List.mapi rowView |> List.concat))
+    [
+        Border.create [ Border.child (ItemsPanelView.parameterEditorView model draft setWith dispatch) ]
+        |> View.withKey $"StudyEditor_{study.name.fileStem.value}_{(ConstructorUiId.studyParameterRow draft.parameter).value}"
+        :> IView
     ]
-    |> View.withKey $"StudyGrid_{study.name.fileStem.value}"
+    @ scopeAndLink
+
+/// The study's parameters as a grid: in Editing each name is a button that opens its editor in a row right under it,
+/// and scope and link change only there (spec 0050 S11.5; 0051 `.manual/007` 8.2).
+let private studyParameterGrid (model : TableAndElementRotationModel) (study : Study) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+    let editing =
+        match model.pageMode with
+        | EditingPageEntry -> true
+        | BrowsingPage
+        | CreatingPageEntry -> false
+    let rows = model.studyParameterRows study
+    let unknowns =
+        rows |> List.choose (fun (reference, parameter, _) ->
+            match parameter.state with
+            | UnknownParameter _ -> Some reference
+            | KnownParameter _ | CalibratedParameter _ -> None)
+    let gridRows =
+        rows
+        |> List.collect (fun (reference, parameter, owner) ->
+            let cells = parameter.gridCells
+            let scope, link =
+                match parameter.state with
+                | KnownParameter _ | CalibratedParameter _ -> ControlCaption "—", ControlCaption "—"
+                | UnknownParameter _ ->
+                    let linkText =
+                        match study.links |> List.tryFind (fun link -> link.follower = reference) with
+                        | Some link -> ControlCaption $"= {(model.studyParameterCaption link.leader).value}"
+                        | None -> ControlCaption "(no link)"
+                    ControlCaption (study.scopeOf reference).text, linkText
+            let nameCell =
+                if editing then
+                    ViewGridCell (
+                        parameter.name.caption,
+                        CommandControls.verbCommand (ConstructorUiId.studyParameterRow reference) parameter.name.caption (fun () -> dispatch (EditStudyParameter reference)))
+                else TextGridCell parameter.name.caption
+            let editor =
+                match model.parameterEditOpt with
+                | Some draft when editing && draft.parameter = reference -> [ SpanningGridRow (StackPanel.create [ StackPanel.children (parameterEditorRows model study draft unknowns dispatch) ]) ]
+                | Some _
+                | None -> []
+            CellsGridRow [ TextGridCell owner; nameCell; TextGridCell cells.state; TextGridCell cells.value; TextGridCell cells.bounds; TextGridCell cells.sigma; TextGridCell scope; TextGridCell link ]
+            :: editor)
+    let table : GridTable =
+        {
+            id = ConstructorUiId.studyUnknownsGrid
+            header =
+                [
+                    ControlCaption "Owner"
+                    ControlCaption "Parameter"
+                    ControlCaption "State"
+                    ControlCaption "Value"
+                    ControlCaption "Bounds"
+                    ControlCaption "σ"
+                    ControlCaption "Scope"
+                    ControlCaption "Link"
+                ]
+            rows = gridRows
+        }
+    Border.create [ Border.child (PageControls.gridTableView table (fun text -> dispatch (CopyToClipboard text))) ]
+    |> View.withKey $"StudyGrid_{study.name.fileStem.value}_{editing}"
     :> IView
 
-let private studySessionRows
-    (model : TableAndElementRotationModel)
-    (study : Study)
-    (dispatch : TableAndElementRotationMsg -> unit)
-    : IView list =
+/// The study's sessions and how each one's gain is known, the gain a choice in Editing (spec 0050 S11.5, S12.1).
+let private studySessionRows (model : TableAndElementRotationModel) (study : Study) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
     let sessions = study.sessionsIn model.experimentCollection.experiments
-    let contents : IView =
-        match sessions with
-        | [] -> TextBlock.create [ TextBlock.text "This study's experiments form no session." ] :> IView
-        | _ ->
-            let textRows =
-                [ [ ControlCaption "Session"; ControlCaption "Experiments"; ControlCaption "Gain" ] ]
-                @ (sessions |> List.map (fun session ->
-                    let names = session.experiments |> List.map _.value |> String.concat ", " |> ControlCaption
-                    [ session.name.caption; names ]))
-            let cells =
-                textRows
-                |> List.mapi (fun row captions ->
-                    captions |> List.mapi (fun column caption ->
-                        TextBlock.create [
-                            TextBlock.row row
-                            TextBlock.column column
-                            TextBlock.fontWeight (if row = 0 then FontWeight.SemiBold else FontWeight.Normal)
-                            TextBlock.verticalAlignment VerticalAlignment.Center
-                            TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
-                            TextBlock.text caption.value
-                        ] :> IView))
-                |> List.concat
-            let gains =
-                sessions |> List.mapi (fun index session ->
-                    let offers = session.gainModelOffers model.experimentCollection.experiments
-                    let selected = study.gainModelOf session.name
+    match sessions with
+    | [] -> [ studyHeading (ControlCaption "Sessions and gains:"); PageControls.copyableLine (ControlCaption "This study's experiments form no session.") [] ]
+    | _ ->
+        let gainCell (session : StudySession) : GridCell =
+            let selected = study.gainModelOf session.name
+            match model.pageMode with
+            | EditingPageEntry ->
+                let offers = session.gainModelOffers model.experimentCollection.experiments
+                ViewGridCell (
+                    selected.caption,
                     ComboBox.create [
                         (ConstructorUiId.studySessionGainChoice session.name).automationAttribute<ComboBox> ()
                         AttrBuilder<ComboBox>.CreateProperty<string>(AutomationProperties.NameProperty, $"Gain model for {session.name.value}", ValueNone)
-                        ComboBox.row (index + 1)
-                        ComboBox.column 2
-                        ComboBox.margin (Thickness(0.0, 0.0, 12.0, 4.0))
-                        ComboBox.isEnabled model.kitWrites.isEnabled
                         ComboBox.dataItems (offers |> List.map _.caption.value)
                         ComboBox.selectedIndex (offers |> List.tryFindIndex ((=) selected) |> Option.defaultValue -1)
                         ComboBox.onSelectedIndexChanged ((fun selectedIndex ->
                             match offers |> List.tryItem selectedIndex with
                             | Some gainModel when gainModel <> selected ->
-                                let setting : SessionGainSetting =
-                                    {
-                                        session = session.name
-                                        model = gainModel
-                                    }
+                                let setting : SessionGainSetting = { session = session.name; model = gainModel }
                                 dispatch (StudyCommand (SetSessionGainModel (study.name, setting)))
                             | _ -> ()), SubPatchOptions.Always)
-                    ] :> IView)
-            Grid.create [
-                yield! ConstructorUiId.studySessionGrid.groupAttributes<Grid> ()
-                AttrBuilder<Grid>.CreateProperty<string>(AutomationProperties.NameProperty, "Sessions and gains", ValueNone)
-                Grid.margin (Thickness(0.0, 6.0, 0.0, 4.0))
-                Grid.columnDefinitions "Auto,Auto,Auto"
-                Grid.rowDefinitions (List.replicate (sessions.Length + 1) "Auto" |> String.concat ",")
-                Grid.children (cells @ gains)
-            ]
-            |> View.withKey $"StudySessions_{study.name.fileStem.value}"
+                    ])
+            | BrowsingPage
+            | CreatingPageEntry -> TextGridCell selected.caption
+        let table : GridTable =
+            {
+                id = ConstructorUiId.studySessionGrid
+                header = [ ControlCaption "Session"; ControlCaption "Experiments"; ControlCaption "Gain" ]
+                rows =
+                    sessions
+                    |> List.map (fun session ->
+                        let names = session.experiments |> List.map _.value |> String.concat ", " |> ControlCaption
+                        CellsGridRow [ TextGridCell session.name.caption; TextGridCell names; gainCell session ])
+            }
+        [ studyHeading (ControlCaption "Sessions and gains:"); PageControls.gridTableView table (fun text -> dispatch (CopyToClipboard text)) ]
+
+/// The edited study's offers: each kit experiment it lacks and each material its items use that it has not opened
+/// (spec 0050 S11.5).
+let private studyOfferRows (model : TableAndElementRotationModel) (study : Study) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    let used = model.studyContext.itemsUsedBy study
+    let experiments =
+        model.experimentCollection.experiments
+        |> List.filter (fun experiment -> not (List.contains experiment.name study.experiments))
+        |> List.map (fun experiment ->
+            CommandControls.verbCommand (ConstructorUiId.addExperimentToStudyButton experiment.name)
+                (ControlCaption $"Add {experiment.name.value}")
+                (fun () -> dispatch (StudyCommand (AddExperimentsToStudy (study.name, [ experiment.name ])))))
+    let materials =
+        used
+        |> List.collect (fun item ->
+            match model.tryItemModelChoice item with
+            | Some (StackSampleChoice (_, _, sample)) -> sample.structure.referencedMaterialVersions |> Set.toList
+            | _ -> [])
+        |> List.distinct
+        |> List.filter (fun version -> not (study.materials |> List.exists (fun opened -> opened.version = version)))
+        |> List.map (fun version ->
+            let caption =
+                match model.materials.resolveVersion version with
+                | Ok (Some entry) -> $"{entry.name.value} v{version.version.value}"
+                | Ok None | Error _ -> $"{version.materialId.value} v{version.version.value}"
+            CommandControls.verbCommand (ConstructorUiId.openMaterialButton version) (ControlCaption $"Open {caption}")
+                (fun () -> dispatch (StudyCommand (OpenMaterial (study.name, version)))))
+    match experiments @ materials with
+    | [] -> []
+    | offers ->
+        [
+            studyHeading (ControlCaption "Add to the study:")
+            WrapPanel.create [ WrapPanel.children offers ]
+            |> View.withKey $"StudyOffers_{study.name.fileStem.value}"
             :> IView
+        ]
+
+/// What the page shows under the chosen study: Edit, its experiments, its parameters and sessions; in Editing, its
+/// offers, its parameters with their editor, then Save and Cancel (spec 0051 `.manual/007` 8.2).
+let private chosenStudyRows (model : TableAndElementRotationModel) (held : Study) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    let study = model.shownStudy held
+    let experimentNames = study.experiments |> List.map _.value |> String.concat ", "
+    let edit : IView list =
+        match model.kitWrites, model.pageMode with
+        | ControlOffered, BrowsingPage -> [ CommandControls.verbCommand ConstructorUiId.pageEditButton (ControlCaption "Edit") (fun () -> dispatch BeginPageEdit) ]
+        | _ -> []
+    let offers : IView list =
+        match model.pageMode with
+        | EditingPageEntry -> studyOfferRows model study dispatch
+        | BrowsingPage
+        | CreatingPageEntry -> []
+    let actions : IView list =
+        match model.pageMode with
+        | EditingPageEntry -> [ model.draftActions (ControlCaption "Save") dispatch ]
+        | BrowsingPage
+        | CreatingPageEntry -> []
+    edit
+    @ [ PageControls.copyableText ConstructorUiId.studyExperimentsText (ControlCaption $"Experiments: {experimentNames}") [] ]
+    @ offers
+    @ [
+        studyHeading (
+            match model.pageMode with
+            | EditingPageEntry -> ControlCaption "Parameters: press a name to edit it."
+            | BrowsingPage
+            | CreatingPageEntry -> ControlCaption "Parameters:")
+        studyParameterGrid model study dispatch
+    ]
+    @ studySessionRows model study dispatch
+    @ actions
+
+/// The New study form: its name and the experiments to fit, each with its role and data badge, then Create and Cancel
+/// (spec 0050 S11.5; 0051 `.manual/007` 8.2).
+let private newStudyRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    let chosen = model.studySurface.newStudyExperiments
     [
-        TextBlock.create [ TextBlock.text "Sessions and gains:"; TextBlock.fontWeight FontWeight.SemiBold ]
-        contents
+        studyHeading (ControlCaption "New study")
+        DockPanel.create [
+            DockPanel.margin (Thickness(0.0, 2.0, 0.0, 4.0))
+            DockPanel.children [
+                TextBlock.create [
+                    TextBlock.dock Dock.Left
+                    TextBlock.verticalAlignment VerticalAlignment.Center
+                    TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                    TextBlock.text "Name:"
+                ]
+                TextBox.create [
+                    yield! ConstructorUiId.newStudyNameField.inputAttributes<TextBox> ()
+                    TextBox.width 260.0
+                    TextBox.horizontalAlignment HorizontalAlignment.Left
+                    TextBox.text model.studySurface.newStudyName.value
+                    TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetNewStudyName >> dispatch))
+                ]
+            ]
+        ]
+        studyHeading (ControlCaption "Experiments to fit:")
+        WrapPanel.create [
+            WrapPanel.children (
+                model.experimentCollection.experiments
+                |> List.map (fun experiment ->
+                    let id = ConstructorUiId.newStudyExperimentToggle experiment.name
+                    let caption = ControlCaption $"{experiment.name.value} [{experiment.role.text}] — {(model.dataBadgeOf experiment).text}"
+                    CommandControls.choiceCommand id caption (if List.contains experiment.name chosen then ChosenChoice else UnchosenChoice) (fun () ->
+                        dispatch (ToggleNewStudyExperiment experiment.name))))
+        ]
+        model.draftActions (ControlCaption "Create") dispatch
     ]
 
-/// The selected study's parameters, editor and session gains, writable only in writable kits (spec 0050 S11.5; S12.1).
+/// The Unknowns page (spec 0050 S11.5; 0051 `.manual/007` 8.2).
 let studyUnknownsView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let selected : IView list =
-        match model.selectedStudyOpt with
-        | None -> [ TextBlock.create [ TextBlock.text "No study is chosen: create one above." ] ]
-        | Some study ->
-            let used = model.studyContext.itemsUsedBy study
-            let rows =
-                (used |> List.collect (fun item ->
-                    item.parameters |> List.map (fun parameter -> ItemParameterRef (item.id, parameter.name), parameter, item.label.caption)))
-                @ (study.materials |> List.collect (fun material ->
-                    let owner = ControlCaption $"{material.name.value} v{material.version.version.value}"
-                    material.parameters |> List.map (fun parameter -> MaterialParameterRef (material.version, parameter.name), parameter, owner)))
-            let editor : IView list =
-                match model.parameterEditOpt with
-                | Some draft when rows |> List.exists (fun (reference, _, _) -> reference = draft.parameter) ->
-                    let setWith (state : ParameterState) : TableAndElementRotationMsg =
-                        match draft.parameter with
-                        | ItemParameterRef (id, name) -> SetParameterState (id, name, state)
-                        | MaterialParameterRef (version, name) ->
-                            let parameter : Parameter =
-                                {
-                                    name = name
-                                    state = state
-                                }
-                            StudyCommand (SetOpenedMaterialParameter (study.name, version, parameter))
+    let body : IView list =
+        match model.pageMode with
+        | CreatingPageEntry -> newStudyRows model dispatch
+        | BrowsingPage
+        | EditingPageEntry ->
+            let newVerb : IView list =
+                match model.kitWrites, model.pageMode with
+                | ControlOffered, BrowsingPage ->
                     [
-                        // Spec 0050 S11.5: equal parameter names on different owners must not retain another owner's Set handler.
-                        Border.create [ Border.child (ItemsPanelView.parameterEditorView model draft setWith dispatch) ]
-                        |> View.withKey $"StudyEditor_{study.name.fileStem.value}_{(ConstructorUiId.studyParameterRow draft.parameter).value}"
+                        Border.create [
+                            Border.horizontalAlignment HorizontalAlignment.Left
+                            Border.child (CommandControls.verbCommand ConstructorUiId.newStudyButton (ControlCaption "New study") (fun () -> dispatch BeginPageCreate))
+                        ]
                         :> IView
                     ]
                 | _ -> []
-            let experimentNames = study.experiments |> List.map _.value |> String.concat ", "
-            [
-                TextBlock.create [
-                    ConstructorUiId.studyExperimentsText.automationAttribute<TextBlock> ()
-                    TextBlock.textWrapping TextWrapping.Wrap
-                    TextBlock.text $"Experiments: {experimentNames}"
-                ]
-            ]
-            @ studyOfferRows model study used dispatch
-            @ [
-                // Spec 0051 `.manual/003` 4.3: the grid scrolls sideways in its own scroller, never the page.
-                ScrollViewer.create [
-                    ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
-                    ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
-                    ScrollViewer.content (studyParameterGrid model study rows dispatch)
-                ]
-                :> IView
-            ]
-            @ studySessionRows model study dispatch
-            @ editor
-    ScrollViewer.create [
-        // Spec 0050 S11.5: reserve scrollbar space so a row brought to the viewport edge remains clickable.
-        AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
-        ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
-        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
-        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so the chips and the experiments line wrap.
-        ScrollViewer.content (
-            MinWidthPanel.create [
-                (PanelMinWidth 520.0).minWidthPanelAttribute ()
-                MinWidthPanel.child (
-                    StackPanel.create [
-                        yield! ConstructorUiId.studyUnknownsPanel.groupAttributes<StackPanel> ()
-                        StackPanel.orientation Orientation.Vertical
-                        StackPanel.margin 8.0
-                        StackPanel.children ([ studyBarView model dispatch ] @ newStudyFormRows model dispatch @ selected)
-                    ])
-            ])
-    ] :> IView
+            let row (study : Study) : IView =
+                match model.renameRowsOf (RenameStudyTarget study.name) dispatch with
+                | Some rows -> StackPanel.create [ StackPanel.children rows ] :> IView
+                | None ->
+                    let chosen = model.studySurface.studyOpt = Some study.name
+                    let availability =
+                        match model.pageMode with
+                        | BrowsingPage -> ControlOffered
+                        | EditingPageEntry
+                        | CreatingPageEntry -> ControlWithheld
+                    let menu = model.entryMenuOf study.name.caption (Some (RenameStudyTarget study.name)) (model.studyRenaming study.name) dispatch
+                    PageControls.entryToggle (ConstructorUiId.studyChoice study.name) study.name.caption (if chosen then ChosenChoice else UnchosenChoice) NeutralCommand availability menu (fun () ->
+                        dispatch (if chosen then DeselectStudy else SelectStudy study.name)) []
+            let under (study : Study) : IView list =
+                match model.studySurface.studyOpt with
+                | Some name when name = study.name ->
+                    underEntry (ConstructorUiKey $"ChosenStudy_{study.name.fileStem.value}_{model.pageMode.uiKey.value}") (chosenStudyRows model study dispatch)
+                | Some _
+                | None -> []
+            let studies : IView list =
+                match model.kitStudies with
+                | [] -> [ PageControls.copyableLine (ControlCaption "This kit holds no study yet: New study makes one of the experiments to fit.") [] ]
+                | held ->
+                    [
+                        StackPanel.create [
+                            yield! ConstructorUiId.studyList.groupAttributes<StackPanel> ()
+                            StackPanel.orientation Orientation.Vertical
+                            StackPanel.children (entryRows held row under)
+                        ]
+                        :> IView
+                    ]
+            newVerb @ studies
+    pageScroll ConstructorUiId.studyUnknownsPanel (model.pageHeader dispatch @ body)
+
+/// The line heading Plan, Fit and Results: the study chosen on Unknowns, the page's context, or why the page needs one
+/// (spec 0051 `.manual/007` 8.1).
+let studyContextRows (model : TableAndElementRotationModel) : IView list =
+    match model.selectedStudyOpt with
+    | Some study -> [ PageControls.copyableText ConstructorUiId.studyContextText (ControlCaption $"Study: {study.name.value}") [ SelectableTextBlock.fontWeight FontWeight.SemiBold ] ]
+    | None -> [ PageControls.copyableText ConstructorUiId.studyContextText (ControlCaption "Choose a study in Unknowns first: press Unknowns, then the study.") [] ]

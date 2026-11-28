@@ -96,6 +96,7 @@ module KitStartTests =
             author = kitStartAuthor
             imports = CatalogueImportContext.create stores.proxy
             picker = { pickKitFolder = fun _ -> async { return None } }
+            kitFolderMemory = KitFolderMemory.fixedAt (FolderName "kits")
             showKit = shown.Add
             activateKitWindow = fun _ -> NoKitWindowOpen
             zipPicker = KitZipPicker.none
@@ -167,9 +168,9 @@ module KitStartTests =
         |> Array.map (fun path -> FileName path, FileByteContent (File.ReadAllBytes path))
         |> Map.ofArray
 
-    /// Asserts `folder` holds a kit's `.kit-json`, `data` and `library`.
+    /// Asserts `folder` holds a kit's `.optics-kit`, `data` and `library`.
     let private assertKitLayout (folder : KitFolder) : unit =
-        Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+        Assert.True(File.Exists(Path.Combine(folder.value.value, ".optics-kit")))
         Assert.True(Directory.Exists(Path.Combine(folder.value.value, "data")))
         Assert.True(Directory.Exists(Path.Combine(folder.value.value, "library")))
 
@@ -901,3 +902,34 @@ module KitStartTests =
             Assert.Single(kept) |> ignore
             Assert.Equal<KitArchiveJobState>(KitArchiveJobState.idle, ended.zipJob)
             Assert.Equal<ControlCaption option>(None, ended.status))
+
+    [<Fact>]
+    let ``every kit the screen opens, by a dialog or the history, records the folder above it for the next kit dialog`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let folder = kitIn root "Optics QZ"
+            let store = historyOver [ folder ] KitHistory.empty
+            let recorded = ResizeArray<KitFolder> ()
+            let context = { contextOver store shown with kitFolderMemory = { KitFolderMemory.fixedAt root with rememberKit = recorded.Add } }
+            madeKitAt folder context.imports |> ignore
+            let opened = initKitStart context ForwardConstructor
+
+            updateKitStart (OpenKit folder) opened |> ignore
+
+            Assert.Equal<KitFolder list>([ folder ], List.ofSeq recorded)
+            Assert.Equal<FolderName option>(Some root, folder.parentFolderOpt))
+
+    [<Fact>]
+    let ``a folder that is not a kit records nothing, and the folder above a root kit is none`` () : unit =
+        withKitStartRoot (fun root shown ->
+            let folder = kitIn root "Plain folder"
+            Directory.CreateDirectory folder.value.value |> ignore
+            let store = historyOver [ folder ] KitHistory.empty
+            let recorded = ResizeArray<KitFolder> ()
+            let context = { contextOver store shown with kitFolderMemory = { KitFolderMemory.fixedAt root with rememberKit = recorded.Add } }
+            let opened = initKitStart context ForwardConstructor
+
+            let offered = updateKitStart (OpenKit folder) opened
+
+            Assert.Equal<KitStartOffer>(MakeKitOffer folder, offered.offer)
+            Assert.Empty(recorded)
+            Assert.Equal<FolderName option>(None, (KitFolder (FolderName (Path.GetPathRoot root.value))).parentFolderOpt))

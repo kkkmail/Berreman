@@ -324,8 +324,8 @@ let private waveLengthRow (m : LightSourceEditorModel) (dispatch : LightSourceEd
 type LightSourceEditorModel with
 
     member internal this.readoutRow : IView =
-        TextBlock.create [
-            ConstructorUiId.sourceWaveLengthReadout.automationAttribute<TextBlock> ()
+        SelectableTextBlock.create [
+            ConstructorUiId.sourceWaveLengthReadout.automationAttribute<SelectableTextBlock> ()
             TextBlock.margin (Thickness(96.0, 0.0, 0.0, 0.0))
             TextBlock.text this.readoutCaption.value
         ] :> IView
@@ -340,8 +340,8 @@ let private noteRow () : IView =
     ] :> IView
 
 let private statusRow (m : LightSourceEditorModel) : IView =
-    TextBlock.create [
-        ConstructorUiId.sourceEditorStatus.automationAttribute<TextBlock> ()
+    SelectableTextBlock.create [
+        ConstructorUiId.sourceEditorStatus.automationAttribute<SelectableTextBlock> ()
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with

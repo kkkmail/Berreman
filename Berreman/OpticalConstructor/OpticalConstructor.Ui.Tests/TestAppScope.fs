@@ -172,6 +172,18 @@ module TestAppScope =
     /// AT-2's absorbing-biaxial-noisy kit author (spec 0050 S12.2, Close).
     let absorbingKitAuthor : KitAuthor = KitAuthor "absorbing-biaxial-noisy bench"
 
+    /// AT-3's multilayer-thin-film kit id, the one its start screen mints (spec 0051 `.manual/007` 9.1).
+    let multilayerKitId : KitId = KitId (Guid.Parse "aad2560d-6bb3-4593-b461-ede9ab2e41c5")
+
+    /// AT-3's multilayer-thin-film kit author (spec 0051 `.manual/007` 9.1).
+    let multilayerKitAuthor : KitAuthor = KitAuthor "multilayer-thin-film bench"
+
+    /// AT-4's langasite-on-silicon kit id, the one its start screen mints (spec 0051 `.manual/007` 9.1).
+    let langasiteKitId : KitId = KitId (Guid.Parse "5124b7da-340e-4e74-aff0-c282fd02c9e4")
+
+    /// AT-4's langasite-on-silicon kit author (spec 0051 `.manual/007` 9.1).
+    let langasiteKitAuthor : KitAuthor = KitAuthor "langasite-on-silicon bench"
+
     /// Asserts `actual` equals `expected`, a failure naming the file and the field (spec 0050 S12.1, Close).
     let expect<'Value> (file : FileName) (field : string) (expected : 'Value) (actual : 'Value) : unit =
         try Assert.Equal<'Value>(expected, actual)
@@ -187,6 +199,8 @@ module TestAppScope =
             match kit with
             | OpticsMuellerKit -> "data/optics-mueller"
             | AbsorbingBiaxialNoisyKit -> "data/absorbing-biaxial-noisy"
+            | MultilayerThinFilmKit -> "data/multilayer-thin-film"
+            | LangasiteOnSiliconKit -> "data/langasite-on-silicon"
         kit.tryFindFolder
         |> Option.defaultWith (fun () -> failwith $"{name}: expected the committed kit; actual folder missing")
 
@@ -220,6 +234,7 @@ module TestAppScope =
                 author = author
                 imports = context.catalogueImports
                 picker = kitPickerOf folder
+                kitFolderMemory = KitFolderMemory.fixedAt (FolderName "kits")
                 showKit = fun opened -> shown.Value <- Some opened
                 activateKitWindow = fun _ -> NoKitWindowOpen
                 zipPicker = KitZipPicker.none
@@ -242,11 +257,14 @@ module TestAppScope =
         |> Array.sort
         |> List.ofArray
 
-    /// The instant a read-only session's clock reads, after the kit's own fits: AT-1's refit at 12:03, AT-2's at 12:02 (spec 0050 S12.1, S12.2, Close).
+    /// The instant a read-only session's clock reads, after the kit's own writes: AT-1's refit at 12:03, AT-2's at 12:02,
+    /// and a minute after AT-3's and AT-4's builds, which fit nothing (spec 0050 S12.1, S12.2, Close; 0051 `.manual/007` 9.1).
     let refitTimeOf (kit : CommittedKit) : ClockTime =
         match kit with
         | OpticsMuellerKit -> ClockTime (DateTime(2026, 5, 31, 12, 3, 0, DateTimeKind.Utc))
         | AbsorbingBiaxialNoisyKit -> ClockTime (DateTime(2026, 6, 1, 12, 2, 0, DateTimeKind.Utc))
+        | MultilayerThinFilmKit -> ClockTime (DateTime(2026, 6, 2, 12, 1, 0, DateTimeKind.Utc))
+        | LangasiteOnSiliconKit -> ClockTime (DateTime(2026, 6, 3, 12, 1, 0, DateTimeKind.Utc))
 
     /// The context's item-model, live-library, material, sample and source stores list no entry (spec 0050 S12.1, S12.2, Close; 001 §Q 'Open').
     let assertEmptyLibrary (context : OpticalConstructor.Ui.AppContext) : unit =
@@ -283,6 +301,8 @@ module TestAppScope =
             match kit with
             | OpticsMuellerKit -> kitId, kitAuthor
             | AbsorbingBiaxialNoisyKit -> absorbingKitId, absorbingKitAuthor
+            | MultilayerThinFilmKit -> multilayerKitId, multilayerKitAuthor
+            | LangasiteOnSiliconKit -> langasiteKitId, langasiteKitAuthor
         let mutable openedOpt : OpenedKit option = None
         try
             let context = emptyLibraryAppContext owner

@@ -58,8 +58,6 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
-// Spec 0038 (017): opened for `QuickPickThreshold.defaultValue` — the single-case DU's case
-// shadows the type under `WorkbenchSettings.`-qualified expression resolution.
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
@@ -161,28 +159,12 @@ type DragState =
 type EditorLaunchers =
     {
         /// Open the SINGLE-INSTANCE Materials window (spec 0038 step 013, UICOMP_XDUO_0009) over
-        /// app-scope stores and import seam — the ribbon strip's `Materials…` button
-        /// reaches it through this seam, so a headless test substitutes a recording launcher and
-        /// observes the request. The Material / Category editor launchers the retired Materials
-        /// bay carried here moved INTO that window's own composition (`MaterialsWindow`).
+        /// app-scope stores and import seam — the Launcher's Materials button reaches it through this seam.
         openMaterialsWindow : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> CatalogueImportContext -> unit
         /// Open the SINGLE-INSTANCE Library window (spec 0038 step 015, UICOMP_XDUO_0010) over
-        /// the Library seam, app-scope stores and catalogue imports
-        /// (categories thread through to the Sample editor's step-019 Choose
-        /// material… composition) — the ribbon strip's `Library…` button reaches it through
-        /// this seam. The Sample-editor launcher the retired Library bay carried here
-        /// (`openSampleEditor`) moved INTO that window's own composition (`LibraryWindow`),
-        /// the step-013 Materials precedent.
+        /// the Library seam, app-scope stores and catalogue imports — the Launcher's Library button
+        /// reaches it through this seam.
         openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> LibraryBackup.LibraryBackupProxy -> CatalogueImportContext -> unit
-        /// Spec 0038 (017): open the SAME single-instance Library window in SELECT state over
-        /// the session context (the Select bay's Choose… verb). A missing window opens fresh
-        /// in Select mode; a LIVE one is RE-TARGETED at the new context (a second Choose…
-        /// re-points the instance — the step-016 `RetargetedWindow` semantics). The step-005
-        /// modality switch decides ShowDialog-vs-Show against the REQUESTING window. Returns
-        /// the opened session's cancel-and-close handle — the `SelectSession` staleness lever —
-        /// or None when the open failed (the typed error is dropped at this unit seam: a failed
-        /// open leaves no window, exactly the user-visible outcome).
-        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> LibraryBackup.LibraryBackupProxy -> CatalogueImportContext -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
     }
 
     /// The real launchers — spec 0038 step 008: every verb-opened window goes THROUGH the
@@ -212,31 +194,19 @@ type EditorLaunchers =
             openLibraryWindow =
                 fun library samples sources materials categories libraryBackups catalogueImports ->
                     openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, sources, materials, categories, libraryBackups, catalogueImports) :> Window)
-            openLibrarySelectWindow =
-                fun library samples sources materials categories libraryBackups catalogueImports modality requestingWindow selectCtx ->
-                    // Spec 0038 (017): the Select-state open — the SAME registry key as the
-                    // Browse opens above, so Choose… and the Library… strip button meet in one
-                    // open-or-activate space. A LIVE window is re-pointed through the step-016
-                    // `Retarget` seam (the concrete-window downcast is the launcher contract's
-                    // baked-closure shape); a missing one opens fresh in Select mode and is
-                    // shown per the step-005 modality switch against the requesting window.
-                    let retargetWindow (live : Window) : unit =
-                        match live with
-                        | :? LibraryWindow as libraryWindow -> libraryWindow.Retarget selectCtx
-                        | _ -> ()
-                    let launcher =
-                        WindowLauncher.WindowLauncher.create
-                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, sources, materials, categories, libraryBackups, catalogueImports, mode = WindowMode.Select selectCtx) :> Window |> Ok)
-                            modality
-                            (WindowLauncher.SelectOpen (requestingWindow, retargetWindow))
-                    match launcher.openOrActivate WindowLauncher.LibraryWindowKey with
-                    | Ok (WindowLauncher.CreatedWindow window)
-                    | Ok (WindowLauncher.ActivatedWindow window)
-                    | Ok (WindowLauncher.RetargetedWindow window) -> Some (fun () -> window.Close ())
-                    | Error _ -> None
         }
 
 /// What the Kit menu reaches outside the model (spec 0050 S5.3); function-valued, so it compares by reference.
+/// What the Items page's New item… asks the library window for: the models it offers, the one already chosen, and
+/// where the choice goes (spec 0051 `.manual/007` 4.3).
+[<ReferenceEquality>]
+type ItemModelChooserRequest =
+    {
+        offers : ItemModelChoice list
+        chosenOpt : ItemModelChoice option
+        onChosen : ItemModelChoice -> unit
+    }
+
 [<ReferenceEquality>]
 type KitWindowShell =
     {
@@ -263,6 +233,12 @@ type KitWindowShell =
         environmentFileOpt : FileName option
         /// Where a chart's exports start (spec 0051 `.manual/003` 5.8).
         exportsFolderOpt : FolderName option
+        /// The clipboard Copy name and Copy as CSV write to (spec 0051 `.manual/007` 1.3, 1.4).
+        clipboard : ClipboardProxy
+        /// Opens the library's model chooser in a window of its own over the request (spec 0051 `.manual/007` 4.3).
+        chooseItemModel : ItemModelChooserRequest -> unit
+        /// Opens the step-by-step guides (spec 0051 `.manual/007` 9.2).
+        openGuide : unit -> unit
     }
 
     /// The test scenes' shell: it starts no Explorer, closes no window, picks no zip or kit and runs no job; its
@@ -283,26 +259,10 @@ type KitWindowShell =
             openImportWizard = ignore
             environmentFileOpt = None
             exportsFolderOpt = None
+            clipboard = ClipboardProxy.inert
+            chooseItemModel = ignore
+            openGuide = ignore
         }
-
-/// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
-/// requested (the step-017 Choose… flow populates it; nothing else in the workbench opens a
-/// Select window yet). The window itself is HOST state — the model only holds how to end the
-/// session: a changed table selection, an element add (which selects the new element), or the
-/// selected element's removal invokes `cancelAndClose` (the staleness rules — the
-/// pending-bind-clears precedent), and CLOSING the window is what fires the session's
-/// `onCancelled` (the window's own dismissal hook), so staleness, the window's Close verb and
-/// the title-bar X share one cancel path. Function-valued field ⇒ reference equality (the
-/// model keeps its Elmish-required equality).
-[<ReferenceEquality>]
-type SelectSession =
-    {
-        /// The table element the Select-state window serves (`SelectionTarget`'s element case —
-        /// step 017 compares it to decide re-target vs fresh open).
-        target : Library.ElementId
-        /// Cancel the session and CLOSE its window.
-        cancelAndClose : unit -> unit
-    }
 
 /// Spec 0038 Part L (037): which constructor flow this workbench hosts. The FORWARD constructor is
 /// the ordinary Main scene (build a stack, preview its response). The INVERSE constructor opens the
@@ -371,14 +331,14 @@ type KitCopySource =
         | Ok () -> ()
         | Error error -> Softellect.Sys.Logging.Logger.logError $"KitCopySource.release: could not close the copy source: {error.describe}"
 
-/// The step of the constructor's flow strip the window shows, each reachable directly (spec 0050 S7.2, 001 §O). It is
-/// window state, never stored, so it carries no wire tag.
+/// The page of the kit window's page row the window shows, each reachable directly (spec 0050 S7.2, 001 §O; 0051
+/// `.manual/007` 2.1). It is window state, never stored, so it carries no wire tag.
 type ConstructorFlowStep =
-    /// The kit's Items panel (spec 0050 S7.2).
+    /// The kit's Items page (spec 0050 S7.2).
     | ItemsFlowStep
-    /// The table (spec 0050 S7.2).
+    /// The kit's setups, each over its table (spec 0050 S7.2; 0051 `.manual/007` Phase 5).
     | SetupsFlowStep
-    /// The existing Experiments bay (spec 0050 S7.2).
+    /// The kit's experiments (spec 0050 S7.2; 0051 `.manual/007` Phase 6).
     | ExperimentsFlowStep
     /// The experiments' data files: the Inverse constructor's alone, as spec 0046 kept them (spec 0050 S9.3).
     | DataFlowStep
@@ -390,10 +350,10 @@ type ConstructorFlowStep =
     | FitFlowStep
     /// The selected fit run's stored values and diagnostics (spec 0050 S11.5).
     | ResultsFlowStep
-    /// Publishes the selected run's calibration and promotes its library subjects (spec 0050 S11.5).
-    | PublishFlowStep
+    /// The kit's own operations and Publish, the row's last page (spec 0051 `.manual/007` 2.2, D1, D2).
+    | KitFlowStep
 
-    /// The working steps in 001 §O's order (spec 0050 S7.2, S9.3, S11.5, S14.2; .spec-md §3.22).
+    /// The pages in the row's order, the mode switch aside (spec 0050 S7.2, S9.3, S11.5, S14.2; 0051 `.manual/007` 2.1).
     static member all : ConstructorFlowStep list =
         [
             ItemsFlowStep
@@ -404,10 +364,10 @@ type ConstructorFlowStep =
             PlanFlowStep
             FitFlowStep
             ResultsFlowStep
-            PublishFlowStep
+            KitFlowStep
         ]
 
-    /// The steps the constructor's strip shows: the Main constructor's stop at Experiments (spec 0050 S9.3, S11.5,
+    /// The pages the constructor's row shows: the Main constructor's skip the Inverse ones (spec 0050 S9.3, S11.5,
     /// S14.2).
     static member stepsOf (mode : ConstructorMode) : ConstructorFlowStep list =
         match mode with
@@ -419,11 +379,13 @@ type ConstructorFlowStep =
                 | UnknownsFlowStep
                 | PlanFlowStep
                 | FitFlowStep
-                | ResultsFlowStep
-                | PublishFlowStep -> false
-                | _ -> true)
+                | ResultsFlowStep -> false
+                | ItemsFlowStep
+                | SetupsFlowStep
+                | ExperimentsFlowStep
+                | KitFlowStep -> true)
 
-    /// The strip's caption of the step (spec 0050 S7.2, S11.5, S14.2).
+    /// The row's caption of the page (spec 0050 S7.2, S11.5, S14.2; 0051 `.manual/007` D1).
     member this.caption : ControlCaption =
         match this with
         | ItemsFlowStep -> ControlCaption "Items"
@@ -434,9 +396,9 @@ type ConstructorFlowStep =
         | PlanFlowStep -> ControlCaption "Plan"
         | FitFlowStep -> ControlCaption "Fit"
         | ResultsFlowStep -> ControlCaption "Results"
-        | PublishFlowStep -> ControlCaption "Publish"
+        | KitFlowStep -> ControlCaption "Kit"
 
-    /// The id of the step's box in the flow strip (spec 0050 S7.2, S11.5, S14.2).
+    /// The id of the page's button in the row (spec 0050 S7.2, S11.5, S14.2).
     member this.flowUiId : ConstructorUiId =
         match this with
         | ItemsFlowStep -> ConstructorUiId.flowItemsStep
@@ -447,7 +409,130 @@ type ConstructorFlowStep =
         | PlanFlowStep -> ConstructorUiId.flowPlanStep
         | FitFlowStep -> ConstructorUiId.flowFitStep
         | ResultsFlowStep -> ConstructorUiId.flowResultsStep
-        | PublishFlowStep -> ConstructorUiId.flowPublishStep
+        | KitFlowStep -> ConstructorUiId.flowKitStep
+
+/// The one state the shown page is in: browsing its entries, editing its chosen entry in place, or creating a new one
+/// (spec 0051 `.manual/007` 1.2). Window state, never stored.
+type PageMode =
+    | BrowsingPage
+    | EditingPageEntry
+    | CreatingPageEntry
+
+    /// The mode as a key, so a block under an entry is recreated when the page changes state.
+    member this.uiKey : ConstructorUiKey =
+        match this with
+        | BrowsingPage -> ConstructorUiKey "Browsing"
+        | EditingPageEntry -> ConstructorUiKey "Editing"
+        | CreatingPageEntry -> ConstructorUiKey "Creating"
+
+/// What waits for the answer to "Discard your changes?": leaving for a page or the other constructor, a Cancel, or
+/// closing the kit (spec 0051 `.manual/007` 1.2, D11).
+type PageLeave =
+    | LeaveForStep of ConstructorFlowStep
+    | LeaveForMode of ConstructorMode
+    | LeaveByCancel
+    | LeaveByClosingKit
+
+/// Whether a page's draft differs from what it edits; Save is offered only when it does (spec 0051 `.manual/007` 1.2).
+type DraftState =
+    | DraftChanged
+    | DraftUnchanged
+
+/// The photo an item's draft holds: the one it has, a picked file attached at Save, or none (spec 0051 `.manual/007`
+/// 4.2).
+type ItemPhotoDraft =
+    | KeepItemPhoto
+    | PickedItemPhoto of FileName
+    | DroppedItemPhoto
+
+/// The chosen item's edit: its label and notes as typed, its photo and its parameters, all written at Save as one
+/// revision of the working item (spec 0051 `.manual/007` 4.2).
+type ItemEditDraft =
+    {
+        itemId : ItemId
+        labelText : ControlCaption
+        notesText : ControlCaption
+        photo : ItemPhotoDraft
+        parameters : Parameter list
+    }
+
+/// What the Setups page's Creating makes: a setup over the default table, a source and a detector, or a copy of a held
+/// one (spec 0051 `.manual/007` 5.4, 5.6, D14).
+type SetupCreation =
+    | NewSetupCreation
+    | CopySetupCreation of source : SetupName
+
+/// The chosen experiment's edit: the editor's draft as it began, and its role, session and notes as typed; the setup
+/// chosen before it, which the page returns to (spec 0051 `.manual/007` 6.3).
+type ExperimentEditDraft =
+    {
+        experimentId : Experiments.ExperimentId
+        baseline : Experiments.ExperimentDraft
+        role : Experiments.ExperimentRole
+        sessionText : ControlCaption
+        notesText : ControlCaption
+        setupBeforeOpt : SetupName option
+        /// The setup revision the experiment is re-pointed to at Save, with the audit note `dataDraft` holds (spec 0050
+        /// S9.3; 0051 `.manual/007` 6.3).
+        repointOpt : SetupReference option
+    }
+
+/// The chosen experiment's exclusions as edited on the Data page, written at Save (spec 0051 `.manual/007` 7.3).
+type DataEditDraft =
+    {
+        experimentId : Experiments.ExperimentId
+        baseline : PointExclusion list
+        exclusions : PointExclusion list
+    }
+
+/// The chosen study's edit on the Unknowns page: the study as it began, its working copy, and the working copies of the
+/// items whose parameters it changed, all written at Save (spec 0051 `.manual/007` 8.2).
+type StudyEditDraft =
+    {
+        baseline : Study
+        draft : Study
+        items : Item list
+    }
+
+/// The New fit run… form: the fit mode and how stage 2 holds the calibration, written into the study when the run starts
+/// (spec 0050 S11.3; 0051 `.manual/003` D4, `.manual/007` 8.4).
+type FitRunDraft =
+    {
+        mode : FitMode
+        calibrationUse : CalibrationUse
+    }
+
+/// What a rename renames (spec 0051 `.manual/007` 1.3, D13).
+type RenameTarget =
+    | RenameItemTarget of ItemId
+    | RenameSetupTarget of SetupName
+    | RenameExperimentTarget of Experiments.ExperimentId
+    | RenameStudyTarget of StudyName
+
+/// The chosen experiment's model chart, computed once when it is chosen, so its View is offered only when it charts
+/// something (spec 0051 `.manual/007` 6.6, `006-13`).
+type ExperimentChartCache =
+    {
+        experiment : Experiments.Experiment
+        chart : ExperimentChart.ExperimentChart
+    }
+
+/// Whether an experiment's View opens a chart, or why it is withheld (spec 0051 `.manual/007` 6.6, `006-13`).
+type ChartAvailability =
+    | ChartReady
+    | ChartWithheldFor of reason : ControlCaption
+
+/// Whether an entry's Rename… is offered, or withheld and why (spec 0051 `.manual/007` 1.3, D13).
+type RenameAvailability =
+    | RenameAvailable
+    | RenameRefused of reason : ControlCaption
+
+/// An in-place rename: its target and the name as typed (spec 0051 `.manual/007` 1.3).
+type RenameDraft =
+    {
+        target : RenameTarget
+        nameText : ControlCaption
+    }
 
 /// The open "Add item from library model…" form: the new item's id, minted when it opens, the models it offers, the
 /// one chosen, the label as typed (a raw caption until `ItemLabel.tryCreate` reads it) and the dial (spec 0050 S7.2).
@@ -743,18 +828,6 @@ type TableAndElementRotationModel =
         /// Replaces the old single swept-element + experiment-kind + λ-range fields. An experiment references
         /// its element by the serializable id, so the collection survives save-load.
         experimentCollection : Experiments.ExperimentCollection
-        /// Spec 0027 (026): the Library entry the user has SELECTED but not yet confirmed (the pending
-        /// bind). Clicking a Library entry sets this and shows its full description; Confirm commits it to
-        /// the selected element's `valueId`, Cancel clears it.
-        pendingEntry : ElementValueId option
-        /// Spec 0038 (016): the open Select-state window session (if any) this workbench
-        /// requested — cancelled and closed by the staleness rules (a changed table selection,
-        /// an element add, the selected element's removal) and cleared by the targeted bind.
-        activeSelect : SelectSession option
-        /// Spec 0038 (016): the staleness status line — a targeted Select return whose element
-        /// has vanished reports here (a no-op plus a status line, never a throw). Cleared by
-        /// the next successful bind or table-selection change (the disarm discipline).
-        selectStatus : ControlCaption option
         /// Spec 0033 (024): the injected materials WRITE seam (STORE_XDUO_0001). Spec 0038
         /// steps 013/015: the strip buttons' Materials and Library windows operate over THIS
         /// store (the bays they replaced are gone).
@@ -776,17 +849,6 @@ type TableAndElementRotationModel =
         /// editor's create picker and — spec 0038 step 013 — the Materials window's category facet
         /// and its "Categories…" verb.
         categories : MaterialLibrary.CategoryProxy
-        /// Spec 0033 (024): the window launcher seam behind the workbench strip buttons.
-        launchers : EditorLaunchers
-        /// Spec 0038 (017): the step-005 quick-pick cutoff — the Select bay's inline strip
-        /// renders only while the kind-constrained entry count is BELOW this; at or above it
-        /// the bay offers Choose… alone. Defaulted here; the composition root threads the
-        /// appsettings value by record update (step 47 owns the composition acceptance).
-        quickPickThreshold : WorkbenchSettings.QuickPickThreshold
-        /// Spec 0038 (017): how the Choose… verb's Select-state Library window opens (the
-        /// step-005 `SelectWindowsModal` switch — ShowDialog owned by this workbench's window,
-        /// or a modeless Show). Defaulted here; threaded like the threshold above.
-        selectWindowModality : WorkbenchSettings.SelectWindowModality
         /// Spec 0038 Part L (037): which constructor flow this workbench hosts — the ordinary
         /// FORWARD Main scene, or the INVERSE flow `initInverse` seeds (unbound sample, chart
         /// gated on a hint). Defaults to `ForwardConstructor`; `initInverse` sets the inverse mode.
@@ -826,8 +888,36 @@ type TableAndElementRotationModel =
         slotChipOpenOpt : Library.ElementId option
         /// The grid panel's draft while the panel is open, `None` while it is closed (spec 0050 S8.4).
         setupGridOpt : SetupGrids.SetupGridDraft option
-        /// The flow strip's step the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
+        /// The page row's page the window shows, the same in the forward and inverse constructors (spec 0050 S7.2).
         flowStep : ConstructorFlowStep
+        /// The one state the shown page is in (spec 0051 `.manual/007` 1.2).
+        pageMode : PageMode
+        /// What waits for the answer to "Discard your changes?"; none while nothing is asked (spec 0051 `.manual/007` 1.2).
+        leaveQuestionOpt : PageLeave option
+        /// The page the last kit status was raised on, the one page that shows it (spec 0051 `.manual/007` 1.7).
+        kitStatusStep : ConstructorFlowStep
+        /// The rename typed in place of an entry's caption, none while nothing is renamed (spec 0051 `.manual/007` 1.3).
+        renameOpt : RenameDraft option
+        /// The chosen item's edit while the Items page edits it (spec 0051 `.manual/007` 4.2).
+        itemEditOpt : ItemEditDraft option
+        /// What the Setups page creates while it creates (spec 0051 `.manual/007` 5.4, 5.6).
+        setupCreationOpt : SetupCreation option
+        /// The experiment the Experiments page shows under its row (spec 0051 `.manual/007` 6.2).
+        chosenExperimentOpt : Experiments.ExperimentId option
+        /// The chosen experiment's edit while the Experiments page edits it (spec 0051 `.manual/007` 6.3).
+        experimentEditOpt : ExperimentEditDraft option
+        /// The experiments already over the setup a new experiment would use, while the page asks OK / Cancel / Show
+        /// (spec 0051 `.manual/007` 6.4).
+        sameSetupWarningOpt : Experiments.ExperimentId list option
+        /// The chosen experiment's exclusions while the Data page edits them (spec 0051 `.manual/007` 7.3).
+        dataEditOpt : DataEditDraft option
+        /// The chosen study's working copy while the Unknowns page edits it, and the study as it began (spec 0051
+        /// `.manual/007` 8.2).
+        studyEditOpt : StudyEditDraft option
+        /// The chart of the experiment last chosen on the Experiments or Data page (spec 0051 `.manual/007` 6.6).
+        experimentChartCacheOpt : ExperimentChartCache option
+        /// The New fit run… form while the Fit page creates (spec 0051 `.manual/007` 8.4).
+        fitRunDraftOpt : FitRunDraft option
         /// The kit's studies in name order, as last read or recorded (spec 0050 S11.5).
         kitStudies : Study list
         /// The kit's fit runs as last read, with newly completed runs appended (spec 0050 S11.5).
@@ -883,13 +973,6 @@ module BayNames =
     let move : Ribbon.BayName = Ribbon.BayName "Move"
     let add : Ribbon.BayName = Ribbon.BayName "Add"
     let render : Ribbon.BayName = Ribbon.BayName "Render"
-    /// Spec 0027 (024): the Select bay (labelled "Library" until spec 0033 step 014, "Selector" until spec
-    /// 0046) — pick the choosable spec for the selected element. The kind-constrained, confirm-gated
-    /// binding through `LibraryControls` and the read-only `LibraryProxy` is unchanged; only the label
-    /// moved, freeing the word Library for the samples workbench.
-    let selector : Ribbon.BayName = Ribbon.BayName "Select"
-    /// Spec 0027 (024) Phase 2: the Experiments bay — pick which element's R1 sweeps a full circle.
-    let experiments : Ribbon.BayName = Ribbon.BayName "Experiments"
     /// Spec 0027 (026): the Details bay — the selected element's bound Library entry (what it is, its full
     /// description, and a layer-stack band view for a multilayer sample).
     let details : Ribbon.BayName = Ribbon.BayName "Details"
@@ -899,7 +982,8 @@ module BayNames =
     // opened by its right-aligned tab-strip-row button. No full-surface bay remains; every bay
     // keeps the shared table canvas below the strip.
     /// Spec 0046: Add comes first — a scene is built before it is turned or moved.
-    let allBayNames : Ribbon.BayName list = [ add; rotation; move; render; selector; experiments; details ]
+    /// Spec 0051 `.manual/007` 2.3: the table's own tabs; the Select and Experiments bays left the ribbon.
+    let allBayNames : Ribbon.BayName list = [ add; rotation; move; render; details ]
 
 let defaultElementZoom : BeamLayout.ElementZoom = BeamLayout.ElementZoom 5.0
 
@@ -987,18 +1071,12 @@ let initWith
         library = library
         experiments = experiments
         experimentCollection = Experiments.ExperimentCollection.empty
-        pendingEntry = None
-        activeSelect = None
-        selectStatus = None
         materials = materials
         samples = samples
         sources = Library.SourceProxy.createInMemory ()
         libraryBackups = LibraryBackup.LibraryBackupProxy.createInMemory ()
         catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
         categories = categories
-        launchers = EditorLaunchers.defaults
-        quickPickThreshold = QuickPickThreshold.defaultValue
-        selectWindowModality = SelectWindowModality.defaultValue
         constructorMode = ForwardConstructor
         kit = kit
         kitFolderOpt = None
@@ -1019,6 +1097,19 @@ let initWith
         setupGridOpt = None
         // Spec 0050 S7.2: a window opens on the table and its Add bay, as before the strip.
         flowStep = SetupsFlowStep
+        pageMode = BrowsingPage
+        leaveQuestionOpt = None
+        kitStatusStep = SetupsFlowStep
+        renameOpt = None
+        itemEditOpt = None
+        setupCreationOpt = None
+        chosenExperimentOpt = None
+        experimentEditOpt = None
+        sameSetupWarningOpt = None
+        dataEditOpt = None
+        studyEditOpt = None
+        experimentChartCacheOpt = None
+        fitRunDraftOpt = None
         kitStudies = []
         kitFitRuns = []
         studySurface = StudySurfaceState.initial
@@ -1188,6 +1279,92 @@ type DataFileAttachParam =
     }
 
 type TableAndElementRotationMsg =
+    /// The chosen entry's Edit: the page enters Editing over a draft of it (spec 0051 `.manual/007` 1.2).
+    | BeginPageEdit
+    /// The page's New…: the page enters Creating over a fresh draft (spec 0051 `.manual/007` 1.2).
+    | BeginPageCreate
+    /// Save or Create: the draft is written once and the page returns to Browsing (spec 0051 `.manual/007` 1.2).
+    | CommitPageDraft
+    /// Cancel: asks first when the draft changed, else returns to Browsing (spec 0051 `.manual/007` 1.2).
+    | CancelPageDraft
+    /// The discard question's Yes: the draft is dropped and what waited for the answer goes on (spec 0051
+    /// `.manual/007` 1.2, D11).
+    | ConfirmPageLeave
+    /// The discard question's No: the page keeps its draft (spec 0051 `.manual/007` 1.2).
+    | KeepPageDraft
+    /// A dynamic button's Copy name, or a table's Copy as CSV: the text goes to the clipboard (spec 0051 `.manual/007`
+    /// 1.3, 1.4).
+    | CopyToClipboard of ControlCaption
+    /// An entry's Rename…: its caption becomes a name field in place (spec 0051 `.manual/007` 1.3).
+    | BeginRename of RenameTarget
+    /// The rename's name as typed, writing nothing (spec 0051 `.manual/007` 1.3).
+    | SetRenameText of ControlCaption
+    /// The rename's Save: the entry takes the typed name (spec 0051 `.manual/007` 1.3).
+    | CommitRename
+    /// The rename's Cancel, writing nothing (spec 0051 `.manual/007` 1.3).
+    | CancelRename
+    /// Renames a setup, re-pointing every experiment over any of its revisions: the rename's Save, and how a test
+    /// renames one (spec 0051 `.manual/007` 1.3).
+    | RenameSetup of SetupName * SetupName
+    /// Renames an experiment and re-points every study that lists it (spec 0051 `.manual/007` 1.3).
+    | RenameExperiment of Experiments.ExperimentId * Experiments.ExperimentName
+    /// Renames a study that has no fit run (spec 0051 `.manual/007` 1.3, D13).
+    | RenameStudy of StudyName * StudyName
+    /// The edited item's label as typed (spec 0051 `.manual/007` 4.2).
+    | SetItemDraftLabel of ControlCaption
+    /// The edited item's notes as typed (spec 0051 `.manual/007` 4.2).
+    | SetItemDraftNotes of ControlCaption
+    /// The edited item's photo: a picked file, dropped, or the one it has (spec 0051 `.manual/007` 4.2).
+    | SetItemDraftPhoto of ItemPhotoDraft
+    /// The parameter editor's Set while the item is edited: the draft takes the state (spec 0051 `.manual/007` 4.2).
+    | SetItemDraftParameter of ItemModels.ParameterName * ParameterState
+    /// The chosen setup's second press: no setup is chosen (spec 0051 `.manual/007` 5.2).
+    | DeselectSetup
+    /// The chosen setup's Copy…: the page creates a copy, its name prefilled `<name> # <N>` (spec 0051 `.manual/007` 5.4).
+    | BeginSetupCopy
+    /// Copies a setup's slots under a new name as revision 1: Copy…'s Create, and how a test copies one (spec 0051
+    /// `.manual/007` 5.4).
+    | CopySetup of SetupName * SetupName
+    /// A press of an experiment's row: chosen, or unchosen when it is (spec 0051 `.manual/007` 6.2).
+    | ChooseExperiment of Experiments.ExperimentId
+    /// The edited experiment's role (spec 0051 `.manual/007` 6.3).
+    | SetExperimentDraftRole of Experiments.ExperimentRole
+    /// The edited experiment's session as typed (spec 0051 `.manual/007` 6.3).
+    | SetExperimentDraftSession of ControlCaption
+    /// The edited experiment's notes as typed (spec 0051 `.manual/007` 6.3).
+    | SetExperimentDraftNotes of ControlCaption
+    /// The setup revision the edited experiment is re-pointed to at Save, or none (spec 0051 `.manual/007` 6.3).
+    | SetExperimentDraftRepoint of SetupReference option
+    /// The same-setup warning's OK: the experiment is created anyway (spec 0051 `.manual/007` 6.4).
+    | ConfirmSameSetup
+    /// The same-setup warning's Cancel: back to the form (spec 0051 `.manual/007` 6.4).
+    | CancelSameSetup
+    /// The same-setup warning's Show: the new experiment is dropped and the first existing one chosen (spec 0051
+    /// `.manual/007` 6.4, D12).
+    | ShowSameSetupExperiment
+    /// New experiments from a setup grid…: the page creates through the grid panel (spec 0051 `.manual/007` 6.5, D5).
+    | BeginExperimentGrid
+    /// A press of an experiment on the Data page: its data opens under it, or closes when open (spec 0051 `.manual/007`
+    /// 7.3).
+    | ChooseDataExperiment of Experiments.ExperimentId
+    /// Excludes that point in the Data page's edit, for the typed reason, writing nothing (spec 0051 `.manual/007` 7.3).
+    | DraftExcludePoint of MappedPointNumber
+    /// Takes the point's exclusion back in the Data page's edit, writing nothing (spec 0051 `.manual/007` 7.3).
+    | DraftIncludePoint of MappedPointNumber
+    /// The chosen study's second press: no study is chosen (spec 0051 `.manual/007` 8.2).
+    | DeselectStudy
+    /// A press of a fit run in the Kit page's Publish: it and its study are chosen, or unchosen when it is (spec 0051
+    /// `.manual/007` 2.2, 8.6).
+    | ChoosePublishRun of FitRunName
+    /// A press of a fit run on the Fit page: chosen, or unchosen when it is (spec 0051 `.manual/007` 8.4).
+    | ChooseFitRun of FitRunName
+    /// The New fit run… form's fit mode (spec 0051 `.manual/007` 8.4).
+    | SetFitRunDraftMode of FitMode
+    /// The New fit run… form's calibration use for stage 2 (spec 0051 `.manual/007` 8.4).
+    | SetFitRunDraftCalibration of CalibrationUse
+    /// Run in the New fit run… form: the study takes the form's settings, then the stage runs (spec 0051 `.manual/007`
+    /// 8.4).
+    | StartFitRun of FitStage
     /// Applies and records a study verb, shared by the surfaces and their tests (spec 0050 S11.5).
     | StudyCommand of StudyMsg
     /// The Fit step's verbs and the running fit's progress and completion (spec 0050 S11.5).
@@ -1307,27 +1484,10 @@ type TableAndElementRotationMsg =
     /// Main-screen LIBRARY bay (task 024): bind this Library entry id to the selected element's
     /// `valueId` (inert when the table or nothing is selected).
     | BindValueId of ElementValueId
-    /// Spec 0027 (026): the confirm-gated Library bind. `RequestBindValueId` SELECTS an entry as pending
-    /// (shows its full description, no bind yet); `ConfirmBindValueId` COMMITS the pending entry to the
-    /// selected element's `valueId`; `CancelBindValueId` clears the pending choice.
-    | RequestBindValueId of ElementValueId
-    | ConfirmBindValueId
-    | CancelBindValueId
-    /// Spec 0038 (016): the TARGETED bind a Select-state window's `onSelected` dispatches —
-    /// commit the entry id to the `valueId` of the element with THIS serializable id (never
-    /// "the current selection": the selection may have moved while the modeless window was
-    /// open). A vanished element is a no-op plus the `selectStatus` line, never a throw.
-    /// Spec 0038 (017): this is THE one commit site of `placement.valueId` — the quick-pick
-    /// strip's confirm and the direct bind above DELEGATE here, so binding through the strip
-    /// and through the Choose… Select window land the identical message.
+    /// Spec 0038 (016): the TARGETED bind — commit the entry id to the `valueId` of the element with THIS
+    /// serializable id; a vanished element is a no-op, never a throw. The one commit site of `placement.valueId`:
+    /// the direct bind above delegates here.
     | BindValueIdTo of Library.ElementId * ElementValueId
-    /// Spec 0038 (017): the Choose… flow's session bookkeeping. `SelectSessionStarted` stores
-    /// the staleness handle of the Select-state window the verb just opened (or re-targeted);
-    /// `SelectSessionEnded` clears exactly THAT session — reference-keyed — when the window
-    /// ends it from its own side (the Close verb / title-bar X fire the session's
-    /// `onCancelled`), so a session superseded by a re-target can never clear its successor.
-    | SelectSessionStarted of SelectSession
-    | SelectSessionEnded of SelectSession
     /// Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step experiment editor + collection.
     /// Choose the element to vary (by id), the varied quantity, the T/R/both capture, and the range;
     /// commit (Add / Update), start a New draft, or Edit / Remove a collected experiment (by id).
@@ -1408,8 +1568,6 @@ type TableAndElementRotationMsg =
     | ActivateSetup of SetupName
     /// Puts a kit item, or nothing, into that slot of the table (spec 0050 S8.2; 001 §P `AssignSlot`).
     | AssignSlot of Library.ElementId * ItemId option
-    /// The table as the setup that holds this item in that slot, a held one or a new one (spec 0050 S8.2; 001 §P `SwapSlot`).
-    | SwapSlot of Library.ElementId * ItemId
     /// Every ticked combination of the grid over the table, as setups and experiments of the kit (spec 0050 S8.3; 001 §P).
     | GenerateSetupGrid of SetupGrids.SetupGrid
     /// A new experiment of the draft over the active setup (spec 0050 S8.4; 001 §P `RecordExperiment`).
@@ -1462,19 +1620,6 @@ type TableAndElementRotationMsg =
     | CopyChosenExperiments
     /// The copy panel's Cancel: closes the source and copies nothing (spec 0050 S6).
     | CloseCopySource
-    /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
-    /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
-    /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
-    /// `WindowRegistry` under `MaterialsWindowKey`). The Materials BAY and its `Mat…` verb
-    /// vocabulary left the ribbon with this step; the window carries the verbs now.
-    | OpenMaterialsWindow
-    /// Spec 0038 (015) — the ribbon tab-strip row's right-aligned "Library…" button: open the
-    /// SINGLE-INSTANCE Library window (UICOMP_XDUO_0010) over the read-only Library seam plus
-    /// the app-scope samples + materials stores through the launcher seam (a second click
-    /// ACTIVATES the live window — the shared `WindowRegistry` under `LibraryWindowKey`). The
-    /// LIBRARY (samples workbench) BAY and its `Smp…` verb vocabulary left the ribbon with this
-    /// step; the window carries the verbs now.
-    | OpenLibraryWindow
     /// Spec 0046 — the right-click ELEMENT MENU. A right click on the canvas selects the element under
     /// the point and opens its menu there (a right click off every element just closes it).
     | OpenElementMenuAt of ScreenPoint
@@ -1747,17 +1892,6 @@ let sideBeamGap : BarMeters = BarMeters 0.3
 
 type TableAndElementRotationModel with
 
-    /// Spec 0038 (016) staleness: cancel and CLOSE the open Select-state window session, if any
-    /// (closing the window fires the session's `onCancelled` through its own dismissal hook).
-    /// Invoked wherever the table selection changes or the session's target can disappear — the
-    /// pending-bind-clears precedent (`PointerUp` below).
-    member internal m.withActiveSelectCancelled : TableAndElementRotationModel =
-        match m.activeSelect with
-        | Some session ->
-            session.cancelAndClose ()
-            { m with activeSelect = None }
-        | None -> m
-
     /// A position of the DEFAULT scene's beam, read against where the ray root (the source) now is (spec 0046):
     /// the ray moves rigidly with the source, so `defaultX` — an along-beam coordinate measured with the source
     /// at its default point — is carried by however far the source has since moved along x.
@@ -1859,7 +1993,7 @@ let private addElement (kind : CatalogueKind) (prebind : ElementValueId option) 
             content = Setups.EmptySlotContent
         }
     let elements' = m.elements @ [ e ]
-    { m.withActiveSelectCancelled with elements = elements'; selection = ElementSelected (SceneElementIndex (List.length elements' - 1)) }
+    { m with elements = elements'; selection = ElementSelected (SceneElementIndex (List.length elements' - 1)) }
 
 // ---------------------------------------------------------------------------
 // Main-screen MOVE bay (spec 0046 — one rule, the table plays no part): an element slides along its RAY,
@@ -1958,7 +2092,7 @@ type TableAndElementRotationModel with
                         match e.beam with
                         | BeamLayout.OnReflectedBeamOf host when host = removed -> { e with beam = BeamLayout.OnMainBeam }
                         | BeamLayout.OnReflectedBeamOf _ | BeamLayout.OnMainBeam -> e)
-                { m.withActiveSelectCancelled with elements = elements'; selection = NothingSelected; elementMenu = None }
+                { m with elements = elements'; selection = NothingSelected; elementMenu = None }
             | None -> m
         | TableSelected | NothingSelected -> m
 
@@ -2068,6 +2202,34 @@ let private exportDraftRun (model : TableAndElementRotationModel) : TableAndElem
 /// Spec 0027 (030 follow-up): the side-effecting "open the chart window for a COLLECTED experiment (by id)"
 /// action — the per-row "View" button and a row double-click both invoke it. Same forward-reference seam.
 let mutable private viewExperimentHook : TableAndElementRotationModel -> Experiments.ExperimentId -> ControlCaption option = fun _ _ -> None
+
+/// The chart of a collected experiment over its own setup revision (`chartForExperiment`), wired once it exists, so
+/// choosing an experiment caches it (spec 0051 `.manual/007` 6.6).
+let mutable private experimentChartHook : TableAndElementRotationModel -> Experiments.Experiment -> ExperimentChart.ExperimentChart =
+    fun _ _ -> ExperimentChart.emptyExperimentChart
+
+type TableAndElementRotationModel with
+
+    /// The model with the chart of `experiment` cached, computed now unless the cache already holds it as it is.
+    member model.withChartCachedFor (experiment : Experiments.Experiment) : TableAndElementRotationModel =
+        match model.experimentChartCacheOpt with
+        | Some cached when cached.experiment = experiment -> model
+        | Some _
+        | None -> { model with experimentChartCacheOpt = Some { experiment = experiment; chart = experimentChartHook model experiment } }
+
+    /// Whether the experiment's View opens a chart: withheld, with the chart's reason, when its cached chart has no
+    /// series; offered while nothing is cached for it, since View then computes it (spec 0051 `.manual/007` 6.6).
+    member model.chartAvailabilityOf (experiment : Experiments.Experiment) : ChartAvailability =
+        match model.experimentChartCacheOpt with
+        | Some cached when cached.experiment = experiment ->
+            match cached.chart.series with
+            | [] ->
+                match cached.chart.description.value with
+                | "" -> ChartWithheldFor (ControlCaption "Its setup gives no point to chart.")
+                | text -> ChartWithheldFor (ControlCaption text)
+            | _ :: _ -> ChartReady
+        | Some _
+        | None -> ChartReady
 
 // Spec 0027 (028): the Controls-layer ⇄ domain mirror maps for the experiment variable / measurement DUs
 // (the bay is domain-free, so it mirrors the domain cases and the host maps them back).
@@ -2638,8 +2800,6 @@ type TableAndElementRotationModel with
                         fitting = model.slotChipItems roled.slot
                     })
             openOpt = model.slotChipOpenOpt
-            recordAvailability = model.kitWrites
-            recordNote = model.recordNote
         }
 
     /// `active` with the table written over it, minting its next revision when an experiment references the current
@@ -2794,6 +2954,9 @@ let private recordKitItemEdit
 /// The session name type itself: qualified as `Experiments.SessionName`, F# resolves its union case and finds no
 /// `tryCreate` (spec 0050 S9.1).
 type private ExperimentSessionName = Experiments.SessionName
+
+/// The experiment name type itself, for `tryCreate`, as `ExperimentSessionName` (spec 0051 `.manual/007` 1.3).
+type private ExperimentNameOfKit = Experiments.ExperimentName
 
 /// The correction note type itself, for `tryCreate`, as `ExperimentSessionName` (spec 0050 S9.3).
 type private ExperimentCorrectionNote = Experiments.CorrectionNote
@@ -3119,10 +3282,613 @@ let private withGridDraftEdited
         }
     | None -> model
 
-// `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
-// targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
-let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+// ---------------------------------------------------------------------------
+// Spec 0051 `.manual/007` Phase 1: the page rules — one state per page, drafts written once, renames in place.
+// ---------------------------------------------------------------------------
+
+type TableAndElementRotationModel with
+
+    /// The item the Items page shows under its row, when one is chosen (spec 0051 `.manual/007` 4.1).
+    member model.chosenItemOpt : Item option =
+        model.selectedItemOpt |> Option.bind (fun id -> model.kitItems |> List.tryFind (fun item -> item.id = id))
+
+    /// The experiment the Experiments page shows under its row, when one is chosen (spec 0051 `.manual/007` 6.2).
+    member model.chosenExperimentHeldOpt : Experiments.Experiment option =
+        model.chosenExperimentOpt
+        |> Option.bind (fun id -> model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id))
+
+    /// The experiments over the setup of that name, any revision, in the collection's order (spec 0051 `.manual/007`
+    /// 6.4, D8).
+    member model.experimentsOverSetup (name : SetupName) : Experiments.Experiment list =
+        model.experimentCollection.experiments |> List.filter (fun experiment -> experiment.setup.name = name)
+
+    /// The name an entry has now, the rename's first text; none once the entry is gone (spec 0051 `.manual/007` 1.3).
+    member model.renameCurrentName (target : RenameTarget) : ControlCaption option =
+        match target with
+        | RenameItemTarget id -> model.kitItems |> List.tryFind (fun item -> item.id = id) |> Option.map (fun item -> item.label.caption)
+        | RenameSetupTarget name -> model.kitSetups |> List.tryFind (fun setup -> setup.name = name) |> Option.map (fun setup -> setup.name.caption)
+        | RenameExperimentTarget id ->
+            model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) |> Option.map (fun experiment -> experiment.name.caption)
+        | RenameStudyTarget name -> model.kitStudies |> List.tryFind (fun study -> study.name = name) |> Option.map (fun study -> study.name.caption)
+
+    /// Whether a study can be renamed: not once a fit run names it, since fit runs are append-only files named by their
+    /// study (spec 0051 `.manual/007` 1.3, D13).
+    member model.studyRenaming (name : StudyName) : RenameAvailability =
+        match model.kitFitRuns |> List.exists (fun run -> run.study = name) with
+        | true -> RenameRefused (ControlCaption "A study with a fit run keeps its name: each fit run's file is named by it.")
+        | false -> RenameAvailable
+
+    /// Whether the shown page's draft differs from what it edits or creates; Save is offered only when it does (spec 0051
+    /// `.manual/007` 1.2).
+    member model.pageDraftState : DraftState =
+        let changedWhen (changed : bool) : DraftState = if changed then DraftChanged else DraftUnchanged
+        match model.pageMode, model.flowStep with
+        | BrowsingPage, _ -> DraftUnchanged
+        | EditingPageEntry, ItemsFlowStep ->
+            match model.itemEditOpt, model.chosenItemOpt with
+            | Some draft, Some item ->
+                changedWhen (
+                    draft.labelText.value <> item.label.value
+                    || draft.notesText.value <> item.notes.value
+                    || draft.photo <> KeepItemPhoto
+                    || draft.parameters <> item.parameters)
+            | _ -> DraftUnchanged
+        | EditingPageEntry, SetupsFlowStep ->
+            match model.activeSetupOpt with
+            | Some active -> changedWhen (model.tableWrittenOver active <> active)
+            | None -> DraftUnchanged
+        | EditingPageEntry, ExperimentsFlowStep ->
+            match model.experimentEditOpt with
+            | Some edit ->
+                match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = edit.experimentId) with
+                | Some experiment ->
+                    let session =
+                        match experiment.sessionOpt with
+                        | Some name -> name.caption.value
+                        | None -> ""
+                    changedWhen (
+                        model.experimentCollection.draft <> edit.baseline
+                        || edit.repointOpt <> None
+                        || edit.role <> experiment.role
+                        || edit.sessionText.value <> session
+                        || edit.notesText.value <> experiment.notes.caption.value)
+                | None -> DraftUnchanged
+            | None -> DraftUnchanged
+        | EditingPageEntry, DataFlowStep ->
+            match model.dataEditOpt with
+            | Some edit -> changedWhen (edit.exclusions <> edit.baseline)
+            | None -> DraftUnchanged
+        | EditingPageEntry, UnknownsFlowStep ->
+            match model.studyEditOpt with
+            | Some edit ->
+                changedWhen (
+                    edit.draft <> edit.baseline
+                    || (edit.items |> List.exists (fun item -> not (List.contains item model.kitItems))))
+            | None -> DraftUnchanged
+        | EditingPageEntry, KitFlowStep -> changedWhen (model.namingTemplateText <> model.kit.kitFile.namingTemplate.caption)
+        | CreatingPageEntry, ItemsFlowStep ->
+            match model.addItemFormOpt with
+            | Some form ->
+                match form.chosenOpt with
+                | Some _ -> DraftChanged
+                | None -> changedWhen (form.labelText.value.Trim() <> "")
+            | None -> DraftUnchanged
+        | CreatingPageEntry, SetupsFlowStep ->
+            match model.setupCreationOpt with
+            | Some NewSetupCreation -> changedWhen (model.setupName.value.Trim() <> "" || model.elements <> mainSeedElements)
+            // A copy is a new setup under its prefilled free name, so Create is offered at once (spec 0051 `.manual/007` 5.4).
+            | Some (CopySetupCreation _) -> DraftChanged
+            | None -> DraftUnchanged
+        | CreatingPageEntry, ExperimentsFlowStep ->
+            match model.setupGridOpt with
+            | Some _ -> DraftUnchanged
+            | None -> changedWhen (model.experimentCollection.draft <> Experiments.ExperimentDraft.empty)
+        | CreatingPageEntry, DataFlowStep ->
+            match model.dataSplitOpt with
+            | Some _ -> DraftChanged
+            | None -> DraftUnchanged
+        | CreatingPageEntry, UnknownsFlowStep ->
+            changedWhen (model.studySurface.newStudyName.value.Trim() <> "" || not (List.isEmpty model.studySurface.newStudyExperiments))
+        | CreatingPageEntry, FitFlowStep ->
+            match model.fitRunDraftOpt, model.selectedStudyOpt with
+            | Some draft, Some study -> changedWhen (draft.mode <> study.settings.mode || draft.calibrationUse <> study.settings.calibrationUse)
+            | _ -> DraftUnchanged
+        | (EditingPageEntry | CreatingPageEntry), (PlanFlowStep | ResultsFlowStep)
+        | EditingPageEntry, FitFlowStep
+        | CreatingPageEntry, KitFlowStep -> DraftUnchanged
+
+    /// The chosen entry's Edit: the page enters Editing over a draft of it; `update` reaches the workbench's own
+    /// messages (spec 0051 `.manual/007` 1.2).
+    member model.withPageEditBegun (update : TableAndElementRotationMsg -> TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
+        match model.pageMode, model.flowStep with
+        | BrowsingPage, ItemsFlowStep ->
+            match model.chosenItemOpt with
+            | Some item ->
+                let draft : ItemEditDraft =
+                    {
+                        itemId = item.id
+                        labelText = item.label.caption
+                        notesText = ControlCaption item.notes.value
+                        photo = KeepItemPhoto
+                        parameters = item.parameters
+                    }
+                { model with pageMode = EditingPageEntry; itemEditOpt = Some draft; parameterEditOpt = None; renameOpt = None }
+            | None -> model
+        | BrowsingPage, SetupsFlowStep ->
+            match model.activeSetupOpt with
+            | Some _ -> { model with pageMode = EditingPageEntry; ribbon = BayNames.add; renameOpt = None }
+            | None -> model
+        | BrowsingPage, ExperimentsFlowStep ->
+            match model.chosenExperimentHeldOpt with
+            | Some experiment ->
+                let loaded = update (ExpEdit experiment.id) model
+                let edit : ExperimentEditDraft =
+                    {
+                        experimentId = experiment.id
+                        baseline = loaded.experimentCollection.draft
+                        role = experiment.role
+                        sessionText =
+                            match experiment.sessionOpt with
+                            | Some name -> name.caption
+                            | None -> ControlCaption ""
+                        notesText = experiment.notes.caption
+                        setupBeforeOpt = model.activeSetupOpt |> Option.map (fun setup -> setup.name)
+                        repointOpt = None
+                    }
+                {
+                    loaded with
+                        pageMode = EditingPageEntry
+                        experimentEditOpt = Some edit
+                        kitStatus = model.kitStatus
+                        renameOpt = None
+                        experimentRemovalOpt = None
+                }
+            | None -> model
+        | BrowsingPage, DataFlowStep ->
+            match model.reviewedDataOpt |> Option.bind (fun reviewed -> model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = reviewed.experimentId)) with
+            | Some experiment ->
+                // An experiment with no data yet opens its Edit too: its Attach data file… is there (spec 0051 `.manual/007` 7.2).
+                let held =
+                    match experiment.dataOpt with
+                    | Some data -> data.exclusions
+                    | None -> []
+                let edit : DataEditDraft =
+                    {
+                        experimentId = experiment.id
+                        baseline = held
+                        exclusions = held
+                    }
+                { model with pageMode = EditingPageEntry; dataEditOpt = Some edit }
+            | None -> model
+        | BrowsingPage, UnknownsFlowStep ->
+            match model.selectedStudyOpt with
+            | Some study -> { model with pageMode = EditingPageEntry; studyEditOpt = Some { baseline = study; draft = study; items = [] }; parameterEditOpt = None; renameOpt = None }
+            | None -> model
+        | BrowsingPage, KitFlowStep -> { model with pageMode = EditingPageEntry; namingTemplateText = model.kit.kitFile.namingTemplate.caption }
+        | BrowsingPage, (PlanFlowStep | FitFlowStep | ResultsFlowStep)
+        | (EditingPageEntry | CreatingPageEntry), _ -> model
+
+    /// The page's New…: the page enters Creating over a fresh draft (spec 0051 `.manual/007` 1.2, D14).
+    member model.withPageCreateBegun (update : TableAndElementRotationMsg -> TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
+        match model.pageMode, model.flowStep with
+        | BrowsingPage, ItemsFlowStep -> { update OpenAddItemForm model with pageMode = CreatingPageEntry; renameOpt = None }
+        | BrowsingPage, SetupsFlowStep ->
+            {
+                model with
+                    pageMode = CreatingPageEntry
+                    setupCreationOpt = Some NewSetupCreation
+                    setupName = ControlCaption ""
+                    elements = mainSeedElements
+                    selection = TableSelected
+                    drag = NotPressed
+                    elementMenu = None
+                    ribbon = BayNames.add
+                    renameOpt = None
+            }
+        | BrowsingPage, ExperimentsFlowStep ->
+            match model.activeSetupOpt with
+            | Some active ->
+                let drawn = update (ActivateSetup active.name) model
+                {
+                    drawn with
+                        pageMode = CreatingPageEntry
+                        experimentCollection = drawn.experimentCollection.newDraft
+                        sameSetupWarningOpt = None
+                        kitStatus = model.kitStatus
+                        renameOpt = None
+                }
+            | None -> model
+        | BrowsingPage, UnknownsFlowStep ->
+            {
+                model with
+                    pageMode = CreatingPageEntry
+                    studySurface = { model.studySurface with newStudyName = ControlCaption ""; newStudyExperiments = [] }
+                    renameOpt = None
+            }
+        | BrowsingPage, FitFlowStep ->
+            match model.selectedStudyOpt with
+            | Some study ->
+                {
+                    model with
+                        pageMode = CreatingPageEntry
+                        fitRunDraftOpt = Some { mode = study.settings.mode; calibrationUse = study.settings.calibrationUse }
+                }
+            | None -> model
+        | BrowsingPage, (DataFlowStep | PlanFlowStep | ResultsFlowStep | KitFlowStep)
+        | (EditingPageEntry | CreatingPageEntry), _ -> model
+
+/// The library context the window records kit files through (spec 0050 S4.3).
+let private libraryOf (model : TableAndElementRotationModel) : KitLibraryContext =
+    {
+        kit = model.kit
+        imports = model.catalogueImports
+    }
+
+/// Copies the setup's slots under `name` as revision 1, chosen and drawn; a name another setup's file holds is refused
+/// (spec 0051 `.manual/007` 5.4).
+let private withSetupCopied (source : SetupName) (name : SetupName) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    guardKitWrite model (fun () ->
+        match model.kitSetups |> List.tryFind (fun setup -> setup.name = source) with
+        | None -> model |> refusedWith (ControlCaption $"Not copied — the kit holds no setup '{source.value}'.")
+        | Some held ->
+            match Setups.Setup.create name held.slots model.kitSetups with
+            | Error error -> model |> refusedWith (ControlCaption $"Not copied — {error.describe}")
+            | Ok copy ->
+                match (libraryOf model).recordSetup copy with
+                | Error error -> model |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
+                | Ok () ->
+                    {
+                        model.withSetupRecorded copy with
+                            elements = copy.slots |> List.map (fun slot -> slot.drawnWith model.kitItems)
+                            selection = TableSelected
+                            drag = NotPressed
+                            elementMenu = None
+                            kitStatus = Some (KitStatusDone (ControlCaption $"Copied setup '{source.value}' as '{name.value}'."))
+                    })
+
+/// Renames the setup, every revision kept, and re-points every experiment over any of its revisions; the new files are
+/// written before the old one is deleted (spec 0051 `.manual/007` 1.3).
+let private withSetupRenamed (previous : SetupName) (renamed : SetupName) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    guardKitWrite model (fun () ->
+        let clashes (setup : Setups.Setup) : bool =
+            setup.name <> previous && System.String.Equals(setup.name.fileStem.value, renamed.fileStem.value, System.StringComparison.OrdinalIgnoreCase)
+        match model.kitSetups |> List.tryFind (fun setup -> setup.name = previous), model.kitSetups |> List.tryFind clashes with
+        | None, _ -> model |> refusedWith (ControlCaption $"Not renamed — the kit holds no setup '{previous.value}'.")
+        | Some _, Some other -> model |> refusedWith (ControlCaption $"Not renamed — '{renamed.value}' is stored as the file of setup '{other.name.value}'.")
+        | Some held, None when held.name = renamed -> model
+        | Some held, None ->
+            let library = libraryOf model
+            let setup = { held with name = renamed }
+            let repointed = model.experimentsOverSetup previous |> List.map (fun experiment -> experiment.withSetupRenamed previous renamed)
+            let sameFile = System.String.Equals(previous.fileStem.value, renamed.fileStem.value, System.StringComparison.OrdinalIgnoreCase)
+            let deleteOld () : Result<unit, KitLibraryError> = model.kit.proxy.deleteKindFile SetupKitFile previous.fileStem |> Result.mapError KitLibraryKitErr
+            let written =
+                (if sameFile then deleteOld () else Ok ())
+                |> Result.bind (fun () -> library.recordSetup setup)
+                |> Result.bind (fun () -> repointed |> List.fold (fun result experiment -> result |> Result.bind (fun () -> library.recordExperiment experiment)) (Ok ()))
+                |> Result.bind (fun () -> if sameFile then Ok () else deleteOld ())
+            match written with
+            | Error error -> model |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
+            | Ok () ->
+                let experiments =
+                    model.experimentCollection.experiments
+                    |> List.map (fun experiment -> experiment.withSetupRenamed previous renamed)
+                let active =
+                    match model.activeSetupOpt with
+                    | Some current when current.name = previous -> Some setup
+                    | other -> other
+                {
+                    model with
+                        kitSetups =
+                            setup :: (model.kitSetups |> List.filter (fun held -> held.name <> previous))
+                            |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                        activeSetupOpt = active
+                        experimentCollection = { model.experimentCollection with experiments = experiments }
+                        kitStatus = Some (KitStatusDone (ControlCaption $"Renamed setup '{previous.value}' to '{renamed.value}'."))
+                })
+
+/// Renames the experiment's file and re-points every study that lists it (spec 0051 `.manual/007` 1.3).
+let private withExperimentRenamed (id : Experiments.ExperimentId) (renamed : Experiments.ExperimentName) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    guardKitWrite model (fun () ->
+        let clashes (experiment : Experiments.Experiment) : bool =
+            experiment.id <> id && System.String.Equals(experiment.name.fileStem.value, renamed.fileStem.value, System.StringComparison.OrdinalIgnoreCase)
+        match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id), model.experimentCollection.experiments |> List.tryFind clashes with
+        | None, _ -> model
+        | Some _, Some other -> model |> refusedWith (ControlCaption $"Not renamed — '{renamed.value}' is stored as the file of experiment '{other.name.value}'.")
+        | Some held, None when held.name = renamed -> model
+        | Some held, None ->
+            let library = libraryOf model
+            let previous = held.name
+            let experiment = { held with name = renamed }
+            let studies =
+                model.kitStudies
+                |> List.filter (fun study -> List.contains previous study.experiments)
+                |> List.map (fun study -> study.withExperimentRenamed previous renamed)
+            let sameFile = System.String.Equals(previous.fileStem.value, renamed.fileStem.value, System.StringComparison.OrdinalIgnoreCase)
+            let deleteOld () : Result<unit, KitLibraryError> = model.kit.proxy.deleteExperiment previous |> Result.mapError KitLibraryKitErr
+            let written =
+                (if sameFile then deleteOld () else Ok ())
+                |> Result.bind (fun () -> library.recordExperiment experiment)
+                |> Result.bind (fun () -> studies |> List.fold (fun result study -> result |> Result.bind (fun () -> library.recordStudy study)) (Ok ()))
+                |> Result.bind (fun () -> if sameFile then Ok () else deleteOld ())
+            match written with
+            | Error error -> model |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
+            | Ok () ->
+                {
+                    model with
+                        experimentCollection =
+                            {
+                                model.experimentCollection with
+                                    experiments = model.experimentCollection.experiments |> List.map (fun held -> if held.id = id then experiment else held)
+                            }
+                        kitStudies =
+                            model.kitStudies
+                            |> List.map (fun study -> studies |> List.tryFind (fun renamedStudy -> renamedStudy.name = study.name) |> Option.defaultValue study)
+                        kitStatus = Some (KitStatusDone (ControlCaption $"Renamed experiment '{previous.value}' to '{renamed.value}'."))
+                })
+
+/// Renames a study that no fit run names; its old file is deleted once the new one is written (spec 0051 `.manual/007`
+/// 1.3, D13).
+let private withStudyRenamed (previous : StudyName) (renamed : StudyName) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    guardKitWrite model (fun () ->
+        let clashes (study : Study) : bool =
+            study.name <> previous && System.String.Equals(study.name.fileStem.value, renamed.fileStem.value, System.StringComparison.OrdinalIgnoreCase)
+        match model.kitStudies |> List.tryFind (fun study -> study.name = previous), model.kitStudies |> List.tryFind clashes, model.studyRenaming previous with
+        | None, _, _ -> model
+        | Some _, Some other, _ -> model |> refusedWith (ControlCaption $"Not renamed — '{renamed.value}' is stored as the file of study '{other.name.value}'.")
+        | Some _, None, RenameRefused reason -> model |> refusedWith (ControlCaption $"Not renamed — {reason.value}")
+        | Some held, None, _ when held.name = renamed -> model
+        | Some held, None, _ ->
+            let study = { held with name = renamed }
+            let sameFile = System.String.Equals(previous.fileStem.value, renamed.fileStem.value, System.StringComparison.OrdinalIgnoreCase)
+            let deleteOld () : Result<unit, KitLibraryError> = model.kit.proxy.deleteKindFile StudyKitFile previous.fileStem |> Result.mapError KitLibraryKitErr
+            let written =
+                (if sameFile then deleteOld () else Ok ())
+                |> Result.bind (fun () -> (libraryOf model).recordStudy study)
+                |> Result.bind (fun () -> if sameFile then Ok () else deleteOld ())
+            match written with
+            | Error error -> model |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
+            | Ok () ->
+                {
+                    model with
+                        kitStudies =
+                            study :: (model.kitStudies |> List.filter (fun held -> held.name <> previous))
+                            |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                        studySurface =
+                            {
+                                model.studySurface with
+                                    studyOpt = model.studySurface.studyOpt |> Option.map (fun name -> if name = previous then renamed else name)
+                            }
+                        kitStatus = Some (KitStatusDone (ControlCaption $"Renamed study '{previous.value}' to '{renamed.value}'."))
+                })
+
+/// The item draft written once: its label, notes, photo and parameters as one record of the working item (spec 0051
+/// `.manual/007` 4.2).
+let private withItemDraftRecorded (draft : ItemEditDraft) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    model
+    |> recordKitItemEdit
+        draft.itemId
+        (fun held ->
+            let labelled : Result<Item, KitItemEditError> =
+                match ItemLabel.tryCreate draft.labelText.value with
+                | Ok label when label <> held.label -> held.relabelledAmong label model.kitItems |> Result.mapError ItemEditRefusedErr
+                | Ok _ -> Ok held
+                | Error error -> Error (ItemEditRefusedErr error)
+            labelled
+            |> Result.map (fun item -> item.withNotes (ItemNotes draft.notesText.value))
+            |> Result.bind (fun item ->
+                match draft.photo with
+                | KeepItemPhoto -> Ok item
+                | DroppedItemPhoto -> Ok (item.withPhoto None)
+                | PickedItemPhoto file ->
+                    model.experimentData.attachDataFile file
+                    |> Result.mapError PhotoAttachRefusedErr
+                    |> Result.map (fun attachment -> item.withPhoto (Some attachment.path)))
+            |> Result.bind (fun item ->
+                draft.parameters
+                |> List.filter (fun parameter -> not (List.contains parameter held.parameters))
+                |> List.fold
+                    (fun result parameter ->
+                        result |> Result.bind (fun current -> current.withParameterState parameter.name parameter.state |> Result.mapError ItemEditRefusedErr))
+                    (Ok item)))
+        (fun recorded -> recorded)
+
+// `rec` (spec 0038 step 017): the BindValueId arm delegates to the one targeted commit arm (`BindValueIdTo`).
+let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     match msg with
+    // Spec 0051 `.manual/007` 1.3, 1.4: a copy writes to the clipboard and nothing else.
+    | CopyToClipboard text ->
+        model.kitShell.clipboard.copyText text
+        model
+    | BeginPageEdit -> model.withPageEditBegun (fun message held -> updateWorkbench message held)
+    | BeginPageCreate -> model.withPageCreateBegun (fun message held -> updateWorkbench message held)
+    | CommitPageDraft -> model |> committedPageDraft
+    // The wrapper asks before a changed draft is dropped; here the draft is unchanged, or the page browses.
+    | CancelPageDraft -> droppedPageDraft model
+    | ConfirmPageLeave
+    | KeepPageDraft -> model
+    | BeginRename target ->
+        match model.renameCurrentName target with
+        | Some current -> { model with renameOpt = Some { target = target; nameText = current } }
+        | None -> model
+    | SetRenameText text ->
+        match model.renameOpt with
+        | Some rename -> { model with renameOpt = Some { rename with nameText = text } }
+        | None -> model
+    | CancelRename -> { model with renameOpt = None }
+    | CommitRename ->
+        match model.renameOpt with
+        | None -> model
+        | Some rename ->
+            let renamed =
+                match rename.target with
+                | RenameItemTarget id ->
+                    match ItemLabel.tryCreate rename.nameText.value with
+                    | Ok label -> updateWorkbench (RelabelKitItem (id, label)) model
+                    | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
+                | RenameSetupTarget previous ->
+                    match SetupName.tryCreate rename.nameText.value with
+                    | Ok name -> updateWorkbench (RenameSetup (previous, name)) model
+                    | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
+                | RenameExperimentTarget id ->
+                    match ExperimentNameOfKit.tryCreate rename.nameText.value with
+                    | Ok name -> updateWorkbench (RenameExperiment (id, name)) model
+                    | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
+                | RenameStudyTarget previous ->
+                    match StudyName.tryCreate rename.nameText.value with
+                    | Ok name -> updateWorkbench (RenameStudy (previous, name)) model
+                    | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
+            match renamed.renameCurrentName rename.target with
+            | None -> { renamed with renameOpt = None }
+            | Some _ -> renamed
+    | RenameSetup (previous, renamed) -> model |> withSetupRenamed previous renamed
+    | RenameExperiment (id, renamed) -> model |> withExperimentRenamed id renamed
+    | RenameStudy (previous, renamed) -> model |> withStudyRenamed previous renamed
+    | SetItemDraftLabel text ->
+        match model.itemEditOpt with
+        | Some draft -> { model with itemEditOpt = Some { draft with labelText = text } }
+        | None -> model
+    | SetItemDraftNotes text ->
+        match model.itemEditOpt with
+        | Some draft -> { model with itemEditOpt = Some { draft with notesText = text } }
+        | None -> model
+    | SetItemDraftPhoto photo ->
+        match model.itemEditOpt with
+        | Some draft -> { model with itemEditOpt = Some { draft with photo = photo } }
+        | None -> model
+    | SetItemDraftParameter (name, state) ->
+        match model.itemEditOpt with
+        | Some draft ->
+            let parameter : Parameter = { name = name; state = state }
+            match parameter.validate with
+            | Ok validated ->
+                {
+                    model with
+                        itemEditOpt = Some { draft with parameters = draft.parameters |> List.map (fun held -> if held.name = name then validated else held) }
+                        parameterEditOpt = None
+                }
+            | Error error -> model |> refusedWith (ControlCaption $"The parameter was not set — {error.describe}")
+        | None -> model
+    // Spec 0051 `.manual/007` 5.2: the chosen setup is the context new experiments use; a second press unchooses it.
+    | DeselectSetup -> { model with activeSetupOpt = None; selection = TableSelected; drag = NotPressed; elementMenu = None }
+    | BeginSetupCopy ->
+        match model.pageMode, model.activeSetupOpt with
+        | BrowsingPage, Some active ->
+            {
+                model with
+                    pageMode = CreatingPageEntry
+                    setupCreationOpt = Some (CopySetupCreation active.name)
+                    setupName = (active.name.copyNameAmong (model.kitSetups |> List.map (fun setup -> setup.name))).caption
+            }
+        | _ -> model
+    | CopySetup (source, name) -> model |> withSetupCopied source name
+    | ChooseExperiment id ->
+        match model.pageMode with
+        | BrowsingPage ->
+            match model.chosenExperimentOpt with
+            | Some chosen when chosen = id -> { model with chosenExperimentOpt = None; experimentRemovalOpt = None }
+            | Some _
+            | None ->
+                match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) with
+                | Some experiment -> { model.withChartCachedFor experiment with chosenExperimentOpt = Some id; experimentRemovalOpt = None }
+                | None -> model
+        | EditingPageEntry
+        | CreatingPageEntry -> model
+    | SetExperimentDraftRole role ->
+        match model.experimentEditOpt with
+        | Some edit -> { model with experimentEditOpt = Some { edit with role = role } }
+        | None -> model
+    | SetExperimentDraftSession text ->
+        match model.experimentEditOpt with
+        | Some edit -> { model with experimentEditOpt = Some { edit with sessionText = text } }
+        | None -> model
+    | SetExperimentDraftNotes text ->
+        match model.experimentEditOpt with
+        | Some edit -> { model with experimentEditOpt = Some { edit with notesText = text } }
+        | None -> model
+    | SetExperimentDraftRepoint reference ->
+        match model.experimentEditOpt with
+        | Some edit -> { model with experimentEditOpt = Some { edit with repointOpt = reference } }
+        | None -> model
+    | ConfirmSameSetup -> { model with sameSetupWarningOpt = None } |> committedNewExperiment
+    | CancelSameSetup -> { model with sameSetupWarningOpt = None }
+    | ShowSameSetupExperiment ->
+        match model.sameSetupWarningOpt with
+        | Some (first :: _) -> { droppedPageDraft model with chosenExperimentOpt = Some first }
+        | Some []
+        | None -> { model with sameSetupWarningOpt = None }
+    | BeginExperimentGrid ->
+        match model.pageMode, model.activeSetupOpt with
+        | BrowsingPage, Some _ -> { updateWorkbench OpenSetupGrid model with pageMode = CreatingPageEntry }
+        | _ -> model
+    | ChooseDataExperiment id ->
+        match model.pageMode, model.reviewedDataOpt with
+        | BrowsingPage, Some reviewed when reviewed.experimentId = id -> { model with reviewedDataOpt = None }
+        | BrowsingPage, _ ->
+            let reviewed = updateWorkbench (ReviewExperimentData id) model
+            match reviewed.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = id) with
+            | Some experiment -> reviewed.withChartCachedFor experiment
+            | None -> reviewed
+        | EditingPageEntry, _
+        | CreatingPageEntry, _ -> model
+    | DraftExcludePoint point ->
+        match model.dataEditOpt with
+        | Some edit ->
+            match ExclusionReason.tryCreate model.dataDraft.exclusionReason.value with
+            | Some why ->
+                let exclusion : PointExclusion = { point = point; reason = why }
+                let others = edit.exclusions |> List.filter (fun held -> held.point <> point)
+                {
+                    model with
+                        dataEditOpt = Some { edit with exclusions = exclusion :: others |> List.sortBy (fun held -> held.point) }
+                        dataDraft = { model.dataDraft with exclusionReason = ControlCaption "" }
+                }
+            | None -> model |> refusedWith (ControlCaption "Not excluded — an exclusion needs a reason.")
+        | None -> model
+    | DraftIncludePoint point ->
+        match model.dataEditOpt with
+        | Some edit -> { model with dataEditOpt = Some { edit with exclusions = edit.exclusions |> List.filter (fun held -> held.point <> point) } }
+        | None -> model
+    | DeselectStudy -> { model with studySurface = { model.studySurface with studyOpt = None; fitRunOpt = None } }
+    | ChooseFitRun name ->
+        match model.pageMode with
+        | BrowsingPage when model.studySurface.fitRunOpt = Some name -> { model with studySurface = { model.studySurface with fitRunOpt = None } }
+        | BrowsingPage -> updateWorkbench (SelectFitRun name) model
+        | EditingPageEntry
+        | CreatingPageEntry -> model
+    | SetFitRunDraftMode mode ->
+        match model.fitRunDraftOpt with
+        | Some draft -> { model with fitRunDraftOpt = Some { draft with mode = mode } }
+        | None -> model
+    | SetFitRunDraftCalibration calibrationUse ->
+        match model.fitRunDraftOpt with
+        | Some draft -> { model with fitRunDraftOpt = Some { draft with calibrationUse = calibrationUse } }
+        | None -> model
+    | StartFitRun stage ->
+        match model.fitRunDraftOpt, model.selectedStudyOpt with
+        | Some draft, Some study ->
+            let moded =
+                if draft.mode = study.settings.mode then model
+                else updateWorkbench (StudyCommand (SetFitMode (study.name, draft.mode))) model
+            let calibrated =
+                if refusedSince model moded || draft.calibrationUse = study.settings.calibrationUse then moded
+                else updateWorkbench (StudyCommand (SetCalibrationUse (study.name, draft.calibrationUse))) moded
+            if refusedSince model calibrated then calibrated
+            else
+                let request : OpticalConstructor.Optimization.StudyEngine.StudyFitRequest =
+                    {
+                        study = study.name
+                        stage = stage
+                        calibrationUse = draft.calibrationUse
+                    }
+                { updateWorkbench (StudyFit (RunFit request)) calibrated with pageMode = BrowsingPage; fitRunDraftOpt = None }
+        | _ -> model
+    | ChoosePublishRun name ->
+        match model.kitFitRuns |> List.tryFind (fun run -> run.name = name) with
+        | Some run when model.studySurface.fitRunOpt = Some name && model.studySurface.studyOpt = Some run.study ->
+            { model with studySurface = { model.studySurface with fitRunOpt = None } }
+        | Some run -> { model with studySurface = { model.studySurface with studyOpt = Some run.study; fitRunOpt = Some name } }
+        | None -> model
     | PublishCalibration name ->
         withPublishingRun name model (fun study run ->
             match study.calibratedItemsWith run model.kitItems with
@@ -3225,6 +3991,16 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         model.planSurface with criterion = criterion
                     }
         }
+    // Spec 0051 `.manual/007` 8.2: while the Unknowns page edits its study, a verb changes the draft and writes nothing.
+    | StudyCommand message when model.pageMode = EditingPageEntry && model.flowStep = UnknownsFlowStep ->
+        match model.studyEditOpt with
+        | Some edit ->
+            let drafted = { model with kitStudies = edit.draft :: (model.kitStudies |> List.filter (fun held -> held.name <> edit.draft.name)) }
+            match message.applyTo drafted.studyContext with
+            | Ok study when study.name = edit.draft.name -> { model with studyEditOpt = Some { edit with draft = study } }
+            | Ok _ -> model
+            | Error error -> model |> refusedWith (ControlCaption $"The study was not changed — {error.describe}")
+        | None -> model
     | StudyCommand message ->
         guardKitWrite model (fun () ->
             match message.applyTo model.studyContext with
@@ -3350,7 +4126,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | AddElement kind ->
         // Spec 0038 (018): the plain add CONVERGES on the pre-binding arm below with the kind's
         // seeded default — every new table element except a sample lands pre-bound.
-        updateTableAndElementRotation (AddElementBoundTo (kind, kind.defaultSeedEntry)) model
+        updateWorkbench (AddElementBoundTo (kind, kind.defaultSeedEntry)) model
     // Spec 0051 `.manual/003` 3.8 (D7): in a kit window a new element is an empty slot whose chip opens, so a kit item
     // fills it, never a library preset bound behind the user's back.
     | AddElementBoundTo (kind, prebind) ->
@@ -3375,26 +4151,17 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | RenderSetRailOpacity v -> { model with render = model.render.withRailOpacity v }
     | RenderSetFaceOpacity v -> { model with render = model.render.withFaceOpacity v }
     | RenderSetLineOpacity v -> { model with render = model.render.withLineOpacity v }
-    | SelectBay name ->
-        // Spec 0050 S7.2: the strip names the surface the ribbon shows.
-        let flowStep = if name = BayNames.experiments then ExperimentsFlowStep else SetupsFlowStep
-        { model with ribbon = name; flowStep = flowStep }
+    // Spec 0051 `.manual/007` 2.3: the ribbon is the table's, shown only while a setup is edited or created.
+    | SelectBay name -> { model with ribbon = name }
     | ShowFlowStep step when not (List.contains step (ConstructorFlowStep.stepsOf model.constructorMode)) -> model
-    | ShowFlowStep ItemsFlowStep -> { model with flowStep = ItemsFlowStep }
-    | ShowFlowStep SetupsFlowStep ->
-        // Spec 0050 S7.2: Setups leaves the Experiments bay for the table's first bay; any other open bay stays.
-        let bay = if model.ribbon = BayNames.experiments then BayNames.add else model.ribbon
-        { model with flowStep = SetupsFlowStep; ribbon = bay }
-    | ShowFlowStep ExperimentsFlowStep -> { model with flowStep = ExperimentsFlowStep; ribbon = BayNames.experiments }
-    // Spec 0050 S9.3, S11.5, S14.2: the Inverse surfaces keep the open bay for the workbench's return.
-    | ShowFlowStep ((DataFlowStep | UnknownsFlowStep | PlanFlowStep | FitFlowStep | ResultsFlowStep | PublishFlowStep) as step) ->
-        {
-            model with flowStep = step
-        }
+    // Spec 0051 `.manual/007` 1.2: every page opens Browsing; a changed draft was asked about before this.
+    | ShowFlowStep step -> { model with flowStep = step; pageMode = BrowsingPage; renameOpt = None; leaveQuestionOpt = None }
+    // Spec 0051 `.manual/007` 4.1: a second press of the chosen item closes it; nothing is chosen while one is edited.
     | SelectKitItem id ->
-        match model.kitItems |> List.exists (fun item -> item.id = id) with
-        | true -> { model with selectedItemOpt = Some id; parameterEditOpt = None }
-        | false -> model
+        match model.pageMode, model.kitItems |> List.exists (fun item -> item.id = id) with
+        | BrowsingPage, true when model.selectedItemOpt = Some id -> { model with selectedItemOpt = None; parameterEditOpt = None; renameOpt = None }
+        | BrowsingPage, true -> { model with selectedItemOpt = Some id; parameterEditOpt = None; renameOpt = None }
+        | _ -> model
     | OpenAddItemForm ->
         // Spec 0050 S7.2: the binding models come from this one listing, so a failed listing offers none of them.
         let listed = model.itemModels.listItemModels ()
@@ -3457,6 +4224,24 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     {
                         model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
                     })
+    // Spec 0051 `.manual/007` 8.2: while the Unknowns page edits its study, an item's parameter is the draft's.
+    | SetParameterState (itemId, name, state) when model.pageMode = EditingPageEntry && model.flowStep = UnknownsFlowStep ->
+        match model.studyEditOpt with
+        | Some edit ->
+            let heldOpt =
+                edit.items
+                |> List.tryFind (fun item -> item.id = itemId)
+                |> Option.orElse (model.kitItems |> List.tryFind (fun item -> item.id = itemId))
+            match heldOpt |> Option.map (fun held -> held.withParameterState name state) with
+            | Some (Ok changed) ->
+                {
+                    model with
+                        studyEditOpt = Some { edit with items = changed :: (edit.items |> List.filter (fun item -> item.id <> itemId)) }
+                        parameterEditOpt = None
+                }
+            | Some (Error error) -> model |> refusedWith (ControlCaption $"The parameter was not set — {error.describe}")
+            | None -> model
+        | None -> model
     | SetParameterState (itemId, name, state) ->
         model
         |> recordKitItemEdit
@@ -3469,7 +4254,12 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             |> Option.bind (fun id -> model.kitItems |> List.tryFind (fun item -> item.id = id))
         match selectedOpt with
         | Some item ->
-            match item.tryFindParameter name with
+            // Spec 0051 `.manual/007` 4.2: while the item is edited, the editor opens on its draft's state.
+            let draftOpt =
+                model.itemEditOpt
+                |> Option.filter (fun draft -> draft.itemId = item.id)
+                |> Option.bind (fun draft -> draft.parameters |> List.tryFind (fun held -> held.name = name))
+            match draftOpt |> Option.orElse (item.tryFindParameter name) with
             | Some current ->
                 let parameter = ItemParameterRef (item.id, name)
                 {
@@ -3478,14 +4268,23 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             | None -> model
         | None -> model
     | EditStudyParameter parameter ->
+        // Spec 0051 `.manual/007` 8.2: while the study is edited, its parameters are its draft's and its items' drafts.
+        let items =
+            match model.studyEditOpt with
+            | Some edit -> edit.items @ model.kitItems
+            | None -> model.kitItems
+        let studyOpt =
+            match model.studyEditOpt with
+            | Some edit -> Some edit.draft
+            | None -> model.selectedStudyOpt
         let currentOpt =
             match parameter with
             | ItemParameterRef (id, name) ->
-                model.kitItems
+                items
                 |> List.tryFind (fun item -> item.id = id)
                 |> Option.bind (fun item -> item.tryFindParameter name)
             | MaterialParameterRef (version, name) ->
-                model.selectedStudyOpt
+                studyOpt
                 |> Option.bind (fun study -> study.materials |> List.tryFind (fun material -> material.version = version))
                 |> Option.bind (fun material -> material.parameters |> List.tryFind (fun current -> current.name = name))
         match currentOpt with
@@ -3529,39 +4328,12 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         match model.selection with
         | ElementSelected i ->
             match model.tryElementAt i with
-            | Some e -> updateTableAndElementRotation (BindValueIdTo (e.id, entryId)) model
+            | Some e -> updateWorkbench (BindValueIdTo (e.id, entryId)) model
             | None -> model
         | TableSelected | NothingSelected -> model
-    | RequestBindValueId entryId ->
-        // Spec 0027 (026): select the entry as PENDING (its full description is shown) without binding yet —
-        // inert unless an element is selected (the Select bay is only enabled for an element).
-        match model.selection with
-        | ElementSelected _ -> { model with pendingEntry = Some entryId }
-        | TableSelected | NothingSelected -> model
-    | ConfirmBindValueId ->
-        // Spec 0038 (017): the quick-pick strip's confirm CONVERGES on the SAME targeted bind
-        // message the Select window's onSelected dispatches — `BindValueIdTo` is the one
-        // commit site of placement.valueId. The strip's Confirm button is a stateless
-        // `unit -> unit` control handler (it cannot carry the ids without a stale-closure
-        // hazard under FuncUI's keyed re-subscription), so THIS arm resolves the pending
-        // entry + selected element over the CURRENT model and delegates.
-        match model.pendingEntry, model.selection with
-        | Some entryId, ElementSelected i ->
-            match model.tryElementAt i with
-            | Some e -> updateTableAndElementRotation (BindValueIdTo (e.id, entryId)) model
-            | None -> { model with pendingEntry = None }
-        | _ -> { model with pendingEntry = None }
-    | CancelBindValueId -> { model with pendingEntry = None }
     | BindValueIdTo (elementId, entryId) ->
-        // Spec 0038 (016): the TARGETED bind of a Select-state window's onSelected — resolve
-        // the element BY ITS ID at return time (the modeless window may outlive a selection
-        // change) and commit its valueId. A vanished element is a no-op plus the status line —
-        // never a throw (the staleness rules normally close the window first; this is the
-        // belt-and-braces path for the modeless race). Spec 0038 (017): a committed bind ENDS
-        // any live Choose… session — on the quick-pick path the Select window may still be
-        // open, so cancel AND CLOSE it; on the window path the window already closed itself
-        // and the extra Close() is Avalonia's safe no-op.
-        let m = model.withActiveSelectCancelled
+        // Spec 0038 (016): resolve the element BY ITS ID; a vanished element is a no-op, never a throw.
+        let m = model
         match m.tryIndexOf elementId with
         | Some i ->
             // Spec 0040 Part D.3: a bound sample seeds the placed element's emission from its
@@ -3571,21 +4343,8 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             mapElement i (fun e ->
                 let rebound = { e with placement = withBoundSampleEmission m { e.placement with valueId = Some entryId } }
                 if e.placement.valueId = Some entryId then rebound else rebound.withoutItem)
-                { m with pendingEntry = None; selectStatus = None }
-        | None ->
-            { m with selectStatus = Some (ControlCaption "The chosen entry was not bound — its target element is no longer on the table.") }
-    | SelectSessionStarted session ->
-        // Spec 0038 (017): the Choose… verb just opened (or re-targeted) the Select-state
-        // Library window — hold its staleness handle. Any prior session already ended through
-        // its own path (a selection change closed it; a re-target cancelled it in the window).
-        { model with activeSelect = Some session }
-    | SelectSessionEnded session ->
-        // Spec 0038 (017): the window ended the session from ITS side (the Close verb, the
-        // title-bar X, or a re-target superseding it). Reference-keyed: a session that was
-        // already replaced or cleared never clears its successor's handle.
-        match model.activeSelect with
-        | Some active when obj.ReferenceEquals (active, session) -> { model with activeSelect = None }
-        | Some _ | None -> model
+                m
+        | None -> m
     | ExpChooseElement elementId ->
         // Choosing the element to vary sets the draft element AND, from the element's kind, the allowed
         // variables (data via `SetupSlot.scanVariablesWith`, never hard-coded here) and the default capture. Spec 0046:
@@ -3792,11 +4551,22 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                         }
                     match library.recordExperiment experiment with
                     | Ok () ->
-                        {
-                            model with
-                                experimentCollection = collection
-                                experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (checkExperimentData model experiment)
-                        }
+                        // Spec 0051 `.manual/007` 7.3: a new mapping numbers its points anew, so an open edit starts over.
+                        let dataEditOpt =
+                            match model.dataEditOpt with
+                            | Some edit when edit.experimentId = experimentId -> Some { edit with baseline = []; exclusions = [] }
+                            | other -> other
+                        let attached =
+                            {
+                                model with
+                                    experimentCollection = collection
+                                    experimentDataStatus = model.experimentDataStatus |> Map.add experimentId (checkExperimentData model experiment)
+                                    dataEditOpt = dataEditOpt
+                            }
+                        match model.reviewedDataOpt with
+                        | Some reviewed when reviewed.experimentId = experimentId -> { attached with reviewedDataOpt = Some (reviewedDataOf attached experiment) }
+                        | Some _
+                        | None -> attached
                     | Error error ->
                         {
                             model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
@@ -3902,9 +4672,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                 }
             | Ok held ->
                 let counts = $"{held.split.matched.Length} matched, {held.split.offered.Length} offered, {held.split.unmatched.Length} unmatched"
+                // Spec 0051 `.manual/007` 7.5: a held split is the Data page's Creating.
                 {
                     model with
                         dataSplitOpt = Some held
+                        pageMode = if model.flowStep = DataFlowStep then CreatingPageEntry else model.pageMode
                         kitStatus = Some (KitStatusDone (ControlCaption $"Split {file.leafName.value} by '{held.key.value}': {counts}."))
                 })
     // Spec 0050 S9.3: only an offered group is ticked for creation.
@@ -3949,7 +4721,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                                             creating = creating
                                     }
                     }
-    | CancelDataSplit -> { model with dataSplitOpt = None }
+    | CancelDataSplit -> { model with dataSplitOpt = None; pageMode = if model.flowStep = DataFlowStep then BrowsingPage else model.pageMode }
     // Spec 0050 S9.3 (.spec-md §10.3 confirm): one attach, then the groups' writes in order as GenerateSetupGrid writes
     // (step 276), the first failure stopping the run with what was written; the table, the active setup, the draft and
     // the review stay. A ticked offer needs the draft RecordExperiment needs (step 278).
@@ -3987,9 +4759,11 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                             let counts =
                                 $"{experiments.Length - created.Length} matched, {created.Length} created with {setups.Length} new setup(s)"
                             let left = held.split.groups.Length - experiments.Length
+                            // The split is the Data page's Creating: Apply writes it, then the page browses (spec 0051 `.manual/007` 1.2, 7.5).
                             {
                                 written with
                                     dataSplitOpt = None
+                                    pageMode = if model.flowStep = DataFlowStep then BrowsingPage else model.pageMode
                                     kitStatus =
                                         Some (
                                             KitStatusDone (
@@ -4145,7 +4919,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     selection = TableSelected
                     drag = NotPressed
                     elementMenu = None
-                    kitStatus = Some (KitStatusDone (ControlCaption $"Loaded setup '{setup.name.value}'."))
+                    renameOpt = None
             }
         | None ->
             let unknown = UnknownSetupErr $"'{name.value}'"
@@ -4168,45 +4942,6 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     // Spec 0050 S8.2: a held setup is switched to by ActivateSetup, writing nothing, so a read-only kit takes it; only a
     // new setup is written, behind the read-only guard, and never the setup swapped from. S8.4: every outcome closes the
     // chip list, so a pick closes it whether the swap switched, created or was refused.
-    | SwapSlot (slotId, itemId) ->
-        let answered =
-            match slotAssigned model slotId (Some itemId) with
-            | Error error ->
-                {
-                    model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not swapped — {error.describe}"))
-                }
-            | Ok filled ->
-                let swapped = withSlotFilled filled model.elements |> List.map (fun slot -> slot.recordedWith model.kitItems)
-                let held = model.kitSetups |> List.map (fun setup -> setup.name)
-                let unnamed =
-                    match model.activeSetupOpt with
-                    | Some active -> active.name.nextFreeAmong held
-                    | None -> SetupName.firstFree held
-                // Spec 0050 S8.3: a swapped table the kit's template names takes that name made free, else S8.2's.
-                let fresh = model.kit.kitFile.namingTemplate.setupNameAmong swapped model.kitItems held unnamed
-                match Setups.Setup.swapTarget swapped model.kitSetups fresh with
-                | Setups.SwitchToHeldSetup setup -> updateTableAndElementRotation (ActivateSetup setup.name) model
-                | Setups.CreateSwappedSetup setup ->
-                    guardKitWrite model (fun () ->
-                        let library : KitLibraryContext =
-                            {
-                                kit = model.kit
-                                imports = model.catalogueImports
-                            }
-                        match library.recordSetup setup with
-                        | Ok () ->
-                            {
-                                model.withSetupRecorded setup with
-                                    elements = swapped
-                                    kitStatus = Some (KitStatusDone (ControlCaption $"Created setup '{setup.name.value}' by the swap."))
-                            }
-                        | Error error ->
-                            {
-                                model with kitStatus = Some (KitStatusRefused (ControlCaption $"Not saved to the kit — {error.describe}"))
-                            })
-        {
-            answered with slotChipOpenOpt = None
-        }
     // Spec 0050 S8.3: the setups the kit lacks, then the draft over every setup, as ExpCommit records them; the first
     // failed write stops the run, keeping what was written. The table, the active setup and the draft's choices stay.
     | GenerateSetupGrid grid ->
@@ -4348,7 +5083,9 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         }
     | CloseSetupGrid ->
         {
-            model with setupGridOpt = None
+            model with
+                setupGridOpt = None
+                pageMode = if model.flowStep = ExperimentsFlowStep then BrowsingPage else model.pageMode
         }
     | ToggleSetupGridItem (slotId, itemId) -> model |> withGridDraftEdited (fun draft -> draft.withItemToggled slotId itemId)
     | AddSetupGridAngle (slotId, degrees) -> model |> withGridDraftEdited (fun draft -> draft.withGridAngle slotId degrees.wrappedAngle)
@@ -4360,7 +5097,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             model with
                 constructorMode = ForwardConstructor
                 flowStep = ExperimentsFlowStep
-                ribbon = BayNames.experiments
+                pageMode = BrowsingPage
         }
     | SwitchConstructorMode mode ->
         {
@@ -4676,22 +5413,6 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
                     }
             | _ -> model)
     | CloseCopySource -> model.closeCopySource ()
-    | OpenMaterialsWindow ->
-        // Spec 0038 step 013: a pure launch of the single-instance Materials window
-        // (UICOMP_XDUO_0009) over app-scope stores and import seam — the launcher seam's
-        // shared registry keys it under `MaterialsWindowKey`, so a second click ACTIVATES the
-        // live window. No model change: the window runs its own MVU loop over the same stores.
-        model.launchers.openMaterialsWindow model.materials model.categories model.catalogueImports
-        model
-    | OpenLibraryWindow ->
-        // Spec 0038 step 015: a pure launch of the single-instance Library window
-        // (UICOMP_XDUO_0010) over the read-only Library seam plus the app-scope samples +
-        // materials stores — the launcher seam's shared registry keys it under
-        // `LibraryWindowKey`, so a second click ACTIVATES the live window. No model change: the
-        // window runs its own MVU loop over the same stores (the retired samples-workbench bay's
-        // query/selection/confirm state lives in the window's own model now).
-        model.launchers.openLibraryWindow model.library model.samples model.sources model.materials model.categories model.libraryBackups model.catalogueImports
-        model
     | OpenElementMenuAt pt ->
         // Spec 0046: a right click selects the element under the point (the same nearest-within-radius
         // rule as a left click) and opens its menu there; off every element it only closes the menu.
@@ -4700,7 +5421,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             let opened = { target = (List.item i.value model.elements).id; at = pt }
             let selection = ElementSelected i
             if selection = model.selection then { model with elementMenu = Some opened; drag = NotPressed }
-            else { model.withActiveSelectCancelled with selection = selection; elementMenu = Some opened; drag = NotPressed; pendingEntry = None; selectStatus = None }
+            else { model with selection = selection; elementMenu = Some opened; drag = NotPressed }
         | TableSelected | NothingSelected -> { model with elementMenu = None; drag = NotPressed }
     | CloseElementMenu -> { model with elementMenu = None }
     | ToggleElementRay (id, branch) -> toggleElementRay id branch model
@@ -4720,15 +5441,8 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             match model.drag with
             | Pressed start -> model.selectionAt start
             | _ -> model.selection
-        // Spec 0027 (026): a changed selection clears any pending (unconfirmed) Library bind, so a stale
-        // pending choice never carries across elements. Spec 0038 (016): the same change also
-        // CANCELS AND CLOSES the open Select-state window (the staleness rule extends the
-        // pending-bind-clears precedent) and clears the staleness status line. Spec 0046: any left
-        // click or pan on the table closes an open element menu.
-        if selection = model.selection then
-            { model with selection = selection; drag = NotPressed; elementMenu = None }
-        else
-            { model.withActiveSelectCancelled with selection = selection; drag = NotPressed; pendingEntry = None; selectStatus = None; elementMenu = None }
+        // Spec 0046: any left click or pan on the table closes an open element menu.
+        { model with selection = selection; drag = NotPressed; elementMenu = None }
     | Wheel (mods, notches) ->
         match wheelAction mods with
         | RotateSel1 -> rotateSelected RotationControls.R1 (notches.turnedBy wheelStepDegrees) model
@@ -4741,6 +5455,203 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         | ZoomElementsAll -> zoomAllElements notches model
         | ZoomTable -> { model with view = TableScene.zoomViewBy notches model.view }
         | NoWheelAction -> model
+
+/// Whether `after` was refused where `before` was not: a status turned to a refusal (spec 0051 `.manual/007` 1.2).
+and private refusedSince (before : TableAndElementRotationModel) (after : TableAndElementRotationModel) : bool =
+    match after.kitStatus with
+    | Some (KitStatusRefused _) -> after.kitStatus <> before.kitStatus
+    | Some (KitStatusDone _)
+    | None -> false
+
+/// The shown page with its draft dropped and Browsing again, the table back on the chosen setup and the editor on a
+/// fresh draft; it writes nothing (spec 0051 `.manual/007` 1.2).
+and private droppedPageDraft (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    let cleared =
+        {
+            model with
+                pageMode = BrowsingPage
+                leaveQuestionOpt = None
+                renameOpt = None
+                itemEditOpt = None
+                parameterEditOpt = None
+                addItemFormOpt = None
+                setupCreationOpt = None
+                sameSetupWarningOpt = None
+                dataEditOpt = None
+                studyEditOpt = None
+                setupGridOpt = None
+                dataSplitOpt = None
+                fitRunDraftOpt = None
+                namingTemplateText = model.kit.kitFile.namingTemplate.caption
+                studySurface = { model.studySurface with newStudyName = ControlCaption ""; newStudyExperiments = [] }
+        }
+    match model.pageMode, model.flowStep with
+    | (EditingPageEntry | CreatingPageEntry), (SetupsFlowStep | ExperimentsFlowStep) ->
+        let chosen =
+            match model.experimentEditOpt with
+            | Some edit -> edit.setupBeforeOpt
+            | None -> model.activeSetupOpt |> Option.map (fun setup -> setup.name)
+        let restored =
+            match chosen with
+            | Some name -> { updateWorkbench (ActivateSetup name) cleared with kitStatus = model.kitStatus }
+            | None -> { cleared with activeSetupOpt = None }
+        {
+            restored with
+                experimentCollection = restored.experimentCollection.newDraft
+                experimentEditOpt = None
+        }
+    | _ -> cleared
+
+/// The new experiment of the draft over the chosen setup, chosen once written (spec 0051 `.manual/007` 6.4).
+and private committedNewExperiment (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    let before = model.experimentCollection.experiments |> List.map (fun experiment -> experiment.id)
+    let committed = updateWorkbench RecordExperiment model
+    match committed.experimentCollection.experiments |> List.tryFind (fun experiment -> not (List.contains experiment.id before)) with
+    | Some created ->
+        {
+            droppedPageDraft { committed with pageMode = BrowsingPage } with
+                chosenExperimentOpt = Some created.id
+                kitStatus = Some (KitStatusDone (ControlCaption $"Created experiment '{created.name.value}'."))
+        }
+    | None -> committed
+
+/// Save or Create: the shown page's draft written once, then Browsing with the entry chosen; a refused write keeps the
+/// draft and says why (spec 0051 `.manual/007` 1.2).
+and private committedPageDraft (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    let browsingUnlessRefused (written : TableAndElementRotationModel) (onDone : TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
+        if refusedSince model written then written else onDone written
+    match model.pageMode, model.flowStep with
+    | EditingPageEntry, ItemsFlowStep ->
+        match model.itemEditOpt with
+        | None -> model
+        | Some draft ->
+            let written = model |> withItemDraftRecorded draft
+            browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; itemEditOpt = None; parameterEditOpt = None })
+    | EditingPageEntry, SetupsFlowStep ->
+        browsingUnlessRefused (updateWorkbench SaveSetup model) (fun saved -> { saved with pageMode = BrowsingPage })
+    | EditingPageEntry, ExperimentsFlowStep ->
+        match model.experimentEditOpt with
+        | None -> model
+        | Some edit ->
+            let committed = updateWorkbench ExpCommit model
+            let bookkept =
+                if refusedSince model committed then committed
+                else
+                    match committed.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = edit.experimentId) with
+                    | Some held ->
+                        let changed =
+                            (held.withRole edit.role).withSessionOpt (ExperimentSessionName.tryCreate edit.sessionText.value)
+                            |> fun experiment -> experiment.withNotes edit.notesText.toExperimentNotes
+                        if changed = held then committed else committed |> withExperimentRecorded changed (fun recorded -> recorded)
+                    | None -> committed
+            let repointed =
+                match edit.repointOpt with
+                | Some reference when not (refusedSince model bookkept) ->
+                    updateWorkbench (CorrectSetup (edit.experimentId, reference, model.dataDraft.correctionNote)) bookkept
+                | Some _
+                | None -> bookkept
+            browsingUnlessRefused repointed (fun saved ->
+                { droppedPageDraft saved with kitStatus = Some (KitStatusDone (ControlCaption "Saved the experiment.")) })
+    | EditingPageEntry, DataFlowStep ->
+        match model.dataEditOpt with
+        | None -> model
+        | Some edit ->
+            match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = edit.experimentId) with
+            | Some held ->
+                match held.dataOpt with
+                | Some data ->
+                    let changed = { held with dataOpt = Some { data with exclusions = edit.exclusions } }
+                    let written = model |> withExperimentDataRecorded changed (ControlCaption $"Saved the exclusions of {held.name.value}.")
+                    browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; dataEditOpt = None })
+                | None -> model
+            | None -> model
+    | EditingPageEntry, UnknownsFlowStep ->
+        match model.studyEditOpt with
+        | None -> model
+        | Some edit ->
+            let itemsWritten =
+                edit.items
+                |> List.filter (fun item -> not (List.contains item model.kitItems))
+                |> List.fold (fun held item -> held |> recordKitItemEdit item.id (fun _ -> Ok item) (fun recorded -> recorded)) model
+            let written =
+                if refusedSince model itemsWritten || edit.draft = edit.baseline then itemsWritten
+                else
+                    match (libraryOf itemsWritten).recordStudy edit.draft with
+                    | Ok () ->
+                        {
+                            itemsWritten with
+                                kitStudies =
+                                    edit.draft :: (itemsWritten.kitStudies |> List.filter (fun held -> held.name <> edit.draft.name))
+                                    |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                                kitStatus = Some (KitStatusDone (ControlCaption $"Saved study '{edit.draft.name.value}'."))
+                        }
+                    | Error error -> itemsWritten |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
+            browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; studyEditOpt = None; parameterEditOpt = None })
+    | EditingPageEntry, KitFlowStep ->
+        browsingUnlessRefused (updateWorkbench SaveNamingTemplate model) (fun saved -> { saved with pageMode = BrowsingPage })
+    | CreatingPageEntry, ItemsFlowStep ->
+        match model.addItemFormOpt |> Option.bind (fun form -> form.itemDraftOpt) with
+        | Some draft -> browsingUnlessRefused (updateWorkbench (AddItem draft) model) (fun added -> { added with pageMode = BrowsingPage })
+        | None -> model
+    | CreatingPageEntry, SetupsFlowStep ->
+        match model.setupCreationOpt with
+        | Some NewSetupCreation ->
+            browsingUnlessRefused (updateWorkbench CreateSetup model) (fun created -> { created with pageMode = BrowsingPage; setupCreationOpt = None; setupName = ControlCaption "" })
+        | Some (CopySetupCreation source) ->
+            match SetupName.tryCreate model.setupName.value with
+            | Ok name ->
+                browsingUnlessRefused (updateWorkbench (CopySetup (source, name)) model) (fun copied ->
+                    { copied with pageMode = BrowsingPage; setupCreationOpt = None; setupName = ControlCaption "" })
+            | Error error -> model |> refusedWith (ControlCaption $"Not copied — {error.describe}")
+        | None -> model
+    | CreatingPageEntry, ExperimentsFlowStep ->
+        match model.activeSetupOpt with
+        | Some active ->
+            match model.experimentsOverSetup active.name with
+            | [] -> committedNewExperiment model
+            | held -> { model with sameSetupWarningOpt = Some (held |> List.map (fun experiment -> experiment.id)) }
+        | None -> model
+    | CreatingPageEntry, DataFlowStep ->
+        browsingUnlessRefused (updateWorkbench MatchByTemplate model) (fun matched -> { matched with pageMode = BrowsingPage })
+    | CreatingPageEntry, UnknownsFlowStep ->
+        match StudyName.tryCreate model.studySurface.newStudyName.value with
+        | Ok name ->
+            browsingUnlessRefused (updateWorkbench (StudyCommand (CreateStudy (name, model.studySurface.newStudyExperiments))) model) (fun created ->
+                { created with pageMode = BrowsingPage })
+        | Error error -> model |> refusedWith (ControlCaption $"Not created — {error.describe}")
+    | BrowsingPage, _
+    | (EditingPageEntry | CreatingPageEntry), (PlanFlowStep | FitFlowStep | ResultsFlowStep)
+    | CreatingPageEntry, KitFlowStep -> model
+
+/// The workbench's update, keeping the page rules: leaving a page, the other constructor, a Cancel or Close kit with a
+/// changed draft asks "Discard your changes?" first, and a status is the page's it was raised on (spec 0051
+/// `.manual/007` 1.2, 1.7, D11).
+let updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+    let leaveOpt : PageLeave option =
+        match model.pageMode, msg with
+        | BrowsingPage, _ -> None
+        | _, ShowFlowStep step when step <> model.flowStep -> Some (LeaveForStep step)
+        | _, SwitchConstructorMode mode when mode <> model.constructorMode -> Some (LeaveForMode mode)
+        | _, CloseKit -> Some LeaveByClosingKit
+        | _, CancelPageDraft -> Some LeaveByCancel
+        | _ -> None
+    let resumed (leave : PageLeave) (dropped : TableAndElementRotationModel) : TableAndElementRotationModel =
+        match leave with
+        | LeaveForStep step -> updateWorkbench (ShowFlowStep step) dropped
+        | LeaveForMode mode -> updateWorkbench (SwitchConstructorMode mode) dropped
+        | LeaveByCancel -> dropped
+        | LeaveByClosingKit -> updateWorkbench CloseKit dropped
+    let next =
+        match leaveOpt, msg with
+        | Some leave, _ when model.pageDraftState = DraftChanged -> { model with leaveQuestionOpt = Some leave }
+        | Some leave, _ -> resumed leave (droppedPageDraft model)
+        | None, ConfirmPageLeave ->
+            match model.leaveQuestionOpt with
+            | Some leave -> resumed leave (droppedPageDraft model)
+            | None -> model
+        | None, KeepPageDraft -> { model with leaveQuestionOpt = None }
+        | None, _ -> updateWorkbench msg model
+    if next.kitStatus <> model.kitStatus then { next with kitStatusStep = next.flowStep } else next
 
 type TableAndElementRotationModel with
 
@@ -4756,12 +5667,12 @@ type TableAndElementRotationModel with
     /// a setup is made (spec 0051 `.manual/003` 3.1).
     member model.openedOnSetup : TableAndElementRotationModel =
         match model.openingSetupOpt with
-        | Some setup -> model |> updateTableAndElementRotation (ActivateSetup setup.name)
+        | Some setup -> model |> updateWorkbench (ActivateSetup setup.name)
         | None ->
             match model.kitSetups with
             | [] ->
                 {
-                    model with kitStatus = Some (KitStatusDone (ControlCaption "This kit has no setup yet: build the table, then press Create setup in the Setups step."))
+                    model with kitStatus = Some (KitStatusDone (ControlCaption "This kit has no setup yet: press New setup on the Setups page."))
                 }
             | _ :: _ -> model
 
@@ -4985,7 +5896,7 @@ let private controlBar (model : TableAndElementRotationModel) (dispatch : TableA
         StackPanel.children
             (addRemoveBar model dispatch
              @ [ RotationControls.view model.rotationState (rotationHandlers dispatch)
-                 TextBlock.create [ ConstructorUiId.teReadout.automationAttribute<TextBlock> (); TextBlock.text model.readoutText ]
+                 SelectableTextBlock.create [ ConstructorUiId.teReadout.automationAttribute<SelectableTextBlock> (); TextBlock.text model.readoutText ]
                  TextBlock.create [
                      TextBlock.foreground (brush (Color.FromRgb(100uy, 100uy, 100uy)))
                      TextBlock.text "click TABLE or an element to select it (rotation acts on the selection) · drag = pan · wheel = zoom table · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
@@ -5182,123 +6093,6 @@ let private renderHandlers (dispatch : TableAndElementRotationMsg -> unit) : Ren
 // `valueId`. The bay is domain-free, so the host flattens the chosen grouping tree to `Row`s here.
 // ---------------------------------------------------------------------------
 
-/// The Library entry ids valid for `kind` (the kind-constrained set; empty on a proxy error).
-let private allowedEntryIds (model : TableAndElementRotationModel) (kind : CatalogueKind) : Set<ElementValueId> =
-    match model.library.entriesForKind kind with
-    | Ok entries -> entries |> List.map (fun e -> e.entryId) |> Set.ofList
-    | Error _ -> Set.empty
-
-type Library.TreeLabel with
-
-    /// The label as the caption of a Select-bay row.
-    member this.rowCaption : ControlCaption = ControlCaption this.value
-
-type LibraryControls.LibraryRowDepth with
-
-    /// The depth of this row's children.
-    member private this.deeper : LibraryControls.LibraryRowDepth = LibraryControls.LibraryRowDepth (this.value + 1)
-
-type Library.LibraryTreeNode with
-
-    /// Flatten this grouping tree to `LibraryControls.Row`s, KIND-CONSTRAINED: emit a leaf row only when its
-    /// entry id is in `allowed`, and a group header only if it has a surviving descendant leaf (§2a — keep
-    /// the tree shape but show only entries valid for the selected element). `boundId` highlights the bound
-    /// leaf.
-    member private node.selectRows (allowed : Set<ElementValueId>) (boundId : ElementValueId option) (depth : LibraryControls.LibraryRowDepth) : LibraryControls.Row list =
-        match node with
-        | Library.Leaf (label, entryId) ->
-            if Set.contains entryId allowed then
-                let binding = if boundId = Some entryId then LibraryControls.EntryBound else LibraryControls.EntryUnbound
-                [ { label = label.rowCaption; depth = depth; kind = LibraryControls.LibraryEntryLeaf (entryId.uiKey, binding) } ]
-            else []
-        | Library.Group (label, children) ->
-            let childRows = children |> List.collect (fun child -> child.selectRows allowed boundId depth.deeper)
-            if List.isEmpty childRows then []
-            else { label = label.rowCaption; depth = depth; kind = LibraryControls.LibraryGroupHeader } :: childRows
-
-/// Spec 0038 (017): what the Select bay offers for the CURRENT selection — the inline
-/// quick-pick strip beside the Choose… verb (the kind-constrained entry count sits BELOW the
-/// step-005 threshold), the Choose… verb alone (at or above it — the full Select-state Library
-/// window is the picking surface there), or nothing bindable (table / nothing selected — the
-/// bay keeps its disabled prompt). A named three-case DU, never a bool pair.
-type SelectorOffer =
-    | QuickPickAndChoose
-    | ChooseAlone
-    | NoSelectorOffer
-
-type TableAndElementRotationModel with
-
-    /// The entry ids the Select bay offers the selected element (its kind's; none without a selected element).
-    member internal model.selectableEntryIds : Set<ElementValueId> =
-        match model.selection with
-        | ElementSelected i ->
-            match model.tryElementAt i with
-            | Some e -> allowedEntryIds model e.placement.catalogueKind
-            | None -> Set.empty
-        | TableSelected | NothingSelected -> Set.empty
-
-    /// The Select bay state for the current selection: an `ElementSelected` shows the kind-constrained
-    /// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
-    member internal model.libraryState : LibraryControls.LibraryControlsState =
-        match model.selection with
-        | ElementSelected i ->
-            let e = List.item i.value model.elements
-            let kind = e.placement.catalogueKind
-            let allowed = allowedEntryIds model kind
-            let rows =
-                match model.library.libraryTrees () with
-                | Ok (tree :: _) -> tree.root.selectRows allowed e.placement.valueId (LibraryControls.LibraryRowDepth 0)
-                | Ok [] | Error _ -> []
-            let boundName =
-                match e.placement.valueId with
-                | Some id ->
-                    match model.library.tryGetEntry id with
-                    | Ok (Some entry) -> Some (ControlCaption entry.displayName)
-                    | Ok None | Error _ -> None
-                | None -> None
-            // Spec 0027 (026): the pending (selected-not-confirmed) entry's name + full description, resolved
-            // through the proxy (so a stale pending id yields no panel).
-            let pendingName, pendingDescription =
-                match model.pendingEntry with
-                | Some id ->
-                    match model.library.tryGetEntry id with
-                    | Ok (Some entry) -> Some (ControlCaption entry.displayName), ControlCaption entry.fullDescription
-                    | Ok None | Error _ -> None, ControlCaption ""
-                | None -> None, ControlCaption ""
-            {
-                rows = rows
-                kindLabel = Some (ControlCaption kind.kindName)
-                boundName = boundName
-                availability = ControlOffered
-                pendingEntryId = model.pendingEntry |> Option.map (fun id -> id.uiKey)
-                pendingName = pendingName
-                pendingDescription = pendingDescription
-            }
-        | TableSelected | NothingSelected -> LibraryControls.empty
-
-    /// The bay's threshold decision (public so the gating is provable without a window). The count
-    /// is the kind-constrained entry set the strip's rows are built from (`entriesForKind` through
-    /// the read-only Library seam — the same set `libraryState` flattens), compared against the
-    /// model's `quickPickThreshold`: strictly below → the strip renders; at or above → Choose… alone.
-    member model.selectorOffer : SelectorOffer =
-        match model.selection with
-        | ElementSelected i ->
-            match model.tryElementAt i with
-            | Some e ->
-                if Set.count (allowedEntryIds model e.placement.catalogueKind) < model.quickPickThreshold.value then QuickPickAndChoose
-                else ChooseAlone
-            | None -> NoSelectorOffer
-        | TableSelected | NothingSelected -> NoSelectorOffer
-
-/// The Select bay's handlers. A clicked row's key is resolved against the entries the bay offers, so the
-/// pending choice is always one of them.
-let private libraryHandlers (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : LibraryControls.LibraryControlsHandlers =
-    {
-        selectEntry = fun key -> model.selectableEntryIds |> Seq.tryFind (fun id -> id.uiKey = key) |> Option.iter (fun id -> dispatch (RequestBindValueId id))
-        confirmEntry = fun () -> dispatch ConfirmBindValueId
-        cancelEntry = fun () -> dispatch CancelBindValueId
-    }
-
 // ---------------------------------------------------------------------------
 // Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step, editable experiment builder + collection.
 // The SETUP is the live scene; the user picks the element to vary (the element's slot — via
@@ -5431,14 +6225,14 @@ type ControlCaption with
 /// step 031): a small "⚠" glyph with a hover tooltip = `text` (the offending material(s) and both
 /// ranges) and a per-index AutomationId so a headless test can address it.
 let outOfBandBadge (i : SceneElementIndex) (c : ScreenPoint) (text : ControlCaption) : IView =
-    TextBlock.create [
+    SelectableTextBlock.create [
         TextBlock.left (c.sx - 18.0)
         TextBlock.top (c.sy - 26.0)
         TextBlock.text "⚠"
         TextBlock.fontWeight FontWeight.Bold
         TextBlock.foreground (brush (Color.FromRgb(200uy, 60uy, 40uy)))
-        (ConstructorUiId.outOfBandBadge i.uiPosition).automationAttribute<TextBlock> ()
-        text.toolTipAttribute<TextBlock> ()
+        (ConstructorUiId.outOfBandBadge i.uiPosition).automationAttribute<SelectableTextBlock> ()
+        text.toolTipAttribute<SelectableTextBlock> ()
     ] :> IView
 
 type TableAndElementRotationModel with
@@ -5577,10 +6371,48 @@ type private StepBuilder =
 
 /// One drawn scan block (spec 0050 S9.1): its series, what its detectors read, and the title and description a scan of
 /// that block's x axis alone shows.
+/// What a captured detector's chart shows: its reading (S₀, or Ψ and Δ), or, for a Mueller polarimeter, the path's
+/// Mueller matrix (spec 0051 `.manual/007` 6.6, D6).
+type DetectorCharting =
+    | ChartsDetectorReading
+    | ChartsMuellerElements
+
+type TableAndElementRotationModel with
+
+    /// How the detector at `j` is charted: a Mueller polarimeter item records the path's Mueller matrix, as the study
+    /// reads it (`PolarimeterDetectorReadout`); any other detector its reading (spec 0051 `.manual/007` 6.6, D6).
+    member model.detectorChartingAt (j : SceneElementIndex) : DetectorCharting =
+        let slot = List.item j.value model.elements
+        let choiceOpt =
+            slot.content.itemOpt
+            |> Option.bind (fun id -> model.kitItems |> List.tryFind (fun item -> item.id = id))
+            |> Option.bind model.tryItemModelChoice
+        match choiceOpt with
+        | Some (LibraryModelChoice held) ->
+            match held.entry.model with
+            | MuellerPolarimeterModel _ -> ChartsMuellerElements
+            | IntensityDetectorModel _
+            | EllipsometerModel _
+            | SourcePresetItemModel
+            | IdealPolarizerItemModel
+            | StackSampleItemModel
+            | OpticalElementModel _
+            | EmptySlotModel -> ChartsDetectorReading
+        | Some (SourcePresetChoice _ | PolarizerPresetChoice _ | StackSampleChoice _)
+        | None -> ChartsDetectorReading
+
+/// One captured branch's reading at one point: its detector's, or the path's Mueller matrix (spec 0051 `.manual/007`
+/// 6.6).
+type private ChartReading =
+    | DetectorChartReading of ExperimentRun.Reading
+    | MuellerChartReading of MuellerMatrix
+
 type private ScanBlockChart =
     {
         blockSeries : ExperimentControls.ChartSeries list
         kinds : Library.DetectorKind list
+        /// Whether a branch of the block charts a Mueller matrix (spec 0051 `.manual/007` 6.6).
+        muellerCharted : DetectorCharting
         variable : Experiments.VariableParameter
         title : ControlCaption
         description : ControlCaption
@@ -5711,10 +6543,16 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                     measurement.capturedBranches
                     |> List.choose (fun (branch, tag) ->
                         detectors |> List.tryFind (fun (b, _) -> b = branch) |> Option.map (fun (_, j) -> tag, j))
-                let kinds = captured |> List.map (fun (_, j) -> model.detectorKindAt j) |> List.distinct
+                let readingCaptured = captured |> List.filter (fun (_, j) -> model.detectorChartingAt j = ChartsDetectorReading)
+                let muellerCharted =
+                    match captured |> List.exists (fun (_, j) -> model.detectorChartingAt j = ChartsMuellerElements) with
+                    | true -> ChartsMuellerElements
+                    | false -> ChartsDetectorReading
+                let kinds = readingCaptured |> List.map (fun (_, j) -> model.detectorKindAt j) |> List.distinct
                 let quantity =
                     match kinds with
                     | [ Library.Ellipsometer ] -> "Ellipsometric Ψ/Δ"
+                    | [] when muellerCharted = ChartsMuellerElements -> "Mueller matrix"
                     | _ -> "Intensity"
                 let title : ControlCaption =
                     match variable, variedElement.placement.catalogueKind, kinds with
@@ -5736,7 +6574,10 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                         | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryDialReading -> $"Source %g{w0.nanometers} nm"
                     let detectorText =
                         captured
-                        |> List.map (fun (tag, j) -> $"{tag.value}: {(model.detectorKindAt j).readsText}")
+                        |> List.map (fun (tag, j) ->
+                            match model.detectorChartingAt j with
+                            | ChartsMuellerElements -> $"{tag.value}: the Mueller matrix"
+                            | ChartsDetectorReading -> $"{tag.value}: {(model.detectorKindAt j).readsText}")
                         |> String.concat ", "
                     ControlCaption
                         $"%s{sourceText}; varied element: %s{(model.tableLabelOf xAxis.elementId).value}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
@@ -5744,7 +6585,8 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                 // rotation could change — the typed status, never a synthesized curve (spec 0038 step 018). A polarizer
                 // slot holding an item is a polarizer (spec 0050 S8.2).
                 let noPolarizerOnPath =
-                    captured
+                    muellerCharted = ChartsDetectorReading
+                    && captured
                     |> List.forall (fun (_, j) ->
                         (List.item j.value layout.elements).path
                         |> List.forall (fun step ->
@@ -5793,19 +6635,22 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                             captured
                             |> List.map (fun (tag, j) ->
                                 buildersFor axes (List.item j.value layout.elements).path
-                                |> Result.map (fun builders -> tag, model.detectorKindAt j, builders))
+                                |> Result.map (fun builders -> tag, model.detectorKindAt j, model.detectorChartingAt j, builders))
                             |> ItemEvaluation.sequenced
                             |> Result.bind (fun branches ->
                                 groups
                                 |> List.map (fun group ->
                                     branches
-                                    |> List.map (fun (tag, kind, builders) ->
+                                    |> List.map (fun (tag, kind, charting, builders) ->
                                         xSettings
                                         |> List.map (fun xSetting ->
                                             stepsAt builders (group @ [ xSetting ])
-                                            |> Result.map (fun steps -> xSetting.value.value, ExperimentRun.read kind emission steps))
+                                            |> Result.map (fun steps ->
+                                                match charting with
+                                                | ChartsMuellerElements -> xSetting.value.value, MuellerChartReading (ExperimentRun.RunStep.productOf steps)
+                                                | ChartsDetectorReading -> xSetting.value.value, DetectorChartReading (ExperimentRun.read kind emission steps)))
                                         |> ItemEvaluation.sequenced
-                                        |> Result.map (fun readings -> tag, kind, readings))
+                                        |> Result.map (fun readings -> tag, kind, charting, readings))
                                     |> ItemEvaluation.sequenced
                                     |> Result.map (fun runs -> group, runs))
                                 |> ItemEvaluation.sequenced
@@ -5826,21 +6671,39 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
                                 groupRuns
                                 |> List.collect (fun (group, runs) ->
                                     runs
-                                    |> List.collect (fun (tag, kind, readings) ->
+                                    |> List.collect (fun (tag, kind, charting, readings) ->
                                         let caption (reading : ControlCaption) : ControlCaption = named group (measurement.seriesCaption tag reading)
-                                        match kind with
-                                        | Library.Intensity ->
+                                        let detectorReading (point : ChartReading) : ExperimentRun.Reading option =
+                                            match point with
+                                            | DetectorChartReading reading -> Some reading
+                                            | MuellerChartReading _ -> None
+                                        match charting, kind with
+                                        // Spec 0051 `.manual/007` 6.6, D6: the 15 elements over m11, each its own series.
+                                        | ChartsMuellerElements, _ ->
+                                            [ for k in 1 .. 15 ->
+                                                let row, column = k / 4, k % 4
+                                                series (caption (ControlCaption $"m{row + 1}{column + 1}/m11"))
+                                                    (readings |> List.map (fun (x, point) ->
+                                                        let y =
+                                                            match point with
+                                                            | MuellerChartReading mueller ->
+                                                                let m11 = mueller.element 0 0
+                                                                if m11 > 0.0 then mueller.element row column / m11 else nan
+                                                            | DetectorChartReading _ -> nan
+                                                        { ExperimentControls.ChartPoint.x = x; y = y })) ]
+                                        | ChartsDetectorReading, Library.Intensity ->
                                             [ series (caption (ControlCaption "Intensity"))
-                                                  (readings |> List.map (fun (x, r) -> { ExperimentControls.ChartPoint.x = x; y = (match r with ExperimentRun.IntensityReading i -> i.value | ExperimentRun.EllipsometricReading _ -> nan) })) ]
-                                        | Library.Ellipsometer ->
+                                                  (readings |> List.map (fun (x, point) -> { ExperimentControls.ChartPoint.x = x; y = (match detectorReading point with Some (ExperimentRun.IntensityReading i) -> i.value | Some (ExperimentRun.EllipsometricReading _) | None -> nan) })) ]
+                                        | ChartsDetectorReading, Library.Ellipsometer ->
                                             let pd (pick : Analytics.AnalysisFunctions.PsiDelta -> Angle) : ExperimentControls.ChartPoint list =
-                                                readings |> List.map (fun (x, r) -> { ExperimentControls.ChartPoint.x = x; y = (match r with ExperimentRun.EllipsometricReading v -> (pick v).degrees | ExperimentRun.IntensityReading _ -> nan) })
+                                                readings |> List.map (fun (x, point) -> { ExperimentControls.ChartPoint.x = x; y = (match detectorReading point with Some (ExperimentRun.EllipsometricReading v) -> (pick v).degrees | Some (ExperimentRun.IntensityReading _) | None -> nan) })
                                             [ series (caption (ControlCaption "Ψ")) (pd (fun v -> v.psi))
                                               series (caption (ControlCaption "Δ")) (pd (fun v -> v.delta)) ]))
                             let drawn : ScanBlockChart =
                                 {
                                     blockSeries = seriesList
                                     kinds = kinds
+                                    muellerCharted = muellerCharted
                                     variable = variable
                                     title = title
                                     description = description
@@ -5882,7 +6745,10 @@ let chartForRun (model : TableAndElementRotationModel) (scan : Experiments.Exper
             {
                 ExperimentChart.ExperimentChart.series = drawn |> List.collect (fun block -> block.blockSeries)
                 xLabel = ControlCaption (variables |> List.map xLabelOf |> String.concat " / ")
-                yLabel = yLabelOf (drawn |> List.collect (fun block -> block.kinds) |> List.distinct)
+                yLabel =
+                    match drawn |> List.collect (fun block -> block.kinds) |> List.distinct, drawn |> List.exists (fun block -> block.muellerCharted = ChartsMuellerElements) with
+                    | [], true -> ControlCaption "Mueller elements / m₁₁"
+                    | kinds, _ -> yLabelOf kinds
                 title = first.title
                 description = description
                 // Spec 0051 `.manual/004`: a rotation's XY view spans one turn, so a chart is one only when every x turns fully.
@@ -5959,6 +6825,55 @@ type TableAndElementRotationModel with
             | Error _ -> None
         | None -> None
 
+type TableAndElementRotationModel with
+
+    /// The experiment's kept Mueller observations as 15 series of its elements over m11, one set per value of the angle
+    /// the chart does not vary (incidence while it varies a rotation, azimuth while it varies the incidence), so points of
+    /// different configurations are never joined; none for data of another kind (spec 0051 `.manual/007` 6.6, D6).
+    member model.measuredMuellerSeries (experiment : Experiments.Experiment) : ExperimentControls.ChartSeries list =
+        match experiment.dataOpt with
+        | Some data ->
+            match model.experimentData.readMapped data with
+            | Ok points ->
+                match points.keptBy data.exclusions with
+                | ImportProfiles.ObservationPoints observations ->
+                    let variesIncidence =
+                        experiment.scan.blocks
+                        |> List.exists (fun block -> block.axes |> List.tryLast |> Option.exists (fun axis -> axis.variable = Experiments.VaryR2))
+                    let xOf (keyed : ImportProfiles.KeyedObservation) : float =
+                        if variesIncidence then keyed.observation.configuration.incidenceAngle.angle.degrees
+                        else keyed.observation.configuration.azimuth.angle.degrees
+                    let otherOf (keyed : ImportProfiles.KeyedObservation) : float =
+                        if variesIncidence then keyed.observation.configuration.azimuth.angle.degrees
+                        else keyed.observation.configuration.incidenceAngle.angle.degrees
+                    let otherName = if variesIncidence then "azimuth" else "incidence"
+                    observations
+                    |> List.groupBy otherOf
+                    |> List.sortBy fst
+                    |> List.collect (fun (other, group) ->
+                        [ for k in 1 .. 15 ->
+                            let row, column = k / 4, k % 4
+                            let points =
+                                group
+                                |> List.choose (fun keyed ->
+                                    let m11 = keyed.observation.measured.element 0 0
+                                    if m11 > 0.0 then
+                                        let point : ExperimentControls.ChartPoint = { x = xOf keyed; y = keyed.observation.measured.element row column / m11 }
+                                        Some point
+                                    else None)
+                                |> List.sortBy (fun point -> point.x)
+                            let series : ExperimentControls.ChartSeries =
+                                {
+                                    name = ControlCaption $"Measured m{row + 1}{column + 1}/m11 — {otherName} %g{other}°"
+                                    points = points
+                                }
+                            series ])
+                | ImportProfiles.SeriesPoints _
+                | ImportProfiles.CapturePoints _
+                | ImportProfiles.ColumnPoints _ -> []
+            | Error _ -> []
+        | None -> []
+
 // Spec 0027: wire the forward-referenced hooks (defined once `experimentResult` exists) so a double-click /
 // "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
 // behind a non-empty chart; never reached under the headless `ui-smoke` gate's frame render). Spec 0046: the
@@ -5971,11 +6886,17 @@ openChartWindowHook <-
         if not (List.isEmpty chart.series) then ChartWindow(chart, ChartStyle.defaultChartStyleState chart, model.kitShell.exportsFolderOpt).Show()
 
 // Spec 0051 `.manual/003` 3.4: the measured points join the model's series on the right axis, in their own units.
+experimentChartHook <- chartForExperiment
+
 viewExperimentHook <-
     fun model id ->
         match model.experimentCollection.experiments |> List.tryFind (fun e -> e.id = id) with
         | Some exp ->
-            let chart = chartForExperiment model exp
+            let chart =
+                match model.experimentChartCacheOpt with
+                | Some cached when cached.experiment = exp -> cached.chart
+                | Some _
+                | None -> chartForExperiment model exp
             match chart.series, model.measuredSeriesOpt exp with
             | [], _ ->
                 let reason =
@@ -5983,6 +6904,11 @@ viewExperimentHook <-
                     | "" -> "its setup gives no point to chart"
                     | text -> text
                 Some (ControlCaption $"No chart for {exp.name.value}: {reason}.")
+            // Spec 0051 `.manual/007` 6.6, D6: measured Mueller elements share the model's axis, as both are over m11.
+            | modelled, _ when not (List.isEmpty (model.measuredMuellerSeries exp)) ->
+                let shown = { chart with series = modelled @ model.measuredMuellerSeries exp }
+                ChartWindow(shown, ChartStyle.defaultChartStyleState shown, model.kitShell.exportsFolderOpt).Show()
+                None
             | modelled, Some measured ->
                 let shown = { chart with series = modelled @ [ measured ] }
                 let measuredIndex = ChartStyle.ChartSeriesIndex (List.length modelled)
@@ -6032,8 +6958,6 @@ type TableAndElementRotationModel with
             match draft.outerAxes with
             | [] -> []
             | axes -> [ ControlCaption $"This block: {axesText axes}" ]
-        let editedOpt =
-            draft.editingId |> Option.bind (fun id -> col.experiments |> List.tryFind (fun experiment -> experiment.id = id))
         // Spec 0051 `.manual/003` 3.6: a withheld Add says why.
         let addReasonOpt : ControlCaption option =
             match model.kitWrites, draft.elementId, draft.variable, col.canCommit, capture with
@@ -6078,44 +7002,6 @@ type TableAndElementRotationModel with
             addReasonOpt = addReasonOpt
             scanLines = blockLines @ heldLines
             scanAvailability = addAvailability
-            removalAvailability = model.kitWrites
-            removalPendingOpt = model.experimentRemovalOpt |> Option.map (fun id -> id.uiKey)
-            editorMode =
-                match draft.editingId with
-                | Some _ -> ExperimentControls.EditorUpdatesExisting
-                | None -> ExperimentControls.EditorAddsNew
-            roleOptions =
-                match editedOpt with
-                | Some edited ->
-                    Experiments.ExperimentRole.all
-                    |> List.map (fun role ->
-                        {
-                            ExperimentControls.ExperimentRoleOption.key = role.uiKey
-                            caption = role.caption
-                            mark = if role = edited.role then ExperimentControls.RoleChosen else ExperimentControls.RoleNotChosen
-                        })
-                | None -> []
-            sessionText =
-                match editedOpt |> Option.bind (fun edited -> edited.sessionOpt) with
-                | Some session -> session.caption
-                | None -> ControlCaption ""
-            notesText =
-                match editedOpt with
-                | Some edited -> edited.notes.caption
-                | None -> ControlCaption ""
-            bookkeepingAvailability =
-                match editedOpt, model.kitWrites with
-                | Some _, ControlOffered -> ControlOffered
-                | Some _, ControlWithheld | None, _ -> ControlWithheld
-            collection =
-                col.experiments
-                |> List.map (fun e ->
-                    {
-                        ExperimentControls.ExperimentRow.id = e.id.uiKey
-                        description = ControlCaption $"{e.name.value} [{e.role.text}] — {(model.experimentDescription e).value}"
-                        badge = ControlCaption (model.dataBadgeOf e).text
-                        focus = if draft.editingId = Some e.id then ExperimentControls.LoadedInEditor else ExperimentControls.NotLoadedInEditor
-                    })
             readout = model.experimentReadout
             availability =
                 match model.elements with
@@ -6130,10 +7016,7 @@ type TableAndElementRotationModel with
 
 /// The Experiments bay's handlers. A clicked candidate or row key is resolved against the scene and the
 /// collection it was built from; a role, session or notes edit is the edited experiment's (spec 0050 S9.1).
-let private experimentHandlers (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : ExperimentControls.ExperimentControlsHandlers =
-    let withExperiment (msg : Experiments.ExperimentId -> TableAndElementRotationMsg) (key : ConstructorUiKey) : unit =
-        model.experimentCollection.experiments |> List.tryFind (fun e -> e.id.uiKey = key) |> Option.iter (fun e -> dispatch (msg e.id))
-    let edited = model.experimentCollection.draft.editingId
+let experimentHandlers (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : ExperimentControls.ExperimentControlsHandlers =
     {
         chooseElement = fun key -> model.elements |> List.tryFind (fun e -> e.id.uiKey = key) |> Option.iter (fun e -> dispatch (ExpChooseElement e.id))
         chooseVariable = fun v -> dispatch (ExpChooseVariable v)
@@ -6142,22 +7025,8 @@ let private experimentHandlers (model : TableAndElementRotationModel) (dispatch 
         setRangeMax = fun v -> dispatch (ExpSetRangeMax v)
         setRangePoints = fun n -> dispatch (ExpSetRangePoints n)
         setSourceWaveLength = fun nm -> dispatch (ExpSetSourceWaveLength nm)
-        addOrUpdate = fun () -> dispatch ExpCommit
-        newExperiment = fun () -> dispatch ExpNew
         addScanAxis = fun () -> dispatch ExpAddScanAxis
         addScanBlock = fun () -> dispatch ExpAddScanBlock
-        setRole =
-            fun key ->
-                match edited, Experiments.ExperimentRole.all |> List.tryFind (fun role -> role.uiKey = key) with
-                | Some id, Some role -> dispatch (SetExperimentRole (id, role))
-                | Some _, None | None, _ -> ()
-        setSession = fun text -> edited |> Option.iter (fun id -> dispatch (SetExperimentSession (id, text)))
-        setNotes = fun text -> edited |> Option.iter (fun id -> dispatch (SetExperimentNotes (id, text)))
-        editExperiment = withExperiment ExpEdit
-        removeExperiment = withExperiment ExpRemove
-        confirmRemoval = fun () -> dispatch ExpConfirmRemove
-        cancelRemoval = fun () -> dispatch ExpCancelRemove
-        viewExperiment = withExperiment ViewExperiment
         openChartWindow = fun () -> dispatch OpenExperimentChartWindow
     }
 
@@ -6166,20 +7035,21 @@ let private experimentHandlers (model : TableAndElementRotationModel) (dispatch 
 let private slotBarHandlers (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : SlotBarView.SlotBarHandlers =
     {
         toggleChip = fun slotId -> dispatch (ToggleSlotChip slotId)
-        swapSlot = fun slotId itemId -> dispatch (SwapSlot (slotId, itemId))
+        // Spec 0051 `.manual/007` 5.3, D9: a chip edits the table in place; Save writes it.
+        assignSlot =
+            fun slotId itemId ->
+                dispatch (AssignSlot (slotId, Some itemId))
+                dispatch (ToggleSlotChip slotId)
         pickByLetter =
             fun slotId letter ->
                 model.elements
                 |> List.tryFind (fun slot -> slot.id = slotId)
                 |> Option.bind (fun slot -> slot.pickedByLetter letter (model.slotChipItems slot))
-                |> Option.iter (fun picked -> dispatch (SwapSlot (slotId, picked.id)))
-        recordExperiment = fun () -> dispatch RecordExperiment
-        setRecordNote = fun note -> dispatch (SetRecordNote note)
-        openSetupGrid = fun () -> dispatch OpenSetupGrid
+                |> Option.iter (fun picked -> dispatch (AssignSlot (slotId, Some picked.id)))
     }
 
 /// The grid panel's handlers: each sends its semantic message, Generate the grid the panel shows (spec 0050 S8.4).
-let private setupGridHandlers (dispatch : TableAndElementRotationMsg -> unit) : SetupGridView.SetupGridHandlers =
+let setupGridHandlers (dispatch : TableAndElementRotationMsg -> unit) : SetupGridView.SetupGridHandlers =
     {
         toggleItem = fun slotId itemId -> dispatch (ToggleSetupGridItem (slotId, itemId))
         addAngle = fun slotId degrees -> dispatch (AddSetupGridAngle (slotId, degrees))
@@ -6360,92 +7230,14 @@ type TableAndElementRotationModel with
             | None -> hint
         | TableSelected | NothingSelected -> hint
 
-// ---------------------------------------------------------------------------
-// Spec 0038 steps 013/015 — the workbench strip buttons. The MATERIALS bay moved into the
-// single-instance Materials WINDOW (step 013, `MaterialsWindowView`) and the LIBRARY (samples)
-// workbench bay into the single-instance Library WINDOW (step 015, `LibraryWindowView`); the
-// ribbon tab-strip row's right-aligned "Library…" / "Materials…" buttons below are what remain
-// of them here. (`SampleLibraryControls` stays in the Controls project with its own tests until
-// a later sweep retires it — the `MaterialsControls` precedent.) The ids are `ConstructorUiId`'s.
-// ---------------------------------------------------------------------------
-
-type TableAndElementRotationModel with
-
-    /// Spec 0038 (016): the staleness status line — present only while a status is set (keyed:
-    /// variable membership, so it carries an AutomationId, never a write-once `Name`), rendered right
-    /// under the readout.
-    member internal model.selectStatusRow : IView list =
-        match model.selectStatus with
-        | None -> []
-        | Some text ->
-            [ (TextBlock.create [
-                  ConstructorUiId.workbenchSelectStatus.automationAttribute<TextBlock> ()
-                  TextBlock.foreground (brush (Color.FromRgb(178uy, 34uy, 34uy)))
-                  TextBlock.textWrapping TextWrapping.Wrap
-                  TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0))
-                  TextBlock.text text.value
-              ]
-              |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.workbenchSelectStatus.value) :> IView ]
-
-/// A small clickable verb box for the host-added strip buttons and the Data step's split verb (the MaterialsControls
-/// button look). The strip buttons live in a variable-membership row, so they carry AutomationIds. Withheld, it is
-/// disabled and dimmed, never hidden (spec 0050 S5.3, S9.3).
+/// A small clickable verb box, the Data step's split verb (the MaterialsControls button look). Withheld, it is disabled
+/// and dimmed, never hidden (spec 0050 S5.3, S9.3).
 let internal availableWorkbenchButton (availability : ControlAvailability) (id : ConstructorUiId) (label : ControlCaption) (onClick : CommandButton -> unit) : IView =
     CommandControls.commandButtonOn id label NeutralCommand availability onClick [ Button.margin (Thickness(0.0, 0.0, 8.0, 4.0)) ]
 
-let private workbenchButton (id : ConstructorUiId) (label : ControlCaption) (onClick : CommandButton -> unit) : IView =
-    availableWorkbenchButton ControlOffered id label onClick
-
-// ---------------------------------------------------------------------------
-// Spec 0038 (017) — the Select bay's Choose… / quick-pick flow. Choose… opens (or re-targets)
-// the single-instance Library window in SELECT state constrained to the selected element's
-// kind, through the launcher seam; the inline quick-pick strip (today's kind-constrained rows
-// + confirm panel via LibraryControls) renders only below the step-005 QuickPickThreshold.
-// Both paths converge on the SAME targeted bind message (`BindValueIdTo`).
-// ---------------------------------------------------------------------------
-
-/// The Choose… verb — compose one Select session and open (or re-target) the Library window
-/// through `openLibrarySelectWindow`. Composed in the VIEW: the workbench runs `mkSimple`, so
-/// the render's `dispatch` is the one return path into the loop (the window hosts capture
-/// theirs with `Cmd.ofEffect`; this host has no Cmd seam). `onSelected` bakes the TARGETED
-/// bind — the SAME `BindValueIdTo` the strip's confirm converges on; `onCancelled` dispatches
-/// the reference-keyed `SelectSessionEnded` through a ref cell filled once the session exists,
-/// so a session superseded by a re-target (its cancel fires while the successor is being
-/// stored) can never clear the successor's handle.
-let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) (owner : Window) : unit =
-    let sessionRef : SelectSession option ref = ref None
-    let selectCtx : WindowMode.SelectionContext<Library.LibraryEntry> =
-        {
-            kindConstraint = WindowMode.KindConstraint element.placement.catalogueKind
-            // Spec 0046: the Library opens with the element's current binding shown as chosen.
-            currentEntryIdOpt = element.placement.valueId
-            target = WindowMode.TableElementTarget element.id
-            onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
-            onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
-        }
-    match model.launchers.openLibrarySelectWindow model.library model.samples model.sources model.materials model.categories model.libraryBackups model.catalogueImports model.selectWindowModality owner selectCtx with
-    | Some cancelAndClose ->
-        let session : SelectSession = { target = element.id; cancelAndClose = cancelAndClose }
-        sessionRef.Value <- Some session
-        dispatch (SelectSessionStarted session)
-    | None -> ()
-
-/// The Choose… button (the workbench verb-box look). The pointer subscription re-patches on
-/// the SELECTED ELEMENT's id — the closure's only render-varying capture; the proxies, the
-/// launcher seam and the modality are app-scope constants — so a selection change re-arms the
-/// handler for the new element and a bind never leaves a stale one behind. The owner window
-/// for a modal Select open is resolved from the click's own visual tree at dispatch time.
-let private selectorChooseButton (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) : IView =
-    CommandControls.commandButtonOn ConstructorUiId.selectorChooseButton (ControlCaption "Choose…") NeutralCommand ControlOffered
-        (fun pressed ->
-            match TopLevel.GetTopLevel pressed with
-            | :? Window as owner -> chooseFromLibrary model dispatch element owner
-            | _ -> ())
-        [ Button.margin (Thickness(0.0, 2.0, 8.0, 4.0)); Button.horizontalAlignment HorizontalAlignment.Left ]
-
 /// The table's elements as a list, one item per element named as its slot, selecting without the canvas: automation's
 /// semantic path to the table (spec 0051 `.manual/003` 1.2, 3.6).
-let private tableElementList (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+let tableElementList (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let selectedIndex =
         match model.selection with
         | ElementSelected index -> index.value
@@ -6479,41 +7271,6 @@ let private tableElementList (model : TableAndElementRotationModel) (dispatch : 
                 | Some _
                 | None -> ()),
             SubPatchOptions.Always)
-    ] :> IView
-
-/// The Select bay content (spec 0038 step 017). No element selected → today's disabled
-/// prompt (the empty LibraryControls bay). An element selected → the Choose… verb, and BELOW
-/// the threshold also the inline quick-pick strip — the unchanged LibraryControls surface
-/// (kind label, bound readout, kind-constrained rows, confirm panel) wrapped in a keyed,
-/// AutomationId'd box so the headless gating proofs address it as one unit.
-let private selectorChoice (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    match model.selectorOffer, model.selection with
-    | (QuickPickAndChoose | ChooseAlone) as offer, ElementSelected i ->
-        let element = List.item i.value model.elements
-        let strip : IView list =
-            match offer with
-            | QuickPickAndChoose ->
-                [ Border.create [
-                      yield! ConstructorUiId.selectorQuickPickStrip.groupAttributes<Border> ()
-                      Border.child (LibraryControls.libraryControlsView model.libraryState (libraryHandlers model dispatch))
-                  ]
-                  |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.selectorQuickPickStrip.value
-                  :> IView ]
-            | ChooseAlone | NoSelectorOffer -> []
-        StackPanel.create [
-            StackPanel.orientation Orientation.Vertical
-            StackPanel.spacing 4.0
-            StackPanel.children (selectorChooseButton model dispatch element :: strip)
-        ] :> IView
-    | _, (TableSelected | NothingSelected | ElementSelected _) ->
-        LibraryControls.libraryControlsView LibraryControls.empty (libraryHandlers model dispatch)
-
-/// The Select bay: the table's elements as a list, then the selected element's choice (spec 0038 step 017; 0051
-/// `.manual/003` 3.6).
-let private selectorBayContent (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.children [ tableElementList model dispatch; selectorChoice model dispatch ]
     ] :> IView
 
 // ---------------------------------------------------------------------------
@@ -6614,118 +7371,6 @@ let pickDataFile (owner : Window) (model : TableAndElementRotationModel) (kind :
         Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate picked)
     with _ -> ()
 
-/// Names the active setup, creates, saves and loads the kit's setups, at the top of the Setups step; the data files are
-/// the Data step's (spec 0050 S4.3, S8.2, S9.3; 0051 `.manual/003` 3.2). The kit status is the kit bar's, so one control
-/// carries `kitStatus` (spec 0050 S5.3).
-let private setupSectionView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let sectionHeading (text : string) : IView =
-        TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
-    let commitName (source : obj) : unit =
-        match source with
-        | :? TextBox as field ->
-            let name = ControlCaption field.Text
-            dispatch (SetSetupName name)
-        | _ -> ()
-    let createSetup (pressed : CommandButton) : unit =
-        // Spec 0050 S4.3: commit the field's live text before creating, whether or not the press blurred it.
-        match TopLevel.GetTopLevel pressed with
-        | :? Window as owner ->
-            owner.GetVisualDescendants()
-            |> Seq.tryPick (function
-                | :? TextBox as field when AutomationProperties.GetAutomationId field = ConstructorUiId.setupNameField.value -> Some field
-                | _ -> None)
-            |> Option.iter (fun field ->
-                commitName field
-                dispatch CreateSetup)
-        | _ -> ()
-    // Spec 0050 S8.2: outside the horizontal row, so the line wraps (AGENTS.md).
-    let activeSetupLine : IView =
-        let text =
-            match model.activeSetupOpt with
-            | Some active -> $"Active setup: {active.name.value}, revision {active.revision.value}"
-            | None -> "The table is not a setup of the kit yet."
-        TextBlock.create [
-            ConstructorUiId.activeSetupText.automationAttribute<TextBlock> ()
-            TextBlock.textWrapping TextWrapping.Wrap
-            TextBlock.text text
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.activeSetupText.value
-        :> IView
-    let saveAvailability : ControlAvailability =
-        match model.activeSetupOpt with
-        | Some _ -> model.kitWrites
-        | None -> ControlWithheld
-    let setupRow : IView =
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 6.0
-            StackPanel.children [
-                TextBox.create [
-                    ConstructorUiId.setupNameField.automationAttribute<TextBox> ()
-                    AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, "Setup name", ValueNone)
-                    TextBox.width 180.0
-                    TextBox.text model.setupName.value
-                    TextBox.onKeyDown (fun event -> if event.Key = Key.Enter then commitName event.Source)
-                    TextBox.onLostFocus (fun event -> commitName event.Source)
-                ]
-                availableWorkbenchButton model.kitWrites ConstructorUiId.createSetupButton (ControlCaption "Create setup") createSetup
-                availableWorkbenchButton saveAvailability ConstructorUiId.saveSetupButton (ControlCaption "Save setup") (fun _ -> dispatch SaveSetup)
-            ]
-        ] :> IView
-    let savedSetupSection : IView list =
-        match model.kitSetups with
-        | [] -> []
-        | setups ->
-            [ sectionHeading "Saved setups:"
-              (WrapPanel.create [
-                  // Spec 0050 S4.3: FuncUI conflates Name with AutomationProperties.Name;
-                  // initialize the write-once control name outside its property diff.
-                  WrapPanel.init (fun (panel : WrapPanel) -> panel.Name <- ConstructorUiId.savedSetups.value)
-                  yield! ConstructorUiId.savedSetups.groupAttributes<WrapPanel> ()
-                  AttrBuilder<WrapPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Saved setups", ValueNone)
-                  WrapPanel.orientation Orientation.Horizontal
-                  WrapPanel.children (
-                      setups |> List.map (fun setup ->
-                          // Spec 0051 `.manual/003` 3.2: the active setup is the chosen one.
-                          let mark =
-                              match model.activeSetupOpt with
-                              | Some active when active.name = setup.name -> ChosenChoice
-                              | Some _
-                              | None -> UnchosenChoice
-                          CommandControls.choiceCommand (ConstructorUiId.savedSetup setup.name) setup.name.caption mark (fun () -> dispatch (ActivateSetup setup.name))))
-               ] |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.savedSetups.value) :> IView ]
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.spacing 2.0
-        StackPanel.children ([ sectionHeading "Setup:"; activeSetupLine; setupRow ] @ savedSetupSection)
-    ] :> IView
-
-/// The Experiments bay content (spec 0038 Part L, 037): the Controls-layer experiment editor and chart, then Export
-/// data; the setups moved to the Setups step (spec 0051 `.manual/003` 3.2).
-let private experimentsBayContent (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    // Spec 0046: Export data — the draft's computed run through the export seam, with its status line.
-    let exportRow =
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 8.0
-            StackPanel.children [
-                workbenchButton ConstructorUiId.experimentExportButton (ControlCaption "Export data") (fun _ -> dispatch ExportExperimentData)
-                TextBlock.create [
-                    ConstructorUiId.experimentExportStatus.automationAttribute<TextBlock> ()
-                    TextBlock.verticalAlignment VerticalAlignment.Center
-                    TextBlock.text (model.exportStatus |> Option.map (fun status -> status.value) |> Option.defaultValue "")
-                ]
-            ]
-        ] :> IView
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.spacing 6.0
-        StackPanel.children [
-            ExperimentControls.experimentControlsView model.experimentState (experimentHandlers model dispatch)
-            exportRow
-        ]
-    ] :> IView
-
 /// Spec 0046: the GLOBAL rotation-pivot option — checked, every element rotates about the middle of its
 /// incident face (the incident ray then always meets it there); unchecked, about its centre (as before).
 /// `isChecked` is bound one way and the dispatch rides `onClick`, which fires only on user activation
@@ -6761,8 +7406,6 @@ let mainBays (model : TableAndElementRotationModel) (dispatch : TableAndElementR
       { name = BayNames.rotation; content = rotationBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.move; content = moveBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.render; content = RendererControls.rendererControlsView model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
-      { name = BayNames.selector; content = selectorBayContent model dispatch; mode = Ribbon.InRibbonPane }
-      { name = BayNames.experiments; content = experimentsBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.details; content = model.detailsState.view; mode = Ribbon.InRibbonPane } ]
 
 let private mainControlBar (bays : Ribbon.Bay list) (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
@@ -6771,20 +7414,11 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : TableAndElementRota
         StackPanel.spacing 4.0
         StackPanel.children (
             [
-                // The tab strip, then "Library…" (spec 0038 step 015) and "Materials…" (step 013), each opening its
-                // single-instance window through the launcher seam. They wrap with the tabs, so a narrow window keeps
-                // them on screen (spec 0051 `.manual/003` 4.3).
-                Ribbon.ribbonViewWith
-                    [
-                        workbenchButton ConstructorUiId.openLibraryWindowButton (ControlCaption "Library…") (fun _ -> dispatch OpenLibraryWindow)
-                        workbenchButton ConstructorUiId.openMaterialsWindowButton (ControlCaption "Materials…") (fun _ -> dispatch OpenMaterialsWindow)
-                    ]
-                    { bays = bays; selected = model.ribbon }
-                    (fun name -> dispatch (SelectBay name))
-                TextBlock.create [ ConstructorUiId.teReadout.automationAttribute<TextBlock> (); TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text model.readoutText ] :> IView
-            ]
-            // Spec 0038 (016): the staleness status line — present only while a status is set.
-            @ model.selectStatusRow)
+                // Spec 0051 `.manual/007` 2.3: the table's own tabs alone; the Items page is where a kit chooses from the
+                // library, and the Launcher opens the Library and Materials windows.
+                Ribbon.ribbonViewWith [] { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
+                SelectableTextBlock.create [ ConstructorUiId.teReadout.automationAttribute<SelectableTextBlock> (); TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text model.readoutText ] :> IView
+            ])
     ] :> IView
 
 // ---------------------------------------------------------------------------
@@ -6812,23 +7446,6 @@ let private elementMenuItem (id : ConstructorUiId) (label : ControlCaption) (ava
         [ Button.padding (Thickness(10.0, 4.0)); Button.borderThickness 0.0; Button.horizontalAlignment HorizontalAlignment.Stretch
           Button.horizontalContentAlignment HorizontalAlignment.Left ]
 
-/// Spec 0046: the menu's Choose… row — the Select bay's Choose… verb (`chooseFromLibrary`) for the
-/// element the menu serves, which then closes the menu. Like the Select bay's button, the owner window for a
-/// modal Select open is resolved from the click's own visual tree, and the subscription re-patches on the
-/// element's id (the closure's only render-varying capture).
-let private elementMenuChooseItem (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (element : Setups.SetupSlot) : IView =
-    CommandControls.commandButtonOn ConstructorUiId.elementMenuChoose (ControlCaption "Choose…") MenuCommand ControlOffered
-        (fun pressed ->
-            // Resolve the owner BEFORE closing the menu: closing re-renders it out of the visual tree.
-            let ownerOpt =
-                match TopLevel.GetTopLevel pressed with
-                | :? Window as owner -> Some owner
-                | _ -> None
-            dispatch CloseElementMenu
-            ownerOpt |> Option.iter (chooseFromLibrary model dispatch element))
-        [ Button.padding (Thickness(10.0, 4.0)); Button.borderThickness 0.0; Button.horizontalAlignment HorizontalAlignment.Stretch
-          Button.horizontalContentAlignment HorizontalAlignment.Left ]
-
 /// A non-clickable element-menu line — a section heading, or a greyed explanatory note.
 let private elementMenuNote (text : ControlCaption) (line : ElementMenuLine) : IView =
     TextBlock.create [
@@ -6839,8 +7456,7 @@ let private elementMenuNote (text : ControlCaption) (line : ElementMenuLine) : I
         TextBlock.foreground (brush (match line with ElementMenuHeading -> Color.FromRgb(40uy, 40uy, 40uy) | ElementMenuNote -> Color.FromRgb(110uy, 110uy, 110uy)))
     ] :> IView
 
-/// The element menu's rows for the element it serves: its title, Choose… (spec 0046 — the Select bay's
-/// Choose…), the ray switches (a source / detector only explains why it has none; a mirror or reflect-only
+/// The element menu's rows for the element it serves: its title, the ray switches (a source / detector only explains why it has none; a mirror or reflect-only
 /// sample shows them fixed, with the reason), the beam it sits on (never for the source — the ray root),
 /// Remove, Close. Public so the row set is provable headless without a window.
 let elementMenuRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (menu : ElementMenu) : IView list =
@@ -6888,16 +7504,16 @@ let elementMenuRows (model : TableAndElementRotationModel) (dispatch : TableAndE
                 @ reflectedRows
         // Spec 0046: what the element is — the bound entry's name and description — under its title.
         let info =
-            TextBlock.create [
-                ConstructorUiId.elementMenuInfo.automationAttribute<TextBlock> ()
+            SelectableTextBlock.create [
+                ConstructorUiId.elementMenuInfo.automationAttribute<SelectableTextBlock> ()
                 TextBlock.text (elementInfo model i).detail.value
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.margin (Thickness(10.0, 0.0, 10.0, 4.0))
                 TextBlock.foreground (brush (Color.FromRgb(70uy, 70uy, 70uy)))
             ] :> IView
+        // Spec 0051 `.manual/007` 2.3, D9: no Choose…; a slot takes a kit item from its chip.
         [ elementMenuNote (ControlCaption (nameOf i.value)) ElementMenuHeading
-          info
-          elementMenuChooseItem model dispatch e ]
+          info ]
         @ rayRows
         @ beamRows
         @ [ elementMenuItem ConstructorUiId.elementMenuRemove (ControlCaption "Remove element") ControlOffered (fun () -> dispatch RemoveSelectedElement)
@@ -7048,135 +7664,79 @@ type TableAndElementRotationModel with
             Canvas.children (model.mainTableViews @ model.mainElementViews @ model.outOfBandBadges @ model.elementHoverTargets)
         ] :> IView
 
-/// The Main screen view: the ribbon of large controls on top, and BELOW the ribbon strip either the
-/// shared table (for an in-pane "table" bay — same selection / pan / zoom / rotate gestures as the test
-/// scene) or the active bay's OWN content (for a FULL-SURFACE bay — which fills that whole area and
-/// wires NO table gestures; spec 0038 step 015: no current bay uses the mode — the samples workbench
-/// that did is the Library WINDOW now — but the keyed slot stays for any future full-surface bay).
-/// The bays are built once and shared: the ribbon hosts the in-pane bays' content and shows only a
-/// tab for a full-surface bay, whose content is placed here below.
-let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+/// Whether the drawn table takes changes: its setup is edited or created, or it is only shown (spec 0051 `.manual/007`
+/// 5.1, 5.3).
+type TableEditability =
+    | EditableTable
+    | ReadOnlyTable
+
+/// A setup's table. Editable: the ribbon of the table's own tabs (Add, Rotate, Move, Render, Details), the slot chips,
+/// then the canvas with every gesture and the right-click element menu. Read-only: the readout and the element list,
+/// then the canvas, which selects, pans and zooms only, and the selected element's details (spec 0046; 0050 S8.4; 0051
+/// `.manual/007` 2.3, 5.1, 5.3).
+let setupTableView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (editability : TableEditability) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.tableElementCanvas e
-    // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:
-    // a full-surface bay never realizes the canvas and must not wire the table gestures.
-    // Spec 0046: a RIGHT click opens the element menu on release (its press starts no drag); the menu
-    // overlay sits above the surface as a sibling, so its rows get their own clicks.
-    // Spec 0050 S8.4: the slot bar sits above the table, and the grid panel, while open, between them.
-    let tableSurface () : IView =
-        let setupGridPanel : IView list =
-            match model.setupGridState with
-            | Some state -> [ SetupGridView.setupGridView state (setupGridHandlers dispatch) ]
-            | None -> []
-        DockPanel.create [
-            DockPanel.children [
-                StackPanel.create [
-                    StackPanel.dock Dock.Top
-                    StackPanel.orientation Orientation.Vertical
-                    StackPanel.children (SlotBarView.slotBarView model.slotBarState (slotBarHandlers model dispatch) :: setupGridPanel)
-                ]
-                // Spec 0051 `.manual/003` 4.3: the fixed-size canvas scrolls sideways in its own scroller, so the page
-                // fits a narrower window, a kit window's beside its flow strip included.
-                ScrollViewer.create [
-                    ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-                    ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
-                    ScrollViewer.content (
-                        Panel.create [
-                            Panel.children [
-                                Border.create [
-                                    Border.background (brush (Color.FromRgb(250uy, 250uy, 250uy)))
-                                    Border.onPointerPressed (fun e ->
+    let canvas : IView =
+        ScrollViewer.create [
+            ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+            ScrollViewer.content (
+                Panel.create [
+                    Panel.children (
+                        [
+                            Border.create [
+                                Border.background (brush (Color.FromRgb(250uy, 250uy, 250uy)))
+                                Border.onPointerPressed (fun e ->
+                                    e.Handled <- true
+                                    match e.GetCurrentPoint(null).Properties.IsRightButtonPressed with
+                                    | true -> ()
+                                    | false -> dispatch (PointerDown (toScreen e)))
+                                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
+                                Border.onPointerReleased (fun e ->
+                                    e.Handled <- true
+                                    match e.InitialPressMouseButton, editability with
+                                    | MouseButton.Right, EditableTable -> dispatch (OpenElementMenuAt (toScreen e))
+                                    | MouseButton.Right, ReadOnlyTable -> ()
+                                    | _ -> dispatch (PointerUp (toScreen e)))
+                                // Spec 0046: a plain wheel scrolls the page until the table is fully in view, then it is the
+                                // table's gesture; read-only, the wheel only zooms the view, never turns or zooms an element.
+                                Border.onPointerWheelChanged (fun e ->
+                                    let mods =
+                                        match editability with
+                                        | EditableTable -> wheelModifiers e.KeyModifiers
+                                        | ReadOnlyTable -> Set.empty
+                                    let notches = WheelNotches (if e.Delta.Y >= 0.0 then 1 else -1)
+                                    match wheelTarget mods (pageScrollOf e.Source) notches with
+                                    | WheelToPage -> ()
+                                    | WheelToTable ->
                                         e.Handled <- true
-                                        match e.GetCurrentPoint(null).Properties.IsRightButtonPressed with
-                                        | true -> ()
-                                        | false -> dispatch (PointerDown (toScreen e)))
-                                    Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-                                    Border.onPointerReleased (fun e ->
-                                        e.Handled <- true
-                                        match e.InitialPressMouseButton with
-                                        | MouseButton.Right -> dispatch (OpenElementMenuAt (toScreen e))
-                                        | _ -> dispatch (PointerUp (toScreen e)))
-                                    // Spec 0046: a plain wheel scrolls the PAGE until the table is fully in view (left
-                                    // unhandled, it bubbles to the page's ScrollViewer); then — and always with a modifier —
-                                    // it is the table's gesture.
-                                    Border.onPointerWheelChanged (fun e ->
-                                        let mods = wheelModifiers e.KeyModifiers
-                                        let notches = WheelNotches (if e.Delta.Y >= 0.0 then 1 else -1)
-                                        match wheelTarget mods (pageScrollOf e.Source) notches with
-                                        | WheelToPage -> ()
-                                        | WheelToTable ->
-                                            e.Handled <- true
-                                            dispatch (Wheel (mods, notches)))
-                                    Border.child model.mainTableCanvas
-                                ]
-                                elementMenuOverlay model dispatch
+                                        dispatch (Wheel (mods, notches)))
+                                Border.child model.mainTableCanvas
                             ]
-                    ])
-                ]
-            ]
-        ] :> IView
-    let bays = mainBays model dispatch
-    // The area BELOW the ribbon strip: a full-surface bay fills it with the bay's OWN content (no table
-    // canvas, no gestures — the workbench owns the whole surface); every in-pane / table bay keeps the
-    // shared table canvas and its pan / zoom / rotate gestures.
-    let belowStrip : IView =
-        match ({ bays = bays; selected = model.ribbon } : Ribbon.RibbonState).activeBay with
-        | Some b ->
-            match b.mode with
-            | Ribbon.FullSurface ->
-                // KEY the full-surface slot by bay name: a bay change then RECREATES the content
-                // instead of patching one workbench's styled, named rows into another's ("Cannot set
-                // Name : styled element already styled") — the same keyed-slot discipline step 007
-                // gave the ribbon pane. `View` is fully qualified (the DSL `View` module vs the
-                // `Types` `View<'t>` type are both in scope here).
-                let surface =
-                    Border.create [ Border.child b.content ]
-                    |> Avalonia.FuncUI.DSL.View.withKey b.name.value
-                surface :> IView
-            | Ribbon.InRibbonPane -> tableSurface ()
-        | None -> tableSurface ()
-    // Spec 0046: the whole surface scrolls, both ways — a tall bay (the Experiments editor + chart +
-    // builder) pushes the table below the window's bottom edge, and a window narrower than the table cuts
-    // its right side; nothing may become unreachable. The `MinWidthPanel` lays the page out at the
-    // window's width (so the tab strip still wraps there and the right-docked Materials… / Library…
-    // buttons stay on its right edge) but never narrower than the table, and its height is the content's
-    // height at that width, so the extent is exactly bars + table. A plain wheel over the table scrolls
-    // the page until the table is fully in view (`wheelTarget`), then zooms it.
-    // Spec 0051 `.manual/003` 3.2: the Setups step opens on its setups, above the ribbon. The slot is always there, empty
-    // in the other steps, so Setups ↔ Experiments patches the workbench in place instead of recreating its table.
-    let setupSection : IView list =
-        let content : IView list =
-            match model.flowStep with
-            | SetupsFlowStep -> [ setupSectionView model dispatch ]
-            | ItemsFlowStep
-            | ExperimentsFlowStep
-            | DataFlowStep
-            | UnknownsFlowStep
-            | PlanFlowStep
-            | FitFlowStep
-            | ResultsFlowStep
-            | PublishFlowStep -> []
-        [
-            StackPanel.create [
-                StackPanel.dock Dock.Top
-                StackPanel.margin (match content with [] -> Thickness 0.0 | _ :: _ -> Thickness(8.0, 4.0, 8.0, 6.0))
-                StackPanel.children content
-            ]
+                            :> IView
+                        ]
+                        @ (match editability with
+                           | EditableTable -> [ elementMenuOverlay model dispatch ]
+                           | ReadOnlyTable -> []))
+                ])
         ]
-    ScrollViewer.create [
-        ConstructorUiId.tableElementScrollViewer.automationAttribute<ScrollViewer> ()
-        ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-        ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-        ScrollViewer.content (
-            MinWidthPanel.create [
-                (PanelMinWidth 520.0).minWidthPanelAttribute ()
-                MinWidthPanel.child (
-                    DockPanel.create [
-                        DockPanel.children (
-                            setupSection
-                            @ [
-                                Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
-                                belowStrip
-                            ])
-                    ])
-            ])
-    ] :> IView
+        :> IView
+    let readout : IView =
+        SelectableTextBlock.create [ ConstructorUiId.teReadout.automationAttribute<SelectableTextBlock> (); TextBlock.margin (Thickness(0.0, 0.0, 0.0, 4.0)); TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text model.readoutText ] :> IView
+    let children : IView list =
+        match editability with
+        | EditableTable ->
+            [
+                mainControlBar (mainBays model dispatch) model dispatch
+                SlotBarView.slotBarView model.slotBarState (slotBarHandlers model dispatch)
+                tableElementList model dispatch
+                canvas
+            ]
+        | ReadOnlyTable -> [ readout; tableElementList model dispatch; canvas; model.detailsState.view ]
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 4.0
+        StackPanel.children children
+    ]
+    |> Avalonia.FuncUI.DSL.View.withKey $"SetupTable_{editability}"
+    :> IView

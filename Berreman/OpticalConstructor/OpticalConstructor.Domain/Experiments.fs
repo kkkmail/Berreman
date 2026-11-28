@@ -430,6 +430,24 @@ module Experiments =
         /// The experiment with those notes, its scan, setup, name and data kept (spec 0050 S9.1).
         member this.withNotes (notes : ExperimentNotes) : Experiment = { this with notes = notes }
 
+        /// The experiment with `previous` renamed `renamed` wherever it names its setup: its reference and its corrections,
+        /// each revision kept (spec 0051 `.manual/007` 1.3).
+        member this.withSetupRenamed (previous : SetupName) (renamed : SetupName) : Experiment =
+            let repointed (reference : SetupReference) : SetupReference =
+                if reference.name = previous then { reference with name = renamed } else reference
+            {
+                this with
+                    setup = repointed this.setup
+                    corrections =
+                        this.corrections
+                        |> List.map (fun correction ->
+                            {
+                                correction with
+                                    previous = repointed correction.previous
+                                    corrected = repointed correction.corrected
+                            })
+            }
+
         /// The experiment over `setup`, the re-pointing from its current setup and why appended to its corrections; its
         /// name, scan, role, session, notes and data are kept, so a lab file keyed by its name still matches it
         /// (spec 0050 S9.3).

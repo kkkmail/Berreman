@@ -43,16 +43,19 @@ module DesktopTests =
 
     [<Fact>]
     [<Trait("Category", "desktop")>]
-    let ``a kit opens through the real folder dialog and every step and bay is driven by id`` () : unit =
+    let ``a kit opens through its .optics-kit file in the real dialog and every page and tab is driven by id`` () : unit =
         requireDesktop ()
         let sandbox = createSandbox "kit"
         use app = launch sandbox
         let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
-        let kitBar =
+        // Spec 0051 `.manual/007` 2.1, 2.2: the switch rides the page row; the kit's verbs are the Kit page's.
+        assertDrivable ConstructorUiId.kitSwitchModeButton (app.find kitWindow ConstructorUiId.kitSwitchModeButton)
+        app.invoke kitWindow ConstructorUiId.flowKitStep
+        let kitPage =
             [ ConstructorUiId.sendKitButton; ConstructorUiId.kitShowInExplorerButton; ConstructorUiId.kitCopyExperimentsButton
-              ConstructorUiId.kitReloadChangesButton; ConstructorUiId.kitCloseButton; ConstructorUiId.kitSwitchModeButton
-              ConstructorUiId.saveNamingTemplateButton; ConstructorUiId.namingTemplateField ]
-        for id in kitBar do
+              ConstructorUiId.kitReloadChangesButton; ConstructorUiId.kitCloseButton; ConstructorUiId.kitGuideButton
+              ConstructorUiId.pageEditButton ]
+        for id in kitPage do
             assertDrivable id (app.find kitWindow id)
         let walkSteps (mode : ConstructorMode) : unit =
             for step in ConstructorFlowStep.stepsOf mode do
@@ -60,11 +63,14 @@ module DesktopTests =
                 let shown = app.find kitWindow step.flowUiId
                 Assert.Equal(ToggleState.On, shown.Patterns.Toggle.Pattern.ToggleState.Value)
         walkSteps ForwardConstructor
-        app.invoke kitWindow ConstructorFlowStep.ExperimentsFlowStep.flowUiId
+        // Spec 0051 `.manual/007` 5.3: the table's tabs are the chosen setup's Edit; an unchanged Cancel leaves at once.
+        app.invoke kitWindow ConstructorFlowStep.SetupsFlowStep.flowUiId
+        app.invoke kitWindow ConstructorUiId.pageEditButton
         for bay in BayNames.allBayNames do
             let tab = ConstructorUiId.ribbonTab bay.uiKey
             app.invoke kitWindow tab
             Assert.Equal(ToggleState.On, (app.find kitWindow tab).Patterns.Toggle.Pattern.ToggleState.Value)
+        app.invoke kitWindow ConstructorUiId.pageCancelButton
         app.invoke kitWindow ConstructorUiId.kitSwitchModeButton
         walkSteps InverseConstructor
 
@@ -86,6 +92,7 @@ module DesktopTests =
         let sandbox = createSandbox "explorer"
         use app = launch sandbox
         let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
+        app.invoke kitWindow ConstructorUiId.flowKitStep
         app.invoke kitWindow ConstructorUiId.kitShowInExplorerButton
         let explorer =
             waitFor "an Explorer window on the kit folder" 20.0 (fun () ->
@@ -139,7 +146,10 @@ module DesktopTests =
         library.Close()
         // Attach data file… starts in the kit's data folder and lists lab data.
         let kitWindow = openKit app ConstructorUiId.openInverseButton sandbox.opticsMueller
+        // Spec 0051 `.manual/007` 7.2: Attach data file… is the chosen experiment's Edit on the Data page.
         app.invoke kitWindow ConstructorUiId.flowDataStep
+        app.invoke kitWindow (ConstructorUiId.experimentMatrixEntry (ExperimentId 1))
+        app.invoke kitWindow ConstructorUiId.pageEditButton
         app.invoke kitWindow (ConstructorUiId.attachDataFile (ExperimentId 1))
         Assert.EndsWith(Path.Combine("optics-mueller", "data"), trimmed app.nativeDialogFolder)
         let filters = app.nativeDialog.FindAllDescendants(condition (fun factory -> factory.ByControlType(ControlType.ComboBox)))
@@ -155,15 +165,18 @@ module DesktopTests =
         use app = launch sandbox
         let first = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
         let chosen = SetupName "CPL-(LR#0)-CPL"
-        app.invoke first (ConstructorUiId.savedSetup chosen)
-        Assert.Equal(ToggleState.On, (app.find first (ConstructorUiId.savedSetup chosen)).Patterns.Toggle.Pattern.ToggleState.Value)
-        Assert.StartsWith($"Active setup: {chosen.value}", shownText (app.find first ConstructorUiId.activeSetupText))
+        let toggleOf (window : Window) : ToggleState =
+            (app.find window (ConstructorUiId.savedSetup chosen)).Patterns.Toggle.Pattern.ToggleState.Value
+        // Spec 0051 `.manual/007` 5.1: a press on the chosen setup unchooses it, so it is pressed only while not chosen.
+        if toggleOf first <> ToggleState.On then app.invoke first (ConstructorUiId.savedSetup chosen)
+        Assert.Equal(ToggleState.On, toggleOf first)
+        app.invoke first ConstructorUiId.flowKitStep
         app.invoke first ConstructorUiId.kitCloseButton
         // The Launcher's title also reads "Optical Constructor —": the kit window is the one naming the kit's folder.
         waitFor "the kit window to close" 15.0 (fun () ->
             if app.windows |> List.exists (fun window -> window.Title.Contains(Path.GetFileName sandbox.opticsMueller)) then None else Some ())
         let reopened = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
-        Assert.StartsWith($"Active setup: {chosen.value}", shownText (app.find reopened ConstructorUiId.activeSetupText))
+        Assert.Equal(ToggleState.On, toggleOf reopened)
 
     /// Spec 0051 `.manual/003` 2.3, 3.6, 5.8.
     [<Fact>]
@@ -173,8 +186,8 @@ module DesktopTests =
         let sandbox = createSandbox "actions"
         use app = launch sandbox
         let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
-        // The Select bay's list selects an element without the canvas.
-        app.invoke kitWindow (ConstructorUiId.ribbonTab BayNames.selector.uiKey)
+        // The chosen setup's element list selects an element without the canvas (spec 0051 `.manual/007` 5.1).
+        app.invoke kitWindow ConstructorUiId.flowSetupsStep
         let list = app.find kitWindow ConstructorUiId.tableElementList
         let items = list.FindAllDescendants(condition (fun factory -> factory.ByControlType(ControlType.ListItem)))
         Assert.NotEmpty(items)
@@ -186,6 +199,8 @@ module DesktopTests =
         let filesBefore = Directory.GetFiles(sandbox.opticsMueller, "*.experiment-json").Length
         app.invoke kitWindow ConstructorUiId.flowExperimentsStep
         let first = ConstructorUiKey "1"
+        // Spec 0051 `.manual/007` 6.2: Remove and View are under the chosen experiment.
+        app.invoke kitWindow (ConstructorUiId.experimentEditButton first)
         app.invoke kitWindow (ConstructorUiId.experimentRemoveButton first)
         Assert.Equal("Remove this experiment and its file?", shownText (app.find kitWindow ConstructorUiId.experimentRemovePrompt))
         app.invoke kitWindow ConstructorUiId.experimentRemoveCancelButton

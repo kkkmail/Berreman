@@ -55,8 +55,11 @@ module LauncherTests =
         |> List.ofSeq
 
     /// Every launcher button but the footer's Data locations link, which is not a surface (spec 0050 S5.3).
+    /// The surface buttons: every button but the footer's Data locations, Options… and Guide… (spec 0051 `.manual/007`
+    /// 1.5, 9.2).
     let private surfaceButtons (w : Window) : Button list =
-        buttons w |> List.filter (fun b -> not (UiDriver.hasId ConstructorUiId.launcherDataLocationsLink.value b))
+        let footerIds = [ ConstructorUiId.launcherDataLocationsLink; ConstructorUiId.launcherOptionsButton; ConstructorUiId.launcherGuideButton ]
+        buttons w |> List.filter (fun b -> not (footerIds |> List.exists (fun id -> UiDriver.hasId id.value b)))
 
     let private tryFindButton (name : string) (w : Window) : Button option =
         buttons w |> List.tryFind (fun b -> UiDriver.hasId name b)
@@ -564,7 +567,7 @@ module LauncherTests =
                     Assert.Equal<CatalogueImportLogEntry list>(importsBefore, loggedImports context)
                     Assert.Equal<MaterialEntry list>(materialsBefore, materials context)
                 let assertNotice () : unit =
-                    let notice = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherPendingImportsText)
+                    let notice = Assert.IsAssignableFrom<TextBlock>(launcherControl launcher ConstructorUiId.launcherPendingImportsText)
                     Assert.Equal($"Library entries waiting for an import decision: {expectedCount}.", notice.Text)
                     Assert.Equal(ConstructorUiId.launcherPendingImportsText.value, notice.Name)
                     Assert.Equal(notice.Text, AutomationProperties.GetName notice)
@@ -645,7 +648,7 @@ module LauncherTests =
                     launcher.Show()
                     Dispatcher.UIThread.RunJobs()
                     Assert.Empty opened
-                    let notice = Assert.IsType<TextBlock>(launcherControl launcher ConstructorUiId.launcherSettledImportsText)
+                    let notice = Assert.IsAssignableFrom<TextBlock>(launcherControl launcher ConstructorUiId.launcherSettledImportsText)
                     Assert.Equal($"Imported {count} catalogue entries on start; none needed a decision.", notice.Text)
                     Assert.True(tryFindLauncherControl launcher ConstructorUiId.launcherPendingImportsText |> Option.isNone)
                 finally
@@ -831,7 +834,7 @@ module LauncherTests =
                         Assert.True(opened :? MainConstructorWindow, $"'NewKitButton' opened a {opened.GetType().Name}")
                         Assert.True(opened.IsVisible, "the opened scene window must be shown")
                         Assert.False(start.IsVisible, "the start screen must close once its kit opens")
-                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".optics-kit")))
                         Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
                     finally opened.Close()
                     Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
@@ -852,7 +855,7 @@ module LauncherTests =
                         Assert.True(opened :? InverseConstructorWindow, $"'NewKitButton' opened a {opened.GetType().Name}")
                         Assert.True(opened.IsVisible, "the opened inverse scene window must be shown")
                         Assert.False(start.IsVisible, "the start screen must close once its kit opens")
-                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                        Assert.True(File.Exists(Path.Combine(folder.value.value, ".optics-kit")))
                         Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
                     finally opened.Close()
                     Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
@@ -891,10 +894,11 @@ module LauncherTests =
                     Assert.True(window.IsVisible)
                     Assert.False(start.IsVisible, "the start screen must close once its kit opens")
                     Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
-                    let experimentsTab = ConstructorUiId.ribbonTab (ConstructorUiKey TableAndElementRotationView.BayNames.experiments.value)
-                    clickBorder window experimentsTab.value
+                    // Spec 0051 `.manual/007` 6.2: the kit's experiments are the Experiments page's entries; a press chooses one.
+                    clickBorder window ConstructorUiId.flowExperimentsStep.value
                     let row = launcherControl window (ConstructorUiId.experimentEditButton experiment.id.uiKey)
                     Assert.True(row.IsEffectivelyVisible, "the picked kit's saved experiment must appear in the real constructor")
+                    clickBorder window (ConstructorUiId.experimentEditButton experiment.id.uiKey).value
                     launcherControl window (ConstructorUiId.experimentViewButton experiment.id.uiKey) |> ignore
                 finally window.Close()
                 Assert.False(File.Exists(Path.Combine(folder.value.value, ".oc", "lock")))
@@ -1002,7 +1006,7 @@ module LauncherTests =
                 let start = startScreenOf launcher ConstructorUiId.openMainButton
                 try
                     Assert.Empty(pressAndObserve start ConstructorUiId.openKitButton)
-                    let offerText = Assert.IsType<TextBlock>(launcherControl start ConstructorUiId.kitStartOfferText)
+                    let offerText = Assert.IsAssignableFrom<TextBlock>(launcherControl start ConstructorUiId.kitStartOfferText)
                     Assert.Equal($"The kit is open elsewhere: {holder.describe}.", offerText.Text)
                     Assert.Contains($"process {System.Environment.ProcessId}", offerText.Text)
                     Assert.Equal(ConstructorUiId.kitStartOfferText.value, AutomationProperties.GetAutomationId offerText)
@@ -1040,20 +1044,14 @@ module LauncherTests =
                         Assert.DoesNotContain<Visual>(row, launcher.GetVisualDescendants())
                         assertFilesUnchanged ()
 
-                        // Spec 0051 `.manual/003` 3.2: the setups are the Setups step's.
+                        // Spec 0051 `.manual/007` Phase 5: the setups are the Setups page's; a read-only kit withholds New
+                        // setup.
                         clickBorder window ConstructorUiId.flowSetupsStep.value
-                        let setupName = Assert.IsType<TextBox>(launcherControl window ConstructorUiId.setupNameField)
-                        setupName.Text <- "Read-only setup"
-                        let create = launcherControl window ConstructorUiId.createSetupButton
-                        create.BringIntoView() |> ignore
-                        Dispatcher.UIThread.RunJobs()
-                        Assert.True(create.IsEffectivelyVisible)
-                        Assert.False(create.IsEnabled, "a read-only kit must withhold Create setup")
-                        // Spec 0051 `.manual/003` 3.1: a kit with no setup opens saying where one is made; a press on the
-                        // withheld Create setup says nothing more.
-                        let hint = "This kit has no setup yet: build the table, then press Create setup in the Setups step."
-                        Assert.Equal(hint, UiDriver.textOfControl (launcherControl window ConstructorUiId.kitStatus))
-                        clickBorder window ConstructorUiId.createSetupButton.value
+                        match tryFindLauncherControl window ConstructorUiId.newSetupButton with
+                        | Some _ -> Assert.Fail "a read-only kit must offer no New setup"
+                        | None -> ()
+                        // Spec 0051 `.manual/003` 3.1: a kit with no setup opens saying where one is made.
+                        let hint = "This kit has no setup yet: press New setup on the Setups page."
                         Assert.Equal(hint, UiDriver.textOfControl (launcherControl window ConstructorUiId.kitStatus))
                         assertFilesUnchanged ()
                     finally window.Close()
@@ -1125,7 +1123,7 @@ module LauncherTests =
                 try
                     Assert.Empty(pressAndObserve start ConstructorUiId.openKitButton)
                     Assert.True(start.IsVisible, "a kit that cannot be opened must keep the start screen open")
-                    let statusText = Assert.IsType<TextBlock>(launcherControl start ConstructorUiId.kitStartStatusText)
+                    let statusText = Assert.IsAssignableFrom<TextBlock>(launcherControl start ConstructorUiId.kitStartStatusText)
                     Assert.Equal(ConstructorUiId.kitStartStatusText.value, AutomationProperties.GetAutomationId statusText)
                     Assert.True(statusText.IsEffectivelyVisible)
                     Assert.Equal(Avalonia.Media.TextWrapping.Wrap, statusText.TextWrapping)
@@ -1245,7 +1243,7 @@ module LauncherTests =
             try
                 let window = Assert.IsType<DataLocationsWindow>(Assert.Single(clickLink ()))
                 Assert.True(window.IsVisible, "the Data locations window must be shown")
-                let kitsPath = Assert.IsType<TextBlock>(launcherControl window (ConstructorUiId.dataLocationPathText KitsLocation))
+                let kitsPath = Assert.IsAssignableFrom<TextBlock>(launcherControl window (ConstructorUiId.dataLocationPathText KitsLocation))
                 Assert.Equal((TestAppScope.testLocations owner).kitsFolder.value, kitsPath.Text)
                 Assert.Empty(clickLink ())
                 Assert.True(window.IsVisible, "a second click must keep the one Data locations window open")
@@ -1282,18 +1280,14 @@ module LauncherTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``Materials from the launcher then the constructor strip activates ONE single instance`` () =
-        // The launcher and the constructor share the step-006 app scope AND the host-layer
-        // WindowRegistry: opening Materials from the launcher then from the constructor strip must
-        // meet in ONE window (the second open ACTIVATES, it does not stack a copy).
+    let ``Materials from the launcher twice activates ONE single instance`` () =
+        // The host-layer WindowRegistry: a second open from the launcher (the only place it opens, spec 0051
+        // `.manual/007` 2.3) must meet the first window (it ACTIVATES, it does not stack a copy).
         HeadlessSession.run (fun () ->
             let context = freshContext ()
             let launcher = LauncherWindow(TestAppScope.testLocations owner, WorkbenchSettings.defaults, Ok context,
                 fun _ -> TestAppScope.kitPickerOf (TestAppScope.freshKitFolder owner))
             launcher.Show()
-            Dispatcher.UIThread.RunJobs()
-            let constructorWindow = MainConstructorWindow(context, TestAppScope.openedKitIn owner context.catalogueImports)
-            constructorWindow.Show()
             Dispatcher.UIThread.RunJobs()
             try
                 // Count ONLY Materials-window opens across both actions.
@@ -1310,12 +1304,13 @@ module LauncherTests =
                  | None -> Assert.Fail "launcher button 'OpenMaterialsButton' was not found")
                 Dispatcher.UIThread.RunJobs()
                 Assert.Equal(1, materialsOpens.Count)
-                // 2) constructor strip Materials button → ACTIVATES the SAME instance (no new window).
-                clickBorder constructorWindow ConstructorUiId.openMaterialsWindowButton.value
+                // 2) the launcher Materials button again → ACTIVATES the SAME instance (no new window).
+                (match tryFindButton ConstructorUiId.openMaterialsButton.value launcher with
+                 | Some button -> button.RaiseEvent(RoutedEventArgs(Button.ClickEvent))
+                 | None -> Assert.Fail "launcher button 'OpenMaterialsButton' was not found")
                 Dispatcher.UIThread.RunJobs()
                 Assert.Equal(1, materialsOpens.Count)
                 materialsOpens.[0].Close()
                 Dispatcher.UIThread.RunJobs()
             finally
-                constructorWindow.Close()
                 launcher.Close())

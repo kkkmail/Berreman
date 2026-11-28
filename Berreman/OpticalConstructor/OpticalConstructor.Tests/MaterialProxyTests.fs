@@ -366,6 +366,8 @@ type MaterialProxyContract () =
         | Error (MaterialStillReferencedErr reason) -> Assert.Contains((BuiltinCatalogue.sample SampleIds.glassFilm600Id).name.value, reason)
         | other -> Assert.Fail($"expected Error (MaterialStillReferencedErr _), got %A{other}")
         samples.removeSample SampleIds.glassFilm600Id
+        // Spec 0051 `.manual/007` 9.1: the 100-pair stack is made of it too.
+        samples.removeSample SampleIds.multilayerGlassPairsId
         match proxy.removeMaterial MaterialIds.glass175 with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () once unreferenced, got %A{other}")

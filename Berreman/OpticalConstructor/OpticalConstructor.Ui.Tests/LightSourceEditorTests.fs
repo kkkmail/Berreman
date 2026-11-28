@@ -144,13 +144,12 @@ module LightSourceEditorTests =
                         match intent with
                         | SE.NewSource mintedId -> "source-add:" + mintedId.value
                         | SE.EditSource s -> "source-edit:" + s.name.value)
-            requestClose = fun () -> calls.Add "close"
         }
 
     [<Fact>]
     let ``Add source opens the editor on a freshly minted source id`` () =
         let calls, context = libraryContext (SourceProxy.createInMemory ())
-        LW.updateLibraryWindow LW.AddSource (LW.initLibraryWindow context Browse) |> ignore
+        LW.updateLibraryWindow LW.AddSource (LW.initLibraryWindow context) |> ignore
         Assert.Equal(1, calls.Count)
         // Spec 0050 §3.3: the minted id is the canonical string of a GUID, as a sample's is.
         let prefix = "source-add:"
@@ -166,7 +165,7 @@ module LightSourceEditorTests =
         let mine : SourcePreset = { id = Placement.ElementValueId "src-mine"; name = EntryName "My line"; waveLength = WaveLength.nm 450.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Equal(Ok (), sources.saveSource mine)
         let calls, context = libraryContext sources
-        let m0 = LW.initLibraryWindow context Browse
+        let m0 = LW.initLibraryWindow context
         Assert.Contains("src-mine", m0.filteredEntries |> List.map (fun e -> e.entryId.value))
         let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry (OpticalConstructor.Domain.Placement.ElementValueId "src-mine")) m0
         Assert.Equal(Some mine, selected.editableSource)
@@ -182,7 +181,7 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``a seeded source is protected: no Edit, and Remove refuses with the reason`` () =
         let calls, context = libraryContext (SourceProxy.createInMemory ())
-        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.euv13p5) (LW.initLibraryWindow context Browse)
+        let selected = LW.updateLibraryWindow (LW.SelectLibraryEntry PresetIds.euv13p5) (LW.initLibraryWindow context)
         Assert.Equal(None, selected.editableSource)
         LW.updateLibraryWindow LW.EditSelectedEntry selected |> ignore
         Assert.Empty(calls)
@@ -195,7 +194,7 @@ module LightSourceEditorTests =
     /// The Main readout text for `model` (the scene rendered once headless).
     let private readoutOf (model : Scene.TableAndElementRotationModel) : string =
         let window = Window(Width = 980.0, Height = 900.0)
-        window.Content <- Avalonia.FuncUI.Component(fun _ -> Scene.mainView model ignore)
+        window.Content <- Avalonia.FuncUI.Component(fun _ -> UiDriver.editableTableView model ignore)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         let text =

@@ -162,7 +162,7 @@ module internal StudyPublishViewFixture =
         added
         |> updateTableAndElementRotation ReloadKitChanges
         |> updateTableAndElementRotation (SelectFitRun run.name)
-        |> updateTableAndElementRotation (ShowFlowStep PublishFlowStep)
+        |> updateTableAndElementRotation (ShowFlowStep KitFlowStep)
 
 // Spec 0050 S13.1: this file compiles before MaterialSourcesWindowTests, so the reachability fact and that class build
 // the Online sources window over one import context.
@@ -328,7 +328,12 @@ module ScrollExtentTests =
         let categories = BuiltinCatalogue.categoryStore (materialsReferencingCategory materials)
         materials, samples, categories, Library.liveLibrary (BuiltinCatalogue.library ()) samples (SourceProxy.createInMemory ())
 
-    /// Hosts `view` over `model0` in a FuncUI window: the workbench's `mainView`, or the kit window over it.
+    /// Which of its states the Data page's reachability fact shows (spec 0051 `.manual/007` 7.2, 7.5).
+    type internal DataPageState =
+        | ReviewInEdit
+        | SplitInCreating
+
+    /// Hosts `view` over `model0` in a FuncUI window: the workbench's `UiDriver.editableTableView`, or the kit window over it.
     let internal viewWindow
         (view : TableAndElementRotationModel -> (TableAndElementRotationMsg -> unit) -> Avalonia.FuncUI.Types.IView)
         (model0 : TableAndElementRotationModel)
@@ -337,14 +342,45 @@ module ScrollExtentTests =
         Program.mkSimple (fun () -> model0) updateTableAndElementRotation view |> Program.withHost window |> Program.run
         window :> Window
 
-    let internal constructorWindow (model0 : TableAndElementRotationModel) : Window = viewWindow mainView model0
+    /// The kit window's content over `model0`: the page row and the page it shows (spec 0051 `.manual/007` 2.1).
+    let internal constructorWindow (model0 : TableAndElementRotationModel) : Window = viewWindow KitWindowView.kitWindowView model0
 
-    /// Main with a polarizer whose R1 run is collected AND being edited — the tallest Experiments bay (editor,
-    /// chart, description, collection row, export, collection builder) above the table.
+    /// `model` with its table created as the kit's setup "Bench", chosen, on the Setups page (spec 0051 `.manual/007` 5.1).
+    let internal onBenchSetup (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let created =
+            model
+            |> updateTableAndElementRotation (SetSetupName (ControlCaption "Bench"))
+            |> updateTableAndElementRotation CreateSetup
+            |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
+        match created.activeSetupOpt with
+        | Some _ -> created
+        | None -> failwith "the table must be created as the kit's setup"
+
+    /// Main with a polarizer whose R1 run is collected over the setup "Bench" and chosen on the Experiments page, its
+    /// chart and details open under it.
     let internal filledExperiments () : TableAndElementRotationModel =
-        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
+        let m = SceneTestFixture.mainScene () |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer) |> onBenchSetup
         let pid = (List.item 2 m.elements).id
-        m |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+        let committed =
+            m
+            |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+            |> updateTableAndElementRotation (ExpChooseElement pid)
+            |> updateTableAndElementRotation ExpCommit
+        committed |> updateTableAndElementRotation (ChooseExperiment (List.head committed.experimentCollection.experiments).id)
+
+    /// `filledExperiments` creating a second experiment of the polarizer: the editor, its scan and its chart (spec 0051
+    /// `.manual/007` 6.4).
+    let internal creatingExperiment () : TableAndElementRotationModel =
+        let filled = filledExperiments ()
+        filled
+        |> updateTableAndElementRotation (ChooseExperiment (List.head filled.experimentCollection.experiments).id)
+        |> updateTableAndElementRotation BeginPageCreate
+        |> updateTableAndElementRotation (ExpChooseElement (List.item 2 filled.elements).id)
+
+    /// `filledExperiments`' setup open for Edit on the Setups page: the ribbon, the slot chips and the table (spec 0051
+    /// `.manual/007` 5.4).
+    let internal editingSetup () : TableAndElementRotationModel =
+        filledExperiments () |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep) |> updateTableAndElementRotation BeginPageEdit
 
     // ------------------------------ the law, window by window ------------------------------
 
@@ -352,8 +388,10 @@ module ScrollExtentTests =
     [<Trait("Category", "ui-smoke")>]
     let ``Main: every bay leaves the whole page reachable — the table below a tall bay included`` () =
         for bay in BayNames.allBayNames do
-            assertReachable $"Main/%s{bay.value}" (fun () -> constructorWindow ({ SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
-        assertReachable "Main/Experiments (collected + chart)" (fun () -> constructorWindow (filledExperiments ()))
+            assertReachable $"Main/%s{bay.value}" (fun () ->
+                constructorWindow ({ editingSetup () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
+        assertReachable "Main/Experiments (chosen + chart)" (fun () -> constructorWindow (filledExperiments ()))
+        assertReachable "Main/Experiments (creating)" (fun () -> constructorWindow (creatingExperiment ()))
 
     /// Spec 0050 S8.4: the grid panel docks between the slot bar and the table, so the page grows by it.
     [<Fact>]
@@ -363,22 +401,28 @@ module ScrollExtentTests =
             let polarizer = (List.item 2 filled.elements).id
             let withAngle (model : TableAndElementRotationModel) (degrees : float) : TableAndElementRotationModel =
                 model |> updateTableAndElementRotation (AddSetupGridAngle (polarizer, BarDegrees degrees))
-            constructorWindow ([ 0.0; 45.0; 90.0 ] |> List.fold withAngle (filled |> updateTableAndElementRotation OpenSetupGrid)))
+            constructorWindow ([ 0.0; 45.0; 90.0 ] |> List.fold withAngle (filled |> updateTableAndElementRotation BeginExperimentGrid)))
 
     [<Fact>]
     let ``Inverse: the Experiments bay leaves everything reachable`` () =
         let materials, samples, categories, library = stores ()
         assertReachable "Inverse/Experiments" (fun () ->
-            let collection = (filledExperiments ()).experimentCollection
-            // Spec 0050 S9.1: E1 loaded, its axis held, so the role row, the session and notes fields and a scan line show.
+            let filled = filledExperiments ()
+            // Spec 0050 S9.1; spec 0051 `.manual/007` 6.3: E1 in Edit, its axis held, so the role row, the session and
+            // notes fields and a scan line show.
             let loaded =
-                { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with
-                    ribbon = BayNames.experiments
-                    experimentCollection = collection }
-                |> updateTableAndElementRotation (ExpEdit (List.head collection.experiments).id)
+                {
+                    SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with
+                        flowStep = ExperimentsFlowStep
+                        kitSetups = filled.kitSetups
+                        activeSetupOpt = filled.activeSetupOpt
+                        elements = filled.elements
+                        experimentCollection = filled.experimentCollection
+                }
+                |> updateTableAndElementRotation (ChooseExperiment (List.head filled.experimentCollection.experiments).id)
+                |> updateTableAndElementRotation BeginPageEdit
                 |> updateTableAndElementRotation ExpAddScanAxis
-            Assert.Equal(ControlOffered, loaded.experimentState.bookkeepingAvailability)
-            Assert.Equal(7, List.length loaded.experimentState.roleOptions)
+            Assert.Equal<PageMode>(EditingPageEntry, loaded.pageMode)
             Assert.Single(loaded.experimentState.scanLines) |> ignore
             constructorWindow loaded)
 
@@ -614,7 +658,7 @@ module ScrollExtentTests =
                 kitSend = (filled.kitSend.started handle).progressed (progress.jobProgress (JobRunner.JobElapsed System.TimeSpan.Zero))
                 kitCopyOpt = Some copySource
                 kitItems = kitItems
-                kitChanges =[ FileName ".kit-json"; FileName "E1.experiment-json"; FileName "E2.experiment-json" ]
+                kitChanges =[ FileName ".optics-kit"; FileName "E1.experiment-json"; FileName "E2.experiment-json" ]
                 kitStatus = Some (KitStatusRefused (ControlCaption "The kit is open read-only: nothing is saved."))
         }
 
@@ -672,6 +716,12 @@ module ScrollExtentTests =
             let edited =
                 model
                 |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep)
+                |> fun onPage ->
+                    match onPage.selectedStudyOpt with
+                    | Some _ -> onPage
+                    | None -> onPage |> updateTableAndElementRotation (SelectStudy (List.head onPage.kitStudies).name)
+                // Spec 0051 `.manual/007` 8.2: the parameter editor is the study's Edit.
+                |> updateTableAndElementRotation BeginPageEdit
                 |> updateTableAndElementRotation (EditStudyParameter reference)
             match edited.parameterEditOpt with
             | Some draft -> Assert.Equal<StudyParameterRef>(reference, draft.parameter)
@@ -681,10 +731,11 @@ module ScrollExtentTests =
             window.Opened.Add(fun _ ->
                 Dispatcher.UIThread.RunJobs()
                 let scrollSubjects = subjects window
+                // The session table is a gridded table: the id is on its frame, which holds its grid.
                 let grid =
                     Assert.Single<Control>(scrollSubjects, fun control ->
                         AutomationProperties.GetAutomationId control = ConstructorUiId.studySessionGrid.value)
-                    |> Assert.IsType<Grid>
+                UiDriver.gridIn grid |> ignore
                 let session = OpticalConstructor.Domain.Experiments.SessionName "Session 1"
                 let gainId = ConstructorUiId.studySessionGainChoice session
                 let gain =
@@ -885,11 +936,11 @@ module ScrollExtentTests =
 
     /// Spec 0050 S9.3: the Inverse kit window on its Data step over the matrix of three experiments, copies of the collected
     /// one of `filledExperiments` over its setup: the first reviewed, three points with one excluded and one setup
-    /// correction, under a pending split of three groups.
+    /// correction, in its Edit; or a pending split of three groups as the page's Creating.
     [<Fact>]
     let ``the kit window's Data step leaves everything reachable`` () : unit =
         let materials, samples, categories, library = stores ()
-        let dataStepWindow () : Window =
+        let dataStepWindow (shownState : DataPageState) : Window =
             let filled = filledExperiments ()
             let collection = filled.experimentCollection
             let collected = List.head collection.experiments
@@ -973,19 +1024,27 @@ module ScrollExtentTests =
                     experimentCollection = { collection with experiments = experiments }
                     kitSetups = filled.kitSetups
                     kitItems = filled.kitItems
-                    reviewedDataOpt = Some { experimentId = reviewed.id; points = Ok points }
-                    dataSplitOpt = Some split }
+                    reviewedDataOpt = Some { experimentId = reviewed.id; points = Ok points } }
                 |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
             Assert.Equal<ConstructorFlowStep>(DataFlowStep, model.flowStep)
             Assert.NotEmpty(model.experimentCollection.experiments)
             let matrix = ExperimentMatrices.ExperimentMatrix.ofExperiments model.experimentCollection.experiments model.kitSetups model.kitItems
             Assert.Empty(matrix.unplaced)
             Assert.Equal(3, matrix.cells |> List.sumBy (fun cell -> cell.experiments.Length))
-            viewWindow KitWindowView.kitWindowView model
-        assertReachable "KitWindowData" dataStepWindow
-        // The window shows what the law is held over: the matrix's three entries, the split and the corrected review.
-        HeadlessSession.run (fun () ->
-            let window = dataStepWindow ()
+            // Spec 0051 `.manual/007` 7.2, 7.5: the reviewed experiment's Edit, or a held split as the page's Creating.
+            match shownState with
+            | ReviewInEdit ->
+                let editing = model |> updateTableAndElementRotation BeginPageEdit
+                Assert.Equal<PageMode>(EditingPageEntry, editing.pageMode)
+                viewWindow KitWindowView.kitWindowView editing
+            | SplitInCreating -> viewWindow KitWindowView.kitWindowView { model with dataSplitOpt = Some split; pageMode = CreatingPageEntry }
+        assertReachable "KitWindowDataEdit" (fun () -> dataStepWindow ReviewInEdit)
+        assertReachable "KitWindowDataSplit" (fun () -> dataStepWindow SplitInCreating)
+        // The windows show what the law is held over: the matrix's three entries and the corrected review in Edit, and the
+        // split.
+        let shownIn (state : DataPageState) (expected : ConstructorUiId list) : unit =
+          HeadlessSession.run (fun () ->
+            let window = dataStepWindow state
             window.Width <- 800.0
             window.Height <- 600.0
             window.Show()
@@ -995,16 +1054,17 @@ module ScrollExtentTests =
                     window.GetVisualDescendants()
                     |> Seq.choose (function :? Control as control -> Option.ofObj (AutomationProperties.GetAutomationId control) | _ -> None)
                     |> Set.ofSeq
-                let expected =
-                    [ ConstructorUiId.experimentMatrix; ConstructorUiId.dataSplitKeyColumn; ConstructorUiId.dataReviewPanel; ConstructorUiId.dataCorrectionTrail ]
-                    @ ([ 1 .. 3 ] |> List.map (Experiments.ExperimentId >> ConstructorUiId.experimentMatrixEntry))
-                    @ ([ 1 .. 3 ] |> List.map (MappedPointNumber >> ConstructorUiId.dataPointRow))
-                    @ [ ConstructorUiId.dataIncludePointButton (MappedPointNumber 2) ]
-                    @ ([ "E1"; "K2"; "K3" ] |> List.map (DataRowKey >> ConstructorUiId.dataSplitGroupRow))
                 for id in expected do
                     Assert.True(Set.contains id.value shown, $"{id.value} must show in the Data step")
             finally
                 window.Close())
+        shownIn ReviewInEdit (
+            [ ConstructorUiId.experimentMatrix; ConstructorUiId.dataReviewPanel ]
+            @ ([ 1 .. 3 ] |> List.map (Experiments.ExperimentId >> ConstructorUiId.experimentMatrixEntry))
+            @ ([ 1 .. 3 ] |> List.map (MappedPointNumber >> ConstructorUiId.dataPointRow))
+            @ [ ConstructorUiId.dataIncludePointButton (MappedPointNumber 2) ])
+        shownIn SplitInCreating (
+            ConstructorUiId.dataSplitKeyColumn :: ([ "E1"; "K2"; "K3" ] |> List.map (DataRowKey >> ConstructorUiId.dataSplitGroupRow)))
 
     [<Fact>]
     let ``the Data locations window leaves everything reachable`` () : unit =
@@ -1015,6 +1075,35 @@ module ScrollExtentTests =
     let ``the Online sources window leaves everything reachable`` () : unit =
         assertReachable "OnlineSources" (fun () ->
             MaterialSourcesWindow(MaterialSourcesWindowFixture.importsOffering [ MaterialSourcesWindowFixture.siliconSource () ], ignore))
+
+    /// Spec 0051 `.manual/007` 1.5, 9.2, 4.3: the Options, Guide and library chooser windows.
+    [<Fact>]
+    let ``the Options window leaves everything reachable`` () : unit =
+        let proxy : OptionsView.OptionsProxy =
+            {
+                loadDelay = fun () -> UserEnvironment.ToolTipDelay 1000
+                saveDelay = fun _ -> Ok ()
+                applyDelay = ignore
+            }
+        assertReachable "Options" (fun () -> OptionsWindow proxy)
+
+    [<Fact>]
+    let ``the Guide window leaves everything reachable`` () : unit =
+        for guide in [ GuideView.DirectProblemGuide; GuideView.InverseProblemGuide ] do
+            assertReachable $"Guide{guide.choiceUiId.value}" (fun () -> GuideWindow guide)
+
+    [<Fact>]
+    let ``the library chooser window leaves everything reachable`` () : unit =
+        assertReachable "ItemModelChooser" (fun () ->
+            let model = TestAppScope.studyKitIn (FolderName "ScrollExtentChooser") |> updateTableAndElementRotation OpenAddItemForm
+            let offers =
+                match model.addItemFormOpt with
+                | Some form -> form.offers
+                | None -> failwith "The add form must be open."
+            Assert.NotEmpty(offers)
+            let window = ItemModelChooserWindow { offers = offers; chosenOpt = None; onChosen = ignore }
+            window.Closed.Add(fun _ -> model.kit.close () |> SceneTestFixture.kitSuccess)
+            window)
 
     // ------------------------------ a window never opens larger than its screen ------------------------------
 
@@ -1075,10 +1164,10 @@ module ScrollExtentTests =
     [<Trait("Category", "ui-smoke")>]
     let ``wheeling down over the table scrolls the page until the whole table is visible, then zooms it`` () =
         HeadlessSession.run (fun () ->
-            let model0 = filledExperiments ()
+            let model0 = editingSetup ()
             let mutable latest = model0
             let window = HostWindow(Width = tableAndElementRotationCanvasWidth, Height = 600.0)
-            Program.mkSimple (fun () -> model0) (fun msg m -> let next = updateTableAndElementRotation msg m in latest <- next; next) mainView
+            Program.mkSimple (fun () -> model0) (fun msg m -> let next = updateTableAndElementRotation msg m in latest <- next; next) KitWindowView.kitWindowView
             |> Program.withHost window
             |> Program.run
             window.Show()
@@ -1090,7 +1179,7 @@ module ScrollExtentTests =
                     match canvas.TranslatePoint(Point(0.0, canvas.Bounds.Height), window) |> Option.ofNullable with
                     | Some p -> p.Y
                     | None -> infinity
-                Assert.True(tableBottomInWindow () > window.ClientSize.Height + 1.0, "precondition: the tall Experiments bay pushes the table's bottom off the window")
+                Assert.True(tableBottomInWindow () > window.ClientSize.Height + 1.0, "precondition: the Setups page pushes the table's bottom off the window")
                 let zoom0 = latest.view.zoom.value
                 // Wheel over the visible strip of the table, near the window's bottom edge, until it stops scrolling.
                 let mutable notches = 0
@@ -1100,9 +1189,23 @@ module ScrollExtentTests =
                     notches <- notches + 1
                 Assert.True(tableBottomInWindow () <= window.ClientSize.Height + 1.0, $"the wheel never brought the table's bottom into view (offset %g{viewer.Offset.Y} of %g{viewer.Extent.Height - viewer.Viewport.Height})")
                 Assert.Equal(zoom0, latest.view.zoom.value)                                      // the table did not zoom meanwhile
-                // Now the table is in view: the next notch zooms it.
-                window.MouseWheel(Point(tableAndElementRotationCanvasWidth / 2.0, window.ClientSize.Height - 10.0), Vector(0.0, -1.0), RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
+                // Spec 0046: once the table's bottom is in view, a notch over the table scrolls the page on only while
+                // its top is cut off and the page can still scroll, then zooms it (the Edit's Save row lies below it).
+                let tableTopInWindow () : float =
+                    match canvas.TranslatePoint(Point(0.0, 0.0), window) |> Option.ofNullable with
+                    | Some p -> p.Y
+                    | None -> -infinity
+                let mutable further = 0
+                while latest.view.zoom.value = zoom0 && further < 200 do
+                    let offsetBefore = viewer.Offset.Y
+                    let middle = (max (tableTopInWindow ()) 0.0 + min (tableBottomInWindow ()) window.ClientSize.Height) / 2.0
+                    window.MouseWheel(Point(tableAndElementRotationCanvasWidth / 2.0, middle), Vector(0.0, -1.0), RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                    if latest.view.zoom.value = zoom0 then
+                        Assert.True(viewer.Offset.Y > offsetBefore, $"a notch that does not zoom must scroll the page (offset %g{viewer.Offset.Y})")
+                    further <- further + 1
+                let atEnd = viewer.Offset.Y >= viewer.Extent.Height - viewer.Viewport.Height - 0.5
+                Assert.True(atEnd || tableTopInWindow () >= -0.5, "the wheel zooms only once the table is in view or the page cannot scroll on")
                 Assert.NotEqual(zoom0, latest.view.zoom.value)
             finally
                 window.Close())
@@ -1111,7 +1214,7 @@ module ScrollExtentTests =
 
     /// Spec 0050 S9.3: the Experiments bay's data-file section moved into the Inverse constructor's Data step.
     [<Fact>]
-    let ``the Main window opens on Add; the Attach data file section belongs to the Inverse window's Data step alone`` () =
+    let ``the Main window opens on Add; Attach data file belongs to an experiment's Edit on the Inverse window's Data page alone`` () =
         let materials, samples, categories, library = stores ()
         Assert.Equal(BayNames.add, (SceneTestFixture.mainScene ()).ribbon)
         Assert.Equal(BayNames.add, (SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories).ribbon)
@@ -1125,16 +1228,23 @@ module ScrollExtentTests =
                 Dispatcher.UIThread.RunJobs()
                 try window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
                 finally window.Close()
-            let texts (model0 : TableAndElementRotationModel) : string list = textsOf mainView model0
+            let texts (model0 : TableAndElementRotationModel) : string list = textsOf KitWindowView.kitWindowView model0
             let forward = texts (filledExperiments ())
             Assert.DoesNotContain("Attach data file…", forward)
             Assert.DoesNotContain("Data files:", forward)
             let inverseModel =
-                let m = { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with ribbon = BayNames.experiments }
+                let m = { SceneTestFixture.inverseScene library (Experiments.createInMemoryExperiments ()) materials samples categories with flowStep = ExperimentsFlowStep }
                 { m with experimentCollection = (filledExperiments ()).experimentCollection }
             let inverse = texts inverseModel
             Assert.DoesNotContain("Data files:", inverse)
             Assert.DoesNotContain("Attach data file…", inverse)
-            let dataStep = textsOf DataStepView.dataStepView inverseModel
-            Assert.Contains("Data files:", dataStep)
-            Assert.Contains("Attach data file…", dataStep))
+            // Spec 0051 `.manual/007` 7.2: the Data page splits a file, and an experiment's Edit there attaches one.
+            let onData = inverseModel |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
+            let dataStep = textsOf DataStepView.dataStepView onData
+            Assert.Contains("Split a file by key…", dataStep)
+            Assert.DoesNotContain("Attach data file…", dataStep)
+            let attaching =
+                onData
+                |> updateTableAndElementRotation (ChooseDataExperiment (List.head inverseModel.experimentCollection.experiments).id)
+                |> updateTableAndElementRotation BeginPageEdit
+            Assert.Contains("Attach data file…", textsOf DataStepView.dataStepView attaching))

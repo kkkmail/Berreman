@@ -18,6 +18,7 @@ open OpticalConstructor.Storage.CatalogueImportStore
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.PageHelpTexts
 
 /// The automation contract on the main windows (spec 0051 `.manual/003` 1.4). `ScrollExtentTests` applies the same
 /// contract to every window it builds; these facts keep the main ones in the fast `ui-smoke` set.
@@ -71,12 +72,43 @@ module AutomationContractTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Main window meets the contract in every bay`` () : unit =
+    let ``the Main window meets the contract in every bay of a setup's Edit and on the Experiments page`` () : unit =
         for bay in BayNames.allBayNames do
             assertMeetsContract $"Main/%s{bay.value}" (fun () ->
                 ScrollExtentTests.constructorWindow
-                    ({ SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
-        assertMeetsContract "Main/Experiments (collected)" (fun () -> ScrollExtentTests.constructorWindow (ScrollExtentTests.filledExperiments ()))
+                    ({ ScrollExtentTests.editingSetup () with selection = ElementSelected (SceneElementIndex 0) } |> updateTableAndElementRotation (SelectBay bay)))
+        assertMeetsContract "Main/Experiments (chosen)" (fun () -> ScrollExtentTests.constructorWindow (ScrollExtentTests.filledExperiments ()))
+        assertMeetsContract "Main/Experiments (creating)" (fun () -> ScrollExtentTests.constructorWindow (ScrollExtentTests.creatingExperiment ()))
+
+    /// Spec 0051 `.manual/007` 1.6: every page of either constructor meets the contract and carries its Help panel.
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``every page of both constructors meets the contract and carries its help`` () : unit =
+        let materials, samples, categories, library = ScrollExtentTests.stores ()
+        let forward = ScrollExtentTests.filledExperiments ()
+        let inverse =
+            {
+                SceneTestFixture.inverseScene library (OpticalConstructor.Domain.Experiments.createInMemoryExperiments ()) materials samples categories with
+                    kitSetups = forward.kitSetups
+                    activeSetupOpt = forward.activeSetupOpt
+                    elements = forward.elements
+                    experimentCollection = forward.experimentCollection
+            }
+        for model, modeName in [ forward, "Main"; inverse, "Inverse" ] do
+            for step in ConstructorFlowStep.stepsOf model.constructorMode do
+                let onPage = model |> updateTableAndElementRotation (ShowFlowStep step)
+                assertMeetsContract $"{modeName}/{step.caption.value}" (fun () -> ScrollExtentTests.constructorWindow onPage)
+                HeadlessSession.run (fun () ->
+                    let window = ScrollExtentTests.constructorWindow onPage
+                    window.Show()
+                    Dispatcher.UIThread.RunJobs()
+                    try
+                        let help = ConstructorUiId.pageHelpPanel step.caption.uiKey
+                        match UiDriver.tryFindControl window help.value with
+                        | Some _ -> ()
+                        | None -> Assert.Fail $"{step.caption.value} must carry {help.value}"
+                        Assert.NotEmpty(step.help.paragraphs)
+                    finally window.Close())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

@@ -129,8 +129,8 @@ module RayPositionControls =
                 field handlers state.position state.availability
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "m" ]
                 clickBox ConstructorUiId.rayPositionResetButton (ControlCaption "Reset position") state.availability (fun _ -> handlers.reset ())
-                TextBlock.create [
-                    ConstructorUiId.rayPositionReadout.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.rayPositionReadout.automationAttribute<SelectableTextBlock> ()
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(10.0, 0.0, 0.0, 0.0))
                     TextBlock.text state.readoutText

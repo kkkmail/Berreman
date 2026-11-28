@@ -303,7 +303,7 @@ module ElementMenuTests =
 
     let private mount (model0 : TableAndElementRotationModel) : HostWindow =
         let window = HostWindow(Width = 980.0, Height = 1050.0)
-        Program.mkSimple (fun () -> model0) updateTableAndElementRotation mainView |> Program.withHost window |> Program.run
+        Program.mkSimple (fun () -> model0) updateTableAndElementRotation UiDriver.editableTableView |> Program.withHost window |> Program.run
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window
@@ -392,15 +392,23 @@ module ElementMenuTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Main view scrolls, and the Experiments bay shows only the captures the detectors allow`` () =
+    let ``the Setups page scrolls, and a new experiment offers only the captures the detectors allow`` () =
         HeadlessSession.run (fun () ->
+            let table = HostWindow(Width = 980.0, Height = 1050.0)
+            Program.mkSimple (fun () -> plateScene ()) updateTableAndElementRotation UiDriver.setupsPageTestView |> Program.withHost table |> Program.run
+            table.Show()
+            Dispatcher.UIThread.RunJobs()
+            try Assert.True(isShown table ConstructorUiId.tableElementScrollViewer.value, "the Setups page must sit in a scroll viewer")
+            finally table.Close()
             let model0 =
                 plateScene ()
                 |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id))
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
-            let window = mount model0
+                |> UiDriver.creatingExperimentOver
+            let window = HostWindow(Width = 980.0, Height = 1050.0)
+            Program.mkSimple (fun () -> model0) updateTableAndElementRotation UiDriver.experimentsPageTestView |> Program.withHost window |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
             try
-                Assert.True(isShown window ConstructorUiId.tableElementScrollViewer.value, "the Main view must sit in a scroll viewer")
                 Assert.True(isShown window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "t")).value, "T is offered")
                 Assert.False(isShown window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "r")).value, "R is not offered without a reflected detector")
                 Assert.False(isShown window (ConstructorUiId.experimentMeasurement (ConstructorUiKey "both")).value, "Both is not offered without a reflected detector")

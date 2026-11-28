@@ -1126,8 +1126,8 @@ type MaterialEditorModel with
         DockPanel.create [
             DockPanel.children [
                 Border.create [ Border.dock Dock.Left; Border.margin (Thickness(0.0, 0.0, 6.0, 0.0)); Border.child (ControlCaption "Derived model:").materialEditorLabel ]
-                TextBlock.create [
-                    ConstructorUiId.materialComplexitySummary.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.materialComplexitySummary.automationAttribute<SelectableTextBlock> ()
                     TextBlock.text this.complexitySummary.value
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.verticalAlignment VerticalAlignment.Center
@@ -1136,15 +1136,15 @@ type MaterialEditorModel with
         ] :> IView
 
 let private gainWarningRow (warning : ControlCaption) : IView =
-    TextBlock.create [
-        ConstructorUiId.materialGainWarning.automationAttribute<TextBlock> ()
+    SelectableTextBlock.create [
+        ConstructorUiId.materialGainWarning.automationAttribute<SelectableTextBlock> ()
         TextBlock.foreground (brush warningColor)
         TextBlock.text warning.value
     ] :> IView
 
 let private statusRow (m : MaterialEditorModel) : IView =
-    TextBlock.create [
-        ConstructorUiId.materialEditorStatus.automationAttribute<TextBlock> ()
+    SelectableTextBlock.create [
+        ConstructorUiId.materialEditorStatus.automationAttribute<SelectableTextBlock> ()
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
@@ -1226,8 +1226,8 @@ let materialEditorView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -
                             StackPanel.children [
                                 (ControlCaption $"{m.name.value} — {(m.category.categoryName categories).value}").materialEditorLabel
                                 TextBlock.create [ TextBlock.text m.description.value; TextBlock.foreground (brush hintColor) ] :> IView
-                                TextBlock.create [
-                                    ConstructorUiId.materialViewOnlyNote.automationAttribute<TextBlock> ()
+                                SelectableTextBlock.create [
+                                    ConstructorUiId.materialViewOnlyNote.automationAttribute<SelectableTextBlock> ()
                                     TextBlock.text reason.value
                                     TextBlock.foreground (brush errorColor)
                                 ] :> IView

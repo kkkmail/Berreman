@@ -23,6 +23,7 @@ open OpticalConstructor.Optimization.PlannerInformation
 open OpticalConstructor.Optimization.PlannerRuns
 open OpticalConstructor.Ui.PlanJob
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.KitPageFrame
 
 type ControlCaption with
 
@@ -151,8 +152,8 @@ type PlanReport with
         [
             (ControlCaption "What the kit can recover:").planHeading
             planLines ConstructorUiId.planFindingsList this.planFindingCaptions
-            TextBlock.create [
-                ConstructorUiId.planRankText.automationAttribute<TextBlock> ()
+            SelectableTextBlock.create [
+                ConstructorUiId.planRankText.automationAttribute<SelectableTextBlock> ()
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.margin (Thickness(0.0, 4.0, 0.0, 2.0))
                 TextBlock.text information.planRankCaption.value
@@ -326,8 +327,8 @@ let private chosenStudyRows
                     ProgressBar.isIndeterminate false
                     ProgressBar.value (job.progress |> Option.bind _.fraction |> Option.defaultValue 0.0)
                 ]
-                TextBlock.create [
-                    ConstructorUiId.planProgressText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.planProgressText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(0.0, 0.0, 0.0, 4.0))
                     TextBlock.text (job.progressText |> Option.defaultValue "Starting…")
@@ -361,8 +362,8 @@ let private chosenStudyRows
         | None -> []
         | Some refusal ->
             [
-                TextBlock.create [
-                    ConstructorUiId.planErrorText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.planErrorText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                     TextBlock.text refusal.describe
@@ -387,7 +388,7 @@ let private chosenStudyRows
 let planView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     let selected : IView list =
         match model.selectedStudyOpt with
-        | None -> [ (ControlCaption "No study is chosen: choose one in Unknowns.").planLine ]
+        | None -> []
         | Some study -> chosenStudyRows model study dispatch
     ScrollViewer.create [
         // Spec 0050 S11.5: reserve scrollbar space so a row brought to the viewport edge remains clickable.
@@ -403,7 +404,7 @@ let planView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
                         yield! ConstructorUiId.planPanel.groupAttributes<StackPanel> ()
                         StackPanel.orientation Orientation.Vertical
                         StackPanel.margin 8.0
-                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
+                        StackPanel.children (model.pageHeader dispatch @ StudyUnknownsView.studyContextRows model @ selected)
                     ])
             ])
     ] :> IView

@@ -104,8 +104,8 @@ module LayerBandsControls =
                 StackPanel.orientation Orientation.Vertical
                 StackPanel.spacing 6.0
                 StackPanel.children [
-                    TextBlock.create [
-                        ConstructorUiId.layerBandsTitle.automationAttribute<TextBlock> ()
+                    SelectableTextBlock.create [
+                        ConstructorUiId.layerBandsTitle.automationAttribute<SelectableTextBlock> ()
                         TextBlock.text this.title.value
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.maxWidth 360.0

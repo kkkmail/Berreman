@@ -2,7 +2,6 @@ namespace OpticalConstructor.Desktop.Tests
 
 open System
 open System.IO
-open System.Runtime.InteropServices
 open System.Security.Cryptography
 open System.Text.Json
 open System.Text.RegularExpressions
@@ -24,74 +23,6 @@ open OpticalConstructor.Desktop.Tests.DesktopSession
 [<Collection(DesktopSession.RealDesktop)>]
 module DesktopSurveyTests =
 
-    module private Screen =
-        [<Struct; StructLayout(LayoutKind.Sequential)>]
-        type BitmapInfoHeader =
-            val mutable size : uint32
-            val mutable width : int
-            val mutable height : int
-            val mutable planes : uint16
-            val mutable bitCount : uint16
-            val mutable compression : uint32
-            val mutable sizeImage : uint32
-            val mutable xPelsPerMeter : int
-            val mutable yPelsPerMeter : int
-            val mutable colorsUsed : uint32
-            val mutable colorsImportant : uint32
-
-        [<DllImport("user32.dll")>]
-        extern bool SetProcessDPIAware()
-
-        [<DllImport("user32.dll")>]
-        extern IntPtr GetDC(IntPtr window)
-
-        [<DllImport("user32.dll")>]
-        extern int ReleaseDC(IntPtr window, IntPtr context)
-
-        [<DllImport("gdi32.dll")>]
-        extern IntPtr CreateCompatibleDC(IntPtr context)
-
-        [<DllImport("gdi32.dll")>]
-        extern IntPtr CreateCompatibleBitmap(IntPtr context, int width, int height)
-
-        [<DllImport("gdi32.dll")>]
-        extern IntPtr SelectObject(IntPtr context, IntPtr gdiObject)
-
-        [<DllImport("gdi32.dll")>]
-        extern bool BitBlt(IntPtr target, int x, int y, int width, int height, IntPtr source, int sourceX, int sourceY, uint32 operation)
-
-        [<DllImport("gdi32.dll")>]
-        extern int GetDIBits(IntPtr context, IntPtr bitmap, uint32 start, uint32 lines, int[] bits, BitmapInfoHeader& info, uint32 usage)
-
-        [<DllImport("gdi32.dll")>]
-        extern bool DeleteObject(IntPtr gdiObject)
-
-        [<DllImport("gdi32.dll")>]
-        extern bool DeleteDC(IntPtr context)
-
-        /// The pixels of `bounds` on screen, top row first, each 0x00RRGGBB.
-        let capture (bounds : Drawing.Rectangle) : int[] =
-            SetProcessDPIAware() |> ignore
-            let screen = GetDC IntPtr.Zero
-            let memory = CreateCompatibleDC screen
-            let bitmap = CreateCompatibleBitmap(screen, bounds.Width, bounds.Height)
-            try
-                SelectObject(memory, bitmap) |> ignore
-                BitBlt(memory, 0, 0, bounds.Width, bounds.Height, screen, bounds.Left, bounds.Top, 0x00CC0020u) |> ignore
-                let mutable header = BitmapInfoHeader()
-                header.size <- uint32 (Marshal.SizeOf<BitmapInfoHeader>())
-                header.width <- bounds.Width
-                header.height <- -bounds.Height
-                header.planes <- 1us
-                header.bitCount <- 32us
-                let pixels = Array.zeroCreate<int> (bounds.Width * bounds.Height)
-                GetDIBits(memory, bitmap, 0u, uint32 bounds.Height, pixels, &header, 0u) |> ignore
-                pixels
-            finally
-                DeleteObject bitmap |> ignore
-                DeleteDC memory |> ignore
-                ReleaseDC(IntPtr.Zero, screen) |> ignore
-
     /// How much redder than green and blue `element`'s text is on screen, averaged over the darkest 2 % of its pixels
     /// (the glyphs' cores, not their anti-aliased edges): near 0 for the done tone (40, 40, 40), about 144 for refused.
     let private redOfText (element : AutomationElement) : int =
@@ -103,19 +34,6 @@ module DesktopSurveyTests =
         let mean (pick : int * int * int -> int) : int = ink |> Array.averageBy (pick >> float) |> int
         let red, green, blue = mean (fun (r, _, _) -> r), mean (fun (_, g, _) -> g), mean (fun (_, _, b) -> b)
         red - max green blue
-
-    /// Every file of a kit outside `.oc/`, by its path in the kit, with its SHA-256.
-    let private kitContent (folder : string) : Map<string, string> =
-        Directory.GetFiles(folder, "*", SearchOption.AllDirectories)
-        |> Array.filter (fun file -> not (Path.GetRelativePath(folder, file).StartsWith ".oc"))
-        |> Array.map (fun file -> Path.GetRelativePath(folder, file), Convert.ToHexString(SHA256.HashData(File.ReadAllBytes file)))
-        |> Map.ofArray
-
-    /// What changed between two `kitContent` reads, for a failure message.
-    let private changedFiles (before : Map<string, string>) (after : Map<string, string>) : string list =
-        Set.union (before.Keys |> Set.ofSeq) (after.Keys |> Set.ofSeq)
-        |> Set.filter (fun path -> Map.tryFind path before <> Map.tryFind path after)
-        |> Set.toList
 
     /// A kit experiment's name and its setup's name, read from its file.
     type private StoredExperiment =
@@ -145,13 +63,6 @@ module DesktopSurveyTests =
             document.RootElement.GetProperty("experiment").GetProperty("id").GetInt32())
         |> Array.min
 
-    /// The texts UI Automation shows under `root`.
-    let private textsUnder (root : AutomationElement) : string list =
-        root.FindAllDescendants(condition (fun factory -> factory.ByControlType(ControlType.Text)))
-        |> Array.map (fun (text : AutomationElement) -> text.Name)
-        |> Array.filter (String.IsNullOrEmpty >> not)
-        |> List.ofArray
-
     /// A slot named the old way, by its kind and a number ("Linear polarizer #6"), not by the kit's item.
     let private namedByKindAndNumber : Regex = Regex @" #\d"
 
@@ -173,11 +84,8 @@ module DesktopSurveyTests =
         // Every snapshot of optics-mueller is a shipped entry the library now holds, so opening it asks nothing (002-11).
         let kitWindow, questions = openKitSeeing app ConstructorUiId.openMainButton sandbox.opticsMueller
         Assert.True(List.isEmpty questions, $"opening the kit asked {questions}")
-        // 038-1 (D2): the kit opens on one of its setups, never an empty table.
+        // 038-1 (D2), 038-6, 002-5: the kit opens on one of its setups, chosen on the Setups page beside every other.
         let setupNames = Directory.GetFiles(sandbox.opticsMueller, "*.setup-json") |> Array.map Path.GetFileNameWithoutExtension
-        let active = shownText (app.find kitWindow ConstructorUiId.activeSetupText)
-        Assert.Contains(setupNames, fun name -> active.StartsWith $"Active setup: {name}")
-        // 038-6, 002-5: the Setups step lists every setup, the active one chosen.
         app.invoke kitWindow ConstructorUiId.flowSetupsStep
         let saved = app.find kitWindow ConstructorUiId.savedSetups
         let toggles =
@@ -186,45 +94,46 @@ module DesktopSurveyTests =
         Assert.Equal(setupNames.Length, toggles.Length)
         let chosen = toggles |> Array.filter (fun toggle -> toggle.Patterns.Toggle.Pattern.ToggleState.Value = ToggleState.On)
         Assert.Equal(1, chosen.Length)
-        Assert.StartsWith($"Active setup: {chosen.[0].Name}", active)
-        // 038-3: a row loads its experiment on that experiment's own setup, and says so.
-        let e1 = storedExperiment sandbox.opticsMueller 1
-        app.invoke kitWindow ConstructorUiId.flowExperimentsStep
-        app.invoke kitWindow (ConstructorUiId.experimentEditButton (ConstructorUiKey "1"))
-        let loaded = $"Loaded {e1.name} on its setup '{e1.setupName}'."
-        waitFor "the Loaded status" 10.0 (fun () -> if shownText (app.find kitWindow ConstructorUiId.kitStatus) = loaded then Some () else None)
-        // The active setup is the Setups step's (3.2); 038-7: the status stays while the user moves between steps.
-        app.invoke kitWindow ConstructorUiId.flowSetupsStep
-        Assert.StartsWith($"Active setup: {e1.setupName}", shownText (app.find kitWindow ConstructorUiId.activeSetupText))
-        Assert.Equal(loaded, shownText (app.find kitWindow ConstructorUiId.kitStatus))
-        app.invoke kitWindow ConstructorUiId.flowExperimentsStep
-        Assert.Equal(loaded, shownText (app.find kitWindow ConstructorUiId.kitStatus))
-        // 002-2: a status that says it worked is not red.
-        kitWindow.SetForeground()
-        let red = redOfText (app.find kitWindow ConstructorUiId.kitStatus)
-        Assert.True(red < 40, $"'{loaded}' is drawn red (red over green and blue: {red})")
-        // 038-8: the Select bay's list names each slot by its role and the kit's item ("Source: Laser").
+        Assert.Contains(chosen.[0].Name, setupNames)
+        // 038-8: the chosen setup's element list names each slot by its role and the kit's item ("Source: Laser").
         let labels = Directory.GetFiles(sandbox.opticsMueller, "*.item-json") |> Array.map Path.GetFileNameWithoutExtension
-        app.invoke kitWindow (ConstructorUiId.ribbonTab BayNames.selector.uiKey)
         let listed =
             (app.find kitWindow ConstructorUiId.tableElementList).FindAllDescendants(condition (fun factory -> factory.ByControlType(ControlType.ListItem)))
             |> Array.map (fun (item : AutomationElement) -> item.Name)
         Assert.NotEmpty(listed)
         for name in listed do
             Assert.Contains(labels, fun label -> name.EndsWith $": {label}")
-        // 038-8: the experiment rows describe their scans by the kit's names too.
+        // 038-3: a chosen experiment's details name its own setup.
+        let e1 = storedExperiment sandbox.opticsMueller 1
+        app.invoke kitWindow ConstructorUiId.flowExperimentsStep
+        app.invoke kitWindow (ConstructorUiId.experimentEditButton (ConstructorUiKey "1"))
+        Assert.StartsWith($"Setup: '{e1.setupName}' revision", shownText (app.find kitWindow ConstructorUiId.experimentDetailsText))
+        // 038-8: the experiments describe their scans by the kit's names too.
         for text in textsUnder kitWindow do
             Assert.DoesNotMatch(namedByKindAndNumber, text)
-        // 038-10: New leaves nothing chosen, and Add says why it is withheld.
+        // 038-7, 002-2: a status shows on the page it was raised on, and one that says it worked is not red.
+        app.invoke kitWindow ConstructorUiId.flowKitStep
+        app.invoke kitWindow ConstructorUiId.kitReloadChangesButton
+        let reloaded = "No kit file changed outside the app."
+        waitFor "the reload status" 10.0 (fun () -> if shownText (app.find kitWindow ConstructorUiId.kitStatus) = reloaded then Some () else None)
+        kitWindow.SetForeground()
+        let red = redOfText (app.find kitWindow ConstructorUiId.kitStatus)
+        Assert.True(red < 40, $"'{reloaded}' is drawn red (red over green and blue: {red})")
+        app.invoke kitWindow ConstructorUiId.flowItemsStep
+        match app.tryFind kitWindow ConstructorUiId.kitStatus with
+        | Some _ -> Assert.Fail "a status shows on its own page alone"
+        | None -> ()
+        // 038-10: New experiment starts with nothing chosen, and the editor says why Create is withheld.
         app.invoke kitWindow ConstructorUiId.flowExperimentsStep
-        app.invoke kitWindow ConstructorUiId.experimentNewButton
+        app.invoke kitWindow ConstructorUiId.newExperimentButton
         Assert.False(String.IsNullOrWhiteSpace(shownText (app.find kitWindow ConstructorUiId.experimentAddReason)))
+        app.invoke kitWindow ConstructorUiId.pageCancelButton
 
     /// 038-5, 002 "Fit mode re-press rewrites the study", 002 "as priors not saved" (spec 0051 `.manual/003` 2.1, 2.2,
     /// 2.5).
     [<Fact>]
     [<Trait("Category", "desktop")>]
-    let ``survey: browsing a kit writes nothing, and only a changed fit mode is saved in the study`` () : unit =
+    let ``survey: browsing a kit writes nothing, and a fit run records a changed calibration use in the study`` () : unit =
         requireDesktop ()
         let sandbox = createSandbox "survey-writes"
         use app = launch sandbox
@@ -233,56 +142,75 @@ module DesktopSurveyTests =
         for step in
             [ ConstructorUiId.flowItemsStep; ConstructorUiId.flowSetupsStep; ConstructorUiId.flowExperimentsStep
               ConstructorUiId.flowDataStep; ConstructorUiId.flowUnknownsStep; ConstructorUiId.flowPlanStep
-              ConstructorUiId.flowFitStep; ConstructorUiId.flowResultsStep; ConstructorUiId.flowPublishStep ] do
+              ConstructorUiId.flowFitStep; ConstructorUiId.flowResultsStep; ConstructorUiId.flowKitStep ] do
             app.invoke inverse step
-        // Loading a row and committing it over its unchanged setup is no change either.
+        // Choosing an experiment and leaving its Edit unchanged is no change either.
         app.invoke inverse ConstructorUiId.flowExperimentsStep
         app.invoke inverse (ConstructorUiId.experimentEditButton (ConstructorUiKey "1"))
-        app.invoke inverse ConstructorUiId.experimentAddButton
-        // Pressing the fit mode the study already has writes nothing.
+        app.invoke inverse ConstructorUiId.pageEditButton
+        app.invoke inverse ConstructorUiId.pageCancelButton
+        // Spec 0051 `.manual/007` 8.4: the New fit run… form's choices are its draft, so pressing them writes nothing,
+        // the one the study has included, and Cancel asks once they changed.
         let study = StudyName "QZ-LR"
-        app.invoke inverse ConstructorUiId.flowUnknownsStep
-        app.invoke inverse (ConstructorUiId.studyChoice study)
+        let chooseStudy (window : Window) : unit =
+            app.invoke window ConstructorUiId.flowUnknownsStep
+            if (app.find window (ConstructorUiId.studyChoice study)).Patterns.Toggle.Pattern.ToggleState.Value <> ToggleState.On then
+                app.invoke window (ConstructorUiId.studyChoice study)
+        chooseStudy inverse
         app.invoke inverse ConstructorUiId.flowFitStep
+        app.invoke inverse ConstructorUiId.newFitRunButton
         let fixedChoice = app.find inverse ConstructorUiId.studyCalibrationFixedChoice
         Assert.Equal(ToggleState.On, fixedChoice.Patterns.Toggle.Pattern.ToggleState.Value)
         app.invoke inverse ConstructorUiId.studyCalibrationFixedChoice
+        app.invoke inverse ConstructorUiId.studyCalibrationPriorChoice
+        app.invoke inverse ConstructorUiId.pageCancelButton
+        app.invoke inverse ConstructorUiId.pageLeaveYesButton
         let browsed = kitContent sandbox.opticsMueller
         let written = String.Join("; ", changedFiles before browsed)
         Assert.True((before = browsed), $"browsing wrote {written}")
-        // As priors is the study's own: it is saved, and read back after the kit is closed and opened again.
+        // As priors is the study's own: a run started with it records it in the study, read back after the kit is closed
+        // and opened again; the run itself is cancelled.
+        app.invoke inverse ConstructorUiId.newFitRunButton
         app.invoke inverse ConstructorUiId.studyCalibrationPriorChoice
+        app.invoke inverse ConstructorUiId.studyRunStageOneButton
         let studyFile = Path.Combine(sandbox.opticsMueller, "QZ-LR.study-json")
         waitFor "the study to save as priors" 10.0 (fun () -> if File.ReadAllText(studyFile).Contains "\"calibrationUse\": 2" then Some () else None)
-        Assert.Equal<string list>([ "QZ-LR.study-json" ], changedFiles before (kitContent sandbox.opticsMueller))
+        match app.tryFind inverse ConstructorUiId.studyFitCancelButton with
+        | Some _ -> app.invoke inverse ConstructorUiId.studyFitCancelButton
+        | None -> ()
+        waitFor "the fit to end" 60.0 (fun () -> if (app.tryFind inverse ConstructorUiId.studyFitCancelButton).IsNone then Some () else None)
+        Assert.Contains("QZ-LR.study-json", changedFiles before (kitContent sandbox.opticsMueller))
+        app.invoke inverse ConstructorUiId.flowKitStep
         app.invoke inverse ConstructorUiId.kitCloseButton
         waitFor "the kit window to close" 15.0 (fun () ->
             if app.windows |> List.exists (fun window -> window.Title.Contains(Path.GetFileName sandbox.opticsMueller)) then None else Some ())
         let reopened = openKit app ConstructorUiId.openInverseButton sandbox.opticsMueller
-        app.invoke reopened ConstructorUiId.flowUnknownsStep
-        app.invoke reopened (ConstructorUiId.studyChoice study)
+        chooseStudy reopened
         app.invoke reopened ConstructorUiId.flowFitStep
+        app.invoke reopened ConstructorUiId.newFitRunButton
         Assert.Equal(ToggleState.On, (app.find reopened ConstructorUiId.studyCalibrationPriorChoice).Patterns.Toggle.Pattern.ToggleState.Value)
 
     /// 002-4, 002-7, 002-8 (spec 0051 `.manual/003` 3.4, 4.1, 4.2, 5.8).
     [<Fact>]
     [<Trait("Category", "desktop")>]
-    let ``survey: in Inverse each Data row is headed by its experiment, Review opens under it, and View charts the measured points`` () : unit =
+    let ``survey: in Inverse a Data matrix entry opens its data under it, headed by its experiment, and View charts the measured points`` () : unit =
         requireDesktop ()
         let sandbox = createSandbox "survey-data"
         use app = launch sandbox
         let inverse = openKit app ConstructorUiId.openInverseButton sandbox.opticsMueller
         let e1 = storedExperiment sandbox.opticsMueller 1
-        // 002-4: the row is headed by its experiment, and Review opens right under it.
+        // 002-4, 006-5c (spec 0051 `.manual/007` 7.3): the matrix entry opens the data right under its row, headed by its
+        // experiment.
         app.invoke inverse ConstructorUiId.flowDataStep
-        let heading = app.find inverse (ConstructorUiId.dataFileHeading (ExperimentId 1))
-        Assert.StartsWith($"{e1.name} [", heading.Name)
-        app.invoke inverse (ConstructorUiId.dataReviewButton (ExperimentId 1))
+        let entry = app.find inverse (ConstructorUiId.experimentMatrixEntry (ExperimentId 1))
+        app.invoke inverse (ConstructorUiId.experimentMatrixEntry (ExperimentId 1))
         let review = app.find inverse ConstructorUiId.dataReviewPanel
-        let gap = review.BoundingRectangle.Top - heading.BoundingRectangle.Bottom
-        Assert.True(gap >= 0 && gap < 200, $"Review opens {gap} px below its row's heading")
+        Assert.StartsWith($"{e1.name} [", (app.find review (ConstructorUiId.dataFileHeading (ExperimentId 1))).Name)
+        let gap = review.BoundingRectangle.Top - entry.BoundingRectangle.Bottom
+        Assert.True(gap >= 0 && gap < 200, $"the data opens {gap} px below its matrix entry")
         // 002-7, 002-8: View charts in Inverse too, with the measured points beside the model's.
         app.invoke inverse ConstructorUiId.flowExperimentsStep
+        app.invoke inverse (ConstructorUiId.experimentEditButton (ConstructorUiKey "1"))
         app.invoke inverse (ConstructorUiId.experimentViewButton (ConstructorUiKey "1"))
         let chart =
             waitFor "the chart window" 30.0 (fun () ->
@@ -306,6 +234,7 @@ module DesktopSurveyTests =
         use app = launch sandbox
         let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
         app.invoke kitWindow ConstructorUiId.flowExperimentsStep
+        app.invoke kitWindow (ConstructorUiId.experimentEditButton (ConstructorUiKey "1"))
         app.invoke kitWindow (ConstructorUiId.experimentViewButton (ConstructorUiKey "1"))
         let chart =
             waitFor "the chart window" 30.0 (fun () ->
@@ -339,21 +268,17 @@ module DesktopSurveyTests =
     let ``survey: Copy experiments from another kit shows each item by its label and model, and Cancel copies nothing`` () : unit =
         requireDesktop ()
         let sandbox = createSandbox "survey-copy"
-        let other = Path.Combine(sandbox.kits, "absorbing-biaxial-noisy")
-        let committed = Path.Combine(repositoryRoot, "data", "absorbing-biaxial-noisy")
-        for file in Directory.GetFiles(committed, "*", SearchOption.AllDirectories) do
-            let relative = Path.GetRelativePath(committed, file)
-            if not (relative.StartsWith ".oc") then
-                let target = Path.Combine(other, relative)
-                Directory.CreateDirectory(Path.GetDirectoryName target) |> ignore
-                File.Copy(file, target)
+        let other = addCommittedKit sandbox "absorbing-biaxial-noisy"
         use app = launch sandbox
         let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
         let before = kitContent sandbox.opticsMueller
+        app.invoke kitWindow ConstructorUiId.flowKitStep
         app.invoke kitWindow ConstructorUiId.kitCopyExperimentsButton
-        Assert.Contains("Choose a kit folder", app.nativeDialog.Name)
+        Assert.Contains("Open a kit: choose its .optics-kit file", app.nativeDialog.Name)
         Assert.EndsWith(Path.GetFileName sandbox.kits, trimmed app.nativeDialogFolder)
-        app.answerNativeDialog other |> ignore
+        app.typeIntoNativeDialog (Path.Combine(other, ".optics-kit"))
+        // The window's UIA element can be disconnected once the dialog closes, so the kit window is found again.
+        let kitWindow = app.window (Path.GetFileName sandbox.opticsMueller)
         app.find kitWindow ConstructorUiId.kitCopyExperimentList |> ignore
         app.invoke kitWindow (ConstructorUiId.kitCopyExperimentToggle (ExperimentId (firstExperimentId other)))
         let items = textsUnder (app.find kitWindow ConstructorUiId.kitCopyItemList)
@@ -373,6 +298,7 @@ module DesktopSurveyTests =
         let sandbox = createSandbox "survey-zip"
         use app = launch sandbox
         let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
+        app.invoke kitWindow ConstructorUiId.flowKitStep
         app.invoke kitWindow ConstructorUiId.sendKitButton
         let exports = Path.Combine(sandbox.root, "data", "Exports")
         Assert.EndsWith("Exports", trimmed app.nativeDialogFolder)
@@ -409,10 +335,14 @@ module DesktopSurveyTests =
         let kitWindow = openKit app ConstructorUiId.openMainButton sandbox.opticsMueller
         app.invoke kitWindow ConstructorUiId.flowItemsStep
         app.invoke kitWindow (ConstructorUiId.kitItemRow cpl1)
+        app.invoke kitWindow ConstructorUiId.pageEditButton
         app.invoke kitWindow ConstructorUiId.itemChoosePhotoButton
         app.typeIntoNativeDialog picture
         // The window's UIA element can be disconnected once the dialog closes, so the kit window is found again.
         let kitWindow = app.window (Path.GetFileName sandbox.opticsMueller)
+        waitFor "the picked photo in the draft" 10.0 (fun () ->
+            if (shownText (app.find kitWindow ConstructorUiId.itemPhotoText)).EndsWith "(attached at Save)" then Some () else None)
+        app.invoke kitWindow ConstructorUiId.pageSaveButton
         let image = app.find kitWindow ConstructorUiId.itemPhotoImage
         let shown = image.BoundingRectangle
         Assert.True(shown.Width > 20 && shown.Height > 20 && shown.Width <= 170, $"the photo shows at {shown}")

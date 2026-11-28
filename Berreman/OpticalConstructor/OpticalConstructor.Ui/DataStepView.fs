@@ -1,6 +1,6 @@
-/// The Inverse constructor's Data step: the experiment matrix, each experiment's data file, the split of one lab file into
-/// many, then the review of one experiment's points (001 §O "the Experiments bay's Data files section moves into Data",
-/// "Experiment matrix view"; spec 0050 S9.3).
+/// The Inverse constructor's Data page: the experiment matrix as a table, each experiment's data opening under its matrix
+/// row, and the split of one lab file into many (001 §O "Experiment matrix view"; spec 0050 S9.3; 0051 `.manual/007`
+/// Phase 7).
 module OpticalConstructor.Ui.DataStepView
 
 open Avalonia
@@ -19,9 +19,10 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.DataSplits
 open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.KitPageFrame
 
 /// The "Attach data file…" verb for one collected experiment — resolve the owner window from the
-/// click's visual tree (the `selectorChooseButton` precedent) and open the picker, dispatching
+/// click's visual tree and open the picker, dispatching
 /// `OpenImportWizard` on a confirmed selection (spec 0050 S9.2). Keyed + AutomationId'd by the experiment id.
 /// Withheld, it is disabled and dimmed and opens no picker (spec 0050 S5.3).
 let private attachDataFileButton (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
@@ -31,60 +32,6 @@ let private attachDataFileButton (model : TableAndElementRotationModel) (dispatc
             | :? Window as owner -> pickDataFile owner model PickedLabFile (ControlCaption "Attach measured-data file") (fun path -> dispatch (OpenImportWizard (experiment.id, path)))
             | _ -> ())
         [ Button.padding (Thickness(10.0, 4.0)); Button.margin (Thickness(0.0, 0.0, 8.0, 0.0)) ]
-
-/// One experiment's data-file row: its name, role and badge, its description, the Attach and Review verbs + the
-/// currently-attached file name, and its data badge's detail (spec 0050 S9.1, S9.3; 0051 `.manual/003` 4.1).
-let private dataFileRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
-    let attachedText =
-        match experiment.dataOpt with
-        | Some data -> $"file: {data.attachment.path.value} ({data.profile.value})"
-        | None -> "no file attached"
-    let statusText = (model.dataBadgeOf experiment).caption.value
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
-        StackPanel.children [
-            TextBlock.create [
-                (ConstructorUiId.dataFileHeading experiment.id).automationAttribute<TextBlock> ()
-                TextBlock.text $"{experiment.name.value} [{experiment.role.text}] — {(model.dataBadgeOf experiment).text}"
-                TextBlock.fontWeight FontWeight.SemiBold
-                TextBlock.textWrapping TextWrapping.Wrap
-            ]
-            TextBlock.create [ TextBlock.text (model.experimentDescription experiment).value; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.maxWidth 360.0 ]
-            // The verbs docked beside the file's name, which wraps (AGENTS.md; spec 0051 `.manual/003` 4.3).
-            DockPanel.create [
-                DockPanel.children [
-                    Border.create [ Border.dock Dock.Left; Border.margin (Thickness(0.0, 0.0, 6.0, 0.0)); Border.child (attachDataFileButton model dispatch experiment) ]
-                    // Spec 0050 S9.3: the review writes nothing, so a read-only kit reviews too.
-                    Border.create [
-                        Border.dock Dock.Left
-                        Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                        Border.child (
-                            availableWorkbenchButton
-                                ControlOffered
-                                (ConstructorUiId.dataReviewButton experiment.id)
-                                (ControlCaption "Review")
-                                (fun _ -> dispatch (ReviewExperimentData experiment.id)))
-                    ]
-                    TextBlock.create [
-                        TextBlock.text attachedText
-                        TextBlock.textWrapping TextWrapping.Wrap
-                        TextBlock.foreground (MaterialsWindowView.brush (Color.FromRgb(120uy, 120uy, 120uy)))
-                        TextBlock.verticalAlignment VerticalAlignment.Center
-                    ]
-                ]
-            ]
-            TextBlock.create [
-                (ConstructorUiId.dataFileStatus experiment.id).automationAttribute<TextBlock> ()
-                TextBlock.text statusText
-                TextBlock.textWrapping TextWrapping.Wrap
-                TextBlock.maxWidth 360.0
-                TextBlock.foreground (MaterialsWindowView.brush (Color.FromRgb(90uy, 90uy, 90uy)))
-            ]
-        ]
-    ]
-    |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + experiment.id.uiKey.value)
-    :> IView
 
 /// One group of the held split: its key and point count, then the experiment it matched, its offer's toggle (on the
 /// positive fill while ticked, `(new setup)` when the kit lacks the setup) or why it matches nothing (spec 0050 S9.3).
@@ -184,8 +131,8 @@ let private availabilityBox (availability : ControlAvailability) (verbs : IView)
 /// gap, Cancel; Apply is disabled while the kit takes no writes (spec 0050 S9.3; .spec-md §10.3, §10.5).
 let private dataSplitPanel (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (held : DataSplitState) : IView =
     let keyColumn =
-        TextBlock.create [
-            ConstructorUiId.dataSplitKeyColumn.automationAttribute<TextBlock> ()
+        SelectableTextBlock.create [
+            ConstructorUiId.dataSplitKeyColumn.automationAttribute<SelectableTextBlock> ()
             TextBlock.text $"Split {held.file.leafName.value} by '{held.key.value}' through '{held.profile.value}'"
             TextBlock.textWrapping TextWrapping.Wrap
             TextBlock.maxWidth 360.0
@@ -227,36 +174,8 @@ let private dataSplitPanel (model : TableAndElementRotationModel) (dispatch : Ta
     )
     :> IView
 
-/// The live text of the field carrying `fieldId`, else the draft's: a verb box takes no focus, so a typed text is not yet
-/// committed when the verb is pressed (the Create setup precedent, spec 0050 S4.3, S9.3).
-let private typedText (pressed : CommandButton) (fieldId : ConstructorUiId) (draft : ControlCaption) : ControlCaption =
-    match TopLevel.GetTopLevel pressed with
-    | null -> draft
-    | owner ->
-        owner.GetVisualDescendants()
-        |> Seq.tryPick (function
-            | :? TextBox as field when AutomationProperties.GetAutomationId field = fieldId.value ->
-                let typed = ControlCaption (string field.Text)
-                Some typed
-            | _ -> None)
-        |> Option.defaultValue draft
-
-/// One field of the review: its label docked beside a text box showing `text`, which commits what is typed through
-/// `toMsg` on Enter and on losing focus (spec 0050 S9.3).
-let private reviewField
-    (dispatch : TableAndElementRotationMsg -> unit)
-    (fieldId : ConstructorUiId)
-    (label : ControlCaption)
-    (accessibleName : ControlCaption)
-    (text : ControlCaption)
-    (toMsg : ControlCaption -> TableAndElementRotationMsg)
-    : IView =
-    let commit (source : obj) : unit =
-        match source with
-        | :? TextBox as field ->
-            let typed = ControlCaption (string field.Text)
-            dispatch (toMsg typed)
-        | _ -> ()
+/// The exclusion reason as typed, for the next Exclude in the edit (spec 0050 S9.3).
+let private exclusionReasonField (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
         DockPanel.children [
@@ -264,26 +183,23 @@ let private reviewField
                 TextBlock.dock Dock.Left
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                TextBlock.text label.value
+                TextBlock.text "Reason:"
             ]
             TextBox.create [
-                fieldId.automationAttribute<TextBox> ()
-                AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, accessibleName.value, ValueNone)
+                ConstructorUiId.dataExclusionReasonField.automationAttribute<TextBox> ()
+                AttrBuilder<TextBox>.CreateProperty<string>(AutomationProperties.NameProperty, "Exclusion reason", ValueNone)
                 TextBox.minWidth 220.0
-                TextBox.text text.value
-                TextBox.onKeyDown ((fun event -> if event.Key = Key.Enter then commit event.Source), SubPatchOptions.Always)
-                TextBox.onLostFocus ((fun event -> commit event.Source), SubPatchOptions.Always)
+                TextBox.text model.dataDraft.exclusionReason.value
+                TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter (SetExclusionReason >> dispatch))
             ]
         ]
     ]
     :> IView
 
-/// One reviewed point's row: its number and caption, then Exclude, or why it is excluded and Include; both are disabled
-/// while the kit takes no writes (spec 0050 S9.3; 001 §K; .spec-md §10.5).
-let private reviewedPointRow
-    (model : TableAndElementRotationModel)
+/// One point's row in the edit: its number and caption, then Exclude, or why it is excluded and Include, each changing
+/// the draft (spec 0050 S9.3; 0051 `.manual/007` 7.3).
+let private editedPointRow
     (dispatch : TableAndElementRotationMsg -> unit)
-    (experimentId : Experiments.ExperimentId)
     (exclusionOpt : PointExclusion option)
     (point : MappedPointNumber)
     (caption : ControlCaption)
@@ -298,153 +214,90 @@ let private reviewedPointRow
                     TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                 ]
                 :> IView
-                availableWorkbenchButton
-                    model.kitWrites
-                    (ConstructorUiId.dataIncludePointButton point)
-                    (ControlCaption "Include")
-                    (fun _ -> dispatch (IncludePoint (experimentId, point)))
+                CommandControls.verbCommand (ConstructorUiId.dataIncludePointButton point) (ControlCaption "Include") (fun () -> dispatch (DraftIncludePoint point))
             ]
-        | None ->
-            let exclude (event : CommandButton) : unit =
-                let reason = typedText event ConstructorUiId.dataExclusionReasonField model.dataDraft.exclusionReason
-                dispatch (SetExclusionReason reason)
-                dispatch (ExcludePoint (experimentId, point, reason))
-            [ availableWorkbenchButton model.kitWrites (ConstructorUiId.dataExcludePointButton point) (ControlCaption "Exclude") exclude ]
+        | None -> [ CommandControls.verbCommand (ConstructorUiId.dataExcludePointButton point) (ControlCaption "Exclude") (fun () -> dispatch (DraftExcludePoint point)) ]
     let id = ConstructorUiId.dataPointRow point
     // Spec 0051 `.manual/003` 4.3: the row wraps at the page's width, so a long reason never leaves the window.
     WrapPanel.create [
         yield! id.groupAttributes<WrapPanel> ()
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.itemSpacing 8.0
-        WrapPanel.children (
-            (TextBlock.create [ TextBlock.text $"#{point.value}  {caption.value}"; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView)
-            :: verb
-        )
+        WrapPanel.children ((PageControls.copyableLine (ControlCaption $"#{point.value}  {caption.value}") [ SelectableTextBlock.verticalAlignment VerticalAlignment.Center ]) :: verb)
     ]
     |> Avalonia.FuncUI.DSL.View.withKey id.value
     :> IView
 
-/// The reviewed experiment's setup, the audit note, a re-point verb per other setup of the kit, disabled while the kit
-/// takes no writes, and the trail of its corrections, oldest first. Only the experiment's file is corrected, never its
-/// lab file (spec 0050 S9.3; 001 §K, §P `CorrectSetup`).
-let private setupCorrectionBlock
-    (model : TableAndElementRotationModel)
-    (dispatch : TableAndElementRotationMsg -> unit)
-    (experiment : Experiments.Experiment)
-    : IView list =
-    let setupLine =
-        TextBlock.create [
-            TextBlock.text $"Setup: {experiment.setup.describe}"
-            TextBlock.textWrapping TextWrapping.Wrap
-            TextBlock.maxWidth 360.0
-            TextBlock.margin (Thickness(0.0, 8.0, 0.0, 4.0))
-        ]
-        :> IView
-    let noteField =
-        reviewField
-            dispatch
-            ConstructorUiId.dataCorrectionNoteField
-            (ControlCaption "Audit note:")
-            (ControlCaption "Correction audit note")
-            model.dataDraft.correctionNote
-            SetCorrectionNote
-    // `verbButtonOn` re-patches its press on every render, so a setup re-recorded under its name re-points to the new revision.
-    let repointTo (setup : Setups.Setup) : IView =
-        let repoint (event : CommandButton) : unit =
-            let note = typedText event ConstructorUiId.dataCorrectionNoteField model.dataDraft.correctionNote
-            dispatch (SetCorrectionNote note)
-            dispatch (CorrectSetup (experiment.id, setup.reference, note))
-        let label = ControlCaption $"Re-point to {setup.reference.describe}"
-        CommandControls.verbCommandOn (ConstructorUiId.dataCorrectSetupChoice setup.name) label repoint
-    let choices =
-        WrapPanel.create [
-            WrapPanel.orientation Orientation.Horizontal
-            WrapPanel.maxWidth 360.0
-            WrapPanel.children (model.kitSetups |> List.filter (fun setup -> setup.reference <> experiment.setup) |> List.map repointTo)
-        ]
-        :> IView
-        |> availabilityBox model.kitWrites
-    let trail : IView list =
-        match experiment.corrections with
-        | [] -> []
-        | corrections ->
+/// The chosen experiment's data under its matrix row: its file, profile and badge, View chart ↗ and Edit; its points
+/// chart, each excluded point a ring; in Editing, Attach data file…, the reason and a row per point with Exclude or
+/// Include over the draft, then Save and Cancel. Nothing here names a setup (spec 0050 S9.3; 0051 `.manual/007` 7.1, 7.3).
+let private dataPanel (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
+    let editing =
+        match model.pageMode, model.dataEditOpt with
+        | EditingPageEntry, Some edit when edit.experimentId = experiment.id -> Some edit
+        | _ -> None
+    let exclusions =
+        match editing, experiment.dataOpt with
+        | Some edit, _ -> edit.exclusions
+        | None, Some data -> data.exclusions
+        | None, None -> []
+    let exclusionOf (point : MappedPointNumber) : PointExclusion option = exclusions |> List.tryFind (fun held -> held.point = point)
+    let fileLine =
+        match experiment.dataOpt with
+        | Some data -> ControlCaption $"File: {data.attachment.path.value}, read through {data.profile.value}"
+        | None -> ControlCaption "No data file is attached."
+    let view : IView list =
+        match model.chartAvailabilityOf experiment with
+        | ChartReady -> [ CommandControls.verbCommand (ConstructorUiId.experimentViewButton experiment.id.uiKey) (ControlCaption "View chart ↗") (fun () -> dispatch (ViewExperiment experiment.id)) ]
+        | ChartWithheldFor reason ->
             [
-                StackPanel.create [
-                    yield! ConstructorUiId.dataCorrectionTrail.groupAttributes<StackPanel> ()
-                    StackPanel.orientation Orientation.Vertical
-                    StackPanel.margin (Thickness(0.0, 4.0, 0.0, 0.0))
-                    StackPanel.children (
-                        corrections
-                        |> List.map (fun correction ->
-                            TextBlock.create [
-                                TextBlock.text $"{correction.previous.describe} → {correction.corrected.describe}: {correction.note.value}"
-                                TextBlock.textWrapping TextWrapping.Wrap
-                                TextBlock.maxWidth 360.0
-                            ]
-                            :> IView)
-                    )
-                ]
-                :> IView
+                CommandControls.commandButton (ConstructorUiId.experimentViewButton experiment.id.uiKey) (ControlCaption "View chart ↗") NeutralCommand ControlWithheld ignore
+                    [ Button.margin (Thickness(0.0, 0.0, 8.0, 4.0)) ]
+                PageControls.copyableText ConstructorUiId.experimentChartReason (ControlCaption $"No chart: {reason.value}") [ SelectableTextBlock.verticalAlignment VerticalAlignment.Center ]
             ]
-    setupLine :: noteField :: choices :: trail
-
-/// The reviewed experiment's points: its name and badge, the exclusion reason, the points chart with each excluded point
-/// a ring, and a row per point, else why it has none; then its setup's correction. Keyed by the experiment, so its verbs
-/// never act for another (spec 0050 S9.3; 001 §K, §O).
-let private dataReviewPanel
-    (model : TableAndElementRotationModel)
-    (dispatch : TableAndElementRotationMsg -> unit)
-    (experiment : Experiments.Experiment)
-    (reviewed : ReviewedData)
-    : IView =
-    let heading =
-        TextBlock.create [
-            TextBlock.text $"Points of {experiment.name.value} — {(model.dataBadgeOf experiment).text}"
-            TextBlock.textWrapping TextWrapping.Wrap
-            TextBlock.maxWidth 360.0
-            TextBlock.fontWeight FontWeight.SemiBold
-            TextBlock.margin (Thickness(0.0, 0.0, 0.0, 6.0))
-        ]
-        :> IView
-    let reasonField =
-        reviewField
-            dispatch
-            ConstructorUiId.dataExclusionReasonField
-            (ControlCaption "Reason:")
-            (ControlCaption "Exclusion reason")
-            model.dataDraft.exclusionReason
-            SetExclusionReason
+    let verbs : IView list =
+        match editing, model.kitWrites, model.pageMode with
+        | Some _, _, _ -> [ attachDataFileButton model dispatch experiment ]
+        | None, ControlOffered, BrowsingPage -> view @ [ CommandControls.verbCommand ConstructorUiId.pageEditButton (ControlCaption "Edit") (fun () -> dispatch BeginPageEdit) ]
+        | None, _, _ -> view
     let points : IView list =
-        match reviewed.points with
-        | Ok mapped ->
-            let exclusionOf (point : MappedPointNumber) : PointExclusion option =
-                experiment.dataOpt |> Option.bind (fun data -> data.tryFindExclusion point)
-            let numbered = mapped.pointCaptions |> List.mapi (fun index caption -> MappedPointNumber (index + 1), caption)
-            let plotted =
-                List.zip numbered mapped.chartPoints
-                |> List.map (fun ((point, _), chartPoint) ->
-                    let plottedPoint : ExperimentControls.PlottedPoint =
-                        {
-                            position = point.uiPosition
-                            point = chartPoint
-                            mark =
-                                match exclusionOf point with
-                                | Some _ -> ExperimentControls.ExcludedPointMark
-                                | None -> ExperimentControls.KeptPointMark
-                        }
-                    plottedPoint)
-            ExperimentControls.pointsChartView ConstructorUiId.dataPointsChart plotted (ControlCaption "point") (ControlCaption "reading")
-            :: (numbered |> List.map (fun (point, caption) -> reviewedPointRow model dispatch experiment.id (exclusionOf point) point caption))
-        | Error problem ->
-            [
-                TextBlock.create [
-                    TextBlock.text problem.caption.value
-                    TextBlock.textWrapping TextWrapping.Wrap
-                    TextBlock.maxWidth 360.0
-                    TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
-                ]
-                :> IView
-            ]
+        match model.reviewedDataOpt with
+        | Some reviewed when reviewed.experimentId = experiment.id ->
+            match reviewed.points with
+            | Ok mapped ->
+                let numbered = mapped.pointCaptions |> List.mapi (fun index caption -> MappedPointNumber (index + 1), caption)
+                let plotted =
+                    List.zip numbered mapped.chartPoints
+                    |> List.map (fun ((point, _), chartPoint) ->
+                        let plottedPoint : ExperimentControls.PlottedPoint =
+                            {
+                                position = point.uiPosition
+                                point = chartPoint
+                                mark =
+                                    match exclusionOf point with
+                                    | Some _ -> ExperimentControls.ExcludedPointMark
+                                    | None -> ExperimentControls.KeptPointMark
+                            }
+                        plottedPoint)
+                let chart = ExperimentControls.pointsChartView ConstructorUiId.dataPointsChart plotted (ControlCaption "point") (ControlCaption "reading")
+                match editing with
+                | Some _ -> chart :: exclusionReasonField model dispatch :: (numbered |> List.map (fun (point, caption) -> editedPointRow dispatch (exclusionOf point) point caption))
+                | None ->
+                    let excluded =
+                        match exclusions with
+                        | [] -> ControlCaption $"{numbered.Length} point(s), none excluded."
+                        | held ->
+                            let listed = held |> List.map (fun exclusion -> $"#{exclusion.point.value} ({exclusion.reason.value})") |> String.concat ", "
+                            ControlCaption $"{numbered.Length} point(s), {held.Length} excluded: {listed}"
+                    [ chart; PageControls.copyableLine excluded [] ]
+            | Error problem ->
+                [ PageControls.copyableLine problem.caption [ SelectableTextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor) ] ]
+        | Some _
+        | None -> []
+    let actions : IView list =
+        match editing with
+        | Some _ -> [ model.draftActions (ControlCaption "Save") dispatch ]
+        | None -> []
     Border.create (
         stepPanelFrame
         @ [
@@ -453,197 +306,145 @@ let private dataReviewPanel
                 StackPanel.create [
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.spacing 2.0
-                    StackPanel.children (heading :: reasonField :: points @ setupCorrectionBlock model dispatch experiment)
-                ]
-            )
+                    StackPanel.children (
+                        [
+                            PageControls.copyableText (ConstructorUiId.dataFileHeading experiment.id) (ControlCaption $"{experiment.name.value} [{experiment.role.text}]") [
+                                SelectableTextBlock.fontWeight FontWeight.SemiBold
+                            ]
+                            PageControls.copyableText (ConstructorUiId.dataFileStatus experiment.id) ((model.dataBadgeOf experiment).caption) []
+                            PageControls.copyableLine fileLine []
+                            WrapPanel.create [ WrapPanel.orientation Orientation.Horizontal; WrapPanel.children verbs ] :> IView
+                        ]
+                        @ points
+                        @ actions)
+                ])
         ]
     )
-    |> Avalonia.FuncUI.DSL.View.withKey ("DataReviewPanel_" + experiment.id.uiKey.value)
+    |> Avalonia.FuncUI.DSL.View.withKey $"DataPanel_{experiment.id.uiKey.value}_{model.pageMode.uiKey.value}"
     :> IView
 
-/// An experiment's entry in its matrix cell, `<name> · <badge>`, reviewing it when pressed; the reviewed experiment's is on
-/// the positive fill (spec 0050 S9.1, S9.3).
+/// An experiment's dynamic button in the matrix: its name and badge, chosen while its data is open; one with no data
+/// has its own fill and begins with "⚠ " (spec 0050 S9.1; 0051 `.manual/007` 7.3, 7.4).
 let private matrixEntry (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) (experiment : Experiments.Experiment) : IView =
     let id = ConstructorUiId.experimentMatrixEntry experiment.id
-    let label = ControlCaption $"{experiment.name.value} · {(model.dataBadgeOf experiment).text}"
-    let review () : unit = dispatch (ReviewExperimentData experiment.id)
+    let look, prefix =
+        match experiment.dataOpt with
+        | Some _ -> NeutralCommand, ""
+        | None -> AttentionCommand, "⚠ "
+    let label = ControlCaption $"{prefix}{experiment.name.value} · {(model.dataBadgeOf experiment).text}"
     let mark =
         match model.reviewedDataOpt with
         | Some reviewed when reviewed.experimentId = experiment.id -> ChosenChoice
         | Some _
         | None -> UnchosenChoice
-    CommandControls.choiceCommand id label mark review
+    let availability =
+        match model.pageMode with
+        | BrowsingPage -> ControlOffered
+        | EditingPageEntry
+        | CreatingPageEntry -> ControlWithheld
+    let menu = model.entryMenuOf experiment.name.caption (Some (RenameExperimentTarget experiment.id)) RenameAvailable dispatch
+    match model.renameRowsOf (RenameExperimentTarget experiment.id) dispatch with
+    | Some rows -> StackPanel.create [ StackPanel.children rows ] :> IView
+    | None -> PageControls.entryToggle id label mark look availability menu (fun () -> dispatch (ChooseDataExperiment experiment.id)) []
 
-/// The experiment matrix under its heading: the analyzer columns' captions, then per row its caption and, per column, the
-/// entries of the experiments measured there; then the experiments whose setup the kit lacks (spec 0050 S9.3; 001 §O).
+/// The experiment matrix as a table with gridlines: one column per Prep slot and per object slot (the item at its
+/// angle), then one per analyzer combination holding the experiments measured there; the chosen experiment's data opens
+/// in a row right under its matrix row; the experiments it cannot place follow it (spec 0050 S9.3; 0051 `.manual/007`
+/// 7.2, 7.3, D4).
 let private experimentMatrixBlock (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
-    let heading =
-        TextBlock.create [
-            TextBlock.text "Experiment matrix:"
-            TextBlock.fontWeight FontWeight.SemiBold
-            TextBlock.margin (Thickness(0.0, 0.0, 0.0, 2.0))
-        ]
-        :> IView
     match model.experimentCollection.experiments with
-    | [] ->
-        [
-            heading
-            TextBlock.create [
-                TextBlock.text "(no experiments yet)"
-                TextBlock.foreground (MaterialsWindowView.brush (Color.FromRgb(120uy, 120uy, 120uy)))
-                TextBlock.margin (Thickness(0.0, 0.0, 0.0, 8.0))
-            ]
-            :> IView
-        ]
+    | [] -> [ PageControls.copyableLine (ControlCaption "This kit has no experiment yet: make them on the Experiments page.") [] ]
     | experiments ->
         let matrix = ExperimentMatrices.ExperimentMatrix.ofExperiments experiments model.kitSetups model.kitItems
         let experimentsOf (ids : Experiments.ExperimentId list) : Experiments.Experiment list =
             ids |> List.choose (fun id -> experiments |> List.tryFind (fun experiment -> experiment.id = id))
-        let headCell (row : int) (column : int) (weight : FontWeight) (caption : ControlCaption) : IView =
-            TextBlock.create [
-                TextBlock.row row
-                TextBlock.column column
-                TextBlock.fontWeight weight
-                TextBlock.verticalAlignment VerticalAlignment.Center
-                TextBlock.margin (Thickness(0.0, 0.0, 12.0, 4.0))
-                TextBlock.text caption.value
-            ]
-            :> IView
-        let columnHeads = matrix.columns |> List.mapi (fun index column -> headCell 0 (index + 1) FontWeight.SemiBold column.caption)
-        let matrixRow (index : int) (row : ExperimentMatrices.MatrixRowKey) : IView list =
-            let gridRow = index + 1
-            let cells =
-                matrix.columns
-                |> List.mapi (fun columnIndex column ->
-                    match matrix.tryFindCell row column with
-                    | Some cell ->
-                        [
-                            StackPanel.create [
-                                StackPanel.row gridRow
-                                StackPanel.column (columnIndex + 1)
-                                StackPanel.orientation Orientation.Vertical
-                                StackPanel.verticalAlignment VerticalAlignment.Center
-                                StackPanel.children (experimentsOf cell.experiments |> List.map (matrixEntry model dispatch))
-                            ]
-                            :> IView
-                        ]
-                    | None -> [])
-                |> List.concat
-            headCell gridRow 0 FontWeight.Normal row.caption :: cells
-        // Spec 0051 `.manual/003` 4.3: the matrix scrolls sideways in its own scroller, never the page.
-        let grid =
-            ScrollViewer.create [
-                ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
-                ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Disabled
-                ScrollViewer.content (
-                    Grid.create [
-                        yield! ConstructorUiId.experimentMatrix.groupAttributes<Grid> ()
-                        Grid.margin (Thickness(0.0, 0.0, 0.0, 8.0))
-                        Grid.horizontalAlignment HorizontalAlignment.Left
-                        Grid.columnDefinitions (List.replicate (matrix.columns.Length + 1) "Auto" |> String.concat ",")
-                        Grid.rowDefinitions (List.replicate (matrix.rows.Length + 1) "Auto" |> String.concat ",")
-                        Grid.children (columnHeads @ (matrix.rows |> List.mapi matrixRow |> List.concat))
-                    ])
-            ]
-            :> IView
+        let chosenOpt =
+            model.reviewedDataOpt |> Option.bind (fun reviewed -> experiments |> List.tryFind (fun experiment -> experiment.id = reviewed.experimentId))
+        let prepColumns = matrix.rows |> List.map (fun row -> row.sources.Length) |> List.fold max 0
+        let objectColumns = matrix.rows |> List.map (fun row -> row.objects.Length) |> List.fold max 0
+        let analyzerCaption (column : ExperimentMatrices.MatrixColumnKey) : ControlCaption =
+            match column.analyzers with
+            | [] -> ControlCaption "No analyzer"
+            | analyzers -> ControlCaption ("Analyzer: " + (analyzers |> List.map (fun label -> label.value) |> String.concat " · "))
+        let header =
+            (List.init prepColumns (fun index -> ControlCaption $"Prep {index + 1}"))
+            @ (List.init objectColumns (fun index -> ControlCaption $"Obj {index + 1}"))
+            @ (matrix.columns |> List.map analyzerCaption)
+        let padded (cells : ControlCaption list) (count : int) : GridCell list =
+            (cells |> List.map TextGridCell) @ List.replicate (count - cells.Length) (TextGridCell (ControlCaption "—"))
+        let rows =
+            matrix.rows
+            |> List.collect (fun row ->
+                let sources = padded (row.sources |> List.map (fun label -> label.caption)) prepColumns
+                let objects = padded (row.objects |> List.map (fun held -> ControlCaption $"{held.item.value} @ {held.angle.turnCaption.value}")) objectColumns
+                let held =
+                    matrix.columns
+                    |> List.map (fun column ->
+                        match matrix.tryFindCell row column with
+                        | Some cell ->
+                            let inCell = experimentsOf cell.experiments
+                            ViewGridCell (
+                                ControlCaption (inCell |> List.map (fun experiment -> experiment.name.value) |> String.concat " | "),
+                                StackPanel.create [
+                                    StackPanel.orientation Orientation.Vertical
+                                    StackPanel.children (inCell |> List.map (matrixEntry model dispatch))
+                                ])
+                        | None -> TextGridCell (ControlCaption ""))
+                let panel =
+                    match chosenOpt, matrix.cells |> List.tryFind (fun cell -> cell.row = row && chosenOpt |> Option.exists (fun chosen -> List.contains chosen.id cell.experiments)) with
+                    | Some chosen, Some _ -> [ SpanningGridRow (dataPanel model dispatch chosen) ]
+                    | _ -> []
+                CellsGridRow (sources @ objects @ held) :: panel)
+        let table : GridTable =
+            {
+                id = ConstructorUiId.experimentMatrix
+                header = header
+                rows = rows
+            }
         let unplaced : IView list =
             match experimentsOf matrix.unplaced with
             | [] -> []
             | missing ->
-                let names = missing |> List.map (fun experiment -> experiment.name.value) |> String.concat ", "
-                [
-                    TextBlock.create [
-                        TextBlock.text $"Not in the matrix (setup missing): {names}"
-                        TextBlock.textWrapping TextWrapping.Wrap
-                        TextBlock.maxWidth 360.0
-                        TextBlock.margin (Thickness(0.0, 0.0, 0.0, 8.0))
-                        TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
-                    ]
-                    :> IView
-                ]
-        heading :: grid :: unplaced
+                PageControls.copyableLine (ControlCaption "Not in the matrix, as the kit lacks their setup:") [ SelectableTextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ]
+                :: (missing
+                    |> List.collect (fun experiment ->
+                        matrixEntry model dispatch experiment
+                        :: (match chosenOpt with
+                            | Some chosen when chosen.id = experiment.id -> [ dataPanel model dispatch chosen ]
+                            | Some _
+                            | None -> [])))
+        [
+            PageControls.copyableLine
+                (ControlCaption "Rows: what prepares the light (the Prep slots) and what it crosses (each object at its angle). Columns: what analyses it. A cell lists the experiments measured there; press one to open its data.")
+                [ SelectableTextBlock.margin (Thickness(0.0, 0.0, 0.0, 4.0)) ]
+            PageControls.gridTableView table (fun text -> dispatch (CopyToClipboard text))
+        ]
+        @ unplaced
 
-/// The Data step's surface: the experiment matrix, then the data files, one row per experiment, then Split a file by key…,
-/// which opens the split wizard over a picked lab file, under it the held split's panel, then the reviewed experiment's
-/// points and setup correction; the attach and split verbs are withheld while the kit takes no writes (spec 0050 S9.3).
+/// The Data page: the matrix, the chosen experiment's data under its row, and Split a file by key…, whose held split is
+/// the page's Creating (spec 0050 S9.3; 0051 `.manual/007` Phase 7).
 let dataStepView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let dataFiles : IView =
-        match model.experimentCollection.experiments with
-        | [] ->
-            TextBlock.create [
-                TextBlock.text "(add experiments in the Experiments step, then attach one data file to each)"
-                TextBlock.foreground (MaterialsWindowView.brush (Color.FromRgb(120uy, 120uy, 120uy)))
-            ]
-            :> IView
-        | experiments ->
-            // Spec 0051 `.manual/003` 4.2: the review opens under the row whose Review was pressed, scrolled into view.
-            let reviewUnder (experiment : Experiments.Experiment) : IView list =
-                match model.reviewedDataOpt with
-                | Some reviewed when reviewed.experimentId = experiment.id ->
-                    [
-                        Border.create [
-                            Border.margin (Thickness(12.0, 0.0, 0.0, 8.0))
-                            // After its first layout, so the panel has the bounds the page scrolls to.
-                            Border.init (fun (panel : Border) ->
-                                panel.AttachedToVisualTree.Add(fun _ ->
-                                    Avalonia.Threading.Dispatcher.UIThread.Post(
-                                        (fun () -> panel.BringIntoView()),
-                                        Avalonia.Threading.DispatcherPriority.Background)))
-                            Border.child (dataReviewPanel model dispatch experiment reviewed)
-                        ]
-                        |> Avalonia.FuncUI.DSL.View.withKey $"DataReviewUnder_{experiment.id.uiKey.value}"
-                        :> IView
-                    ]
-                | Some _
-                | None -> []
-            StackPanel.create [
-                yield! ConstructorUiId.experimentDataFiles.groupAttributes<StackPanel> ()
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.children (experiments |> List.collect (fun experiment -> dataFileRow model dispatch experiment :: reviewUnder experiment))
-            ]
-            :> IView
     // A withheld box is disabled, so it takes no press; `OpenSplitWizard` guards the kit's writes itself (step 321).
     let splitFile (pressed : CommandButton) : unit =
         match TopLevel.GetTopLevel pressed with
         | :? Window as owner -> pickDataFile owner model PickedLabFile (ControlCaption "Split a lab file by key") (OpenSplitWizard >> dispatch)
         | _ -> ()
-    let splitPanel : IView list =
-        match model.dataSplitOpt with
-        | Some held -> [ dataSplitPanel model dispatch held ]
-        | None -> []
-    ScrollViewer.create [
-        ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
-        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
-        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so only the matrix scrolls sideways.
-        ScrollViewer.content (
-            MinWidthPanel.create [
-                (PanelMinWidth 520.0).minWidthPanelAttribute ()
-                MinWidthPanel.child (
-                    StackPanel.create [
-                        yield! ConstructorUiId.dataStepPanel.groupAttributes<StackPanel> ()
-                        StackPanel.orientation Orientation.Vertical
-                        StackPanel.margin (Thickness 8.0)
-                        StackPanel.children (
-                            experimentMatrixBlock model dispatch
-                            @ [
-                                TextBlock.create [
-                                    TextBlock.text "Data files:"
-                                    TextBlock.fontWeight FontWeight.SemiBold
-                                    TextBlock.margin (Thickness(0.0, 0.0, 0.0, 2.0))
-                                ]
-                                :> IView
-                                dataFiles
-                                StackPanel.create [
-                                    StackPanel.orientation Orientation.Horizontal
-                                    StackPanel.margin (Thickness(0.0, 6.0, 0.0, 0.0))
-                                    StackPanel.children [
-                                        availableWorkbenchButton model.kitWrites ConstructorUiId.dataSplitFileButton (ControlCaption "Split a file by key…") splitFile
-                                    ]
-                                ]
-                            ]
-                            @ splitPanel
-                        )
-                    ])
-            ])
-    ]
-    :> IView
+    let body : IView list =
+        match model.pageMode, model.dataSplitOpt with
+        | CreatingPageEntry, Some held -> [ dataSplitPanel model dispatch held ]
+        | _ ->
+            let split : IView list =
+                match model.pageMode with
+                | BrowsingPage ->
+                    [
+                        Border.create [
+                            Border.horizontalAlignment HorizontalAlignment.Left
+                            Border.margin (Thickness(0.0, 0.0, 0.0, 6.0))
+                            Border.child (availableWorkbenchButton model.kitWrites ConstructorUiId.dataSplitFileButton (ControlCaption "Split a file by key…") splitFile)
+                        ]
+                        :> IView
+                    ]
+                | EditingPageEntry
+                | CreatingPageEntry -> []
+            split @ experimentMatrixBlock model dispatch
+    pageScroll ConstructorUiId.dataStepPanel (model.pageHeader dispatch @ body)

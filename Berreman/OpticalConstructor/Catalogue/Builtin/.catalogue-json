@@ -148,6 +148,20 @@
       "version": 1
     },
     {
+      "contentHash": "b7d6fec417fccbe800c7e8d51f03cf8764d2804ab83413fb15a5b5d7640fb522",
+      "fileName": "Langasite plate on silicon (10 µm, dispersive).sample-json",
+      "id": "3e3cac98-932a-427c-bda8-f0eb2307d9af",
+      "kind": 2,
+      "version": 1
+    },
+    {
+      "contentHash": "73ff54dd443250279760bf392c2d7795a9ff9a98cb8f0fa8a3459cc82aedcbdf",
+      "fileName": "Quarter-wave glass n = 1.75 _ 1.50 multilayer (100 pairs) on glass.sample-json",
+      "id": "75df80f3-28bf-4bb9-9268-0825308ff421",
+      "kind": 2,
+      "version": 1
+    },
+    {
       "contentHash": "d03821574d6ba1acccffa7581927a438c5c12cc4e90c425fa9188544a7e03134",
       "fileName": "Quarter-wave glass_vacuum multilayer (41 layers).sample-json",
       "id": "80e5b7b0-8f10-42f6-9d87-bae692454fd5",

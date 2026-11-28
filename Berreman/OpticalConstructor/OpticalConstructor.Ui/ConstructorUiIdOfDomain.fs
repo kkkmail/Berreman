@@ -38,6 +38,11 @@ module ConstructorUiIdOfDomain =
         /// The name shown by the new study's experiment choices (spec 0050 S11.5).
         member this.caption : ControlCaption = ControlCaption this.value
 
+    type FitRunName with
+
+        /// The name a fit run's dynamic button copies (spec 0051 `.manual/007` 1.3).
+        member this.caption : ControlCaption = ControlCaption this.value
+
     type SessionGainModel with
 
         /// The gain choice with its anchor or interpolation run names (spec 0050 S12.1).
@@ -640,7 +645,7 @@ module ConstructorUiIdOfDomain =
 
     type OpticalConstructor.Domain.Kit.KitFolder with
 
-        /// Open kit…'s offer for a folder without `.kit-json` (spec 0050 S5.2).
+        /// Open kit…'s offer for a folder without `.optics-kit` (spec 0050 S5.2).
         member this.notAKitCaption : ControlCaption = ControlCaption $"{this.value.value} holds no kit."
 
     type OpticalConstructor.Domain.MeasuredData.ExperimentDataError with
@@ -1005,6 +1010,19 @@ module ConstructorUiIdOfDomain =
             | Some roled -> roled.slotName items
             | None -> Experiments.ElementLabel "(not in the setup)"
 
+        /// The slots in light order, each its `chipCaption`, joined by ` · ` ("Source: Laser · Prep 1: CPL1 · Obj 1: LR @
+        /// 45°"): a setup's line on the Setups and Experiments pages (spec 0051 `.manual/007` 5.1, 6.2).
+        static member slotLineOf (slots : Setups.SetupSlot list) (items : Kit.Item list) : ControlCaption =
+            Setups.SetupSlot.inLightOrder slots
+            |> List.map (fun roled -> (roled.chipCaption items).value)
+            |> String.concat " · "
+            |> ControlCaption
+
+    type Setups.Setup with
+
+        /// The setup's `slotLineOf` its current slots (spec 0051 `.manual/007` 5.1).
+        member this.slotLine (items : Kit.Item list) : ControlCaption = Setups.SetupSlot.slotLineOf this.slots items
+
     type SetupGrids.GridCombination with
 
         /// Each pick in order as `<its slot's role in the table's light order>: <item label> @ <R1>`, `—` for nothing and
@@ -1204,9 +1222,6 @@ module ConstructorUiIdOfDomain =
         /// A data-file row's heading, the experiment's name, role and badge: `DataFileHeading_<id>` (spec 0051 `.manual/003`
         /// 4.1).
         static member dataFileHeading (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataFileHeading_{experimentId.value}"
-
-        /// A data-file row's Review, showing the experiment's points in the Data step: `DataReview_<id>` (spec 0050 S9.3).
-        static member dataReviewButton (experimentId : ExperimentId) : ConstructorUiId = ConstructorUiId $"DataReview_{experimentId.value}"
 
         /// A point's row of the Data step's review: `DataPoint_<n>` (spec 0050 S9.3).
         static member dataPointRow (point : Kit.MappedPointNumber) : ConstructorUiId = ConstructorUiId $"DataPoint_{point.uiPosition.value}"

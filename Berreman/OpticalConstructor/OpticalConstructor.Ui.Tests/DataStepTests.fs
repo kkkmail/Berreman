@@ -244,7 +244,7 @@ module DataStepTests =
             if Directory.Exists root then Directory.Delete(root, true)
 
     /// Shows `dataStepView` over `model` headless at 1000 × 700 in a `HostWindow` running `Program.mkSimple` with
-    /// `updateTableAndElementRotation`, keeping every model it answers, as `SlotBarTests.withMainWindow` mounts `mainView`.
+    /// `updateTableAndElementRotation`, keeping every model it answers, as `SlotBarTests.withMainWindow` mounts `UiDriver.editableTableView`.
     let private withDataStepWindow
         (model : TableAndElementRotationModel)
         (check : Window -> ResizeArray<TableAndElementRotationModel> -> unit)
@@ -255,7 +255,7 @@ module DataStepTests =
             answered.Add next
             next
         let window = HostWindow()
-        Program.mkSimple (fun () -> model) recordingUpdate DataStepView.dataStepView |> Program.withHost window |> Program.run
+        Program.mkSimple (fun () -> { model with flowStep = DataFlowStep }) recordingUpdate DataStepView.dataStepView |> Program.withHost window |> Program.run
         window.Width <- 1000.0
         window.Height <- 700.0
         try
@@ -267,14 +267,35 @@ module DataStepTests =
             Dispatcher.UIThread.RunJobs()
 
     /// Shows `dataStepView` over `model` headless at 1000 × 700 with a dispatch that records every message and changes
-    /// nothing, as `SetupSaveLoadTests` mounts `mainView`.
+    /// nothing, as `SetupSaveLoadTests` mounts `UiDriver.editableTableView`.
+    let private withExperimentsPageWindow
+        (model : TableAndElementRotationModel)
+        (check : Window -> ResizeArray<TableAndElementRotationModel> -> unit)
+        : unit =
+        let answered = ResizeArray<TableAndElementRotationModel> ()
+        let recordingUpdate (msg : TableAndElementRotationMsg) (current : TableAndElementRotationModel) : TableAndElementRotationModel =
+            let next = updateTableAndElementRotation msg current
+            answered.Add next
+            next
+        let window = HostWindow()
+        Program.mkSimple (fun () -> model) recordingUpdate UiDriver.experimentsPageTestView |> Program.withHost window |> Program.run
+        window.Width <- 1000.0
+        window.Height <- 900.0
+        try
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            check window answered
+        finally
+            window.Close()
+            Dispatcher.UIThread.RunJobs()
+
     let private withRecordingWindow
         (model : TableAndElementRotationModel)
         (check : Window -> ResizeArray<TableAndElementRotationMsg> -> unit)
         : unit =
         let messages = ResizeArray<TableAndElementRotationMsg> ()
         let window = Window(Width = 1000.0, Height = 700.0)
-        window.Content <- Avalonia.FuncUI.Component(fun _ -> DataStepView.dataStepView model messages.Add)
+        window.Content <- Avalonia.FuncUI.Component(fun _ -> DataStepView.dataStepView { model with flowStep = DataFlowStep } messages.Add)
         try
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -349,6 +370,16 @@ module DataStepTests =
                         experimentCollection = { kit.loaded.experimentCollection with experiments = [ e1WithData ] }
                         experimentDataStatus = Map.ofList [ e1.id, badge ]
                 })
+
+    /// `model` on the Data page with E1 chosen in its matrix, its points open, and in Edit (spec 0051 `.manual/007` 7.2).
+    let private reviewingInEdit (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let editing =
+            model
+            |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
+            |> updateTableAndElementRotation (ChooseDataExperiment (ExperimentId 1))
+            |> updateTableAndElementRotation BeginPageEdit
+        Assert.Equal<PageMode>(EditingPageEntry, editing.pageMode)
+        editing
 
     /// E1's setup in the correction facts, the one its correction re-pointed it to, and in the matrix facts: the bench with
     /// its polarizer under study at 0°.
@@ -458,7 +489,7 @@ module DataStepTests =
         Assert.Equal("DataPointsChart", ConstructorUiId.dataPointsChart.value)
         Assert.Equal("DataPointDot_2", (ConstructorUiId.dataPointDot (ConstructorUiPosition 2)).value)
         Assert.Equal("DataPointExcluded_2", (ConstructorUiId.dataExcludedPointMark (ConstructorUiPosition 2)).value)
-        Assert.Equal("DataReview_1", (ConstructorUiId.dataReviewButton (ExperimentId 1)).value)
+        Assert.Equal("ExperimentMatrixEntry_1", (ConstructorUiId.experimentMatrixEntry (ExperimentId 1)).value)
         Assert.Equal<ConstructorUiPosition>(ConstructorUiPosition 2, (MappedPointNumber 2).uiPosition)
         Assert.Equal("DataPoint_2", (ConstructorUiId.dataPointRow (MappedPointNumber 2)).value)
         Assert.Equal("DataExcludePoint_2", (ConstructorUiId.dataExcludePointButton (MappedPointNumber 2)).value)
@@ -475,10 +506,13 @@ module DataStepTests =
             withDataStepKit (fun kit ->
                 let model =
                     {
-                        kit.loaded with dataSplitOpt = Some (phoneSplitOf kit.phoneFile)
+                        kit.loaded with
+                            dataSplitOpt = Some (phoneSplitOf kit.phoneFile)
+                            flowStep = DataFlowStep
+                            pageMode = CreatingPageEntry
                     }
                 withDataStepWindow model (fun window _ ->
-                    Assert.Equal("Split phone.csv by 'experiment' through 'Phone ROI CSV'", Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.dataSplitKeyColumn).Text)
+                    Assert.Equal("Split phone.csv by 'experiment' through 'Phone ROI CSV'", Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.dataSplitKeyColumn).Text)
                     // Each group's row, in file order: its key and points, then its match.
                     Assert.Equal<string list>([ "K1, 2 point(s) "; "→ E1" ], textsUnder window (ConstructorUiId.dataSplitGroupRow k1))
                     Assert.Equal<string list>(
@@ -564,6 +598,8 @@ module DataStepTests =
                     {
                         kit.loaded with
                             kitSetups = [ bench; bench2 ]
+                            flowStep = DataFlowStep
+                            pageMode = CreatingPageEntry
                             dataSplitOpt =
                                 Some
                                     {
@@ -632,7 +668,10 @@ module DataStepTests =
             withDataStepKit (fun kit ->
                 let model =
                     {
-                        kit.loaded with dataSplitOpt = Some (phoneSplitOf kit.phoneFile)
+                        kit.loaded with
+                            dataSplitOpt = Some (phoneSplitOf kit.phoneFile)
+                            flowStep = DataFlowStep
+                            pageMode = CreatingPageEntry
                     }
                 withDataStepWindow model (fun window answered ->
                     let toggle = ConstructorUiId.dataSplitOfferToggle k2
@@ -657,7 +696,11 @@ module DataStepTests =
     let ``the Data step renders a split and Apply split attaches its matched group`` () : unit =
         HeadlessSession.run (fun () ->
             withDataStepKit (fun kit ->
-                let split = kit.loaded |> updateTableAndElementRotation (SplitByColumn (kit.phoneFile, ImportProfileName.phoneRoiCsv))
+                // Spec 0051 `.manual/007` 7.5: a held split is the Data page's Creating.
+                let split =
+                    kit.loaded
+                    |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
+                    |> updateTableAndElementRotation (SplitByColumn (kit.phoneFile, ImportProfileName.phoneRoiCsv))
                 let e1Key = DataRowKey "E1"
                 match split.dataSplitOpt with
                 | Some held ->
@@ -802,11 +845,9 @@ module DataStepTests =
     let ``the review panel lists every point, an excluded one marked with its reason, and plots the excluded points as rings`` () : unit =
         HeadlessSession.run (fun () ->
             withReviewModel (fun model ->
-                let reviewed = model |> updateTableAndElementRotation (ReviewExperimentData (ExperimentId 1))
+                let reviewed = model |> reviewingInEdit
                 withDataStepWindow reviewed (fun window _ ->
-                    Assert.Equal(
-                        "Points of E1 — excluded points (1 excluded, 2 validated)",
-                        List.head (textsUnder window ConstructorUiId.dataReviewPanel))
+                    Assert.Equal("E1 [Science]", List.head (textsUnder window ConstructorUiId.dataReviewPanel))
                     Assert.IsType<TextBox>(UiDriver.ById.findControl window ConstructorUiId.dataExclusionReasonField) |> ignore
 
                     // Every point has its row, in order; the excluded one reads its reason, in the message colour, and Include.
@@ -855,71 +896,69 @@ module DataStepTests =
                     Assert.Equal(midway, centreOf ring))))
 
     [<Fact>]
-    let ``pressing Exclude sends the point with the typed reason, and Include takes it back`` () : unit =
+    let ``in Edit, Exclude drafts the point with the typed reason, Include takes it back, and Save writes the exclusions once`` () : unit =
+        // Spec 0051 `.manual/007` 7.3: the exclusions are the Edit's draft (`DataEditDraft`); Save writes them.
         HeadlessSession.run (fun () ->
             withReviewModel (fun model ->
-                let reviewed = model |> updateTableAndElementRotation (ReviewExperimentData (ExperimentId 1))
+                let reviewed = model |> reviewingInEdit
                 let reasonsOf (messages : ResizeArray<TableAndElementRotationMsg>) : ControlCaption list =
                     messages |> Seq.choose (function SetExclusionReason reason -> Some reason | _ -> None) |> List.ofSeq
-                let exclusionsOf (messages : ResizeArray<TableAndElementRotationMsg>) : (ExperimentId * MappedPointNumber * ControlCaption) list =
-                    messages |> Seq.choose (function ExcludePoint (id, point, reason) -> Some (id, point, reason) | _ -> None) |> List.ofSeq
-                let inclusionsOf (messages : ResizeArray<TableAndElementRotationMsg>) : (ExperimentId * MappedPointNumber) list =
-                    messages |> Seq.choose (function IncludePoint (id, point) -> Some (id, point) | _ -> None) |> List.ofSeq
+                let excludedOf (messages : ResizeArray<TableAndElementRotationMsg>) : MappedPointNumber list =
+                    messages |> Seq.choose (function DraftExcludePoint point -> Some point | _ -> None) |> List.ofSeq
+                let includedOf (messages : ResizeArray<TableAndElementRotationMsg>) : MappedPointNumber list =
+                    messages |> Seq.choose (function DraftIncludePoint point -> Some point | _ -> None) |> List.ofSeq
                 let strayLight = ControlCaption "stray light"
                 withRecordingWindow reviewed (fun window messages ->
-                    // The field commits its text on Enter and on losing focus; a commit is idempotent, so what it sends is
-                    // held to, not how often the key's routed event delivers it.
                     let field = Assert.IsType<TextBox>(UiDriver.ById.findControl window ConstructorUiId.dataExclusionReasonField)
                     field.Text <- strayLight.value
-                    field.RaiseEvent(KeyEventArgs(RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter))
+                    Dispatcher.UIThread.RunJobs()
                     Assert.Equal<ControlCaption list>([ strayLight ], reasonsOf messages |> List.distinct)
-                    messages.Clear()
-                    field.RaiseEvent(FocusChangedEventArgs(InputElement.LostFocusEvent))
-                    Assert.Equal<ControlCaption list>([ strayLight ], reasonsOf messages |> List.distinct)
-                    messages.Clear()
-
-                    // Spec 0050 S4.3, S9.3: a pressed verb does not blur the field, so Exclude commits the reason it holds.
                     UiDriver.ById.clickOn window (ConstructorUiId.dataExcludePointButton (MappedPointNumber 3))
-                    Assert.Equal<(ExperimentId * MappedPointNumber * ControlCaption) list>(
-                        [ ExperimentId 1, MappedPointNumber 3, strayLight ],
-                        exclusionsOf messages)
-                    Assert.Equal<ControlCaption list>([ strayLight ], reasonsOf messages)
-                    Assert.Empty(inclusionsOf messages)
-                    messages.Clear()
-
+                    Assert.Equal<MappedPointNumber list>([ MappedPointNumber 3 ], excludedOf messages)
                     UiDriver.ById.clickOn window (ConstructorUiId.dataIncludePointButton (MappedPointNumber 2))
-                    Assert.Equal<(ExperimentId * MappedPointNumber) list>([ ExperimentId 1, MappedPointNumber 2 ], inclusionsOf messages)
-                    Assert.Empty(exclusionsOf messages))
+                    Assert.Equal<MappedPointNumber list>([ MappedPointNumber 2 ], includedOf messages))
+                let before = reviewed.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess
+                let drafted =
+                    reviewed
+                    |> updateTableAndElementRotation (SetExclusionReason strayLight)
+                    |> updateTableAndElementRotation (DraftExcludePoint (MappedPointNumber 3))
+                    |> updateTableAndElementRotation (DraftIncludePoint (MappedPointNumber 2))
+                let draftedPoints =
+                    drafted.dataEditOpt |> Option.map (fun edit -> edit.exclusions |> List.map (fun exclusion -> exclusion.point, exclusion.reason.value))
+                Assert.Equal(Some [ MappedPointNumber 3, strayLight.value ], draftedPoints)
+                Assert.Equal<Experiment list>(before, reviewed.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess)
+                let saved = drafted |> updateTableAndElementRotation CommitPageDraft
+                Assert.Equal<PageMode>(BrowsingPage, saved.pageMode)
+                let held = saved.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = ExperimentId 1)
+                Assert.Equal(
+                    Some [ MappedPointNumber 3, strayLight.value ],
+                    held.dataOpt |> Option.map (fun data -> data.exclusions |> List.map (fun exclusion -> exclusion.point, exclusion.reason.value)))
 
-                // Spec 0050 S9.3: while the kit takes no writes, Exclude and Include are disabled and Review stays offered.
+                // Spec 0050 S9.3: while the kit takes no writes, the data offers no Edit, and its entry stays offered.
                 let readOnly =
                     {
-                        reviewed with kit = { reviewed.kit with access = ReadOnlyKitAccess }
+                        model with kit = { model.kit with access = ReadOnlyKitAccess }
                     }
+                    |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)
+                    |> updateTableAndElementRotation (ChooseDataExperiment (ExperimentId 1))
                 Assert.Equal<ControlAvailability>(ControlWithheld, readOnly.kitWrites)
-                withRecordingWindow readOnly (fun window messages ->
-                    let exclude = ConstructorUiId.dataExcludePointButton (MappedPointNumber 3)
-                    let includeBack = ConstructorUiId.dataIncludePointButton (MappedPointNumber 2)
-                    Assert.False((UiDriver.ById.findControl window exclude).IsEffectivelyEnabled, "Exclude must be disabled while the kit takes no writes")
-                    Assert.False((UiDriver.ById.findControl window includeBack).IsEffectivelyEnabled, "Include must be disabled while the kit takes no writes")
+                withRecordingWindow readOnly (fun window _ ->
+                    UiDriver.ById.assertAbsent window ConstructorUiId.pageEditButton
+                    UiDriver.ById.assertAbsent window (ConstructorUiId.dataExcludePointButton (MappedPointNumber 3))
                     Assert.True(
-                        (UiDriver.ById.findControl window (ConstructorUiId.dataReviewButton (ExperimentId 1))).IsEffectivelyEnabled,
-                        "Review must stay offered over a read-only kit")
-                    UiDriver.ById.clickOn window exclude
-                    UiDriver.ById.clickOn window includeBack
-                    Assert.Empty(exclusionsOf messages)
-                    Assert.Empty(inclusionsOf messages))))
+                        (UiDriver.ById.findControl window (ConstructorUiId.experimentMatrixEntry (ExperimentId 1))).IsEffectivelyEnabled,
+                        "the matrix entry must stay offered over a read-only kit"))))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``pressing Review shows the experiment's points and their chart`` () : unit =
+    let ``pressing a matrix entry shows the experiment's data and its points' chart`` () : unit =
         HeadlessSession.run (fun () ->
             withReviewModel (fun model ->
-                withDataStepWindow model (fun window answered ->
+                withDataStepWindow (model |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)) (fun window answered ->
                     UiDriver.ById.assertAbsent window ConstructorUiId.dataReviewPanel
                     UiDriver.ById.assertAbsent window ConstructorUiId.dataPointsChart
 
-                    UiDriver.ById.clickOn window (ConstructorUiId.dataReviewButton (ExperimentId 1))
+                    UiDriver.ById.clickOn window (ConstructorUiId.experimentMatrixEntry (ExperimentId 1))
 
                     let expected : ReviewedData =
                         {
@@ -929,143 +968,51 @@ module DataStepTests =
                     Assert.Equal<ReviewedData option>(Some expected, (SlotBarTests.latestOf model answered).reviewedDataOpt)
                     Assert.True((UiDriver.ById.findControl window ConstructorUiId.dataReviewPanel).IsEffectivelyVisible, "the review panel must show")
                     Assert.True((UiDriver.ById.findControl window ConstructorUiId.dataPointsChart).IsEffectivelyVisible, "the points chart must show")
-                    Assert.Equal<string list>([ "DataPoint_1"; "DataPoint_2"; "DataPoint_3" ], idsUnder window ConstructorUiId.dataReviewPanel "DataPoint_"))))
+                    // Browsing reads the points as one line; their rows are the Edit's.
+                    Assert.Contains("3 point(s), 1 excluded: #2 (beam blocked)", textsUnder window ConstructorUiId.dataReviewPanel)
+                    Assert.Empty(idsUnder window ConstructorUiId.dataReviewPanel "DataPoint_"))))
 
     [<Fact>]
-    let ``the correction panel offers every other setup of the kit and lists the audit trail`` () : unit =
+    let ``an experiment's Edit offers every other setup of the kit, and Save re-points it with the typed audit note`` () : unit =
+        // Spec 0051 `.manual/007` 6.3, `006-5a`: the re-point left the Data page for the experiment's own Edit; the audit
+        // trail shows in its details, one line per correction, oldest first (spec 0050 S9.3).
         HeadlessSession.run (fun () ->
             withCorrectionModel (fun reviewed ->
                 let choiceOf (setup : Setup) : ConstructorUiId = ConstructorUiId.dataCorrectSetupChoice setup.name
-                let setupLine = "Setup: 'Setup 1' revision 1"
                 let trailLine = "'Setup 0' revision 1 → 'Setup 1' revision 1: LP1 was at 30"
-                withDataStepWindow reviewed (fun window _ ->
-                    let panelTexts = textsUnder window ConstructorUiId.dataReviewPanel
-                    Assert.Contains(setupLine, panelTexts)
-                    Assert.Contains("Audit note:", panelTexts)
-                    let field = Assert.IsType<TextBox>(UiDriver.ById.findControl window ConstructorUiId.dataCorrectionNoteField)
-                    Assert.Equal("", string field.Text)
-
-                    // One choice, Bench B's, offered over a read-write kit: E1's own setup is not offered.
-                    Assert.Equal<string list>([ "DataCorrectSetup_Bench B" ], idsUnder window ConstructorUiId.dataReviewPanel "DataCorrectSetup_")
+                let lrNote = "LR was at -45"
+                // The re-point resolves the setup in the kit, so its items and both setups are written into it, as the
+                // matrix kit writes them.
+                for item in benchItems do
+                    reviewed.kit.proxy.writeItem item |> SceneTestFixture.kitSuccess
+                for setup in [ setup1; benchB ] do
+                    reviewed.kit.proxy.writeSetup setup |> SceneTestFixture.kitSuccess
+                let chosen =
+                    { reviewed with kitItems = benchItems }
+                    |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+                    |> updateTableAndElementRotation (ChooseExperiment (ExperimentId 1))
+                withExperimentsPageWindow chosen (fun window answered ->
+                    Assert.Equal<string list>([ "Setup corrections:"; trailLine ], textsUnder window ConstructorUiId.dataCorrectionTrail)
+                    UiDriver.ById.assertAbsent window (choiceOf benchB)
+                    UiDriver.ById.clickOn window ConstructorUiId.pageEditButton
+                    // One choice, Bench B's: E1's own setup is not offered.
+                    Assert.Equal<string list>([ "DataCorrectSetup_Bench B" ], idsUnder window ConstructorUiId.experimentsPagePanel "DataCorrectSetup_")
                     Assert.Equal("Re-point to 'Bench B' revision 1", UiDriver.ById.captionOf window (choiceOf benchB))
                     UiDriver.ById.assertAbsent window (choiceOf setup1)
-                    let choice = UiDriver.ById.findControl window (choiceOf benchB)
-                    Assert.True(choice.IsEffectivelyEnabled, "the re-point must be offered over a read-write kit")
-
-                    // The trail's one line, oldest first.
-                    Assert.Equal<string list>([ trailLine ], textsUnder window ConstructorUiId.dataCorrectionTrail)
-
-                    // The block closes the panel, under the last point: the setup, the note, the choice, then the trail.
-                    let lineOf (text : string) : Control =
-                        (UiDriver.ById.findControl window ConstructorUiId.dataReviewPanel).GetVisualDescendants()
-                        |> Seq.choose (function :? TextBlock as block when block.Text = text -> Some (block :> Control) | _ -> None)
-                        |> Seq.exactlyOne
-                    let tops =
-                        [
-                            UiDriver.ById.findControl window (ConstructorUiId.dataPointRow (MappedPointNumber 3))
-                            lineOf setupLine
-                            field :> Control
-                            choice
-                            UiDriver.ById.findControl window ConstructorUiId.dataCorrectionTrail
-                        ]
-                        |> List.map (fun control -> (SlotBarTests.topLeftOf window control).Y)
-                    Assert.Equal<float list>(List.sort tops, tops)
-                    Assert.Equal(5, tops |> List.distinct |> List.length))
-
-                // Spec 0050 S9.3: an experiment never corrected has no trail, and every setup of the kit but its own is offered.
-                let uncorrected =
-                    {
-                        reviewed with
-                            experimentCollection =
-                                {
-                                    reviewed.experimentCollection with
-                                        experiments = reviewed.experimentCollection.experiments |> List.map (fun held -> { held with corrections = [] })
-                                }
-                            kitSetups = [ darkSetup; setup1; benchB ]
-                    }
-                withDataStepWindow uncorrected (fun window _ ->
-                    Assert.Contains(setupLine, textsUnder window ConstructorUiId.dataReviewPanel)
-                    UiDriver.ById.assertAbsent window ConstructorUiId.dataCorrectionTrail
-                    Assert.Equal<string list>(
-                        [ "DataCorrectSetup_Dark"; "DataCorrectSetup_Bench B" ],
-                        idsUnder window ConstructorUiId.dataReviewPanel "DataCorrectSetup_")
-                    Assert.Equal("Re-point to 'Dark' revision 1", UiDriver.ById.captionOf window (choiceOf darkSetup)))
-
-                // Corrected again to Bench B: the trail reads oldest first, and Setup 1 is now offered instead.
-                let toBenchB : SetupCorrection =
-                    {
-                        previous = setup1.reference
-                        corrected = benchB.reference
-                        note = CorrectionNote "LR was at -45"
-                    }
-                let twice =
-                    {
-                        reviewed with
-                            experimentCollection =
-                                {
-                                    reviewed.experimentCollection with
-                                        experiments =
-                                            reviewed.experimentCollection.experiments
-                                            |> List.map (fun held ->
-                                                {
-                                                    held with
-                                                        setup = benchB.reference
-                                                        corrections = [ lp1Correction; toBenchB ]
-                                                })
-                                }
-                    }
-                withDataStepWindow twice (fun window _ ->
-                    Assert.Contains("Setup: 'Bench B' revision 1", textsUnder window ConstructorUiId.dataReviewPanel)
-                    Assert.Equal<string list>(
-                        [ trailLine; "'Setup 1' revision 1 → 'Bench B' revision 1: LR was at -45" ],
-                        textsUnder window ConstructorUiId.dataCorrectionTrail)
-                    Assert.Equal<string list>([ "DataCorrectSetup_Setup 1" ], idsUnder window ConstructorUiId.dataReviewPanel "DataCorrectSetup_"))))
-
-    [<Fact>]
-    let ``pressing a setup sends CorrectSetup with the typed audit note`` () : unit =
-        HeadlessSession.run (fun () ->
-            withCorrectionModel (fun reviewed ->
-                let notesOf (messages : ResizeArray<TableAndElementRotationMsg>) : ControlCaption list =
-                    messages |> Seq.choose (function SetCorrectionNote note -> Some note | _ -> None) |> List.ofSeq
-                let correctionsOf (messages : ResizeArray<TableAndElementRotationMsg>) : (ExperimentId * SetupReference * ControlCaption) list =
-                    messages |> Seq.choose (function CorrectSetup (id, reference, note) -> Some (id, reference, note) | _ -> None) |> List.ofSeq
-                let lrNote = ControlCaption "LR was at -45"
-                let choice = ConstructorUiId.dataCorrectSetupChoice benchB.name
-                withRecordingWindow reviewed (fun window messages ->
-                    // The note commits on Enter and on losing focus; a commit is idempotent (step 325's reason field).
                     let field = Assert.IsType<TextBox>(UiDriver.ById.findControl window ConstructorUiId.dataCorrectionNoteField)
-                    field.Text <- lrNote.value
+                    field.Text <- lrNote
                     field.RaiseEvent(KeyEventArgs(RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter))
-                    Assert.Equal<ControlCaption list>([ lrNote ], notesOf messages |> List.distinct)
-                    messages.Clear()
-                    field.RaiseEvent(FocusChangedEventArgs(InputElement.LostFocusEvent))
-                    Assert.Equal<ControlCaption list>([ lrNote ], notesOf messages |> List.distinct)
-                    messages.Clear()
-
-                    // Spec 0050 S4.3, S9.3: the recording dispatch keeps the draft blank, so the note sent is the field's
-                    // live text, and not the reason field's.
-                    let reasonField = Assert.IsType<TextBox>(UiDriver.ById.findControl window ConstructorUiId.dataExclusionReasonField)
-                    reasonField.Text <- "stray light"
-                    UiDriver.ById.clickOn window choice
-                    Assert.Equal<(ExperimentId * SetupReference * ControlCaption) list>(
-                        [ ExperimentId 1, benchB.reference, lrNote ],
-                        correctionsOf messages)
-                    Assert.Equal<ControlCaption list>([ lrNote ], notesOf messages)
-                    Assert.Empty(messages |> Seq.filter (function SetExclusionReason _ | ExcludePoint _ -> true | _ -> false)))
-
-                // Spec 0050 S9.3: while the kit takes no writes, the re-point is disabled and sends nothing.
-                let readOnly =
-                    {
-                        reviewed with kit = { reviewed.kit with access = ReadOnlyKitAccess }
-                    }
-                Assert.Equal<ControlAvailability>(ControlWithheld, readOnly.kitWrites)
-                withRecordingWindow readOnly (fun window messages ->
-                    Assert.False((UiDriver.ById.findControl window choice).IsEffectivelyEnabled, "the re-point must be disabled while the kit takes no writes")
-                    Assert.Equal("Re-point to 'Bench B' revision 1", UiDriver.ById.captionOf window choice)
-                    let field = Assert.IsType<TextBox>(UiDriver.ById.findControl window ConstructorUiId.dataCorrectionNoteField)
-                    field.Text <- lrNote.value
-                    UiDriver.ById.clickOn window choice
-                    Assert.Empty(correctionsOf messages))))
+                    UiDriver.ById.clickOn window (choiceOf benchB)
+                    let held = SlotBarTests.latestOf chosen answered
+                    Assert.Equal(Some benchB.reference, held.experimentEditOpt |> Option.bind (fun edit -> edit.repointOpt))
+                    // Nothing is written until Save.
+                    Assert.Equal<SetupReference>(setup1.reference, (held.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = ExperimentId 1)).setup)
+                    UiDriver.ById.clickOn window ConstructorUiId.pageSaveButton
+                    let saved = SlotBarTests.latestOf chosen answered
+                    let e1 = saved.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = ExperimentId 1)
+                    let told = saved.kitStatusCaption |> Option.map (fun status -> status.value) |> Option.defaultValue "no status"
+                    Assert.True((e1.setup = benchB.reference), $"E1 must be re-pointed to Bench B at Save; the page says: {told}")
+                    Assert.Equal<string list>([ "LP1 was at 30"; lrNote ], e1.corrections |> List.map (fun correction -> correction.note.value)))))
 
     [<Fact>]
     let ``the matrix shows each experiment in its row and column with its data badge, and lists the unplaced ones`` () : unit =
@@ -1080,41 +1027,36 @@ module DataStepTests =
         Assert.Equal("—", ({ analyzers = [] } : MatrixColumnKey).caption.value)
 
         let entryOf (id : ExperimentId) : ConstructorUiId = ConstructorUiId.experimentMatrixEntry id
-        let assertInCell (row : int) (column : int) (control : Control) : unit =
-            Assert.Equal(row, Grid.GetRow control)
-            Assert.Equal(column, Grid.GetColumn control)
-        let setup1Row = "CPL1 · LP1@0°"
-        let benchBRow = "CPL1 · LP1@30°"
         HeadlessSession.run (fun () ->
             withMatrixKit (fun kit ->
                 withDataStepWindow kit.loaded (fun window _ ->
-                    // The step opens on the matrix, above the data files.
+                    // Spec 0051 `.manual/007` 7.2, D4: a table with gridlines, one column per Prep slot and per object
+                    // slot, then one per analyzer combination holding the experiments measured there.
                     let panelTexts = textsUnder window ConstructorUiId.dataStepPanel
-                    Assert.Equal("Experiment matrix:", List.head panelTexts)
-                    let grid = Assert.IsType<Grid>(UiDriver.ById.findControl window ConstructorUiId.experimentMatrix)
-                    let gridBottom = (SlotBarTests.topLeftOf window grid).Y + grid.Bounds.Height
-                    let filesTop = (SlotBarTests.topLeftOf window (UiDriver.ById.findControl window (ConstructorUiId.dataFileStatus (ExperimentId 1)))).Y
-                    Assert.True(gridBottom <= filesTop, $"the matrix's bottom {gridBottom} must be above the data files' {filesTop}")
-
-                    // The analyzer column's caption, then each row's caption and its experiment, its badge after its name.
-                    Assert.Equal<string list>(
-                        [ "CPL2"; setup1Row; "E1 · no data"; benchBRow; "E2 · no data" ],
-                        textsUnder window ConstructorUiId.experimentMatrix)
-                    let captionOf (text : string) : Control =
-                        grid.Children |> Seq.find (function :? TextBlock as caption -> caption.Text = text | _ -> false)
-                    assertInCell 0 1 (captionOf "CPL2")
-                    assertInCell 1 0 (captionOf setup1Row)
-                    assertInCell 2 0 (captionOf benchBRow)
-                    let cellOf (id : ExperimentId) : Control = Assert.IsType<StackPanel>((UiDriver.ById.findControl window (entryOf id)).Parent)
-                    assertInCell 1 1 (cellOf (ExperimentId 1))
-                    assertInCell 2 1 (cellOf (ExperimentId 2))
-                    // Nothing is reviewed, so no entry is on the positive fill.
+                    let grid = UiDriver.gridIn (UiDriver.ById.findControl window ConstructorUiId.experimentMatrix)
+                    let cellAt (row : int) (column : int) : Control =
+                        grid.Children |> Seq.find (fun cell -> Grid.GetRow cell = row && Grid.GetColumn cell = column)
+                    Assert.Equal<string list>([ "Prep 1"; "Obj 1"; "Analyzer: CPL2" ], [ for column in 0 .. 2 -> UiDriver.cellTextOf (cellAt 0 column) ])
+                    Assert.Equal("CPL1", UiDriver.cellTextOf (cellAt 1 0))
+                    Assert.StartsWith("LP1 @ ", UiDriver.cellTextOf (cellAt 1 1))
+                    Assert.Equal("CPL1", UiDriver.cellTextOf (cellAt 2 0))
+                    Assert.StartsWith("LP1 @ ", UiDriver.cellTextOf (cellAt 2 1))
+                    // Each experiment's entry sits in its row's analyzer cell, its badge after its name; one with no
+                    // data begins with ⚠.
+                    let cellOf (id : ExperimentId) : Control =
+                        (UiDriver.ById.findControl window (entryOf id)).GetVisualAncestors()
+                        |> Seq.choose (function :? Control as control when grid.Children.Contains control -> Some control | _ -> None)
+                        |> Seq.head
+                    Assert.Same(cellAt 1 2, cellOf (ExperimentId 1))
+                    Assert.Same(cellAt 2 2, cellOf (ExperimentId 2))
+                    Assert.Equal("⚠ E1 · no data", UiDriver.ById.captionOf window (entryOf (ExperimentId 1)))
+                    Assert.Equal("⚠ E2 · no data", UiDriver.ById.captionOf window (entryOf (ExperimentId 2)))
+                    // Nothing is reviewed, so no entry is chosen.
                     for id in [ ExperimentId 1; ExperimentId 2 ] do
-                        Assert.NotEqual(PositiveCommand.fill, fillOf window (entryOf id))
-
-                    // E3's setup is not in the kit: it has no entry and is named apart.
-                    UiDriver.ById.assertAbsent window (entryOf (ExperimentId 3))
-                    Assert.Contains("Not in the matrix (setup missing): E3", panelTexts))
+                        Assert.False(UiDriver.ById.isChosen window (entryOf id), $"{(entryOf id).value} must not be chosen")
+                    // E3's setup is not in the kit: its entry follows the matrix, named apart.
+                    Assert.Contains("Not in the matrix, as the kit lacks their setup:", panelTexts)
+                    Assert.Equal("⚠ E3 · no data", UiDriver.ById.captionOf window (entryOf (ExperimentId 3))))
 
                 // Attached through the mock, E1's data is validated: its entry reads the new badge, and E2's is unchanged.
                 let attached =
@@ -1124,9 +1066,9 @@ module DataStepTests =
                 | None -> ()
                 withDataStepWindow attached (fun window _ ->
                     Assert.Equal("E1 · validated (3 points)", UiDriver.ById.captionOf window (entryOf (ExperimentId 1)))
-                    Assert.Equal("E2 · no data", UiDriver.ById.captionOf window (entryOf (ExperimentId 2))))
+                    Assert.Equal("⚠ E2 · no data", UiDriver.ById.captionOf window (entryOf (ExperimentId 2))))
 
-                // With no experiment, the matrix gives way to its placeholder.
+                // With no experiment, the matrix gives way to where experiments are made.
                 let empty =
                     {
                         kit.loaded with experimentCollection = { kit.loaded.experimentCollection with experiments = [] }
@@ -1134,7 +1076,7 @@ module DataStepTests =
                 withDataStepWindow empty (fun window _ ->
                     UiDriver.ById.assertAbsent window ConstructorUiId.experimentMatrix
                     let texts = textsUnder window ConstructorUiId.dataStepPanel
-                    Assert.Equal<string list>([ "Experiment matrix:"; "(no experiments yet)" ], List.truncate 2 texts)
+                    Assert.Contains("This kit has no experiment yet: make them on the Experiments page.", texts)
                     Assert.DoesNotContain(texts, fun text -> text.StartsWith "Not in the matrix"))))
 
     [<Fact>]
@@ -1142,7 +1084,7 @@ module DataStepTests =
     let ``pressing a matrix entry reviews that experiment`` () : unit =
         HeadlessSession.run (fun () ->
             withMatrixKit (fun kit ->
-                withDataStepWindow kit.loaded (fun window answered ->
+                withDataStepWindow (kit.loaded |> updateTableAndElementRotation (ShowFlowStep DataFlowStep)) (fun window answered ->
                     UiDriver.ById.assertAbsent window ConstructorUiId.dataReviewPanel
 
                     UiDriver.ById.clickOn window (ConstructorUiId.experimentMatrixEntry (ExperimentId 2))
@@ -1151,6 +1093,6 @@ module DataStepTests =
                     | Some reviewed -> Assert.Equal<ExperimentId>(ExperimentId 2, reviewed.experimentId)
                     | None -> Assert.Fail "Pressing E2's entry must review E2"
                     Assert.True((UiDriver.ById.findControl window ConstructorUiId.dataReviewPanel).IsEffectivelyVisible, "the review panel must show")
-                    Assert.Equal("Points of E2 — no data", List.head (textsUnder window ConstructorUiId.dataReviewPanel))
+                    Assert.Equal("E2 [Science]", List.head (textsUnder window ConstructorUiId.dataReviewPanel))
                     Assert.Equal(PositiveCommand.fill, fillOf window (ConstructorUiId.experimentMatrixEntry (ExperimentId 2)))
                     Assert.NotEqual(PositiveCommand.fill, fillOf window (ConstructorUiId.experimentMatrixEntry (ExperimentId 1))))))

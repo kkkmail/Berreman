@@ -174,8 +174,6 @@ module AppConfigTests =
 
         Assert.Equal<Result<KitHistoryLimit, string>>(Error notPositive, KitHistoryLimit.tryCreate zero)
         Assert.Equal<Result<KitHistoryLimit, string>>(Error notWhole, KitHistoryLimit.tryCreate ten)
-        Assert.Equal<Result<QuickPickThreshold, string>>(Error notPositive, QuickPickThreshold.tryCreate zero)
-        Assert.Equal<Result<QuickPickThreshold, string>>(Error notWhole, QuickPickThreshold.tryCreate ten)
         Assert.Equal<Result<TreeAutoBuildThreshold, string>>(Error notPositive, TreeAutoBuildThreshold.tryCreate zero)
         Assert.Equal<Result<TreeAutoBuildThreshold, string>>(Error notWhole, TreeAutoBuildThreshold.tryCreate ten)
         Assert.Equal<Result<ThicknessBucketCap, string>>(Error notPositive, ThicknessBucketCap.tryCreate zero)

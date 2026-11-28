@@ -401,42 +401,7 @@ module MainSceneMsgTests =
         for e in m.elements do
             Assert.True(close e.zoom.value defaultElementZoom.value, "no element draw zoom changed")
 
-    // ==================== the confirm-gated Library bind ====================
-
-    [<Fact>]
-    let ``RequestBindValueId (ElementValueId sets) the pending entry for a selected element without binding`` () =
-        let m = updateTableAndElementRotation (RequestBindValueId (ElementValueId "lens-a")) (withSample ())
-        Assert.Equal(Some (ElementValueId "lens-a"), m.pendingEntry)
-        Assert.Equal(None, (elem 2 m).placement.valueId)
-
-    [<Fact>]
-    let ``RequestBindValueId (ElementValueId is) inert while the table is selected`` () =
-        let m = SceneTestFixture.mainScene ()   // table selected
-        Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation (RequestBindValueId (ElementValueId "lens-a")) m)
-
-    [<Fact>]
-    let ``ConfirmBindValueId commits the pending entry and clears it`` () =
-        let m = withSample () |> updateTableAndElementRotation (RequestBindValueId (ElementValueId "lens-a")) |> updateTableAndElementRotation ConfirmBindValueId
-        Assert.Equal(Some (ElementValueId "lens-a"), (elem 2 m).placement.valueId)
-        Assert.Equal(None, m.pendingEntry)
-
-    [<Fact>]
-    let ``ConfirmBindValueId without a pending entry binds nothing`` () =
-        let m = updateTableAndElementRotation ConfirmBindValueId (withSample ())
-        Assert.Equal(None, (elem 2 m).placement.valueId)
-        Assert.Equal(None, m.pendingEntry)
-
-    [<Fact>]
-    let ``CancelBindValueId clears the pending entry without binding`` () =
-        let m = withSample () |> updateTableAndElementRotation (RequestBindValueId (ElementValueId "lens-a")) |> updateTableAndElementRotation CancelBindValueId
-        Assert.Equal(None, m.pendingEntry)
-        Assert.Equal(None, (elem 2 m).placement.valueId)
-
-    [<Fact>]
-    let ``a selection change clears the pending entry`` () =
-        let m = withSample () |> updateTableAndElementRotation (RequestBindValueId (ElementValueId "lens-a")) |> clickAt offPlate
-        Assert.Equal(NothingSelected, m.selection)
-        Assert.Equal(None, m.pendingEntry)
+    // ==================== the direct Library bind ====================
 
     [<Fact>]
     let ``BindValueId (ElementValueId binds) a selected element directly and is inert for the table`` () =
@@ -444,6 +409,14 @@ module MainSceneMsgTests =
         Assert.Equal(Some (ElementValueId "detector-b"), (elem 2 bound).placement.valueId)
         let tableSel = SceneTestFixture.mainScene ()
         Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId (ElementValueId "detector-b")) tableSel)
+        let nothingSel = { SceneTestFixture.mainScene () with selection = NothingSelected }
+        Assert.Equal<TableAndElementRotationModel>(nothingSel, updateTableAndElementRotation (BindValueId (ElementValueId "detector-b")) nothingSel)
+
+    [<Fact>]
+    let ``binding then rebinding overwrites the valueId`` () =
+        let first = updateTableAndElementRotation (BindValueId (ElementValueId "lens-a")) (withSample ())
+        let second = updateTableAndElementRotation (BindValueId (ElementValueId "detector-b")) first
+        Assert.Equal(Some (ElementValueId "detector-b"), (elem 2 second).placement.valueId)
 
     // ========================= pointer drag threshold =========================
 
@@ -494,13 +467,7 @@ module MainSceneMsgTests =
     // windows: the Materials bay's twins live in `MaterialsWindowTests` (spec 0038 step 013)
     // and the Library (samples) bay's in `LibraryWindowTests` (spec 0038 step 015).
 
-    // ============== step 016 — the targeted Select bind + staleness rules (pure) ==============
-
-    /// A recording Select-session handle: `cancelAndClose` tags each invocation (the real one
-    /// closes the Select-state window, whose dismissal hook fires the session's onCancelled).
-    let private recordingSession (target : ElementId) : ResizeArray<string> * SelectSession =
-        let cancels = ResizeArray<string>()
-        cancels, { target = target; cancelAndClose = fun () -> cancels.Add "cancel-and-close" }
+    // ============== step 016 — the targeted bind (pure) ==============
 
     [<Fact>]
     let ``BindValueIdTo commits to the element WITH THAT ID — regardless of the current selection`` () =
@@ -511,117 +478,17 @@ module MainSceneMsgTests =
         let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) m
         Assert.Equal(Some PresetIds.detectorIntensity, (elem 1 bound).placement.valueId)
         Assert.Equal<ElementValueId option>(None, (elem 0 bound).placement.valueId)
-        Assert.Equal<ControlCaption option>(None, bound.selectStatus)
-        Assert.Equal<ElementValueId option>(None, bound.pendingEntry)
-        Assert.Equal<SelectSession option>(None, bound.activeSelect)
 
     [<Fact>]
-    let ``BindValueIdTo on a vanished element is a NO-OP plus the status line — never a throw`` () =
+    let ``BindValueIdTo on a vanished element is a no-op, never a throw`` () =
         let m = SceneTestFixture.mainScene ()
-        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "not-on-the-table", PresetIds.detectorIntensity)) m
-        // Nothing changed but the status line.
-        Assert.Equal<Setups.SetupSlot list>(m.elements, vanished.elements)
-        match vanished.selectStatus with
-        | Some text -> Assert.Contains("no longer on the table", text.value)
-        | None -> Assert.Fail "the vanished target must surface the status line"
-        // The next SUCCESSFUL targeted bind clears it; so does a selection change.
-        let recovered = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) vanished
-        Assert.Equal<ControlCaption option>(None, recovered.selectStatus)
-        Assert.Equal<ControlCaption option>(None, (clickAt offPlate vanished).selectStatus)
+        Assert.Equal<TableAndElementRotationModel>(m, updateTableAndElementRotation (BindValueIdTo (ElementId "not-on-the-table", PresetIds.detectorIntensity)) m)
 
     [<Fact>]
-    let ``a changed table selection cancels and closes the active Select session — an unchanged one does not`` () =
-        let cancels, session = recordingSession (ElementId "det")
-        let m = { withSample () with activeSelect = Some session }
-        // Element 2 is selected (withSample); an off-plate click CHANGES the selection → the
-        // session cancels and closes exactly once (the pending-bind-clears precedent).
-        let changed = clickAt offPlate m
-        Assert.Equal(NothingSelected, changed.selection)
-        Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
-        Assert.Equal<SelectSession option>(None, changed.activeSelect)
-        // An UNCHANGED selection (a second off-plate click) leaves a live session alone.
-        let cancels2, session2 = recordingSession (ElementId "det")
-        let unchanged = clickAt offPlate { changed with activeSelect = Some session2 }
-        Assert.Equal(NothingSelected, unchanged.selection)
-        Assert.Empty(cancels2)
-        Assert.Equal<SelectSession option>(Some session2, unchanged.activeSelect)
-
-    [<Fact>]
-    let ``an element ADD and the selected element's REMOVAL both cancel the active Select session`` () =
-        // AddElement selects the new element — a table-selection change (the staleness rule).
-        let cancels, session = recordingSession (ElementId "det")
-        let added = updateTableAndElementRotation (AddElement Lens) { SceneTestFixture.mainScene () with activeSelect = Some session }
-        Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
-        Assert.Equal<SelectSession option>(None, added.activeSelect)
-        // RemoveSelected makes the session's target disappear — cancel and close.
-        let cancels2, session2 = recordingSession (ElementId "det")
-        let armed = { SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 1); activeSelect = Some session2 }
-        let removed = updateTableAndElementRotation RemoveSelectedElement armed
-        Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
-        Assert.Equal<SelectSession option>(None, removed.activeSelect)
-        Assert.Equal(1, List.length removed.elements)
-        // An INERT remove (the table is selected) touches nothing — the session survives.
-        let cancels3, session3 = recordingSession (ElementId "det")
-        let inert = updateTableAndElementRotation RemoveSelectedElement { SceneTestFixture.mainScene () with activeSelect = Some session3 }
-        Assert.Empty(cancels3)
-        Assert.Equal<SelectSession option>(Some session3, inert.activeSelect)
-
-    // ========== step 017 — the Choose…/quick-pick Selector flow (pure) ==========
-
-    [<Fact>]
-    let ``the strip confirm and the direct bind CONVERGE on the targeted bind — one commit message`` () =
-        // The quick-pick confirm (`ConfirmBindValueId`) and the legacy direct bind
-        // (`BindValueId`) DELEGATE to the exact `BindValueIdTo` message a Select window's
-        // onSelected dispatches — the resulting models are structurally identical, so binding
-        // through the strip and through the Select window provably land the same commit arm.
-        let pending = withSample () |> updateTableAndElementRotation (RequestBindValueId (ElementValueId "lens-a"))
-        let viaTargeted = updateTableAndElementRotation (BindValueIdTo ((elem 2 pending).id, ElementValueId "lens-a")) pending
+    let ``the direct bind converges on the targeted bind — one commit message`` () =
+        // `BindValueId` delegates to `BindValueIdTo`: the resulting models are structurally identical.
+        let selected = withSample ()
+        let viaTargeted = updateTableAndElementRotation (BindValueIdTo ((elem 2 selected).id, ElementValueId "lens-a")) selected
         Assert.Equal(Some (ElementValueId "lens-a"), (elem 2 viaTargeted).placement.valueId)
-        Assert.Equal<TableAndElementRotationModel>(viaTargeted, updateTableAndElementRotation ConfirmBindValueId pending)
-        Assert.Equal<TableAndElementRotationModel>(viaTargeted, updateTableAndElementRotation (BindValueId (ElementValueId "lens-a")) pending)
+        Assert.Equal<TableAndElementRotationModel>(viaTargeted, updateTableAndElementRotation (BindValueId (ElementValueId "lens-a")) selected)
 
-    [<Fact>]
-    let ``the Select bay offers the quick-pick strip only BELOW the step-005 threshold`` () =
-        // The seeded detector kind has 2 entries < the default threshold 5 → the inline strip.
-        let detSelected = { SceneTestFixture.mainScene () with selection = ElementSelected (SceneElementIndex 1) }
-        Assert.Equal<SelectorOffer>(QuickPickAndChoose, detSelected.selectorOffer)
-        // The seeded Sample kind has 11 entries ≥ 5 → Choose… alone.
-        Assert.Equal<SelectorOffer>(ChooseAlone, (withSample ()).selectorOffer)
-        // AT the threshold is already Choose… alone (the gate is strictly-below).
-        let atThreshold = { detSelected with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 2 }
-        Assert.Equal<SelectorOffer>(ChooseAlone, atThreshold.selectorOffer)
-        // No element selected → nothing bindable, no offer.
-        Assert.Equal<SelectorOffer>(NoSelectorOffer, (SceneTestFixture.mainScene ()).selectorOffer)
-        Assert.Equal<SelectorOffer>(NoSelectorOffer, ({ SceneTestFixture.mainScene () with selection = NothingSelected }).selectorOffer)
-
-    [<Fact>]
-    let ``SelectSessionStarted stores the handle and SelectSessionEnded clears only that SAME session`` () =
-        let cancels, session = recordingSession (ElementId "det")
-        let started = updateTableAndElementRotation (SelectSessionStarted session) (SceneTestFixture.mainScene ())
-        Assert.Equal<SelectSession option>(Some session, started.activeSelect)
-        // A STALE session's end (superseded by a re-target) never clears the successor.
-        let _, stale = recordingSession (ElementId "det")
-        Assert.Equal<SelectSession option>(Some session, (updateTableAndElementRotation (SelectSessionEnded stale) started).activeSelect)
-        // The live session's own end clears the handle — WITHOUT re-closing the window (the
-        // window ended the session from its side; only the staleness rules close it).
-        let ended = updateTableAndElementRotation (SelectSessionEnded session) started
-        Assert.Equal<SelectSession option>(None, ended.activeSelect)
-        Assert.Empty(cancels)
-        // Ending an already-cleared session is a no-op.
-        Assert.Equal<TableAndElementRotationModel>(ended, updateTableAndElementRotation (SelectSessionEnded session) ended)
-
-    [<Fact>]
-    let ``a committed targeted bind cancels and CLOSES a still-open Choose session`` () =
-        // The quick-pick race: the strip commits while the Choose… Select window is still
-        // open — the bind ends the session AND closes its window (on the window path the
-        // window already closed itself; the extra Close is the safe no-op).
-        let cancels, session = recordingSession (ElementId "det")
-        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", PresetIds.detectorIntensity)) { SceneTestFixture.mainScene () with activeSelect = Some session }
-        Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
-        Assert.Equal<SelectSession option>(None, bound.activeSelect)
-        Assert.Equal(Some PresetIds.detectorIntensity, (elem 1 bound).placement.valueId)
-        // The vanished-target no-op still ends the session (the choice was made either way).
-        let cancels2, session2 = recordingSession (ElementId "gone")
-        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "gone", PresetIds.detectorIntensity)) { SceneTestFixture.mainScene () with activeSelect = Some session2 }
-        Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
-        Assert.Equal<SelectSession option>(None, vanished.activeSelect)

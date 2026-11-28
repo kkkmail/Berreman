@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "1fb57013f7a5680f6c9e10b9d037b228a54e9ea29605ef6031da025ebb8af4da",
+  "descriptionOpt": "A light source bound to a library source preset (SourcePresetBinding): the preset's wavelength and tuning, with the output polarization and intensity scale as its parameters.",
+  "id": "239b0cfb-9938-5f3b-a767-c4252ea671b6",
+  "name": "Light source (preset binding)",
+  "payload": {
+    "Case": "ItemModelPayload",
+    "Fields": [
+      "SourcePresetItemModel"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 7,
+    "version": 1
+  },
+  "version": 1
+}

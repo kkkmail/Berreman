@@ -486,7 +486,7 @@ module ExperimentCopyTests =
             }
         Assert.Equal<ExperimentCopyReport>(expected, report)
         let kitPaths =
-            [ ".kit-json"; ".oc"; ".oc/lock"; "Bench.setup-json"; "E1.experiment-json"; "Laser600.item-json"; "ML.item-json"; "data"; "data/raw"; "data/raw/run 1.csv"; "library" ]
+            [ ".optics-kit"; ".oc"; ".oc/lock"; "Bench.setup-json"; "E1.experiment-json"; "Laser600.item-json"; "ML.item-json"; "data"; "data/raw"; "data/raw/run 1.csv"; "library" ]
             |> List.map KitRelativePath
         let snapshotPaths = closure |> List.map (fun envelope -> envelope.snapshotPath)
         Assert.Equal<KitRelativePath list>(ordinal (kitPaths @ snapshotPaths), target.folder.paths ())

@@ -385,35 +385,6 @@ module Setups =
                 { this with content = ItemInSlot (item.id, DialTurn (sign.readingOf item.dialZeroAngle this.placement.r1)) }
             | None -> this
 
-    /// Where a swap lands: the held setup already holding the swapped content, or a new one (spec 0050 S8.2; 001 §J
-    /// "choosing one is either a new setup or an existing one").
-    type SetupSwap =
-        | SwitchToHeldSetup of Setup
-        | CreateSwappedSetup of Setup
-
-    type Setup with
-
-        /// The first held setup whose current slots hold, slot by slot in order, the kinds and content of `slots`, else a
-        /// new setup `fresh` at its first revision. It writes nothing; the host records (spec 0050 S8.2; 001 §P `SwapSlot`).
-        static member swapTarget (slots : SetupSlot list) (held : Setup list) (fresh : SetupName) : SetupSwap =
-            let contentOf (setupSlots : SetupSlot list) : (CatalogueKind * SlotContent) list =
-                setupSlots |> List.map (fun slot -> slot.placement.catalogueKind, slot.content)
-
-            let swapped = contentOf slots
-
-            match held |> List.tryFind (fun setup -> contentOf setup.slots = swapped) with
-            | Some setup -> SwitchToHeldSetup setup
-            | None ->
-                let created : Setup =
-                    {
-                        name = fresh
-                        revision = SetupRevision.first
-                        slots = slots
-                        history = []
-                    }
-
-                CreateSwappedSetup created
-
     type Setup with
 
         /// Pinned while an experiment references the current revision, so a changed table then mints the next by

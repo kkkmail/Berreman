@@ -109,8 +109,8 @@ module KitTests =
 
     [<Fact>]
     let ``the kit file is named by its extension alone`` () : unit =
-        let expectedExtension = FileExtension ".kit-json"
-        let expectedFileName = FileName ".kit-json"
+        let expectedExtension = FileExtension ".optics-kit"
+        let expectedFileName = FileName ".optics-kit"
         Assert.Equal<FileExtension>(expectedExtension, KitFile.extension)
         Assert.Equal<FileName>(expectedFileName, KitFile.fileName)
 
@@ -130,7 +130,7 @@ module KitTests =
             [
                 @"data\raw\run 1.csv", KitRelativePath "data/raw/run 1.csv"
                 "data/raw/run 1.csv", KitRelativePath "data/raw/run 1.csv"
-                ".kit-json", KitRelativePath ".kit-json"
+                ".optics-kit", KitRelativePath ".optics-kit"
                 @"data\raw/run 1.csv", KitRelativePath "data/raw/run 1.csv"
                 " data/Run 1.csv ", KitRelativePath " data/Run 1.csv "
                 "data/.hidden.csv", KitRelativePath "data/.hidden.csv"
@@ -179,9 +179,9 @@ module KitTests =
         Assert.Equal<FileName>(FileName "run 1.csv", run.leafName)
         Assert.Equal<KitPathRole>(KitContentPath, run.pathRole)
 
-        let kitJson = KitRelativePath ".kit-json"
+        let kitJson = KitRelativePath ".optics-kit"
         Assert.Equal<KitRelativePath option>(None, kitJson.parentOpt)
-        Assert.Equal<FileName>(FileName ".kit-json", kitJson.leafName)
+        Assert.Equal<FileName>(FileName ".optics-kit", kitJson.leafName)
 
         Assert.Equal<KitRelativePath>(KitRelativePath ".oc", KitRelativePath.appCacheFolder)
         Assert.Equal<KitPathRole>(KitAppCachePath, KitRelativePath.appCacheFolder.pathRole)

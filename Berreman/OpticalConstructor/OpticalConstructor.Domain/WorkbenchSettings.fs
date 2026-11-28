@@ -15,7 +15,6 @@ module WorkbenchSettings =
     /// offending raw value — never a throw). Each setting is a count or a cap, so
     /// zero and negative values are meaningless and rejected at the parse boundary.
     type WorkbenchSettingsError =
-        | NonPositiveQuickPickThresholdErr of value : int
         | NonPositiveTreeAutoBuildThresholdErr of value : int
         | NonPositiveThicknessBucketCapErr of value : int
         | NonPositiveKitHistoryLimitErr of value : int
@@ -43,19 +42,6 @@ module WorkbenchSettings =
             | false -> ModelessSelectWindows
 
         static member defaultValue : SelectWindowModality = ModelessSelectWindows
-
-    /// The bind-directly cutoff of the quick-pick flow (§9.5): a result set of at
-    /// most this many entries offers a direct pick instead of the full window.
-    /// Default 5.
-    type QuickPickThreshold =
-        | QuickPickThreshold of int
-
-        member this.value = let (QuickPickThreshold v) = this in v
-        static member defaultValue : QuickPickThreshold = QuickPickThreshold 5
-
-        static member tryCreate (v : int) : Result<QuickPickThreshold, WorkbenchSettingsError> =
-            if v > 0 then QuickPickThreshold v |> Ok
-            else NonPositiveQuickPickThresholdErr v |> Error
 
     /// The faceted-tree materialization gate (§7.6): the tree auto-builds only when
     /// the result count is at most this value; above it a Show/Search prompt gates
@@ -98,11 +84,10 @@ module WorkbenchSettings =
     /// The workbench settings record: every field an elevated type — no naked bool,
     /// no raw int. `defaults` is the single source of the built-in values (the
     /// composition root reads each key with its field of `defaults` as the default, so
-    /// 5 / 100 / 8 / modeless and the kit history limit's 100 appear exactly once, here).
+    /// 100 / 8 / modeless and the kit history limit's 100 appear exactly once, here).
     type WorkbenchSettings =
         {
             selectWindowModality : SelectWindowModality
-            quickPickThreshold : QuickPickThreshold
             treeAutoBuildThreshold : TreeAutoBuildThreshold
             thicknessBucketCap : ThicknessBucketCap
             kitHistoryLimit : KitHistoryLimit
@@ -111,7 +96,6 @@ module WorkbenchSettings =
         static member defaults : WorkbenchSettings =
             {
                 selectWindowModality = SelectWindowModality.defaultValue
-                quickPickThreshold = QuickPickThreshold.defaultValue
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
                 kitHistoryLimit = KitHistoryLimit.defaultValue

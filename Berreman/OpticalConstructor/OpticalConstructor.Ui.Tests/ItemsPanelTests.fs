@@ -77,6 +77,20 @@ module ItemsPanelTests =
 
     /// Shows `itemsPanelView` over `model` headless at 1000 × 700, as `ScrollExtentTests.constructorWindow` mounts a
     /// view, runs `check` over the window, then closes it.
+    /// `model` with the item `id` chosen: a press on it, unless it already is (a second press would close it, spec 0051
+    /// `.manual/007` 1.2).
+    let private chosenItem (id : ItemId) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        match model.selectedItemOpt with
+        | Some chosen when chosen = id -> model
+        | Some _
+        | None -> updateTableAndElementRotation (SelectKitItem id) model
+
+    /// `model` on the Items page with the item `id` chosen and in Edit (spec 0051 `.manual/007` 4.2).
+    let private inItemEdit (id : ItemId) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let editing = model |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep) |> chosenItem id |> updateTableAndElementRotation BeginPageEdit
+        Assert.Equal<PageMode>(EditingPageEntry, editing.pageMode)
+        editing
+
     let private withItemsPanel (model : TableAndElementRotationModel) (check : Window -> unit) : unit =
         let window = HostWindow()
         Program.mkSimple (fun () -> model) updateTableAndElementRotation itemsPanelView |> Program.withHost window |> Program.run
@@ -132,16 +146,17 @@ module ItemsPanelTests =
 
     /// The texts of the grid cells right of the parameter's name box, in column order.
     let private gridCellsOf (window : Window) (name : ParameterName) : string list =
-        let grid = Assert.IsType<Grid>(findControl window ConstructorUiId.itemParameterGrid)
-        let nameBox = findControl window (ConstructorUiId.itemParameterRow name)
+        let grid = UiDriver.gridIn (findControl window ConstructorUiId.itemParameterGrid)
         let row =
-            match nameBox.Parent with
-            | :? Control as cell -> Grid.GetRow cell
-            | _ -> failwith $"{name.value}'s box must sit in a grid cell"
+            grid.Children
+            |> Seq.filter (fun cell -> Grid.GetRow cell > 0 && Grid.GetColumn cell = 0 && UiDriver.cellTextOf cell = name.value)
+            |> Seq.map Grid.GetRow
+            |> Seq.tryHead
+            |> Option.defaultWith (fun () -> failwith $"{name.value} must have a row in the parameter grid")
         grid.Children
         |> Seq.filter (fun cell -> Grid.GetRow cell = row && Grid.GetColumn cell > 0)
         |> Seq.sortBy Grid.GetColumn
-        |> Seq.map (fun cell -> Assert.IsType<TextBlock>(cell).Text)
+        |> Seq.map UiDriver.cellTextOf
         |> List.ofSeq
 
     /// Writes `CPL1.jpg` into a new folder under the test run's output, outside every kit, and deletes it at the end.
@@ -159,11 +174,11 @@ module ItemsPanelTests =
             [
                 ConstructorUiId.itemsPanel, "ItemsPanel"
                 ConstructorUiId.kitItemList, "KitItemList"
-                ConstructorUiId.addItemButton, "AddItemButton"
+                ConstructorUiId.newItemButton, "NewItemButton"
                 ConstructorUiId.addItemOfferList, "AddItemOfferList"
+                ConstructorUiId.addItemChosenText, "AddItemChosenText"
+                ConstructorUiId.addItemChooseModelButton, "AddItemChooseModelButton"
                 ConstructorUiId.newItemLabelField, "NewItemLabelField"
-                ConstructorUiId.addItemConfirmButton, "AddItemConfirmButton"
-                ConstructorUiId.addItemCancelButton, "AddItemCancelButton"
                 ConstructorUiId.itemLabelField, "ItemLabelField"
                 ConstructorUiId.itemModelText, "ItemModelText"
                 ConstructorUiId.itemDialText, "ItemDialText"
@@ -261,7 +276,7 @@ module ItemsPanelTests =
                                 added.kitItems
                                 |> List.map (fun item -> if item.id = cpl1Id then item.withPhoto (Some (KitRelativePath path)) else item)
                     }
-                    |> update (SelectKitItem cpl1Id)
+                    |> chosenItem cpl1Id
                 withItemsPanel (photographed "data/CPL1.png") (fun window ->
                     let image = Assert.IsType<Image>(findControl window ConstructorUiId.itemPhotoImage)
                     Assert.NotNull(image.Source)
@@ -295,7 +310,7 @@ module ItemsPanelTests =
                     {
                         added with kitItems = added.kitItems |> List.map (fun item -> if item.id = cpl1Id then published else item)
                     }
-                    |> update (SelectKitItem cpl1Id)
+                    |> chosenItem cpl1Id
                 withItemsPanel model (fun window ->
                     let list = Assert.IsType<StackPanel>(findControl window ConstructorUiId.kitItemList)
                     Assert.Equal<string list>(
@@ -309,36 +324,36 @@ module ItemsPanelTests =
                     Assert.Equal(PositiveCommand.fill, fillOf (ConstructorUiId.kitItemRow cpl1Id))
                     Assert.NotEqual(PositiveCommand.fill, fillOf (ConstructorUiId.kitItemRow lp1Id))
 
-                    let label = Assert.IsType<TextBox>(findControl window ConstructorUiId.itemLabelField)
-                    Assert.Equal("CPL1", label.Text)
-                    Assert.True(label.IsEnabled, "a kit that takes writes offers the label")
+                    // Spec 0051 `.manual/007` 4.2: the details are read-only under the chosen item, with its Edit.
+                    Assert.Equal("Edit", captionOf window ConstructorUiId.pageEditButton)
                     Assert.Equal($"Model: {circularCaption}", textOf window ConstructorUiId.itemModelText)
                     Assert.Equal("Dial: On a dial, sign +1", textOf window ConstructorUiId.itemDialText)
-                    let notes = Assert.IsType<TextBox>(findControl window ConstructorUiId.itemNotesField)
-                    Assert.Equal("On the analyzer dial", notes.Text)
-                    Assert.True(notes.AcceptsReturn, "the notes take returns")
-                    Assert.True(notes.IsEnabled, "a kit that takes writes offers the notes")
+                    Assert.Equal("Notes: On the analyzer dial", textOf window ConstructorUiId.itemNotesText)
                     Assert.Equal("Photo: data/CPL1.jpg", textOf window ConstructorUiId.itemPhotoText)
-                    Assert.Equal("Choose photo…", captionOf window ConstructorUiId.itemChoosePhotoButton)
-                    Assert.Equal("Remove photo", captionOf window ConstructorUiId.itemRemovePhotoButton)
-                    assertAbsent window ConstructorUiId.addItemConfirmButton
+                    for absent in [ ConstructorUiId.itemLabelField; ConstructorUiId.itemNotesField; ConstructorUiId.itemChoosePhotoButton; ConstructorUiId.pageSaveButton ] do
+                        assertAbsent window absent
 
-                    let grid = Assert.IsType<Grid>(findControl window ConstructorUiId.itemParameterGrid)
+                    let grid = UiDriver.gridIn (findControl window ConstructorUiId.itemParameterGrid)
                     let parameterRows =
                         published.parameters |> List.map (fun parameter -> ConstructorUiId.itemParameterRow parameter.name)
                     Assert.Equal(5, parameterRows.Length)
+                    // Browsing shows the names as text; Edit makes each a button that opens its editor (spec 0051 `.manual/007` 4.2).
                     for id in parameterRows do
-                        Assert.Single(controlsUnder grid id) |> ignore
-                    Assert.Equal<string list>(
-                        [ "c1.extinctionRatio"; "c1.axisOffset"; "c2.retardance"; "c2.fastAxisOffset"; "dialZero" ],
-                        published.parameters |> List.map (fun parameter -> captionOf window (ConstructorUiId.itemParameterRow parameter.name)))
+                        Assert.Empty(controlsUnder grid id)
+                    let firstColumn =
+                        grid.Children
+                        |> Seq.filter (fun cell -> Grid.GetRow cell > 0 && Grid.GetColumn cell = 0)
+                        |> Seq.sortBy Grid.GetRow
+                        |> Seq.map UiDriver.cellTextOf
+                        |> List.ofSeq
+                    Assert.Equal<string list>([ "c1.extinctionRatio"; "c1.axisOffset"; "c2.retardance"; "c2.fastAxisOffset"; "dialZero" ], firstColumn)
                     Assert.Equal<string list>([ "Calibrated"; "0.01"; "—"; "0.002"; "Fit run QZ-LR@20261101T120000Z" ], gridCellsOf window fastAxisOffset)
                     Assert.Equal<string list>([ "Known"; "1.5708"; "—"; "—"; "Given" ], gridCellsOf window retardance)
                     let headers =
                         grid.Children
                         |> Seq.filter (fun cell -> Grid.GetRow cell = 0)
                         |> Seq.sortBy Grid.GetColumn
-                        |> Seq.map (fun cell -> Assert.IsType<TextBlock>(cell).Text)
+                        |> Seq.map UiDriver.cellTextOf
                         |> List.ofSeq
                     Assert.Equal<string list>([ "Parameter"; "State"; "Value"; "Bounds"; "σ"; "Provenance" ], headers)
 
@@ -350,6 +365,17 @@ module ItemsPanelTests =
                     Assert.Equal(
                         "Revision 1: c1.extinctionRatio 0, c1.axisOffset 0, c2.retardance 1.5708, c2.fastAxisOffset 0, dialZero 0",
                         textOf window (ConstructorUiId.itemRevisionRow ItemRevision.first)))
+
+                // Edit opens the label, the notes and the photo in place, and Save waits for a change.
+                withItemsPanel (model |> inItemEdit cpl1Id) (fun window ->
+                    let label = Assert.IsType<TextBox>(findControl window ConstructorUiId.itemLabelField)
+                    Assert.Equal("CPL1", label.Text)
+                    let notes = Assert.IsType<TextBox>(findControl window ConstructorUiId.itemNotesField)
+                    Assert.Equal("On the analyzer dial", notes.Text)
+                    Assert.True(notes.AcceptsReturn, "the notes take returns")
+                    Assert.Equal("Choose photo…", captionOf window ConstructorUiId.itemChoosePhotoButton)
+                    Assert.Equal("Remove photo", captionOf window ConstructorUiId.itemRemovePhotoButton)
+                    Assert.False((findControl window ConstructorUiId.pageSaveButton).IsEnabled, "Save waits for a change"))
 
                 // A bound item names its preset or sample beside its stored model, and a model the store does not
                 // hold is the missing-model condition, never the preset's name alone.
@@ -371,7 +397,7 @@ module ItemsPanelTests =
                         model = StackSampleChoice (BuiltinCatalogue.itemModel ItemModelIds.stackSampleItemModelId, SampleVersionId.firstOf sample.id, sample)
                         dial = FixedMounting
                     }
-                let bound = model |> update (AddItem sourceDraft) |> update (AddItem sampleDraft) |> update (SelectKitItem sourceItemId)
+                let bound = model |> update (AddItem sourceDraft) |> update (AddItem sampleDraft) |> chosenItem sourceItemId
                 Assert.Equal<ControlCaption option>(None, bound.kitRefusalOpt)
                 withItemsPanel bound (fun window ->
                     Assert.Equal(
@@ -404,18 +430,33 @@ module ItemsPanelTests =
 
                 // With no item, the list says so and no item is shown.
                 withItemsPanel scene (fun window ->
-                    let list = Assert.IsType<StackPanel>(findControl window ConstructorUiId.kitItemList)
-                    Assert.Equal("This kit holds no item yet.", Assert.IsType<TextBlock>(Assert.Single(list.Children)).Text)
-                    Assert.Equal("Add item from library model…", captionOf window ConstructorUiId.addItemButton)
-                    for absent in [ ConstructorUiId.itemLabelField; ConstructorUiId.itemParameterGrid; ConstructorUiId.itemRevisionList; ConstructorUiId.addItemOfferList ] do
+                    // Spec 0051 `.manual/007` 4.1: with no item, the page says where one comes from, and holds no list.
+                    Assert.Contains(
+                        "This kit holds no item yet: New item… adds one from the library.",
+                        window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as text -> Option.ofObj text.Text | _ -> None))
+                    Assert.Equal("New item…", captionOf window ConstructorUiId.newItemButton)
+                    for absent in [ ConstructorUiId.kitItemList; ConstructorUiId.itemLabelField; ConstructorUiId.itemParameterGrid; ConstructorUiId.itemRevisionList; ConstructorUiId.addItemOfferList ] do
                         assertAbsent window absent)))
 
     [<Fact>]
-    let ``the add form lists the library models by kind and offers Add and Cancel on one row, Cancel to the right`` () : unit =
+    let ``the model chooser lists the library models by kind, narrows by the filter and withholds Choose until one is chosen`` () : unit =
+        // Spec 0051 `.manual/007` 4.3: New item… opens the chooser in a window of its own over the add form's offers.
         HeadlessSession.run (fun () ->
             withScene (fun scene ->
                 let opened = scene |> update OpenAddItemForm
-                withItemsPanel opened (fun window ->
+                let form = opened.addItemFormOpt |> Option.defaultWith (fun () -> failwith "The add form must be open.")
+                let chooser = ItemModelChooserView.ItemModelChooserModel.ofRequest { offers = form.offers; chosenOpt = None; onChosen = ignore }
+                let confirmed = ResizeArray<ItemModelChoice>()
+                let withChooser (model : ItemModelChooserView.ItemModelChooserModel) (check : Window -> unit) : unit =
+                    let window = Window(Width = 1000.0, Height = 700.0)
+                    window.Content <- Avalonia.FuncUI.Component(fun _ -> ItemModelChooserView.itemModelChooserView model ignore confirmed.Add ignore)
+                    try
+                        window.Show()
+                        Dispatcher.UIThread.RunJobs()
+                        check window
+                    finally
+                        window.Close()
+                withChooser chooser (fun window ->
                     let offerList = Assert.IsType<ScrollViewer>(findControl window ConstructorUiId.addItemOfferList)
                     Assert.Single(controlsUnder offerList (ConstructorUiId.addItemOffer circularChoice)) |> ignore
                     let offers = Assert.IsType<StackPanel>(offerList.Content)
@@ -424,36 +465,51 @@ module ItemsPanelTests =
                         |> Seq.choose (function :? TextBlock as heading -> Some heading.Text | _ -> None)
                         |> List.ofSeq
                     Assert.Equal<string list>([ "Item models"; "Light sources"; "Polarizers"; "Samples" ], headings)
-                    // Each offer sits under its kind's heading, in the form's order.
-                    let form = opened.addItemFormOpt |> Option.defaultWith (fun () -> failwith "The add form must be open.")
                     let offerIds = form.offers |> List.map (fun offer -> (ConstructorUiId.addItemOffer offer).value)
                     Assert.Equal<string list>(offerIds, childIds offers)
-                    let position (text : string) : int =
-                        offers.Children |> Seq.findIndex (fun child -> listIdOf child = Some text)
-                    let headingAt (text : string) : int =
-                        offers.Children |> Seq.findIndex (function :? TextBlock as heading -> heading.Text = text | _ -> false)
-                    let circularAt = position (ConstructorUiId.addItemOffer circularChoice).value
-                    Assert.True(headingAt "Item models" < circularAt && circularAt < headingAt "Light sources", "the circular polarizer is an item model")
-                    assertAbsent window ConstructorUiId.addItemConfirmButton
-                    assertAbsent window ConstructorUiId.addItemButton
-                    Assert.Equal("Cancel", captionOf window ConstructorUiId.addItemCancelButton)
+                    Assert.False((findControl window ConstructorUiId.itemModelChooserChooseButton).IsEnabled, "Choose waits for a choice")
+                    assertOneRowRightOf window ConstructorUiId.itemModelChooserChooseButton ConstructorUiId.itemModelChooserCancelButton)
+                // The filter keeps the offers holding every typed word; a press chooses one, and Choose hands it over.
+                let narrowed = chooser |> ItemModelChooserView.updateItemModelChooser (ItemModelChooserView.SetChooserFilter (ControlCaption "circular"))
+                Assert.Contains(circularChoice, narrowed.shown)
+                Assert.True(narrowed.shown.Length < form.offers.Length, "the filter narrows the offers")
+                let picked = narrowed |> ItemModelChooserView.updateItemModelChooser (ItemModelChooserView.ChooseChooserOffer circularChoice)
+                Assert.Equal(Some circularChoice, picked.chosenOpt)
+                withChooser picked (fun window ->
+                    Assert.True((findControl window ConstructorUiId.itemModelChooserChooseButton).IsEnabled, "Choose is offered once one is chosen")
+                    clickOn window ConstructorUiId.itemModelChooserChooseButton
+                    Assert.Equal<ItemModelChoice list>([ circularChoice ], List.ofSeq confirmed))))
+
+    [<Fact>]
+    let ``the creation form shows the chosen model, Choose another model…, the label and the mounting, Create and Cancel on one row`` () : unit =
+        HeadlessSession.run (fun () ->
+            withScene (fun scene ->
+                let creating = scene |> update (ShowFlowStep ItemsFlowStep) |> update BeginPageCreate
+                Assert.Equal<PageMode>(CreatingPageEntry, creating.pageMode)
+                withItemsPanel creating (fun window ->
+                    Assert.Equal("Model: none chosen yet — choose one in the library.", textOf window ConstructorUiId.addItemChosenText)
+                    Assert.Equal("Choose a model from the library…", captionOf window ConstructorUiId.addItemChooseModelButton)
+                    assertAbsent window ConstructorUiId.newItemButton
                     Assert.Equal("Fixed mounting", captionOf window (ConstructorUiId.newItemDialChoice FixedMounting))
                     Assert.Equal("On a dial, sign −1", captionOf window (ConstructorUiId.newItemDialChoice (DialMounted DialNegative))))
-
                 let filled =
-                    opened
+                    creating
                     |> update (ChooseNewItemModel circularChoice)
                     |> update (SetNewItemLabel (ControlCaption "CPL1"))
                 withItemsPanel filled (fun window ->
+                    Assert.Equal($"Model: {circularChoice.caption.value}", textOf window ConstructorUiId.addItemChosenText)
+                    Assert.Equal("Choose another model…", captionOf window ConstructorUiId.addItemChooseModelButton)
                     Assert.Equal("CPL1", Assert.IsType<TextBox>(findControl window ConstructorUiId.newItemLabelField).Text)
-                    Assert.Equal("Add", captionOf window ConstructorUiId.addItemConfirmButton)
-                    assertOneRowRightOf window ConstructorUiId.addItemConfirmButton ConstructorUiId.addItemCancelButton)))
+                    Assert.Equal("Create", captionOf window ConstructorUiId.pageSaveButton)
+                    Assert.True((findControl window ConstructorUiId.pageSaveButton).IsEnabled, "Create is offered for a chosen model")
+                    assertOneRowRightOf window ConstructorUiId.pageSaveButton ConstructorUiId.pageCancelButton)))
 
     [<Fact>]
     let ``the parameter editor offers Known and Unknown, and Set and Cancel on one row`` () : unit =
         HeadlessSession.run (fun () ->
             withScene (fun scene ->
-                let known = scene |> update (AddItem cpl1Draft) |> update (EditItemParameter retardance)
+                // Spec 0051 `.manual/007` 4.2: a parameter's editor opens under its row in the item's Edit.
+                let known = scene |> update (AddItem cpl1Draft) |> inItemEdit cpl1Id |> update (EditItemParameter retardance)
                 withItemsPanel known (fun window ->
                     Assert.Single(controlsUnder window ConstructorUiId.parameterEditPanel) |> ignore
                     Assert.Equal("Known", captionOf window ConstructorUiId.parameterEditKnownChoice)
@@ -513,42 +569,45 @@ module ItemsPanelTests =
                     withItemsPanel readOnly (fun window ->
                         Assert.Single(controlsUnder window (ConstructorUiId.kitItemRow cpl1Id)) |> ignore
                         Assert.Equal("Photo: data/CPL1.jpg", textOf window ConstructorUiId.itemPhotoText)
-                        for absent in [ ConstructorUiId.addItemButton; ConstructorUiId.itemChoosePhotoButton; ConstructorUiId.itemRemovePhotoButton ] do
-                            assertAbsent window absent
-                        for disabled in [ ConstructorUiId.itemLabelField; ConstructorUiId.itemNotesField ] do
-                            Assert.False((findControl window disabled).IsEnabled, $"{disabled.value} must be disabled"))
+                        // A read-only kit offers neither New item… nor Edit, so no field of the item can be typed into.
+                        for absent in
+                            [ ConstructorUiId.newItemButton; ConstructorUiId.pageEditButton; ConstructorUiId.itemChoosePhotoButton
+                              ConstructorUiId.itemRemovePhotoButton; ConstructorUiId.itemLabelField; ConstructorUiId.itemNotesField ] do
+                            assertAbsent window absent)
 
-                    // A form or an editor opened by its message still offers no Add or Set.
-                    let editing =
-                        readOnly
-                        |> update OpenAddItemForm
+                    // A creation form or an editor opened by its message still offers no Create or Set.
+                    let creating =
+                        { readOnly with flowStep = ItemsFlowStep }
+                        |> update BeginPageCreate
                         |> update (ChooseNewItemModel circularChoice)
                         |> update (SetNewItemLabel (ControlCaption "CPL2"))
-                        |> update (EditItemParameter retardance)
+                    withItemsPanel creating (fun window ->
+                        Assert.Single(controlsUnder window ConstructorUiId.pageCancelButton) |> ignore
+                        Assert.False((findControl window ConstructorUiId.pageSaveButton).IsEnabled, "a read-only kit withholds Create"))
+                    let editing = readOnly |> update (EditItemParameter retardance)
                     withItemsPanel editing (fun window ->
-                        Assert.Single(controlsUnder window ConstructorUiId.addItemCancelButton) |> ignore
-                        Assert.Single(controlsUnder window ConstructorUiId.parameterEditCancelButton) |> ignore
-                        assertAbsent window ConstructorUiId.addItemConfirmButton
                         assertAbsent window ConstructorUiId.parameterEditSetButton))))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``pressing Add item, a model, a label and Add records the item in the kit`` () : unit =
+    let ``pressing New item…, a model, a label and Create records the item in the kit`` () : unit =
         HeadlessSession.run (fun () ->
             withScene (fun scene ->
-                withItemsPanel scene (fun window ->
-                    clickOn window ConstructorUiId.addItemButton
-                    clickOn window (ConstructorUiId.addItemOffer circularChoice)
-                    // Typed in two steps: Add, shown at the first, must send the label as it reads at the press.
+                // The chooser's window answers through the shell; here it picks the circular polarizer at once.
+                let shell = { scene.kitShell with chooseItemModel = fun request -> request.onChosen circularChoice }
+                withItemsPanel { scene with flowStep = ItemsFlowStep; kitShell = shell } (fun window ->
+                    clickOn window ConstructorUiId.newItemButton
+                    Assert.Equal($"Model: {circularChoice.caption.value}", textOf window ConstructorUiId.addItemChosenText)
+                    // Typed in two steps: Create, shown at the first, must send the label as it reads at the press.
                     let field = Assert.IsType<TextBox>(findControl window ConstructorUiId.newItemLabelField)
                     field.Text <- "CP"
                     Dispatcher.UIThread.RunJobs()
-                    Assert.Equal("Add", captionOf window ConstructorUiId.addItemConfirmButton)
+                    Assert.Equal("Create", captionOf window ConstructorUiId.pageSaveButton)
                     field.Text <- "CPL1"
                     Dispatcher.UIThread.RunJobs()
-                    clickOn window ConstructorUiId.addItemConfirmButton
+                    clickOn window ConstructorUiId.pageSaveButton
                     Assert.Equal($"CPL1 — {circularCaption} — revision 1", captionOf window (ConstructorUiId.kitItemRow cpl1Id))
-                    assertAbsent window ConstructorUiId.addItemOfferList
+                    assertAbsent window ConstructorUiId.addItemChosenText
                     let recorded : Item = Assert.Single(scene.kit.proxy.readItems () |> SceneTestFixture.kitSuccess)
                     Assert.Equal<ItemId>(cpl1Id, recorded.id)
                     Assert.Equal<ItemLabel>(ItemLabel "CPL1", recorded.label)

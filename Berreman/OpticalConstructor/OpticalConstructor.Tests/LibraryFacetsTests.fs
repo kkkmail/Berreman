@@ -599,7 +599,7 @@ module LibraryFacetsTests =
         let tree = buildTree (Representation [ entryKindFacetKey ]) libraryDefs [] entries
         let node = List.exactlyOne tree.facets
         Assert.Equal<(string * int) list>(
-            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length (BuiltinCatalogue.sources ()) ],
+            [ "Detector", 2; "Polarizer", 3; "Sample", 13; "Source", List.length (BuiltinCatalogue.sources ()) ],
             branchSummary node)
 
     [<Fact>]

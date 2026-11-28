@@ -447,6 +447,7 @@ module KitAcceptanceTests =
             match choice, spec.bindingOpt with
             | SourcePresetChoice (model, source), Some preset -> model.entry.id = spec.modelId && source.id = preset
             | StackSampleChoice (model, _, sample), Some bound -> model.entry.id = spec.modelId && sample.id.toElementValueId = bound
+            | PolarizerPresetChoice (model, polarizer), Some preset -> model.entry.id = spec.modelId && polarizer.id = preset
             | LibraryModelChoice model, None -> model.entry.id = spec.modelId
             | _ -> false)
         |> Option.defaultWith (fun () -> failwith $"{spec.label.value}.item-json: expected model {spec.modelId.value}; actual no matching offer")
@@ -1041,7 +1042,7 @@ module KitAcceptanceTests =
                 with :? Xunit.Sdk.XunitException as error ->
                     Assert.Fail($"{diagnostic}: different bytes.\n{error.Message}")
 
-    /// The `.kit-json` a build's start screen and template write: created and modified at `instant`, no notes, profile or exclusion (spec 0050 S12.1, S12.2).
+    /// The `.optics-kit` a build's start screen and template write: created and modified at `instant`, no notes, profile or exclusion (spec 0050 S12.1, S12.2).
     let private assertKitFile
         (reader : KitProxy)
         (kitId : KitId)
@@ -1448,6 +1449,7 @@ module KitAcceptanceTests =
                     author = kitFile.author
                     imports = context.catalogueImports
                     picker = TestAppScope.kitPickerOf target
+                    kitFolderMemory = KitFolderMemory.fixedAt (FolderName "kits")
                     showKit = fun opened -> openedOpt <- Some opened
                     activateKitWindow = fun _ -> NoKitWindowOpen
                     zipPicker = KitZipPicker.none
@@ -1687,10 +1689,9 @@ module KitAcceptanceTests =
                 openSampleEditor = fun _ -> ()
                 sources = context.sources
                 openSourceEditor = fun _ -> ()
-                requestClose = fun () -> ()
             }
         let dropped =
-            LibraryWindowView.initLibraryWindow windowContext WindowMode.Browse
+            LibraryWindowView.initLibraryWindow windowContext
             |> LibraryWindowView.updateLibraryWindow (LibraryWindowView.DropLibraryEntryFiles files)
         TestAppScope.expect drop "drop refusal" None dropped.lastError
         let request =
@@ -2673,3 +2674,400 @@ module KitAcceptanceTests =
                 Assert.Fail($"{fitFile.value}: {breaches.Length} reported quantities scatter out of the noisy suite's bands: {listed} ({report})")
         finally
             built.model.kit.close () |> TestAppScope.readKitResult KitFile.fileName
+
+    // ============ AT-3 and AT-4: the direct reference kits, built through the pages' messages (spec 0051 `.manual/007` 9.1) ============
+
+    /// The source, polarizer and detectors both direct kits hold, and the item labels their tables use.
+    let private xenonLabel = ItemLabel "Xenon"
+    let private polarizerLabel = ItemLabel "LP"
+    let private transmittedDetectorLabel = ItemLabel "Detector T"
+    let private reflectedDetectorLabel = ItemLabel "Detector R"
+
+    /// A direct kit's naming template: the sample's label, then the experiment's note (spec 0050 S8.3).
+    let private directTemplate = ControlCaption "{obj1}-{note}"
+
+    /// A direct kit's item over `modelId`, bound to `bindingOpt`.
+    let private directItem (id : string) (label : ItemLabel) (modelId : ItemModelId) (bindingOpt : ElementValueId option) : AcceptanceItem =
+        {
+            id = ItemId (Guid.Parse id)
+            label = label
+            modelId = modelId
+            bindingOpt = bindingOpt
+            dial = FixedMounting
+        }
+
+    /// One direct reference kit: its folder, its start screen's identity and clock, its items, the ids its tables' added
+    /// slots take in turn, and how its setups and experiments are recorded.
+    type private DirectKitSpec =
+        {
+            run : FolderName
+            kit : CommittedKit
+            folderName : FolderName
+            kitId : KitId
+            author : KitAuthor
+            startTime : ClockTime
+            items : AcceptanceItem list
+            addedSlots : ElementId list
+            record : AcceptanceItem list -> TableAndElementRotationModel -> TableAndElementRotationModel
+        }
+
+    /// The id of the item labelled `label` among `items`.
+    let private directItemIdOf (items : AcceptanceItem list) (label : ItemLabel) : ItemId =
+        (items |> List.find (fun item -> item.label = label)).id
+
+    /// A new setup through the Setups page: New setup (the light source and the detector, D14), its name, the polarizer,
+    /// the sample and a detector on the sample's reflected ray, each slot given its item by its chip's message, then
+    /// Create (spec 0051 `.manual/007` 5.2).
+    let private newDirectSetup
+        (items : AcceptanceItem list)
+        (name : SetupName)
+        (sampleLabel : ItemLabel)
+        (model : TableAndElementRotationModel)
+        : TableAndElementRotationModel =
+        let file = SetupKitFile.fileNameOf name.fileStem
+        let creating = model |> apply [ ShowFlowStep SetupsFlowStep; BeginPageCreate; SetSetupName name.caption ]
+        TestAppScope.expect file "New setup's page" CreatingPageEntry creating.pageMode
+        TestAppScope.expect file "New setup's slots" [ LightSource; Detector ] (creating.elements |> List.map (fun slot -> slot.placement.catalogueKind))
+        let slotOfKind (kind : CatalogueKind) (current : TableAndElementRotationModel) : ElementId =
+            (current.elements |> List.findBack (fun slot -> slot.placement.catalogueKind = kind)).id
+        let withPolarizer = creating |> updateTableAndElementRotation (AddElement LinearPolarizer)
+        let polarizer = slotOfKind LinearPolarizer withPolarizer
+        let withSample = withPolarizer |> updateTableAndElementRotation (AddElement Sample)
+        let sample = slotOfKind Sample withSample
+        let withReflected = withSample |> updateTableAndElementRotation (AddElement Detector)
+        let reflected = slotOfKind Detector withReflected
+        let idOf = directItemIdOf items
+        let assigned =
+            withReflected
+            |> apply
+                [
+                    PlaceOnBeam (reflected, BeamLayout.OnReflectedBeamOf sample)
+                    AssignSlot (sourceSlot, Some (idOf xenonLabel))
+                    AssignSlot (polarizer, Some (idOf polarizerLabel))
+                    AssignSlot (sample, Some (idOf sampleLabel))
+                    AssignSlot (detectorSlot, Some (idOf transmittedDetectorLabel))
+                    AssignSlot (reflected, Some (idOf reflectedDetectorLabel))
+                ]
+        TestAppScope.expect file "slot assignments" None assigned.kitRefusalOpt
+        TestAppScope.expect file "sample captures" [ CaptureTransmitted; CaptureReflected; CaptureBoth ] (availableCaptures assigned sample)
+        let created = assigned |> updateTableAndElementRotation CommitPageDraft
+        TestAppScope.expect file "Create status" (Some (ControlCaption $"Created setup '{name.value}'.")) created.kitStatusCaption
+        TestAppScope.expect file "page after Create" BrowsingPage created.pageMode
+        TestAppScope.expect file "the chosen setup" (Some name) (created.activeSetupOpt |> Option.map (fun setup -> setup.name))
+        created
+
+    /// The chosen setup's sample slot.
+    let private directSampleSlot (model : TableAndElementRotationModel) : ElementId =
+        (model.elements |> List.find (fun slot -> slot.placement.catalogueKind = Sample)).id
+
+    /// A new experiment over the chosen setup through the Experiments page: New experiment, `axis`, capture both and the
+    /// note its name ends in, then Create, and OK when another experiment already uses the setup (spec 0051 `.manual/007`
+    /// 6.4, 6.5).
+    let private newDirectExperiment (note : string) (axis : TableAndElementRotationMsg list) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let file = FileName $"*-{note}.experiment-json"
+        let creating =
+            model
+            |> apply ([ ShowFlowStep ExperimentsFlowStep; BeginPageCreate ] @ axis @ [ ExpChooseMeasurement ExperimentControls.CaptureBoth; SetRecordNote (ControlCaption note) ])
+        TestAppScope.expect file "New experiment's page" CreatingPageEntry creating.pageMode
+        let asked = creating |> updateTableAndElementRotation CommitPageDraft
+        let created =
+            match asked.sameSetupWarningOpt with
+            | Some _ -> asked |> updateTableAndElementRotation ConfirmSameSetup
+            | None -> asked
+        TestAppScope.expect file "Create refusal" None created.kitRefusalOpt
+        TestAppScope.expect file "page after Create" BrowsingPage created.pageMode
+        created
+
+    /// The sample's incidence (R2) over 0–89° in 90 points, the tunable source set to 600 nm (spec 0051 `.manual/007` 9.1,
+    /// D10).
+    let private incidenceAxisAt600nm (model : TableAndElementRotationModel) : TableAndElementRotationMsg list =
+        [
+            ExpChooseElement (directSampleSlot model)
+            ExpChooseVariable ExperimentControls.VaryR2
+            ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd 0.0)
+            ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd 89.0)
+            ExpSetRangePoints (ExperimentControls.ExperimentPointCount 90)
+            ExpSetSourceWaveLength (ExperimentControls.BayNanometers 600.0)
+        ]
+
+    /// The source's wavelength over `low`–`high` nm in 1 nm steps (spec 0051 `.manual/007` 9.1, D10).
+    let private waveLengthAxis (low : float) (high : float) : TableAndElementRotationMsg list =
+        [
+            ExpChooseElement sourceSlot
+            ExpChooseVariable ExperimentControls.VaryWaveLength
+            ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd low)
+            ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd high)
+            ExpSetRangePoints (ExperimentControls.ExperimentPointCount (int (high - low) + 1))
+        ]
+
+    let private multilayerStartTime = ClockTime (DateTime(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc))
+    let private langasiteStartTime = ClockTime (DateTime(2026, 6, 3, 12, 0, 0, DateTimeKind.Utc))
+    let private stackLabel = ItemLabel "Stack"
+    let private filmLabel = ItemLabel "Film"
+    let private plateLabel = ItemLabel "Plate"
+    let private stackBench = SetupName "Stack bench"
+    let private filmBench = SetupName "Film bench"
+    let private plateBench = SetupName "Plate bench"
+
+    /// The items both direct kits hold, by their fixed ids.
+    let private directCommonItems (xenon : string) (polarizer : string) (transmitted : string) (reflected : string) : AcceptanceItem list =
+        [
+            directItem xenon xenonLabel ItemModelIds.sourcePresetItemModelId (Some PresetIds.xenonMonochromator)
+            directItem polarizer polarizerLabel ItemModelIds.idealPolarizerItemModelId (Some PresetIds.polarizerLp)
+            directItem transmitted transmittedDetectorLabel ItemModelIds.intensityDetectorModelId None
+            directItem reflected reflectedDetectorLabel ItemModelIds.intensityDetectorModelId None
+        ]
+
+    /// AT-3: the 100-pair stack, one setup, R and T against incidence at 600 nm and against wavelength over 500–700 nm.
+    let private multilayerSpec : DirectKitSpec =
+        {
+            run = FolderName "AT-3"
+            kit = MultilayerThinFilmKit
+            folderName = FolderName "multilayer-thin-film"
+            kitId = TestAppScope.multilayerKitId
+            author = TestAppScope.multilayerKitAuthor
+            startTime = multilayerStartTime
+            items =
+                directCommonItems "4b8e1a2c-6f3d-4c1e-9a7b-2d5e8f1a3c01" "4b8e1a2c-6f3d-4c1e-9a7b-2d5e8f1a3c02" "4b8e1a2c-6f3d-4c1e-9a7b-2d5e8f1a3c03" "4b8e1a2c-6f3d-4c1e-9a7b-2d5e8f1a3c04"
+                @ [ directItem "4b8e1a2c-6f3d-4c1e-9a7b-2d5e8f1a3c05" stackLabel ItemModelIds.stackSampleItemModelId (Some SampleIds.multilayerGlassPairsId.toElementValueId) ]
+            addedSlots =
+                [
+                    ElementId "6c1f3d2a-8e4b-4a7c-b5d9-1e2f3a4b5c01"
+                    ElementId "6c1f3d2a-8e4b-4a7c-b5d9-1e2f3a4b5c02"
+                    ElementId "6c1f3d2a-8e4b-4a7c-b5d9-1e2f3a4b5c03"
+                ]
+            record =
+                fun items model ->
+                    let onBench = model |> newDirectSetup items stackBench stackLabel
+                    onBench
+                    |> newDirectExperiment "incidence" (incidenceAxisAt600nm onBench)
+                    |> newDirectExperiment "wavelength" (waveLengthAxis 500.0 700.0)
+        }
+
+    /// AT-4: the langasite film and the langasite plate on silicon, a setup each, R and T against wavelength over
+    /// 250–600 nm.
+    let private langasiteSpec : DirectKitSpec =
+        {
+            run = FolderName "AT-4"
+            kit = LangasiteOnSiliconKit
+            folderName = FolderName "langasite-on-silicon"
+            kitId = TestAppScope.langasiteKitId
+            author = TestAppScope.langasiteKitAuthor
+            startTime = langasiteStartTime
+            items =
+                directCommonItems "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d01" "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d02" "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d03" "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d04"
+                @ [
+                    directItem "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d05" filmLabel ItemModelIds.stackSampleItemModelId (Some SampleIds.langasiteSiliconId.toElementValueId)
+                    directItem "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d06" plateLabel ItemModelIds.stackSampleItemModelId (Some SampleIds.langasitePlateSiliconId.toElementValueId)
+                ]
+            addedSlots =
+                [
+                    ElementId "9e3b5f7d-2c4a-4e6b-9d0f-1a2b3c4d5e01"
+                    ElementId "9e3b5f7d-2c4a-4e6b-9d0f-1a2b3c4d5e02"
+                    ElementId "9e3b5f7d-2c4a-4e6b-9d0f-1a2b3c4d5e03"
+                    ElementId "9e3b5f7d-2c4a-4e6b-9d0f-1a2b3c4d5e04"
+                    ElementId "9e3b5f7d-2c4a-4e6b-9d0f-1a2b3c4d5e05"
+                    ElementId "9e3b5f7d-2c4a-4e6b-9d0f-1a2b3c4d5e06"
+                ]
+            record =
+                fun items model ->
+                    model
+                    |> newDirectSetup items filmBench filmLabel
+                    |> newDirectExperiment "wavelength" (waveLengthAxis 250.0 600.0)
+                    |> newDirectSetup items plateBench plateLabel
+                    |> newDirectExperiment "wavelength" (waveLengthAxis 250.0 600.0)
+        }
+
+    /// Builds `spec`'s kit through the start screen, the Kit page's template, the add form and the Setups and Experiments
+    /// pages; the run folder of a previous build, left for diagnosis, is removed first (spec 0050 S12.2; 0051 `.manual/007`
+    /// 9.1).
+    let private buildDirectKit (spec : DirectKitSpec) : BuiltAcceptanceKit =
+        let runFolder = runFolderOf spec.run
+        let folder = KitFolder (runFolder.combine spec.folderName)
+        if Directory.Exists runFolder.value then Directory.Delete(runFolder.value, true)
+        Directory.CreateDirectory folder.value.value |> ignore
+        let context = TestAppScope.freshAppContext (FolderName "KitAcceptanceTests")
+        let clock, setTime = TestAppScope.testClockAt spec.startTime
+        let mutable openedOpt : OpenedKit option = None
+        try
+            let start, shown = TestAppScope.kitStartOver context clock spec.kitId spec.author folder
+            let started = start |> updateKitStart (CreateKit folder)
+            openedOpt <- shown.Value
+            TestAppScope.expect KitFile.fileName "CreateKit status" None started.status
+            let opened = openedOpt |> Option.defaultWith (fun () -> failwith $"{folder.value.value}: expected CreateKit to open the kit; actual no kit")
+            let mintItemId, unusedItemIds = mintingFrom (FileName "*.item-json") "item-id" (spec.items |> List.map _.id)
+            let mintElementId, unusedSlotIds = mintingFrom (FileName "*.setup-json") "added-slot id" spec.addedSlots
+            let initial =
+                {
+                    TestAppScope.inverseModelOver context opened with
+                        itemIds = { mintItemId = mintItemId }
+                        elementIds = { mintElementId = mintElementId }
+                }
+                |> apply [ ShowFlowStep KitFlowStep; BeginPageEdit; SetNamingTemplateText directTemplate; CommitPageDraft ]
+            TestAppScope.expect KitFile.fileName "template status" (Some (ControlCaption "Saved the naming template.")) initial.kitStatusCaption
+            let stocked = spec.items |> List.fold (fun model item -> addItemThroughForm [] item model |> fst) initial
+            TestAppScope.expect (FileName "*.item-json") "unused item identities" [] unusedItemIds.Value
+            let recorded = spec.record spec.items stocked
+            TestAppScope.expect (FileName "*.setup-json") "unused added-slot identities" [] unusedSlotIds.Value
+            {
+                folder = folder
+                context = context
+                model = recorded
+                clock = clock
+                setTime = setTime
+            }
+        with _ ->
+            match openedOpt with
+            | Some opened -> opened.library.kit.close () |> TestAppScope.readKitResult KitFile.fileName
+            | None -> ()
+            reraise ()
+
+    let private multilayerBuild : Lazy<BuiltAcceptanceKit> = lazy (buildDirectKit multilayerSpec)
+    let private langasiteBuild : Lazy<BuiltAcceptanceKit> = lazy (buildDirectKit langasiteSpec)
+
+    /// What each direct kit's experiment draws and its script computes: the experiment's name, the script's light and
+    /// system over the kit's materials, the sweep the script runs, and the script's own system when its materials are
+    /// not the catalogue's (spec 0051 `.manual/007` 9.1).
+    type private ScriptedExperiment =
+        {
+            experiment : ExperimentName
+            info : Analytics.Variables.FixedInfo
+            range : Analytics.Variables.RangedVariable
+            scriptOpt : Analytics.Variables.FixedInfo option
+        }
+
+    /// The most the script's published gyration law moves LangasiteOnSilicon.fsx's R or T away from the catalogue's
+    /// constant ρ over 250–600 nm: measured 3.0e-4 for the film's R and T, under 1e-5 for the plate's.
+    [<Literal>]
+    let private langasiteGyrationGap = 5.0e-4
+
+    let private scriptedOf (kit : CommittedKit) : ScriptedExperiment list =
+        let light = OpticalProperties.Standard.light600nmNormalLPs
+        match kit with
+        | MultilayerThinFilmKit ->
+            let info : Analytics.Variables.FixedInfo = { incidentLightInfo = light; opticalSystem = ScriptCurves.multilayerGlassPairsSystem }
+            [
+                { experiment = ExperimentName "Stack-incidence"; info = info; range = ScriptCurves.incidence0to89; scriptOpt = None }
+                { experiment = ExperimentName "Stack-wavelength"; info = info; range = ScriptCurves.waveLengthRange 200 500.0 700.0; scriptOpt = None }
+            ]
+        | LangasiteOnSiliconKit ->
+            let overCatalogue (script : Analytics.Variables.FixedInfo) : ScriptedExperiment -> ScriptedExperiment =
+                let system =
+                    script.opticalSystem
+                    |> ScriptCurves.overCatalogueMaterials (OpticalConstructor.Tests.BuiltinCatalogue.material MaterialIds.langasite).properties (OpticalConstructor.Tests.BuiltinCatalogue.material MaterialIds.silicon).properties
+                fun scripted -> { scripted with info = { script with opticalSystem = system }; scriptOpt = Some script }
+            let film = Analytics.StandardSystems.langasiteFilmOnSilicon ScriptCurves.langasiteThickness light
+            let plate = Analytics.StandardSystems.langasiteSubstrateOnSilicon ScriptCurves.langasiteThickness light
+            [
+                { experiment = ExperimentName "Film-wavelength"; info = film; range = ScriptCurves.waveLengthRange 350 250.0 600.0; scriptOpt = None }
+                |> overCatalogue film
+                { experiment = ExperimentName "Plate-wavelength"; info = plate; range = ScriptCurves.waveLengthRange 350 250.0 600.0; scriptOpt = None }
+                |> overCatalogue plate
+            ]
+        | OpticsMuellerKit
+        | AbsorbingBiaxialNoisyKit -> []
+
+    /// Each experiment's chart draws its script's R and T, point by point (spec 0051 `.manual/007` 9.1).
+    let private assertScriptCurves (kit : CommittedKit) (model : TableAndElementRotationModel) : unit =
+        let scripted = scriptedOf kit
+        TestAppScope.expect (FileName "*.experiment-json") "the experiments, by name"
+            (scripted |> List.map (fun one -> one.experiment)) (model.experimentCollection.experiments |> List.map (fun experiment -> experiment.name))
+        for one in scripted do
+            let file = ExperimentKitFile.fileNameOf one.experiment.fileStem
+            let experiment = model.experimentCollection.experiments |> List.find (fun held -> held.name = one.experiment)
+            let chart =
+                match (model.withChartCachedFor experiment).experimentChartCacheOpt with
+                | Some cached -> cached.chart
+                | None -> failwith $"{file.value}: expected its chart; actual none"
+            let seriesNamed (name : string) : (float * float) list =
+                match chart.series |> List.tryFind (fun series -> series.name.value = name) with
+                | Some series -> series.points |> List.map (fun point -> point.x, point.y)
+                | None ->
+                    let names = chart.series |> List.map (fun series -> series.name.value) |> String.concat ", "
+                    failwith $"{file.value}: expected the series '{name}'; actual {names}"
+            ScriptCurves.assertSameCurve $"{file.value}: T" 1.0e-6 (ScriptCurves.scriptData one.info one.range Berreman.FieldFunctions.T) (seriesNamed "Intensity (T)")
+            ScriptCurves.assertSameCurve $"{file.value}: R" 1.0e-6 (ScriptCurves.scriptData one.info one.range Berreman.FieldFunctions.R) (seriesNamed "Intensity (R)")
+            // The script's own materials draw within the gyration gap of the catalogue's.
+            match one.scriptOpt with
+            | Some script ->
+                for fn, name in [ Berreman.FieldFunctions.T, "T"; Berreman.FieldFunctions.R, "R" ] do
+                    let gap = ScriptCurves.largestGap (ScriptCurves.scriptData script one.range fn) (ScriptCurves.scriptData one.info one.range fn)
+                    Assert.True(gap <= langasiteGyrationGap, $"{file.value}: the script's {name} is %.3e{gap} from the catalogue's, past %.3e{langasiteGyrationGap}")
+            | None -> ()
+
+    /// The kit's files: its items, setups and experiments, and no data, study or fit run (spec 0051 `.manual/007` 9.1).
+    let private assertDirectKitFiles (spec : DirectKitSpec) (setups : SetupName list) (folder : KitFolder) : unit =
+        let named (pattern : string) : string list =
+            Directory.GetFiles(folder.value.value, pattern) |> Array.map Path.GetFileName |> Array.sort |> List.ofArray
+        TestAppScope.expect (FileName "*.item-json") "item files"
+            (spec.items |> List.map (fun item -> (ItemKitFile.fileNameOf item.label.fileStem).value) |> List.sort) (named "*.item-json")
+        TestAppScope.expect (FileName "*.setup-json") "setup files"
+            (setups |> List.map (fun name -> (SetupKitFile.fileNameOf name.fileStem).value) |> List.sort) (named "*.setup-json")
+        TestAppScope.expect (FileName "*.experiment-json") "experiment files"
+            (scriptedOf spec.kit |> List.map (fun one -> (ExperimentKitFile.fileNameOf one.experiment.fileStem).value) |> List.sort) (named "*.experiment-json")
+        TestAppScope.expect (FileName "*.study-json") "study files" [] (named "*.study-json")
+        TestAppScope.expect (FileName "*.fitrun-json") "fit run files" [] (named "*.fitrun-json")
+        let data = Path.Combine(folder.value.value, "data")
+        TestAppScope.expect (FileName "data") "data files" [||] (if Directory.Exists data then Directory.GetFiles(data, "*", SearchOption.AllDirectories) else [||])
+
+    /// The committed kit opens read-only against an empty library, every item resolving from its snapshots, draws its
+    /// scripts' curves and writes nothing: it is whole on disk, as D7 asks (spec 0051 `.manual/007` 9.1, D7).
+    let private assertCommittedDirectKit (spec : DirectKitSpec) (setups : SetupName list) : unit =
+        let session = TestAppScope.openCommittedReadOnly (FolderName "KitAcceptanceTests") spec.kit
+        try
+            TestAppScope.assertEmptyLibrary session.context
+            let reader = session.model.kit.proxy
+            assertKitFile reader spec.kitId (KitName spec.folderName.value) spec.author spec.startTime directTemplate
+            assertDirectKitFiles spec setups session.opened.folder
+            for item in session.model.kitItems do
+                let file = ItemKitFile.fileNameOf item.label.fileStem
+                match session.model.tryItemModelChoice item with
+                | Some choice -> TestAppScope.expect file "model resolved from the kit's snapshots" item.model choice.instance
+                | None -> Assert.Fail($"{file.value}: expected the kit's snapshots to resolve its model; actual none")
+            assertScriptCurves spec.kit session.model
+            TestAppScope.assertEmptyLibrary session.context
+            TestAppScope.assertCommittedUnchanged spec.kit session.recorded
+        finally
+            closeCommittedReadOnly spec.kit session
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-3 builds the multilayer-thin-film kit through the pages' messages, and its two experiments draw MultilayerThinFilm_02.fsx's R and T`` () : unit =
+        let built = multilayerBuild.Force ()
+        assertKitFile built.model.kit.proxy multilayerSpec.kitId (KitName "multilayer-thin-film") multilayerSpec.author multilayerStartTime directTemplate
+        assertDirectKitFiles multilayerSpec [ stackBench ] built.folder
+        assertScriptCurves MultilayerThinFilmKit built.model
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the built multilayer-thin-film kit equals the committed kit file by file`` () : unit =
+        let built = multilayerBuild.Force ()
+        match MultilayerThinFilmKit.tryFindFolder with
+        | Some committed -> assertSameKitFiles built.folder committed
+        | None -> Assert.Fail($"Built kit: {built.folder.value.value}\ndata/multilayer-thin-film: expected the committed kit; actual folder missing")
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the committed multilayer-thin-film kit opens read-only against an empty library, writes nothing, and draws its script's curves`` () : unit =
+        assertCommittedDirectKit multilayerSpec [ stackBench ]
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``AT-4 builds the langasite-on-silicon kit through the pages' messages, and its film and plate draw LangasiteOnSilicon.fsx's R and T`` () : unit =
+        let built = langasiteBuild.Force ()
+        assertKitFile built.model.kit.proxy langasiteSpec.kitId (KitName "langasite-on-silicon") langasiteSpec.author langasiteStartTime directTemplate
+        assertDirectKitFiles langasiteSpec [ filmBench; plateBench ] built.folder
+        assertScriptCurves LangasiteOnSiliconKit built.model
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the built langasite-on-silicon kit equals the committed kit file by file`` () : unit =
+        let built = langasiteBuild.Force ()
+        match LangasiteOnSiliconKit.tryFindFolder with
+        | Some committed -> assertSameKitFiles built.folder committed
+        | None -> Assert.Fail($"Built kit: {built.folder.value.value}\ndata/langasite-on-silicon: expected the committed kit; actual folder missing")
+
+    [<Fact>]
+    [<Trait("Category", "kit-acceptance")>]
+    let ``the committed langasite-on-silicon kit opens read-only against an empty library, writes nothing, and draws its script's curves`` () : unit =
+        assertCommittedDirectKit langasiteSpec [ filmBench; plateBench ]

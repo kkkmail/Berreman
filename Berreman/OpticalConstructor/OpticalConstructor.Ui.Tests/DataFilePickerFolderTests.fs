@@ -59,3 +59,31 @@ module DataFilePickerFolderTests =
         Assert.False(options.AllowMultiple)
         Assert.Equal("Attach measured-data file", options.Title)
         Assert.Null(options.SuggestedStartLocation)
+
+    [<Fact>]
+    let ``a kit records the folder above it, and every kit dialog starts there until another kit is opened`` () =
+        // Spec 0051 `.manual/007` 3.4: a kit is its folder, so the last open folder is the one above the kit.
+        let first = OpticalConstructor.Domain.Kit.KitFolder (FolderName (System.IO.Path.Combine("C:\\", "Kits", "optics-mueller")))
+        let second = OpticalConstructor.Domain.Kit.KitFolder (FolderName (System.IO.Path.Combine("D:\\", "Lab", "2026", "run-7")))
+        let once = rememberKitParent first noFolders
+        Assert.Equal<FolderName option>(Some (FolderName (System.IO.Path.Combine("C:\\", "Kits"))), lastFolder kitParentFolderKey once)
+        let twice = rememberKitParent second once
+        Assert.Equal<FolderName option>(Some (FolderName (System.IO.Path.Combine("D:\\", "Lab", "2026"))), lastFolder kitParentFolderKey twice)
+        // The data pickers keep their own folders.
+        Assert.Equal<FolderName option>(None, lastFolder measuredDataFolderKey twice)
+
+    [<Fact>]
+    let ``the environment-file memory starts in the Kits folder, then in the folder above the last kit, and survives a restart`` () =
+        let root = System.IO.Path.Combine(System.AppContext.BaseDirectory, "KitFolderMemoryTests", System.Guid.NewGuid().ToString("N"))
+        System.IO.Directory.CreateDirectory root |> ignore
+        try
+            let file = FileName (System.IO.Path.Combine(root, "environment.json"))
+            let kits = FolderName (System.IO.Path.Combine(root, "Kits"))
+            let memory = OpticalConstructor.Ui.KitOpening.KitFolderMemory.ofEnvironment file kits
+            Assert.Equal<FolderName>(kits, memory.startFolder ())
+            let lab = System.IO.Path.Combine(root, "Lab")
+            memory.rememberKit (OpticalConstructor.Domain.Kit.KitFolder (FolderName (System.IO.Path.Combine(lab, "bench"))))
+            let restarted = OpticalConstructor.Ui.KitOpening.KitFolderMemory.ofEnvironment file kits
+            Assert.Equal<FolderName>(FolderName lab, restarted.startFolder ())
+        finally
+            System.IO.Directory.Delete(root, true)

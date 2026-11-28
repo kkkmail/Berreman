@@ -1,0 +1,60 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "4b8e1a2c-6f3d-4c1e-9a7b-2d5e8f1a3c01",
+    "label": "Xenon",
+    "model": {
+      "Case": "PresetInstance",
+      "Fields": [
+        {
+          "itemModelId": "239b0cfb-9938-5f3b-a767-c4252ea671b6",
+          "version": 1
+        },
+        "d09c967d-18f5-437e-b119-64f645e5b431"
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "azimuth",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "ellipticity",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "degreeOfPolarization",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            0
+          ]
+        }
+      },
+      {
+        "name": "intensityScale",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            1
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

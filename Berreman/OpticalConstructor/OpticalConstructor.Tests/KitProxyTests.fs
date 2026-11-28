@@ -165,9 +165,9 @@ module private KitProxyTestData =
             | Error error -> Assert.Fail($"A competing opener must report the winner: {error.describe}")
         Assert.Equal<KitLockHolder>(holder, storedKitLock winner)
         Assert.Equal<Result<KitLockHolder, KitError>>(Ok holder, winner.acquireLock (clock.now ()))
-        Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".oc"; ".oc/lock"; ".optics-kit"; "data"; "library" ], folder.paths ())
         Assert.Equal<Result<unit, KitError>>(Ok (), winner.releaseLock ())
-        Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".oc"; ".optics-kit"; "data"; "library" ], folder.paths ())
 
     let assertKitGuardFailure (file : FileName) (cause : exn) (result : Result<'Value, KitError>) : unit =
         match result with
@@ -271,14 +271,14 @@ module private KitProxyTestData =
                 | Error error -> Assert.Fail($"Expected guard IO failure, got {error.describe}")
                 | Ok _ -> Assert.Fail("A blocked guard must not complete acquisition or release.")
             block (fun () -> checkFailure (fun () -> proxy.acquireLock (clock.now ())))
-            Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+            Assert.Equal<string list>([ ".oc"; ".optics-kit"; "data"; "library" ], folder.paths ())
             let holder = takeKitLock proxy (clock.now ())
             block (fun () -> checkFailure proxy.releaseLock)
             Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
             Assert.Equal<Result<KitLockHolder, KitError>>(Ok holder, proxy.acquireLock (clock.now ()))
             Assert.Equal<Result<KitLockHolder, KitError>>(Error (KitLockedErr holder), (folder.openProxy ()).acquireLock (clock.now ()))
             Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
-            Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+            Assert.Equal<string list>([ ".oc"; ".optics-kit"; "data"; "library" ], folder.paths ())
 
 open KitProxyTestData
 
@@ -304,7 +304,7 @@ type KitProxyContract () =
             |> List.sortWith (fun first second -> String.CompareOrdinal(first.snapshotFileName.value, second.snapshotFileName.value))
         for envelope in List.rev expected do
             Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeSnapshot envelope)
-        let paths = [ ".kit-json"; "data"; "library" ] @ (expected |> List.map (fun envelope -> envelope.snapshotPath.value))
+        let paths = [ ".optics-kit"; "data"; "library" ] @ (expected |> List.map (fun envelope -> envelope.snapshotPath.value))
         Assert.Equal<string list>(paths, folder.paths ())
         for reader in [ proxy; folder.openProxy (); proxy.readOnlyView ] do
             Assert.Equal<Result<LibraryEntryEnvelope list, KitError>>(Ok expected, reader.listSnapshots ())
@@ -487,7 +487,7 @@ type KitProxyContract () =
             Assert.Equal<DataAttachment>(attachment, stored.attachment)
         let before = folder.paths ()
         Assert.Equal<string list>(
-            [ ".kit-json"; "data"; "data/run 1 (2).csv"; "data/run 1.csv"; "library" ], before)
+            [ ".optics-kit"; "data"; "data/run 1 (2).csv"; "data/run 1.csv"; "library" ], before)
         Assert.Equal<Result<DataAttachment, KitError>>(
             Error (KitReadOnlyErr "copyInFile"), proxy.readOnlyView.attachLabFile KitDataFolder.root otherSource)
         Assert.Equal<string list>(before, folder.paths ())
@@ -572,7 +572,7 @@ type KitProxyContract () =
         assertCopy leaf otherBytes thirdPath otherText |> ignore
         Assert.Equal<Result<KitDataFile, KitError>>(Ok first, proxy.readDataFile firstPath)
         Assert.Equal<string list>(
-            [ ".kit-json"; "data"; "data/run 1 (2).csv"; "data/run 1 (3).csv"; "data/run 1.csv"; "library" ],
+            [ ".optics-kit"; "data"; "data/run 1 (2).csv"; "data/run 1 (3).csv"; "data/run 1.csv"; "library" ],
             folder.paths ())
 
         folder.placeLabFile "data/RUN 1 (4).csv/held.txt" "A folder also occupies a name"
@@ -603,7 +603,7 @@ type KitProxyContract () =
         Assert.Equal<ContentHash>(ContentHash.ofBytes bytes, copied.contentHash)
         Assert.Equal<Result<KitDataFile, KitError>>(Ok copied, (folder.openProxy ()).readDataFile expectedPath)
         Assert.Equal<string list>(
-            [ ".kit-json"; "data"; "data/raw"; "data/raw/2026-11-03"; "data/raw/2026-11-03/run.csv"; "library" ],
+            [ ".optics-kit"; "data"; "data/raw"; "data/raw/2026-11-03"; "data/raw/2026-11-03/run.csv"; "library" ],
             folder.paths ())
 
     [<Fact>]
@@ -688,7 +688,7 @@ type KitProxyContract () =
 
         Assert.NotSame(proxy, otherProxy)
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
-        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "data"; "library" ], folder.paths ())
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, proxy.readKitFile ())
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, otherProxy.readKitFile ())
 
@@ -704,7 +704,7 @@ type KitProxyContract () =
         let kit = newKitFile clock
 
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
-        Assert.Equal<string list>([ ".kit-json"; "data"; "library"; "notes.txt"; "raw"; "raw/run 1.csv" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "data"; "library"; "notes.txt"; "raw"; "raw/run 1.csv" ], folder.paths ())
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, (folder.openProxy ()).readKitFile ())
 
     /// Another proxy cannot initialise an existing kit or change its contents (spec 0050 S4.1).
@@ -780,7 +780,7 @@ type KitProxyContract () =
             Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile kind secondStem (secondTexts[kind]))
 
         let expectedPaths =
-            [ ".kit-json"; "data"; "library" ]
+            [ ".optics-kit"; "data"; "library" ]
             @ [ for kind in KitFileKind.all do
                     (kind.fileNameOf firstStem).value
                     (kind.fileNameOf secondStem).value ]
@@ -870,7 +870,7 @@ type KitProxyContract () =
         Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
         Assert.Equal<string list>(before, folder.paths ())
         let ignored =
-            [ "data/new.csv"; "notes.txt"; ".oc/lock"; ".kit-json.tmp"; "library/.kit-json" ]
+            [ "data/new.csv"; "notes.txt"; ".oc/lock"; ".optics-kit.tmp"; "library/.optics-kit" ]
             @ [ for kind in KitFileKind.all do
                     $"data/hidden{kind.extension.value}"
                     $".oc/hidden{kind.extension.value}"
@@ -879,7 +879,7 @@ type KitProxyContract () =
         for text in [ "Lab content"; "Changed lab content" ] do
             for path in ignored do folder.placeLabFile path text
             Assert.Equal<Result<FileName list, KitError>>(Ok [], proxy.changedKitFiles ())
-        let present = [ FileName ".kit-json"; FileName "X.experiment-json"; FileName "Y.setup-json" ]
+        let present = [ FileName ".optics-kit"; FileName "X.experiment-json"; FileName "Y.setup-json" ]
         let beforeOpen = folder.paths ()
         let fresh = folder.openProxy ()
         Assert.Equal<Result<FileName list, KitError>>(Ok present, fresh.changedKitFiles ())
@@ -960,7 +960,7 @@ type KitProxyContract () =
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile stem original)
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writeKindFile SetupKitFile stem replacement)
-        Assert.Equal<string list>([ ".kit-json"; "QZ-LR.setup-json"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "QZ-LR.setup-json"; "data"; "library" ], folder.paths ())
         Assert.False(folder.paths () |> List.exists (fun path -> path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)))
         Assert.Equal<Result<KitFileText, KitError>>(Ok replacement, (folder.openProxy ()).readKindFile SetupKitFile stem)
 
@@ -990,7 +990,7 @@ type KitProxyContract () =
             assertDataFile path storedText expectedText
 
         let assertKitMetadata (expectedKit : KitFile) : unit =
-            let path = KitRelativePath ".kit-json"
+            let path = KitRelativePath ".optics-kit"
             let expectedText = expectedKit.fileText |> Result.defaultWith (fun error -> failwith error.describe)
             assertDataFile path expectedText expectedText
             for reader in [ proxy; otherProxy; folder.openProxy () ] do
@@ -1167,13 +1167,13 @@ type KitProxyContract () =
         let kit = newKitFile clock
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.initialiseKit kit)
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.releaseLock ())
-        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "data"; "library" ], folder.paths ())
         let holder = takeKitLock proxyA (clock.now ())
-        Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".oc"; ".oc/lock"; ".optics-kit"; "data"; "library" ], folder.paths ())
         Assert.Equal<KitLockHolder>(holder, storedKitLock proxyC)
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyA.releaseLock ())
-        Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".oc"; ".optics-kit"; "data"; "library" ], folder.paths ())
         let nextTime = clock.now ()
         let next = takeKitLock proxyA nextTime
         Assert.Equal<ClockTime>(nextTime, next.acquiredAt)
@@ -1192,10 +1192,10 @@ type KitProxyContract () =
         let first = KitFileText "{}"
         let second = KitFileText "{\"rows\":[]}\n"
         Assert.Equal<Result<KitFileText option, KitError>>(Ok None, proxy.readPlannerCacheFile name)
-        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "data"; "library" ], folder.paths ())
 
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.writePlannerCacheFile name first)
-        let written = [ ".kit-json"; ".oc"; ".oc/planner"; ".oc/planner/a.candidate-json"; "data"; "library" ]
+        let written = [ ".oc"; ".oc/planner"; ".oc/planner/a.candidate-json"; ".optics-kit"; "data"; "library" ]
         Assert.Equal<string list>(written, folder.paths ())
         Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some first), proxy.readPlannerCacheFile name)
         Assert.Equal<Result<KitFileText option, KitError>>(Ok (Some first), (folder.openProxy ()).readPlannerCacheFile name)
@@ -1287,7 +1287,7 @@ type KitProxyContract () =
             Assert.Same(proxy, context.proxy)
             Assert.Same(clock, context.clock)
             let expectedPaths =
-                [ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ] @ before
+                [ ".oc"; ".oc/lock"; ".optics-kit"; "data"; "library" ] @ before
                 |> List.distinct
                 |> List.sortWith (fun first second -> String.CompareOrdinal(first, second))
             Assert.Equal<string list>(expectedPaths, folder.paths ())
@@ -1336,7 +1336,7 @@ type KitProxyContract () =
                 kit with id = KitId (Guid.Parse "63a633d3-30d1-4b7b-9b27-350e9ce9fc2f")
             }
         Assert.Equal<Result<unit, KitError>>(Ok (), proxyB.initialiseKit kit)
-        let metadataPath = KitRelativePath ".kit-json"
+        let metadataPath = KitRelativePath ".optics-kit"
         let originalMetadata = proxyB.readDataFile metadataPath
         let mutable newKitCalls = 0
         let makeKit (_ : ClockTime) : Result<KitFile, KitError> =
@@ -1600,7 +1600,7 @@ type KitProxyContract () =
         Assert.Equal<Result<KitFile, KitError>>(Ok expected, proxyB.readKitFile ())
         Assert.Equal<Result<FileName list, KitError>>(Ok [], saved.proxy.changedKitFiles ())
 
-        let metadataPath = KitRelativePath ".kit-json"
+        let metadataPath = KitRelativePath ".optics-kit"
         let storedMetadata = proxyB.readDataFile metadataPath
         let experiment = FileStem.ofText "QZ-LR"
         let text = KitFileText "Experiment without a metadata edit\n"
@@ -1692,7 +1692,7 @@ type KitProxyTests () =
         let first = KitContext.createInMemory kit clock |> Result.defaultWith (fun error -> failwith error.describe)
         let second = KitContext.createInMemory kit clock |> Result.defaultWith (fun error -> failwith error.describe)
         Assert.NotSame(first.proxy, second.proxy)
-        let metadataPath = KitRelativePath ".kit-json"
+        let metadataPath = KitRelativePath ".optics-kit"
         let canonical = kit.fileText |> Result.defaultWith (fun error -> failwith error.describe)
         for context in [ first; second ] do
             Assert.Equal<KitFile>(kit, context.kitFile)
@@ -1749,7 +1749,7 @@ type KitProxyFolderTests () =
         let proxy = folder.openProxy ()
         let kit = newKitFile (steppingClock ())
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
-        let kitJson = folder.absoluteName ".kit-json"
+        let kitJson = folder.absoluteName ".optics-kit"
         let old = DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)
         File.SetLastWriteTimeUtc(kitJson.value, old)
         let before = File.ReadAllBytes kitJson.value
@@ -1868,7 +1868,7 @@ type KitProxyFolderTests () =
         let file = folder.absoluteName expectedPath.value
         Assert.Equal<byte>(bytes.value, File.ReadAllBytes file.value)
         Assert.Equal<Result<KitDataFile, KitError>>(Ok copied, (folder.openProxy ()).readDataFile expectedPath)
-        Assert.Equal<string list>([ ".kit-json"; "data"; "data/bom.csv"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "data"; "data/bom.csv"; "library" ], folder.paths ())
 
     [<Fact>]
     member this.``the new-file writer refuses a file that exists, keeps it whole and leaves no temporary file`` () : unit =
@@ -1954,7 +1954,7 @@ type KitProxyFolderTests () =
         Assert.Equal<ClockTime>(time, holder.acquiredAt)
         Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
         Assert.NotEqual<KitLockHolder>(stale, holder)
-        Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".oc"; ".oc/lock"; ".optics-kit"; "data"; "library" ], folder.paths ())
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
         for _ in 1 .. 25 do
             placeKitLock folder stale
@@ -2003,7 +2003,7 @@ type KitProxyFolderTests () =
             Assert.Equal<KitLockOwner>(currentKitLockOwner (), holder.owner)
             Assert.Equal<ClockTime>(time, holder.acquiredAt)
             Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
-            Assert.Equal<string list>([ ".kit-json"; ".oc"; ".oc/lock"; "data"; "library" ], folder.paths ())
+            Assert.Equal<string list>([ ".oc"; ".oc/lock"; ".optics-kit"; "data"; "library" ], folder.paths ())
             Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
 
         folder.placeLabFile ".oc/lock" "not a lock"
@@ -2030,7 +2030,7 @@ type KitProxyFolderTests () =
         Assert.Equal<KitLockHolder>(holder, storedKitLock proxy)
         Assert.Equal<Result<KitLockHolder, KitError>>(Ok holder, proxy.acquireLock (clock.now ()))
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.releaseLock ())
-        Assert.Equal<string list>([ ".kit-json"; ".oc"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".oc"; ".optics-kit"; "data"; "library" ], folder.paths ())
 
         folderPath.assertKitGuardRetryPolicy ()
         assertBlockedKitGuard folderPath proxy clock
@@ -2059,7 +2059,7 @@ type KitProxyFolderTests () =
         Assert.False(Directory.Exists path.value)
         Assert.Equal<Result<unit, KitError>>(Ok (), proxy.initialiseKit kit)
         Assert.True(Directory.Exists path.value)
-        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "data"; "library" ], folder.paths ())
         Assert.Equal<Result<KitFile, KitError>>(Ok kit, (folder.openProxy ()).readKitFile ())
 
     [<Fact>]
@@ -2105,7 +2105,7 @@ type KitProxyFolderTests () =
         | Ok _ -> Assert.Fail("Malformed kit JSON must be refused.")
 
         Assert.Equal<byte>(Encoding.UTF8.GetBytes "{", File.ReadAllBytes file.value)
-        Assert.Equal<string list>([ ".kit-json"; "data"; "library" ], folder.paths ())
+        Assert.Equal<string list>([ ".optics-kit"; "data"; "library" ], folder.paths ())
 
     [<Fact>]
     member _.``a replace that fails keeps the old file whole, removes its temporary file and is KitIoErr`` () : unit =

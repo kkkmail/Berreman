@@ -142,7 +142,7 @@ module AppContextTests =
 
     // Manual 011: completed storage tasks keep the adapter on this isolated UI thread.
     let private pickKitFolderForTest (window : TopLevel) (suggested : FolderName) : KitFolder option =
-        let picker = KitFolderPicker.ofWindow window suggested
+        let picker = KitFolderPicker.ofWindow window (KitFolderMemory.fixedAt suggested)
         let task = picker.pickKitFolder ChooseKitFolder |> Async.StartImmediateAsTask
         task.GetAwaiter().GetResult()
 
@@ -734,19 +734,15 @@ module AppContextTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: two Main windows over ONE app scope share the stores — a sample added through one is listed by the other`` () =
+    let ``acceptance: two Library windows over ONE app scope share the stores — a sample added through one is listed by the other`` () =
         HeadlessSession.run (fun () ->
             let context = freshContext ()
-            // Two REAL Main windows over the SAME injected scope — the launcher's Main button
-            // clicked twice (spec 0038 step 006: launcher-opened windows share the stores).
-            let first = OpticalConstructor.App.MainConstructorWindow(context, TestAppScope.openedKitIn owner context.catalogueImports)
-            first.Show()
-            Dispatcher.UIThread.RunJobs()
-            let second = OpticalConstructor.App.MainConstructorWindow(context, TestAppScope.openedKitIn owner context.catalogueImports)
-            second.Show()
-            Dispatcher.UIThread.RunJobs()
-            // Observe the windows the REAL launcher seam opens (subscribed only after both Main
-            // windows are shown — the WireUiCompositionTests seam).
+            // The Launcher's Library button's seam, pressed twice over the SAME injected scope (spec 0038 step 006:
+            // launcher-opened windows share the stores; spec 0051 `.manual/007` 2.3: the Launcher alone opens it).
+            let openLibrary () : unit =
+                OpticalConstructor.Ui.TableAndElementRotationView.EditorLaunchers.defaults.openLibraryWindow
+                    context.library context.samples context.sources context.materials context.categories context.libraryBackups context.catalogueImports
+            // Observe the windows the REAL launcher seam opens (the WireUiCompositionTests seam).
             let opened = ResizeArray<Window>()
             use _sub =
                 Window.WindowOpenedEvent.Raised
@@ -754,14 +750,13 @@ module AppContextTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            // Surface 1: the Library… strip button (spec 0038 step 015) → the REAL Library
-            // window → Make-multilayer → the REAL Sample editor over the SHARED store (the
-            // seeded-period creation path, so a plain name + Save persists).
-            clickOn first ConstructorUiId.openLibraryWindowButton.value
+            // Surface 1: the REAL Library window → Make-multilayer → the REAL Sample editor over the SHARED store
+            // (the seeded-period creation path, so a plain name + Save persists).
+            openLibrary ()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryOfFirst = opened.[0]
-            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryOfFirst, "the strip button must open the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryOfFirst, "the seam must open the Library window")
             clickOn libraryOfFirst ConstructorUiId.libraryMakeMultilayerButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
@@ -778,23 +773,19 @@ module AppContextTests =
                     | Some sample -> sample.id
                     | None -> failwith "the saved sample must be in the app-scope store"
                 | Error e -> failwith $"listSamples failed: %A{e}"
-            // Close the first surface's Library window — the registry is app-global, so the
-            // second surface's strip click must CREATE afresh over the same scope, not activate
-            // a stale window.
+            // Close the first Library window — the registry is app-global, so the second open must CREATE afresh over
+            // the same scope, not activate a stale window.
             libraryOfFirst.Close()
             Dispatcher.UIThread.RunJobs()
-            // Surface 2: ITS strip button opens a fresh Library window that re-queries the SAME
-            // store — the added sample is listed by the other window.
-            clickOn second ConstructorUiId.openLibraryWindowButton.value
+            // Surface 2: a fresh Library window re-queries the SAME store — the added sample is listed by it.
+            openLibrary ()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             let libraryOfSecond = opened.[2]
-            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryOfSecond, "the strip button must open the Library window")
+            Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value libraryOfSecond, "the seam must open the Library window")
             // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
             clickOn libraryOfSecond (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value
             Assert.True(isPresent libraryOfSecond ((ConstructorUiId.libraryEntryNode savedId.toElementValueId).value),
-                        "the second Main window's Library window must list the sample added through the first")
+                        "the second Library window must list the sample added through the first")
             libraryOfSecond.Close()
-            Dispatcher.UIThread.RunJobs()
-            second.Close()
-            first.Close())
+            Dispatcher.UIThread.RunJobs())

@@ -105,7 +105,7 @@ module KitOpeningTests =
                 Assert.Empty opened.pendingDecisions
                 Assert.Empty opened.overlay.snapshots
                 Assert.Empty opened.overlay.replacements
-                Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                Assert.True(File.Exists(Path.Combine(folder.value.value, ".optics-kit")))
                 Assert.True(Directory.Exists(Path.Combine(folder.value.value, "data")))
                 Assert.True(Directory.Exists(Path.Combine(folder.value.value, "library")))
                 Assert.True(File.Exists(Path.Combine(folder.value.value, ".oc", "lock"))))

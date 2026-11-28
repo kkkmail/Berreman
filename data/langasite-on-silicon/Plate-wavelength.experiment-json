@@ -1,0 +1,35 @@
+{
+  "experiment": {
+    "corrections": [],
+    "dataOpt": null,
+    "id": 2,
+    "name": "Plate-wavelength",
+    "notes": "",
+    "role": 1,
+    "scan": {
+      "blocks": [
+        {
+          "axes": [
+            {
+              "elementId": "src",
+              "range": {
+                "max": 600,
+                "min": 250,
+                "points": 351
+              },
+              "variable": "VaryWaveLength"
+            }
+          ],
+          "capture": "CaptureBoth"
+        }
+      ],
+      "sourceWaveLengthOpt": null
+    },
+    "sessionOpt": null,
+    "setup": {
+      "name": "Plate bench",
+      "revision": 1
+    }
+  },
+  "schemaVersion": 2
+}

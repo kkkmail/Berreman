@@ -190,8 +190,8 @@ let kitArchiveProgressView (state : KitArchiveJobState) (ids : KitArchiveProgres
                         ProgressBar.value fraction
                         ProgressBar.isIndeterminate (Option.isNone state.job.progress)
                     ]
-                    TextBlock.create [
-                        ids.text.automationAttribute<TextBlock> ()
+                    SelectableTextBlock.create [
+                        ids.text.automationAttribute<SelectableTextBlock> ()
                         TextBlock.text (state.job.progressText |> Option.defaultValue "Starting…")
                     ]
                 ]

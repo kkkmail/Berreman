@@ -1,0 +1,36 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d06",
+    "label": "Plate",
+    "model": {
+      "Case": "SampleInstance",
+      "Fields": [
+        {
+          "itemModelId": "4d13ecb1-2006-576f-99e7-e8bc266e8624",
+          "version": 1
+        },
+        {
+          "sampleId": "3e3cac98-932a-427c-bda8-f0eb2307d9af",
+          "version": 1
+        }
+      ]
+    },
+    "notes": "",
+    "parameters": [
+      {
+        "name": "substrate.thickness",
+        "state": {
+          "Case": "KnownParameter",
+          "Fields": [
+            1E-05
+          ]
+        }
+      }
+    ],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

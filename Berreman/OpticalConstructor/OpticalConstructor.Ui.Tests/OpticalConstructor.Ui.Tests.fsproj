@@ -21,6 +21,7 @@
         <Compile Include="..\OpticalConstructor.Tests\SceneTestFixture.fs" Link="SceneTestFixture.fs" />
         <Compile Include="TestApp.fs" />
         <Compile Include="TestAppScope.fs" />
+        <Compile Include="ScriptCurves.fs" />
         <Compile Include="UiDriver.fs" />
         <Compile Include="AutomationContract.fs" />
         <!-- Spec 0026 Part I (slice 003): pure localization logic tests (no headless
@@ -92,7 +93,6 @@
         <Compile Include="SnapToReflectedTests.fs" />
         <!-- Spec 0027 (024) Phase 1: the Library bay — pure control contract + host kind-constrained
              flattening + the BindValueId binding + a headless render/click proof. -->
-        <Compile Include="LibraryControlsTests.fs" />
         <!-- Spec 0027 (024) Phase 2: the Experiments bay — pure control contract + host candidate
              flattening + the ChooseSweptElement binding + a headless render/click proof. -->
         <Compile Include="ExperimentControlsTests.fs" />
@@ -211,6 +211,7 @@
         <!-- Spec 0046: every window's scroll extent holds all of its content (nothing unreachable). -->
         <Compile Include="ScrollExtentTests.fs" />
         <Compile Include="AutomationContractTests.fs" />
+        <Compile Include="OptionsAndGuideTests.fs" />
         <!-- The inverse constructor keeps experiments and measured-data attachments in the kit (spec 0050 S4.3). -->
         <Compile Include="InverseConstructorTests.fs" />
         <Compile Include="SetupSaveLoadTests.fs" />

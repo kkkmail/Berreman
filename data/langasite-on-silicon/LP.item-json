@@ -1,0 +1,23 @@
+{
+  "item": {
+    "dial": "FixedMounting",
+    "history": [],
+    "id": "7d2a4e6c-1b3f-4d5a-8c9e-0f1a2b3c4d02",
+    "label": "LP",
+    "model": {
+      "Case": "PresetInstance",
+      "Fields": [
+        {
+          "itemModelId": "d47e5ce3-3e74-5058-848e-3aa54930e377",
+          "version": 1
+        },
+        "f1d38e6a-16e7-405d-9678-45c990f5a155"
+      ]
+    },
+    "notes": "",
+    "parameters": [],
+    "photoOpt": null,
+    "revision": 1
+  },
+  "schemaVersion": 1
+}

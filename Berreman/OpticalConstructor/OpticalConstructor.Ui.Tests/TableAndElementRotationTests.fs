@@ -196,7 +196,7 @@ module TableAndElementRotationTests =
                 let mutable m = model
                 let dispatch (msg : TableAndElementRotationMsg) = m <- updateTableAndElementRotation msg m
                 let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 230.0)
-                window.Content <- Component(fun _ -> mainView m dispatch)
+                window.Content <- Component(fun _ -> UiDriver.editableTableView m dispatch)
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 // The clickable boxes carry an `AutomationProperties.AutomationId` (spec 0038 sweep);
@@ -257,6 +257,8 @@ module TableAndElementRotationTests =
                         Dispatcher.UIThread.RunJobs()
                     else Assert.Fail($"%s{name} has no on-screen position")
                 | None -> Assert.Fail($"%s{name} not found")
+            // Spec 0051 `.manual/007` 5.2: the ribbon is a setup's Create or Edit; a fresh kit has no setup, so New setup.
+            click ConstructorUiId.newSetupButton.value
             click (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.render.value)).value     // show the Render bay
             click ConstructorUiId.rendererSwapButton.value     // swap the renderer (wireframe → shapes)
             click (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.rotation.value)).value    // back to Rotation — must NOT throw

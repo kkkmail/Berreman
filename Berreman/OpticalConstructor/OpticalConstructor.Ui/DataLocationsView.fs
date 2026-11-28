@@ -150,8 +150,8 @@ let private dataLocationRowView (dispatch : DataLocationsMsg -> unit) (row : Dat
                     TextBlock.fontWeight FontWeight.SemiBold
                     TextBlock.text kind.caption.value
                 ]
-                TextBlock.create [
-                    (ConstructorUiId.dataLocationPathText kind).automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    (ConstructorUiId.dataLocationPathText kind).automationAttribute<SelectableTextBlock> ()
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text row.path.value
                 ]
@@ -174,8 +174,8 @@ let dataLocationsView (m : DataLocationsModel) (dispatch : DataLocationsMsg -> u
         match m.status with
         | Some status ->
             [
-                TextBlock.create [
-                    ConstructorUiId.dataLocationsStatusText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.dataLocationsStatusText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text status.value

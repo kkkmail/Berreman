@@ -31,6 +31,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Tests
 open OpticalConstructor.Ui.Tests.UiDriver
+open OpticalConstructor.Ui.Tests.ScriptCurves
 
 /// Spec 0046 — the constructor's numbers checked against the Analytics example scripts
 /// (`Berreman/Analytics/Examples/*.fsx`, the operator's trusted reference). Each test builds the script's
@@ -130,8 +131,8 @@ module FsxAcceptanceTests =
             points : int
         }
 
-    /// Mount the Main workbench through a re-rendering FuncUI Component (the `LibraryWindowTests` drive
-    /// pattern): the window, a dispatch, and the latest model.
+    /// Mount the Experiments page through a re-rendering FuncUI Component (the `LibraryWindowTests` drive pattern): the
+    /// window, a dispatch, and the latest model.
     let private mount (model0 : TableAndElementRotationModel) : Window * (TableAndElementRotationMsg -> unit) * (unit -> TableAndElementRotationModel) =
         let latest : TableAndElementRotationModel ref = ref model0
         let dispatchRef : (TableAndElementRotationMsg -> unit) ref = ref ignore
@@ -143,7 +144,7 @@ module FsxAcceptanceTests =
                     latest.Value <- m
                     state.Set m
                 dispatchRef.Value <- dispatch
-                mainView state.Current dispatch)
+                UiDriver.experimentsPageTestView state.Current dispatch)
         let window = Window(Width = 1200.0, Height = 1400.0, Content = comp)
         window.Show()
         Dispatcher.UIThread.RunJobs()
@@ -151,7 +152,7 @@ module FsxAcceptanceTests =
 
     /// Build the table and the experiment through the app's own messages (its MVU `update` — the same
     /// messages the bays dispatch; rendering every intermediate step would re-run the whole sweep each
-    /// time), then mount the Main workbench headless on that model and click its Export data button, which
+    /// time), then mount the Experiments page creating it headless and click its Export data button, which
     /// exports the run through the export proxy into the in-memory store. Capture Both: a detector on the
     /// sample's transmitted beam and one on its reflected ray. Returns the exported run.
     let private runOnTable (b : Bench) (run : TableRun) : ExperimentExport.ExportedRun =
@@ -186,8 +187,9 @@ module FsxAcceptanceTests =
                   ExpSetRangeMin (ExperimentControls.ExperimentRangeEnd run.low)
                   ExpSetRangeMax (ExperimentControls.ExperimentRangeEnd run.high)
                   ExpSetRangePoints (ExperimentControls.ExperimentPointCount run.points)
-                  ExpChooseMeasurement ExperimentControls.CaptureBoth
-                  SelectBay BayNames.experiments ]
+                  ExpChooseMeasurement ExperimentControls.CaptureBoth ]
+            // Spec 0051 `.manual/007` 6.4: Export data is the Experiments page's, under a new experiment's editor.
+            |> UiDriver.creatingExperimentOver
         let mutable exported : ExperimentExport.ExportedRun list = []
         HeadlessSession.run (fun () ->
             let window, _, _ = mount experiment
@@ -201,24 +203,10 @@ module FsxAcceptanceTests =
 
     // ------------------------------ the script side ------------------------------
 
-    /// The script's data: `Variables.calculate` over the range, read through `fn` (what the script plots).
-    let private scriptData (info : FixedInfo) (range : RangedVariable) (fn : OpticalFunction) : (float * float) list =
-        calculate info range
-        |> Array.choose (fun p -> p.solution.func fn |> Option.map (fun y -> p.plotValue, y.value))
-        |> List.ofArray
-
     let private seriesNamed (run : ExperimentExport.ExportedRun) (name : string) : (float * float) list =
         match run.series |> List.tryFind (fun s -> s.name.value = name) with
         | Some s -> s.points |> List.map (fun p -> p.x, p.y)
         | None -> failwith $"""no series '%s{name}' among %A{run.series |> List.map (fun s -> s.name.value)}"""
-
-    /// The two curves agree point by point: the same x grid, and y within `tolerance` (absolute).
-    let private assertSameCurve (what : string) (tolerance : float) (expected : (float * float) list) (actual : (float * float) list) : unit =
-        Assert.Equal(List.length expected, List.length actual)
-        List.zip expected actual
-        |> List.iter (fun ((xe, ye), (xa, ya)) ->
-            Assert.True(abs (xe - xa) < 1.0e-9, $"%s{what}: x differs (%g{xe} vs %g{xa})")
-            Assert.True(abs (ye - ya) <= tolerance, $"%s{what} at x = %g{xe}: script %.9f{ye}, constructor %.9f{ya}"))
 
     /// Compare the exported T and R curves with the script's `T` and `R`.
     let private assertRT (info : FixedInfo) (range : RangedVariable) (exported : ExperimentExport.ExportedRun) : unit =
@@ -250,9 +238,6 @@ module FsxAcceptanceTests =
                     lowerWithDisp = OpticalProperties.vacuum.dispersive
                 }
         }
-
-    /// The script's incidence range (0…89° — `IncidenceAngle.maxValue`), 89 intervals ⇒ a point per degree.
-    let private incidence0to89 : RangedVariable = Range<_>.create (NumberOfPoints 89) IncidenceAngle.normal IncidenceAngle.maxValue |> IncidenceAngleRange
 
     let private glassOnTable (plate : bool) : unit =
         let b = bench ()
@@ -295,7 +280,7 @@ module FsxAcceptanceTests =
         (ExperimentControls.VaryR2, 0.0, topDegrees, n + 1)
 
     let private waveLengthSweep (n : int) (lowNm : float) (highNm : float) : RangedVariable * (ExperimentControls.VariableChoice * float * float * int) =
-        Range<_>.create (NumberOfPoints n) (WaveLength.nm (lowNm * 1.0<nm>)) (WaveLength.nm (highNm * 1.0<nm>)) |> WaveLengthRange,
+        waveLengthRange n lowNm highNm,
         (ExperimentControls.VaryWaveLength, lowNm, highNm, n + 1)
 
     let private tableRun (source : ElementValueId) (sampleEntry : ElementValueId) (incidence : float) (variable, low, high, points) : TableRun =
@@ -464,19 +449,7 @@ module FsxAcceptanceTests =
         let high = material b "Glass n = 1.75" (constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass175))
         let low = material b "Glass n = 1.50" (constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass150))
         let entry = filmsSample b "MultilayerThinFilm_02.fsx" (List.replicate 100 [ (high, t1); (low, t2) ] |> List.concat) (Some low)
-        let p12 =
-            [
-                { properties = OpticalProperties.transparentGlass175; thickness = t1 }
-                { properties = OpticalProperties.transparentGlass150; thickness = t2 }
-            ]
-        let system : BaseOpticalSystem =
-            {
-                description = Some (OpticalSystemDescription "Multilayer thin film system.")
-                upper = OpticalProperties.vacuum
-                films = [ for _ in 1 .. 100 -> p12 ] |> List.concat
-                lower = OpticalProperties.transparentGlass150
-            }
-        entry, system.fullSystem.dispersive
+        entry, multilayerGlassPairsSystem
 
     [<Fact>]
     [<Trait("Category", "fsx-acceptance")>]

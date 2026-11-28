@@ -37,6 +37,7 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.AppShell
 open OpticalConstructor.Ui.ImportDialogView
 open OpticalConstructor.Ui.ImportWizardOpening
+open OpticalConstructor.Ui.ItemModelChooserOpening
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.PlanJob
@@ -111,6 +112,8 @@ module private ConstructorScene =
             | Error error -> Logger.logError $"ConstructorScene: could not close the kit: {error.describe}")
         // The init Cmd stores the Elmish dispatch (Program.run is synchronous), so a host event can send a message.
         let hostDispatch : (TableAndElementRotationView.TableAndElementRotationMsg -> unit) ref = ref ignore
+        // The model as last updated, so closing the window asks first when a page holds changes (spec 0051 `.manual/007` D11).
+        let latest : TableAndElementRotationView.TableAndElementRotationModel option ref = ref None
         let kitBarShell : TableAndElementRotationView.KitWindowShell =
             {
                 TableAndElementRotationView.KitWindowShell.inert with
@@ -122,9 +125,10 @@ module private ConstructorScene =
                         KitArchiveJobHost.onUiThread
                             (fun progress -> hostDispatch.Value (TableAndElementRotationView.SendKitProgressed progress))
                             (fun ended -> hostDispatch.Value (TableAndElementRotationView.SendKitEnded ended))
-                    kitPicker = KitFolderPicker.ofWindow window context.locations.kitsFolder
+                    kitPicker = KitFolderPicker.ofWindow window (KitFolderMemory.ofEnvironment context.locations.environmentFile context.locations.kitsFolder)
                     environmentFileOpt = Some context.locations.environmentFile
                     exportsFolderOpt = Some context.locations.exportsFolder
+                    clipboard = OpticalConstructor.Controls.ClipboardProxy.ofTopLevel window
                     studyFits =
                         StudyFitJobHost.onUiThread
                             (fun progress -> hostDispatch.Value (TableAndElementRotationView.StudyFit (StudyFitProgressed progress)))
@@ -135,7 +139,17 @@ module private ConstructorScene =
                             (fun ended -> hostDispatch.Value (TableAndElementRotationView.StudyPlan (PlanEnded ended)))
             }
         let shell : TableAndElementRotationView.KitWindowShell =
-            kitBarShell.withImportWizard window (fun msg -> hostDispatch.Value msg)
+            {
+                (kitBarShell.withImportWizard window (fun msg -> hostDispatch.Value msg)).withItemModelChooser window with
+                    openGuide =
+                        fun () ->
+                            let kind =
+                                match latest.Value |> Option.map (fun model -> model.constructorMode) with
+                                | Some TableAndElementRotationView.InverseConstructor -> GuideView.InverseProblemGuide
+                                | Some TableAndElementRotationView.ForwardConstructor
+                                | None -> GuideView.DirectProblemGuide
+                            OpticalConstructor.Ui.GuideWindow(kind).Show window
+            }
         let init () : TableAndElementRotationView.TableAndElementRotationModel * Cmd<TableAndElementRotationView.TableAndElementRotationMsg> =
             let seeded = seed ()
             {
@@ -155,6 +169,7 @@ module private ConstructorScene =
             (model : TableAndElementRotationView.TableAndElementRotationModel)
             : TableAndElementRotationView.TableAndElementRotationModel * Cmd<TableAndElementRotationView.TableAndElementRotationMsg> =
             let next = TableAndElementRotationView.updateTableAndElementRotation msg model
+            latest.Value <- Some next
             match next.rememberSetupSince model with
             | Ok () -> ()
             | Error error -> Logger.logWarn $"ConstructorScene: {error.describe}"
@@ -162,6 +177,15 @@ module private ConstructorScene =
         Program.mkProgram init update titledView
         |> Program.withHost window
         |> Program.run
+        // Spec 0051 `.manual/007` D11: closing with a changed draft asks "Discard your changes and close the kit?" first;
+        // its Yes sends Close kit, which closes the window.
+        window.Closing.Add(fun event ->
+            match latest.Value with
+            | Some model when model.pageDraftState = TableAndElementRotationView.DraftChanged && model.leaveQuestionOpt = None ->
+                event.Cancel <- true
+                hostDispatch.Value TableAndElementRotationView.CloseKit
+            | Some _
+            | None -> ())
         // Spec 0050 S5.3; .manual/001 §E: every activation, the first included, offers the kit files changed outside the app.
         window.Activated.Add(fun _ ->
             hostDispatch.Value (TableAndElementRotationView.CheckKitChanges TableAndElementRotationView.KitCheckOnActivation))
@@ -333,8 +357,38 @@ type LauncherWindow(locations : DataLocations, settings : WorkbenchSettings, ope
             AutomationProperties.SetName(dataLocationsLink, linkText)
             dataLocationsLink.Click.Add(fun _ -> openDataLocations ())
             DockPanel.SetDock(dataLocationsLink, Dock.Left)
+            // Spec 0051 `.manual/007` 1.5, 9.2: Options… and Guide… beside Data locations, each with its tooltip.
+            let footerButton (id : ConstructorUiId) (caption : string) (onClick : unit -> unit) : Button =
+                let button =
+                    Button(
+                        Name = id.value,
+                        Content = TextBlock(Text = caption, TextDecorations = TextDecorations.Underline),
+                        Background = Brushes.Transparent,
+                        BorderThickness = Thickness 0.0,
+                        Padding = Thickness 0.0,
+                        FontSize = 11.0,
+                        VerticalAlignment = Layout.VerticalAlignment.Center,
+                        Margin = Thickness(16.0, 0.0, 0.0, 10.0))
+                AutomationProperties.SetAutomationId(button, id.value)
+                AutomationProperties.SetName(button, caption)
+                match id.helpOpt with
+                | Some help ->
+                    ToolTip.SetTip(button, help.value)
+                    AutomationProperties.SetHelpText(button, help.value)
+                | None -> ()
+                button.Click.Add(fun _ -> onClick ())
+                DockPanel.SetDock(button, Dock.Left)
+                button
+            let optionsButton =
+                footerButton ConstructorUiId.launcherOptionsButton "Options…" (fun () ->
+                    let styles = Application.Current.Styles
+                    OpticalConstructor.Ui.OptionsWindow(OptionsView.OptionsProxy.ofEnvironment locations.environmentFile styles).Show(this))
+            let guideButton =
+                footerButton ConstructorUiId.launcherGuideButton "Guide…" (fun () -> OpticalConstructor.Ui.GuideWindow(GuideView.DirectProblemGuide).Show(this))
             let footer = DockPanel()
             footer.Children.Add dataLocationsLink
+            footer.Children.Add optionsButton
+            footer.Children.Add guideButton
             footer.Children.Add version
             DockPanel.SetDock(footer, Dock.Bottom)
             match outcome with
@@ -439,6 +493,8 @@ type App() =
     override this.Initialize() =
         this.Styles.Add(FluentTheme())
         this.RequestedThemeVariant <- Startup.settings.theme.themeVariant
+        // Spec 0051 `.manual/007` 1.5: every tooltip waits the saved delay, about a second by default.
+        OptionsView.ToolTipDelayStyle.applyTo this.Styles Startup.settings.preferences.toolTipDelay
 
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with
@@ -448,7 +504,7 @@ type App() =
             desktop.ShutdownMode <- ShutdownMode.OnLastWindowClose
             desktop.MainWindow <-
                 LauncherWindow(Startup.dataLocations, Startup.workbenchSettings, Startup.context,
-                    fun owner -> KitFolderPicker.ofWindow owner Startup.dataLocations.kitsFolder)
+                    fun owner -> KitFolderPicker.ofWindow owner (KitFolderMemory.ofEnvironment Startup.dataLocations.environmentFile Startup.dataLocations.kitsFolder))
         | _ -> ()
 
 module Program =

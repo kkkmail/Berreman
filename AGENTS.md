@@ -457,7 +457,10 @@ click harder.
   - An id counts only on a control UI Automation exposes. Never put a press handler on a `Border` or a panel; build
     every pressable control with `CommandControls` (`CommandButton`, `ChoiceToggle`), and expose a container that
     carries an id through `ConstructorUiId.groupAttributes` / `surfaceAttributes` / `figureAttributes`.
-    `AutomationContractTests` is the law (spec 0051 `.manual/003` 1.7).
+    Every command carries a tooltip and the same `HelpText`, from the one catalogue `ConstructorUiId.helpOpt`
+    (`CommandHelpTexts.fs`, keyed by the id's prefix): a new command gets its entry there. A text that carries an id
+    shows data, so it is a `SelectableTextBlock` (`PageControls.copyableText`); a table is `PageControls.gridTableView`
+    with its Copy as CSV. `AutomationContractTests` is the law (spec 0051 `.manual/003` 1.7, `.manual/007` 1.4, 1.5).
 - **Centralize IDs on one elevated id type** (spec 0048 `.manual/002` R1; STL's
   `Vnc/ViewerCore/VncViewerUiIds.fs`):
   - a single-case union over the string with `.value`;
@@ -584,7 +587,7 @@ This is a spec-driven, gated repository.
 - **Lab files are read through import profiles** (`ImportProfiles.fs`, `LabFileImport.fs`, spec 0050 S9.2): an experiment's
   data is a kit file, a profile name and a row selection; a profile is a built-in (`Intensity series`,
   `Ellipsometric series`, `Phone ROI CSV`, `Mueller-matrix observations`, each calling its parser) or a named column mapping
-  in `.kit-json`, never replaced once saved; `ChosenImportProfile.mapText` is the one read and `MappedPoints.validatedFor`
+  in `.optics-kit`, never replaced once saved; `ChosenImportProfile.mapText` is the one read and `MappedPoints.validatedFor`
   the one validation; the app writes only observation files (`KeyedObservation.observationFileText`); Attach data file…
   opens the wizard, whose Attach sends `SaveImportProfile` then `AttachDataFile`.
 - **The Inverse flow ends at the study** (`Studies.fs`, `StudyEngine.fs`, `StudyPublishing.fs`, spec 0050 S11): the Inverse flow adds
@@ -599,12 +602,13 @@ This is a spec-driven, gated repository.
   correction re-points `Experiment.setup` and appends its audit note, the name kept; a split groups a file by its profile's
   key column (`splitGroups`) and `DataSplit.ofGroups` matches by name, then by the template, else offers the setup the name
   describes; `MatchByTemplate` attaches the file once, each group as `KeyedDataRows`.
-- **The slot bar is the quick swap** (`SlotBarView.fs`, spec 0050 S8.4): one chip per slot in light order, directly
-  above the table, each listing the kit items that fit its slot (`SetupSlot.fittingItems`); choosing one is `SwapSlot`
-  (the held setup of that content, else a new one), Tab moves between chips and a typed letter picks (`pickedByLetter`).
-  `Record experiment` is `RecordExperiment`, a new experiment of the draft over the active setup every time (the direct
-  problem), while `ExpCommit` edits the draft's own; `Setup grid…` opens `SetupGridView.fs` over `SetupGridDraft`, whose
-  Generate is `GenerateSetupGrid`.
+- **The slot chips fill a setup's slots** (`SlotBarView.fs`, spec 0050 S8.4; 0051 `.manual/007` 5.3, D9): one chip per
+  slot in light order, directly above the table, shown only while a setup is created or edited; each lists the kit items
+  that fit its slot (`SetupSlot.fittingItems`) and choosing one is `AssignSlot` into the draft, Tab moves between chips and
+  a typed letter picks (`pickedByLetter`). A setup's other item is a Copy… then an Edit (`SwapSlot` is gone). A new
+  experiment is the Experiments page's New experiment (`RecordExperiment` under it), over the chosen setup, asking first
+  when another experiment uses that setup (`sameSetupWarningOpt`); New experiments from a setup grid… opens
+  `SetupGridView.fs` over `SetupGridDraft` as that page's Creating, whose Generate is `GenerateSetupGrid`.
 - **The constructor is checked against the Analytics example scripts** (`FsxAcceptanceTests`,
   trait `fsx-acceptance`, ~1.5 min): each drives the headless app to build the script's table,
   exports the run through `ExperimentExportProxy`, and compares it with `Variables.calculate`.
@@ -618,12 +622,20 @@ This is a spec-driven, gated repository.
   WrapPanel (or a wrapping TextBlock) inside a horizontal StackPanel: it gets an unbounded width and never
   wraps — dock the label in a DockPanel instead. A plain wheel over the Main table scrolls the page until
   the table is fully in view, then zooms it (`wheelTarget`); with a modifier it is always the table's.
-- **Main ribbon:** Add (opens first) · Rotate · Move · Render · Select · Experiments · Details. Attach data
-  file… lives in the Inverse constructor's Data step (`DataStepView.fs`), not in the Experiments bay; a
-  collected experiment's View opens its chart (there is no separate Open chart button). The kit window's
-  left flow strip (`FlowStripView.fs`, `ConstructorFlowStep.stepsOf`) reaches Items, Setups and Experiments,
-  the last being this bay, in both constructors, and Data, Unknowns, Plan, Fit, Results and Publish in the
-  Inverse one alone.
+- **The kit window is one row of pages** (`KitWindowView.fs`, `ConstructorFlowStep.stepsOf`, spec 0051 `.manual/007`
+  2.1): Items · Setups · Experiments · the switch to the other constructor · Data · Unknowns · Plan · Fit · Results (the
+  Inverse one alone) · Kit, a row above the page it shows. The Kit page holds the kit's lines, Send kit…, Show in
+  Explorer, Copy experiments…, Reload changes, Close kit, Guide…, the naming template and Publish. The table's ribbon
+  (Add, opening first · Rotate · Move · Render · Details) shows only in a setup's Create or Edit; there is no Select
+  or Experiments bay, and the Launcher alone opens the Library and Materials windows. Attach data file… is the chosen
+  experiment's Edit on the Data page; a chosen experiment's View chart ↗ opens its chart, a Mueller polarimeter's as the
+  15 elements over m11 (`DetectorCharting`).
+- **Every page follows the page rules** (`KitPageFrame.fs`, spec 0051 `.manual/007` 1.2–1.6): one state at a time
+  (`PageMode`: Browsing, Editing or Creating); the entries are dynamic buttons, a press chooses one and opens its details
+  in place under it, a second press closes them; Edit and New… open a draft in place, Save (or Create) is withheld until
+  the draft changed and writes once, Cancel and every leave ask "Discard your changes?" when it did (`PageLeave`); a
+  status shows on the page it was raised on (`kitStatusStep`); an entry's menu offers Copy name and Rename… (Rename
+  re-points what references it); the header carries the page's Help (`PageHelpTexts.fs`). A new page follows them.
 - **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
   `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
   the beam root is its 3-D centre, so moving it carries the whole beam — an x move included: the
@@ -649,7 +661,7 @@ This is a spec-driven, gated repository.
   ship as `Berreman/OpticalConstructor/Catalogue/Builtin/`, imported with every registered catalogue folder on every start by manifest hash
   (`CatalogueImportContext.importOnStart`); code names a built-in only by its frozen GUID (`MaterialIds`, `CategoryIds`, `SampleIds`, `PresetIds`, `ItemModelIds`)
   and holds no seed value; a library of another schema is `LibrarySchemaMismatchErr`, which the Launcher remedies with Recreate library from catalogues.
-- **Everything else lives in a kit folder** (`Kit.fs`, `KitOpening.fs`, spec 0050 S4-S12): a folder holding `.kit-json`, its root flat
+- **Everything else lives in a kit folder** (`Kit.fs`, `KitOpening.fs`, spec 0050 S4-S12): a folder holding `.optics-kit`, its root flat
   (`<label>.item-json`, `<name>.setup-json`, `<name>.experiment-json`, `<study>.study-json`, append-only `<study>@<stamp>.fitrun-json`)
   with three subfolders: `library/` (a snapshot of every library version the kit uses, so it opens on any machine), `data/` (lab
   files the app only reads, referenced by relative path and SHA-256) and `.oc/` (the lock and the Planner's derived cache, never
@@ -669,7 +681,11 @@ This is a spec-driven, gated repository.
 - `data/` holds the committed reference experiment kits (spec 0050 `.manual/001` §1),
   one subfolder each. Only `data/chroma/` (the web app's knowledge base) and each kit's
   `.oc/` are git-ignored. Tests open those kits read-only and never write into `data/`.
-- **The reference kits are AT-1's and AT-2's output, never hand-edited** (`KitAcceptanceTests.fs`, spec 0050 S12).
-  `data/optics-mueller/` is exactly AT-1's build output and `data/absorbing-biaxial-noisy/` AT-2's, five observation files
-  included, `.oc/` aside; output changes re-run `the built optics-mueller kit equals the committed kit file by file` or
-  `the built absorbing-biaxial-noisy kit equals the committed kit file by file` and re-commit what it names in the same step.
+- **The reference kits are AT-1's to AT-4's output, never hand-edited** (`KitAcceptanceTests.fs`, spec 0050 S12; 0051
+  `.manual/007` 9.1). `data/optics-mueller/` is exactly AT-1's build output, `data/absorbing-biaxial-noisy/` AT-2's (five
+  observation files included), `data/multilayer-thin-film/` AT-3's and `data/langasite-on-silicon/` AT-4's, `.oc/` aside;
+  each opens read-only against an empty library, whole on disk. Output changes re-run that kit's `the built … kit equals
+  the committed kit file by file` and re-commit what it names in the same step. AT-3's and AT-4's charts are checked
+  against `MultilayerThinFilm_02.fsx` and `LangasiteOnSilicon.fsx` through `ScriptCurves`, which `FsxAcceptanceTests`
+  shares; AT-4's exactly over the catalogue's materials, whose langasite keeps a constant ρ, and within
+  `langasiteGyrationGap` of the script's published gyration law.

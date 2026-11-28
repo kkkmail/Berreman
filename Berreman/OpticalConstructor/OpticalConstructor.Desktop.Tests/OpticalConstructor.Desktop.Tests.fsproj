@@ -19,6 +19,7 @@
         <Compile Include="DesktopSession.fs" />
         <Compile Include="DesktopTests.fs" />
         <Compile Include="DesktopSurvey.fs" />
+        <Compile Include="DesktopPagesSurvey.fs" />
     </ItemGroup>
 
     <ItemGroup>

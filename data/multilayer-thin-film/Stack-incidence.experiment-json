@@ -1,0 +1,40 @@
+{
+  "experiment": {
+    "corrections": [],
+    "dataOpt": null,
+    "id": 1,
+    "name": "Stack-incidence",
+    "notes": "",
+    "role": 1,
+    "scan": {
+      "blocks": [
+        {
+          "axes": [
+            {
+              "elementId": "6c1f3d2a-8e4b-4a7c-b5d9-1e2f3a4b5c02",
+              "range": {
+                "max": 89,
+                "min": 0,
+                "points": 90
+              },
+              "variable": "VaryR2"
+            }
+          ],
+          "capture": "CaptureBoth"
+        }
+      ],
+      "sourceWaveLengthOpt": {
+        "Case": "Nm",
+        "Fields": [
+          600
+        ]
+      }
+    },
+    "sessionOpt": null,
+    "setup": {
+      "name": "Stack bench",
+      "revision": 1
+    }
+  },
+  "schemaVersion": 2
+}

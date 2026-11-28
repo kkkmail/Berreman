@@ -11,8 +11,9 @@ open Avalonia.VisualTree
 
 open OpticalConstructor.Controls
 
-/// The automation contract (spec 0051 `.manual/003` 1.2, 1.4): what UI Automation must be able to find and drive in a
-/// window. `violations` lists every breach of one shown window; an empty list is the law.
+/// The automation contract (spec 0051 `.manual/003` 1.2, 1.4; `.manual/007` 1.4, 1.5): what UI Automation must be able to
+/// find and drive in a window, every command's tooltip and help text, and every text carrying an id selectable.
+/// `violations` lists every breach of one shown window; an empty list is the law.
 module AutomationContract =
 
     /// A control the user presses, types into, picks or toggles. `CheckBox` and `RadioButton` are toggle buttons.
@@ -78,6 +79,23 @@ module AutomationContract =
                         match box peer with
                         | :? IToggleProvider -> ()
                         | _ -> yield $"{UiDriver.idOf choice}: a choice without a toggle pattern"
+                    | _ -> ()
+                    // Spec 0051 `.manual/007` 1.5: a command says what it does, as a tooltip and as UIA's help text.
+                    match control with
+                    | :? CommandButton
+                    | :? ChoiceToggle ->
+                        match ToolTip.GetTip control with
+                        | null -> yield $"{UiDriver.idOf control}: a command without a tooltip"
+                        | _ -> ()
+                        match AutomationProperties.GetHelpText control with
+                        | null | "" -> yield $"{UiDriver.idOf control}: a command without help text"
+                        | _ -> ()
+                    | _ -> ()
+                    // Spec 0051 `.manual/007` 1.4: a text carrying an id shows data, so it can be selected and copied.
+                    match control, automationId with
+                    | :? SelectableTextBlock, _ -> ()
+                    | :? TextBlock, (null | "") -> ()
+                    | :? TextBlock, id -> yield $"{id}: a text carrying an id that cannot be selected"
                     | _ -> ()
             ]
         let duplicates =

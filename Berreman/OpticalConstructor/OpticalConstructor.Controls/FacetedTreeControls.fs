@@ -417,8 +417,8 @@ module FacetedTreeControls =
                         filterRow state handlers
                         representationRow state handlers
                         breadcrumbStripView state handlers
-                        TextBlock.create [
-                            ConstructorUiId.facetResultCount.automationAttribute<TextBlock> ()
+                        SelectableTextBlock.create [
+                            ConstructorUiId.facetResultCount.automationAttribute<SelectableTextBlock> ()
                             TextBlock.text $"%d{state.resultCount.value} results"
                         ]
                         offersPanelView state handlers

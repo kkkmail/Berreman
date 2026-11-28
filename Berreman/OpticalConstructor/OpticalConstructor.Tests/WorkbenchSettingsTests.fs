@@ -59,10 +59,9 @@ module WorkbenchSettingsTests =
         Assert.Equal(MaterialSourcesLocation, List.last DataLocationKind.all)
 
     [<Fact>]
-    let ``defaults carry modeless select windows and the 5 / 100 / 8 thresholds`` () =
+    let ``defaults carry modeless select windows and the 100 / 8 thresholds`` () =
         let s = WorkbenchSettings.defaults
         Assert.Equal(ModelessSelectWindows, s.selectWindowModality)
-        Assert.Equal(5, s.quickPickThreshold.value)
         Assert.Equal(100, s.treeAutoBuildThreshold.value)
         Assert.Equal(8, s.thicknessBucketCap.value)
 
@@ -71,7 +70,6 @@ module WorkbenchSettingsTests =
         let constructed =
             {
                 selectWindowModality = SelectWindowModality.defaultValue
-                quickPickThreshold = QuickPickThreshold.defaultValue
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.defaultValue
                 kitHistoryLimit = KitHistoryLimit.defaultValue
@@ -89,25 +87,6 @@ module WorkbenchSettingsTests =
         Assert.Equal(ModalSelectWindows, SelectWindowModality.create true)
         Assert.False(ModelessSelectWindows.value)
         Assert.True(ModalSelectWindows.value)
-
-    [<Theory>]
-    [<InlineData(1)>]
-    [<InlineData(5)>]
-    [<InlineData(1000)>]
-    let ``QuickPickThreshold accepts a positive count and round-trips its value`` (raw : int) =
-        match QuickPickThreshold.tryCreate raw with
-        | Ok v -> Assert.Equal(raw, v.value)
-        | Error e -> Assert.Fail($"expected Ok, got %A{e}")
-
-    [<Theory>]
-    [<InlineData(0)>]
-    [<InlineData(-1)>]
-    [<InlineData(-100)>]
-    let ``QuickPickThreshold rejects a non-positive count with the typed error carrying the value`` (raw : int) =
-        match QuickPickThreshold.tryCreate raw with
-        | Error (NonPositiveQuickPickThresholdErr v) -> Assert.Equal(raw, v)
-        | Error e -> Assert.Fail($"expected NonPositiveQuickPickThresholdErr, got %A{e}")
-        | Ok v -> Assert.Fail($"expected rejection, got Ok %A{v}")
 
     [<Theory>]
     [<InlineData(1)>]
@@ -175,13 +154,11 @@ module WorkbenchSettingsTests =
         let assembled =
             {
                 selectWindowModality = SelectWindowModality.create true
-                quickPickThreshold = QuickPickThreshold.tryCreate 7 |> okOr QuickPickThreshold.defaultValue
                 treeAutoBuildThreshold = TreeAutoBuildThreshold.tryCreate 250 |> okOr TreeAutoBuildThreshold.defaultValue
                 thicknessBucketCap = ThicknessBucketCap.tryCreate 12 |> okOr ThicknessBucketCap.defaultValue
                 kitHistoryLimit = KitHistoryLimit.tryCreate 250 |> okOr KitHistoryLimit.defaultValue
             }
         Assert.Equal(ModalSelectWindows, assembled.selectWindowModality)
-        Assert.Equal(7, assembled.quickPickThreshold.value)
         Assert.Equal(250, assembled.treeAutoBuildThreshold.value)
         Assert.Equal(12, assembled.thicknessBucketCap.value)
         Assert.Equal(250, assembled.kitHistoryLimit.value)

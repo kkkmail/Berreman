@@ -13,11 +13,7 @@
 /// through the step-008 `WindowLauncher` under `SampleEditorKey`); Remove keeps its inline
 /// confirm gate and typed blocks and REFUSES a `ProtectedBuiltIn` entry with a typed reason
 /// (spec F.0 — protected entries cannot be deleted). Every projection re-queries the proxies,
-/// so any verb's write shows in the same render pass. Step 016 adds the Browse/Select mode
-/// (`WindowMode.LibraryWindowMode` — the SAME window in code, never a copy): Select pre-applies
-/// the session's kind constraint at the corpus seam (NON-REMOVABLE, no breadcrumb chip) and
-/// adds exactly the Select/Close pair; everything else IS the ordinary window, so
-/// add-on-the-fly works because it is the library. Pure: `update` only reaches IO through
+/// so any verb's write shows in the same render pass. Pure: `update` only reaches IO through
 /// the context's proxy / launcher / close fields — behaviour is testable without a window
 /// (tests substitute recording stubs).
 module OpticalConstructor.Ui.LibraryWindowView
@@ -44,7 +40,6 @@ open Softellect.Sys.Primitives
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Storage.CatalogueImportStore
@@ -196,10 +191,6 @@ type LibraryWindowContext =
         /// Spec 0046: open the light-source editor by intent: `NewSource` (the Add source verb mints
         /// the entry id AT dispatch) or `EditSource` (a user source).
         openSourceEditor : LightSourceEditorView.SourceEditorIntent -> unit
-        /// Close THIS window (the host passes `this.Close`; tests substitute a recording stub —
-        /// the `SampleEditorContext` precedent). The Select-state verbs reach it: 'Select'
-        /// closes after `onSelected`, 'Close' after `onCancelled` (spec 0038 step 016).
-        requestClose : unit -> unit
     }
 
 // ---------------------------------------------------------------------------
@@ -256,13 +247,6 @@ let selectedVersionsOf (samples : SampleProxy) (id : SampleId) : (VersionNumber 
 type LibraryWindowModel =
     {
         context : LibraryWindowContext
-        /// Browse (the ordinary window) or Select (spec 0038 step 016): the SAME window
-        /// pre-constrained to the session context's kind — the corpus seam applies the
-        /// constraint, so it is structurally NON-REMOVABLE (no breadcrumb chip) — plus the
-        /// Select/Close pair. A `RetargetLibrarySelect` re-points a live window's session; a
-        /// resolved or cancelled session flips back to Browse so the host's close hook can never
-        /// fire `onCancelled` after `onSelected`.
-        mode : LibraryWindowMode<LibraryEntry>
         /// The applied facet constraints, in application (breadcrumb) order — at most one per
         /// facet key (this window applies single-key selections; the engine's key-set OR stays
         /// available to a later slice). A numeric selection is an ordinary member.
@@ -287,8 +271,7 @@ type LibraryWindowModel =
         /// Whether the show-inactive/superseded toggle is on (spec 0038 step 023): `ActiveOnly`
         /// (the default — pickers/facet counts exclude retired samples) or `IncludeInactive` (the
         /// toggle adds retired samples to the tree, badged). The Domain DU, never a bool. Presets
-        /// carry no lifecycle, so the toggle only affects the sample half of the corpus. Select
-        /// mode ignores this and always lists `ActiveOnly` (a retired entry is never a valid pick).
+        /// carry no lifecycle, so the toggle only affects the sample half of the corpus.
         showInactive : InactiveVisibility
         /// Which sample or source remove (if any) awaits its inline confirmation.
         removeGate : LibraryRemoveGate
@@ -313,45 +296,27 @@ type LibraryWindowModel =
         lastError : LibraryWindowError option
     }
 
-    /// The scope the corpus lists samples at (spec 0038 step 023): `ActiveOnly` in Select mode (a
-    /// retired sample is never a valid pick target), else the window's `showInactive` toggle. The
-    /// default `ActiveOnly` keeps offers, facet counts and Select byte-for-byte the step-022 behaviour.
-    member this.effectiveScope : InactiveVisibility =
-        match this.mode with
-        | Select _ -> ActiveOnly
-        | Browse -> this.showInactive
+    /// The corpus one projection pass works over: the live entries at the window's `showInactive` scope.
+    member this.constrainedEntries : LibraryEntry list = liveEntries this.context this.showInactive
 
-    /// The corpus one projection pass works over: the live entries — in Select state pre-narrowed
-    /// to the session's kind constraint (spec 0038 step 016). The constraint is applied at THIS
-    /// corpus seam, so it is structurally NON-REMOVABLE: no breadcrumb chip exists to remove, and
-    /// every count, offer, tree row and selection already lives inside it.
-    /// `LibraryEntry.forKinds` is the existing kind-eligibility rule (a compound/custom polarizer
-    /// serves BOTH polarizer kinds — spec 0038 step 014), never re-derived.
-    member this.constrainedEntries : LibraryEntry list =
-        let entries = liveEntries this.context this.effectiveScope
-        match this.mode with
-        | Browse -> entries
-        | Select context -> entries |> List.filter (fun e -> e.forKinds |> List.contains context.kindConstraint.value)
-
-    /// The selected entry resolved through the LIVE (and, in Select state, kind-constrained)
-    /// corpus — a removed sample's selection resolves to nothing, so its panel vanishes with its
-    /// row, and a Select session can only ever return an entry inside its constraint.
+    /// The selected entry resolved through the LIVE corpus — a removed sample's selection resolves to
+    /// nothing, so its panel vanishes with its row.
     member this.selectedEntry : LibraryEntry option =
         match this.selectedEntryId with
         | Some id -> this.constrainedEntries |> List.tryFind (fun e -> e.entryId = id)
         | None -> None
 
-    /// The selected entry's latest held envelope, offered for export only in Browse mode.
+    /// The selected entry's latest held envelope, offered for export.
     member this.exportableSelection : LibraryEntryEnvelope option =
-        match this.mode, this.selectedEntry with
-        | Browse, Some entry ->
+        match this.selectedEntry with
+        | Some entry ->
             match entry.entryId.tryToLibraryEntryId with
             | Some id ->
                 match this.context.catalogueImports.proxy.tryLatestEnvelope id with
                 | Ok envelopeOpt -> envelopeOpt
                 | Error _ -> None
             | None -> None
-        | Select _, _ | Browse, None -> None
+        | None -> None
 
     /// The selected entry as an editable SAMPLE — the Edit verb's target. Only samples have an
     /// editor; a preset selection offers NO Edit affordance (removed, not greyed — the
@@ -392,24 +357,21 @@ type LibraryWindowModel =
     /// truth the verbs row renders from and the tests assert against. `ProtectedBuiltIn` entries (the
     /// presets) offer NONE (removed, not greyed — requirement 2); a `UserManaged` non-sample has no
     /// version store, so none either; a selected SAMPLE offers Mark inactive + Supersede… when active,
-    /// Mark active when retired. Any Select-mode selection offers none.
+    /// Mark active when retired.
     member this.offeredLifecycleActions : MaterialsWindowView.LifecycleAction list =
-        match this.mode with
-        | Select _ -> []
-        | Browse ->
-            match this.selectedEntry with
-            | None -> []
-            | Some entry ->
-                match entry.protection with
-                | ProtectedBuiltIn -> []
-                | UserManaged ->
-                    match entry with
-                    | SampleItem sample ->
-                        match this.sampleLifecycle sample.id with
-                        | Some ActiveEntry -> [ MaterialsWindowView.MarkInactiveAction; MaterialsWindowView.SupersedeAction ]
-                        | Some InactiveEntry -> [ MaterialsWindowView.MarkActiveAction ]
-                        | None -> []
-                    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
+        match this.selectedEntry with
+        | None -> []
+        | Some entry ->
+            match entry.protection with
+            | ProtectedBuiltIn -> []
+            | UserManaged ->
+                match entry with
+                | SampleItem sample ->
+                    match this.sampleLifecycle sample.id with
+                    | Some ActiveEntry -> [ MaterialsWindowView.MarkInactiveAction; MaterialsWindowView.SupersedeAction ]
+                    | Some InactiveEntry -> [ MaterialsWindowView.MarkActiveAction ]
+                    | None -> []
+                | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
 
     /// The number of samples whose latest version is retired (spec 0038 step 023) — the visible count
     /// badge on the show-inactive toggle. Read over the whole samples store (not the filtered corpus),
@@ -432,27 +394,10 @@ type LibraryWindowModel =
     member internal this.disarmed : LibraryWindowModel =
         { this with removeGate = NoPendingLibraryRemove; lifecycleGate = NoPendingSampleLifecycle; lastError = None }
 
-    /// Spec 0046: a Select session opens with the entry its target is bound to now shown as CHOSEN —
-    /// selected, highlighted, and the entries group expanded so its row is visible. Nothing to show (no
-    /// binding, or one outside the session's kind) leaves the model as it is.
-    member internal this.showCurrentEntry : LibraryWindowModel =
-        match this.mode with
-        | Select session ->
-            match session.currentEntryIdOpt with
-            | Some id when this.constrainedEntries |> List.exists (fun e -> e.entryId = id) ->
-                let expanded =
-                    match this.expandedNodes.nodeExpansion libraryEntriesCode with
-                    | FacetedTreeControls.ExpandedNode -> this.expandedNodes
-                    | FacetedTreeControls.CollapsedNode -> this.expandedNodes.toggle libraryEntriesCode
-                { this with selectedEntryId = Some id; selectedNodeOpt = Some id.libraryEntryCode; expandedNodes = expanded }
-            | Some _ | None -> this
-        | Browse -> this
-
-/// The window's model as it opens, before a Select session's current entry is shown (`initLibraryWindow`).
-let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : LibraryWindowModel =
+/// The window's model as it opens.
+let initLibraryWindow (context : LibraryWindowContext) : LibraryWindowModel =
     {
         context = context
-        mode = mode
         appliedFacets = []
         textFilter = TextQuery ""
         representation = byKindRepresentation
@@ -544,20 +489,6 @@ type LibraryWindowMsg =
     | CancelSampleLifecycle
     /// Show an OLDER version of the selected sample read-only in the view panel (spec 0038 step 023).
     | ViewSampleVersion of VersionNumber
-    /// The Select-state pair (spec 0038 step 016). 'Select' returns the HIGHLIGHTED entry
-    /// through the session's `onSelected` (a targeted dispatch), then closes; no highlight →
-    /// inert. 'Close' fires `onCancelled`, then closes.
-    | ConfirmLibrarySelect
-    | CancelLibrarySelect
-    /// A Select-state open met this LIVE window: re-point the session at the new context
-    /// (the superseded session is cancelled — a second Choose closes the first, logically)
-    /// and clear the highlight; the window itself stays (the launcher's re-target seam).
-    | RetargetLibrarySelect of SelectionContext<LibraryEntry>
-    /// The host window CLOSED (the title-bar X, or a staleness `Close()` from the requesting
-    /// surface): cancel a still-pending session exactly once — a session already resolved by
-    /// Select/Close flipped the mode to Browse first, so this can never double-fire.
-    | LibrarySelectDismissed
-
 /// The text filter's facet key (the filter is an ORDINARY engine constraint — spec 0038 §D.0 —
 /// over the entry's display name; its UI surface stays the filter box, not a chip).
 let libraryTextFilterKey : AttributeKey = AttributeKey "library-text"
@@ -609,10 +540,6 @@ let private libraryEntryLifecycle (activeIds : Set<SampleId>) (entry : LibraryEn
     match entry with
     | SampleItem sample -> if Set.contains sample.id activeIds then ActiveEntry else InactiveEntry
     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> ActiveEntry
-
-/// The window's model as it opens — in a Select session, with the target's current entry shown as chosen.
-let initLibraryWindow (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : LibraryWindowModel =
-    (initModel context mode).showCurrentEntry
 
 // ---------------------------------------------------------------------------
 // Pure update.
@@ -968,49 +895,6 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
         { m with lifecycleGate = NoPendingSampleLifecycle }
     | ViewSampleVersion version ->
         { m with viewedVersion = Some version }
-    | ConfirmLibrarySelect ->
-        // Spec 0038 step 016: 'Select' returns the HIGHLIGHTED entry through the session's
-        // onSelected — a TARGETED dispatch (the requesting surface routes it by the context's
-        // target and treats a vanished target as a no-op plus a status line) — then closes.
-        // The mode flips to Browse in the SAME update, so the host's Closed hook
-        // (LibrarySelectDismissed, queued behind this message) finds no pending session: onSelected
-        // and onCancelled can never both fire. No highlight → inert (the pair stays, §0.7).
-        match m.mode with
-        | Select context ->
-            match m.selectedEntry with
-            | Some entry ->
-                context.onSelected entry
-                m.context.requestClose ()
-                { m with mode = Browse }
-            | None -> m
-        | Browse -> m
-    | CancelLibrarySelect ->
-        // The negative half of the pair: end the session without a choice, then close.
-        match m.mode with
-        | Select context ->
-            context.onCancelled ()
-            m.context.requestClose ()
-            { m with mode = Browse }
-        | Browse -> m
-    | RetargetLibrarySelect context ->
-        // A Select-state open met this LIVE window (the launcher's re-target seam): the
-        // superseded session is CANCELLED — a second Choose closes the first, logically —
-        // and the window re-points at the new constraint/target with a fresh highlight
-        // (the browsing state — filter, chips, representation — is the user's and stays).
-        (match m.mode with
-         | Select superseded -> superseded.onCancelled ()
-         | Browse -> ())
-        let retargeted = { m.disarmed with mode = Select context; selectedEntryId = None; selectedNodeOpt = None }
-        retargeted.showCurrentEntry
-    | LibrarySelectDismissed ->
-        // The host window closed (title-bar X, or a staleness Close() from the requesting
-        // surface): a STILL-PENDING session cancels exactly once — Select/Close already
-        // flipped a resolved session to Browse, so this arm is a no-op after them.
-        match m.mode with
-        | Select context ->
-            context.onCancelled ()
-            { m with mode = Browse }
-        | Browse -> m
 
 // ---------------------------------------------------------------------------
 // The FacetedTreeControls projection.
@@ -1300,40 +1184,6 @@ let libraryFacetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeCo
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
 let private messageColor = Color.FromRgb(178uy, 34uy, 34uy)
 
-type SelectionTarget with
-
-    /// The requesting surface a Select session serves, as the Library window's banner prose.
-    member private this.libraryTargetCaption : ControlCaption =
-        match this with
-        | TableElementTarget _ -> ControlCaption "the requesting table element"
-        | SampleLayerTarget _ -> ControlCaption "the requesting sample layer"
-        | SampleSubstrateTarget -> ControlCaption "the requesting sample substrate plate"
-
-/// The Select-state surface (spec 0038 step 016): exactly TWO buttons in ONE row with distinct
-/// positive/negative styling and a visible gap (§0.7) — 'Select' returns the highlighted entry,
-/// 'Close' cancels — above the pre-applied kind constraint shown as a FIXED banner: it is not a
-/// breadcrumb chip and offers no remove affordance (the constraint lives at the corpus seam).
-/// Absent in Browse mode — everything else IS the ordinary window.
-let private selectModeRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
-    match m.mode with
-    | Browse -> []
-    | Select context ->
-        [ WrapPanel.create [
-              WrapPanel.orientation Orientation.Horizontal
-              WrapPanel.children [
-                  CommandControls.actionCommand ConstructorUiId.librarySelectButton (ControlCaption "Select") PositiveCommand (fun () -> dispatch ConfirmLibrarySelect)
-                  CommandControls.actionCommand ConstructorUiId.librarySelectCloseButton (ControlCaption "Close") NegativeCommand (fun () -> dispatch CancelLibrarySelect)
-              ]
-          ] :> IView
-          (TextBlock.create [
-              ConstructorUiId.librarySelectConstraint.automationAttribute<TextBlock> ()
-              TextBlock.fontWeight FontWeight.SemiBold
-              TextBlock.textWrapping TextWrapping.Wrap
-              TextBlock.maxWidth 380.0
-              TextBlock.text $"Choose a %s{context.kindConstraint.value.kindName} for %s{context.target.libraryTargetCaption.value} — the kind constraint is fixed and cannot be removed."
-          ]
-          |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.librarySelectConstraint.value) :> IView ]
-
 /// One lifecycle verb box (spec 0038 step 023), by its action.
 let private lifecycleButton (dispatch : LibraryWindowMsg -> unit) (action : MaterialsWindowView.LifecycleAction) : IView =
     match action with
@@ -1377,8 +1227,8 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
                    // Spec 0051 `.manual/003` 5.3: entries waiting for a decision are said to wait, not shown as missing.
                    let count = pending |> List.sumBy (fun waiting -> waiting.decisions.Length)
                    [
-                       TextBlock.create [
-                           ConstructorUiId.libraryPendingImportsText.automationAttribute<TextBlock> ()
+                       SelectableTextBlock.create [
+                           ConstructorUiId.libraryPendingImportsText.automationAttribute<SelectableTextBlock> ()
                            TextBlock.textWrapping TextWrapping.Wrap
                            TextBlock.margin (Thickness(0.0, 4.0, 8.0, 4.0))
                            TextBlock.text $"{count} catalogue entries wait for an import decision and show once it is made."
@@ -1386,33 +1236,30 @@ let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> un
                        :> IView
                        CommandControls.verbCommand ConstructorUiId.libraryReviewImportsButton (ControlCaption "Review imports…") (fun () -> dispatch ReviewPendingImports)
                    ])
-            @ (match m.mode with
-               | Select _ -> []
-               | Browse ->
-                   (match m.exportableSelection with
-                    | None -> []
-                    | Some envelope ->
-                        [ CommandControls.verbCommandOn ConstructorUiId.libraryExportButton (ControlCaption "Export…") (fun pressed ->
-                              match TopLevel.GetTopLevel pressed with
-                                  | :? Window as owner ->
-                                      MaterialsWindowView.pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
-                                          (ExportSelectedLibraryEntry >> dispatch)
-                                  | _ -> ()) ])
-                   @ (match m.filteredEntries with
-                      | [] -> []
-                      | _ ->
-                          [ CommandControls.verbCommandOn ConstructorUiId.libraryExportShownButton (ControlCaption "Export shown to catalogue…") (fun pressed ->
-                                match TopLevel.GetTopLevel pressed with
-                                    | :? Window as owner ->
-                                        MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
-                                            (CatalogueExportTarget.ofFolder >> ExportShownLibraryEntries >> dispatch)
-                                    | _ -> ()) ])
-                   @ [ CommandControls.verbCommandOn ConstructorUiId.libraryExportMyLibraryButton (ControlCaption "Export my library…") (fun pressed ->
-                           match TopLevel.GetTopLevel pressed with
-                               | :? Window as owner ->
-                                   MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export my library to a catalogue folder") m.context.catalogueImports.exportFolderOpt
-                                       (CatalogueExportTarget.ofFolder >> ExportMyLibrary >> dispatch)
-                               | _ -> ()) ])
+            @ (match m.exportableSelection with
+               | None -> []
+               | Some envelope ->
+                   [ CommandControls.verbCommandOn ConstructorUiId.libraryExportButton (ControlCaption "Export…") (fun pressed ->
+                         match TopLevel.GetTopLevel pressed with
+                             | :? Window as owner ->
+                                 MaterialsWindowView.pickEntryExportFile owner m.context.catalogueImports.exportFolderOpt envelope
+                                     (ExportSelectedLibraryEntry >> dispatch)
+                             | _ -> ()) ])
+            @ (match m.filteredEntries with
+               | [] -> []
+               | _ ->
+                   [ CommandControls.verbCommandOn ConstructorUiId.libraryExportShownButton (ControlCaption "Export shown to catalogue…") (fun pressed ->
+                         match TopLevel.GetTopLevel pressed with
+                             | :? Window as owner ->
+                                 MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export to catalogue folder") m.context.catalogueImports.exportFolderOpt
+                                     (CatalogueExportTarget.ofFolder >> ExportShownLibraryEntries >> dispatch)
+                             | _ -> ()) ])
+            @ [ CommandControls.verbCommandOn ConstructorUiId.libraryExportMyLibraryButton (ControlCaption "Export my library…") (fun pressed ->
+                    match TopLevel.GetTopLevel pressed with
+                        | :? Window as owner ->
+                            MaterialsWindowView.pickLibraryFolder owner (ControlCaption "Export my library to a catalogue folder") m.context.catalogueImports.exportFolderOpt
+                                (CatalogueExportTarget.ofFolder >> ExportMyLibrary >> dispatch)
+                        | _ -> ()) ]
             @ [
                 CommandControls.verbCommand ConstructorUiId.libraryBackUpNowButton (ControlCaption "Back up library now…") (fun () -> dispatch BackUpLibraryNow)
                 CommandControls.verbCommand ConstructorUiId.libraryRestoreButton (ControlCaption "Restore library…") (fun () -> dispatch RequestLibraryRestore)
@@ -1481,9 +1328,9 @@ type LibraryWindowModel with
         match this.entryExportStatus with
         | None -> []
         | Some status ->
-            [ TextBlock.create [
-                  ConstructorUiId.libraryExportStatusText.automationAttribute<TextBlock> ()
-                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
+            [ SelectableTextBlock.create [
+                  ConstructorUiId.libraryExportStatusText.automationAttribute<SelectableTextBlock> ()
+                  AttrBuilder<SelectableTextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
                   TextBlock.text status.value
                   TextBlock.textWrapping TextWrapping.Wrap
               ] :> IView ]
@@ -1492,9 +1339,9 @@ type LibraryWindowModel with
         match this.importStatus with
         | None -> []
         | Some status ->
-            [ TextBlock.create [
-                  ConstructorUiId.libraryImportStatusText.automationAttribute<TextBlock> ()
-                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
+            [ SelectableTextBlock.create [
+                  ConstructorUiId.libraryImportStatusText.automationAttribute<SelectableTextBlock> ()
+                  AttrBuilder<SelectableTextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
                   TextBlock.text status.value
                   TextBlock.textWrapping TextWrapping.Wrap
               ] :> IView ]
@@ -1503,26 +1350,22 @@ type LibraryWindowModel with
         match this.backupStatus with
         | None -> []
         | Some status ->
-            [ TextBlock.create [
-                  ConstructorUiId.libraryBackupStatusText.automationAttribute<TextBlock> ()
-                  AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
+            [ SelectableTextBlock.create [
+                  ConstructorUiId.libraryBackupStatusText.automationAttribute<SelectableTextBlock> ()
+                  AttrBuilder<SelectableTextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, status.value, ValueNone)
                   TextBlock.text status.value
                   TextBlock.textWrapping TextWrapping.Wrap
               ] :> IView ]
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
 /// visible count badge — `Show inactive (N)` while hidden, `Hide inactive (N)` while shown.
-/// Browse-mode only (Select always lists `ActiveOnly`).
 let private toggleRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
-    match m.mode with
-    | Select _ -> []
-    | Browse ->
-        let n = m.inactiveCount
-        let label =
-            match m.showInactive with
-            | ActiveOnly -> ControlCaption $"Show inactive (%d{n.value})"
-            | IncludeInactive -> ControlCaption $"Hide inactive (%d{n.value})"
-        [ CommandControls.verbCommand ConstructorUiId.libraryShowInactiveToggle label (fun () -> dispatch ToggleShowInactiveEntries) ]
+    let n = m.inactiveCount
+    let label =
+        match m.showInactive with
+        | ActiveOnly -> ControlCaption $"Show inactive (%d{n.value})"
+        | IncludeInactive -> ControlCaption $"Hide inactive (%d{n.value})"
+    [ CommandControls.verbCommand ConstructorUiId.libraryShowInactiveToggle label (fun () -> dispatch ToggleShowInactiveEntries) ]
 
 /// The inline remove confirmation — present only while a sample or source remove is armed.
 let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
@@ -1588,8 +1431,8 @@ let private messageRow (m : LibraryWindowModel) : IView list =
     match m.lastError with
     | None -> []
     | Some err ->
-        [ TextBlock.create [
-              ConstructorUiId.libraryWindowMessage.automationAttribute<TextBlock> ()
+        [ SelectableTextBlock.create [
+              ConstructorUiId.libraryWindowMessage.automationAttribute<SelectableTextBlock> ()
               TextBlock.foreground (brush messageColor)
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
@@ -1657,8 +1500,8 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                 entry.displayName, entry.fullDescription, protectionNote
         let viewOnlyNote : IView list =
             if viewingOlder then
-                [ TextBlock.create [
-                      ConstructorUiId.libraryViewOnlyNote.automationAttribute<TextBlock> ()
+                [ SelectableTextBlock.create [
+                      ConstructorUiId.libraryViewOnlyNote.automationAttribute<SelectableTextBlock> ()
                       TextBlock.foreground (brush NeutralCommand.outline)
                       TextBlock.textWrapping TextWrapping.Wrap
                       TextBlock.maxWidth 380.0
@@ -1692,10 +1535,8 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
           ] :> IView ]
 
 /// The window surface: the faceted tree (filter, representation picker, breadcrumbs, live
-/// count, offers, tree) fills the window beside the right-hand panel carrying — in Select
-/// state — the Select/Close pair and the fixed-constraint banner FIRST (step 016), then the
-/// ordinary verbs, the inline confirm gate, the typed refusal message, and the selected
-/// entry's view panel.
+/// count, offers, tree) fills the window beside the right-hand panel carrying the verbs, the
+/// inline confirm gate, the typed refusal message, and the selected entry's view panel.
 let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
@@ -1710,8 +1551,7 @@ let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.spacing 6.0
                                 StackPanel.children (
-                                    selectModeRows m dispatch
-                                    @ toggleRow m dispatch
+                                    toggleRow m dispatch
                                     @ [ verbsRow m dispatch ]
                                     @ catalogueFolderRows m dispatch
                                     @ m.libraryImportStatusRow

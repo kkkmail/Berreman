@@ -1,0 +1,12 @@
+{
+  "author": "multilayer-thin-film bench",
+  "created": "2026-06-02T12:00:00Z",
+  "id": "aad2560d-6bb3-4593-b461-ede9ab2e41c5",
+  "importProfiles": [],
+  "modified": "2026-06-02T12:00:00Z",
+  "name": "multilayer-thin-film",
+  "namingTemplate": "{obj1}-{note}",
+  "notes": "",
+  "schemaVersion": 1,
+  "sendExclude": []
+}

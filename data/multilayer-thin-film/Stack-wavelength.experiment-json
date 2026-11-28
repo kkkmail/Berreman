@@ -1,0 +1,35 @@
+{
+  "experiment": {
+    "corrections": [],
+    "dataOpt": null,
+    "id": 2,
+    "name": "Stack-wavelength",
+    "notes": "",
+    "role": 1,
+    "scan": {
+      "blocks": [
+        {
+          "axes": [
+            {
+              "elementId": "src",
+              "range": {
+                "max": 700,
+                "min": 500,
+                "points": 201
+              },
+              "variable": "VaryWaveLength"
+            }
+          ],
+          "capture": "CaptureBoth"
+        }
+      ],
+      "sourceWaveLengthOpt": null
+    },
+    "sessionOpt": null,
+    "setup": {
+      "name": "Stack bench",
+      "revision": 1
+    }
+  },
+  "schemaVersion": 2
+}

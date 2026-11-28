@@ -116,8 +116,16 @@
         <Compile Include="ImportWizardView.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="KitStartView.fs" />
+        <Compile Include="PageHelpTexts.fs" />
+        <Compile Include="KitPageFrame.fs" />
         <Compile Include="ItemsPanelView.fs" />
-        <Compile Include="FlowStripView.fs" />
+        <Compile Include="ItemModelChooserView.fs" />
+        <Compile Include="ItemModelChooserWindow.fs" />
+        <Compile Include="OptionsView.fs" />
+        <Compile Include="GuideView.fs" />
+        <Compile Include="OptionsWindow.fs" />
+        <Compile Include="SetupsPageView.fs" />
+        <Compile Include="ExperimentsPageView.fs" />
         <Compile Include="DataStepView.fs" />
     <Compile Include="StudyUnknownsView.fs" />
     <Compile Include="PlanView.fs" />

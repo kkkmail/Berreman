@@ -31,7 +31,7 @@ module private KitArchiveProxyTestData =
 
     /// Places the sample kit under `kit`: five files, one holding every byte value, and the empty folder `data/empty` (spec 0050 S6).
     let sampleKit (disk : KitArchiveTestDisk) : unit =
-        disk.placeFile "kit/.kit-json" (Encoding.UTF8.GetBytes "{ \"name\": \"sample\" }")
+        disk.placeFile "kit/.optics-kit" (Encoding.UTF8.GetBytes "{ \"name\": \"sample\" }")
         disk.placeFile "kit/data/run 1.csv" (Encoding.UTF8.GetBytes "phi,I\n0,0.5\n")
         disk.placeFile "kit/data/raw/IMG_0001.DNG" [| 0uy .. 255uy |]
         disk.placeFile "kit/library/x.material-json" (Encoding.UTF8.GetBytes "{ \"material\": \"x\" }")
@@ -128,7 +128,7 @@ type KitArchiveProxyContract () =
 
         let expected =
             [
-                KitTreeFile (kitPath ".kit-json")
+                KitTreeFile (kitPath ".optics-kit")
                 KitTreeFolder (kitPath "data")
                 KitTreeFolder (kitPath "data/empty")
                 KitTreeFolder (kitPath "data/raw")
@@ -235,7 +235,7 @@ type KitArchiveProxyContract () =
 
         let expected =
             [
-                KitTreeFile (kitPath ".kit-json")
+                KitTreeFile (kitPath ".optics-kit")
                 KitTreeFolder (kitPath "data")
                 KitTreeFolder (kitPath "data/empty")
                 KitTreeFolder (kitPath "data/raw")
@@ -278,7 +278,7 @@ type KitArchiveProxyContract () =
     member this.``a zip that holds no kit file is refused and nothing is extracted`` () : unit =
         let disk = this.freshDisk ()
         sampleKitWithAppCache disk
-        let kitFileEntry = KitTreeFile (kitPath ".kit-json")
+        let kitFileEntry = KitTreeFile (kitPath ".optics-kit")
         let tree = expectOk (disk.archive.listKitTree (folderUnder disk "kit"))
         Assert.Contains(kitFileEntry, tree)
         let zip = zipKitEntries disk (tree |> List.filter (fun entry -> entry <> kitFileEntry)) (KitArchiveFileCount 6)
@@ -304,7 +304,7 @@ type KitArchiveProxyContract () =
             disk.archive.receiveKit zip (folderUnder disk "received") KitArchiveObserver.unobserved)
 
         let received = disk.paths "received"
-        Assert.Contains(".kit-json", received)
+        Assert.Contains(".optics-kit", received)
         Assert.DoesNotContain<string>(received, fun path -> path = ".oc" || path.StartsWith(".oc/", StringComparison.Ordinal))
 
 /// The archive contract over the in-memory disk, rooted at `C:/disk` (spec 0050 S6).
@@ -441,7 +441,7 @@ type KitArchiveProxyFolderTests () =
 
         for escaping in [ "../evil.txt"; "a/../../evil.txt"; "C:/evil.txt"; "..\\evil.txt" ] do
             let zip = FileName (placeUnder disk.root "escaping.zip")
-            writeZipOf zip.value [ ".kit-json"; "ok.txt"; escaping ]
+            writeZipOf zip.value [ ".optics-kit"; "ok.txt"; escaping ]
 
             match disk.archive.listZipEntries zip with
             | Error (KitZipEntryEscapesErr reason) -> Assert.Contains(escaping, reason)

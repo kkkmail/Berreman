@@ -1,0 +1,50 @@
+{
+  "categoryOpt": null,
+  "contentHash": "c97ddfade356e5591a2cf2418bec9f53e426bd3a67e7147ca493dfd8f5eff890",
+  "descriptionOpt": null,
+  "id": "d09c967d-18f5-437e-b119-64f645e5b431",
+  "name": "Xenon lamp + monochromator, 190–1000 nm",
+  "payload": {
+    "Case": "SourcePayload",
+    "Fields": [
+      {
+        "tuning": {
+          "Case": "TunableBetween",
+          "Fields": [
+            {
+              "lower": {
+                "Case": "Nm",
+                "Fields": [
+                  190
+                ]
+              },
+              "upper": {
+                "Case": "Nm",
+                "Fields": [
+                  1000
+                ]
+              }
+            }
+          ]
+        },
+        "waveLength": {
+          "Case": "Nm",
+          "Fields": [
+            600
+          ]
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 3,
+    "version": 1
+  },
+  "version": 1
+}

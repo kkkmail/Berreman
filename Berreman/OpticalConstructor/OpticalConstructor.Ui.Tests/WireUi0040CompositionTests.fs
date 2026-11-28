@@ -123,38 +123,36 @@ module WireUi0040CompositionTests =
         opened, sub
 
     /// Mounts the real window over an isolated app scope and kit (spec 0038 steps 006/045; spec 0050 S4.3).
-    let private mountRoot () : Window =
+    let private mountRoot () : Window * AppContext =
         let context = TestAppScope.freshAppContext owner
         let opened = TestAppScope.openedKitIn owner context.catalogueImports
         let window = OpticalConstructor.App.MainConstructorWindow(context, opened)
         window.Show()
         Dispatcher.UIThread.RunJobs()
-        window :> Window
+        window :> Window, context
 
-    /// Open the REAL single-instance Materials window through the ribbon strip's right-aligned
-    /// `Materials…` button (spec 0038 step 013). The caller MUST close it — a leaked
-    /// `MaterialsWindowKey` registration would make a later test's strip click activate a stale
-    /// window over the wrong stores.
-    let private openMaterialsWindow (root : Window) : Window =
+    /// Open the REAL single-instance Materials window through the Launcher's seam over the root-wired stores (spec
+    /// 0038 step 013; spec 0051 `.manual/007` 2.3: the Launcher alone opens it). The caller MUST close it — a leaked
+    /// `MaterialsWindowKey` registration would make a later open activate a stale window over the wrong stores.
+    let private openMaterialsWindow (context : AppContext) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root ConstructorUiId.openMaterialsWindowButton.value
+        EditorLaunchers.defaults.openMaterialsWindow context.materials context.categories context.catalogueImports
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value opened.[0], "the strip button must open the Materials window")
+        Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value opened.[0], "the seam must open the Materials window")
         Assert.True(opened.[0].IsVisible, "the Materials window must be shown")
         opened.[0]
 
-    /// Open the REAL single-instance Library window through the ribbon strip's right-aligned
-    /// `Library…` button (spec 0038 step 015). The caller MUST close it (the `openMaterialsWindow`
-    /// discipline, keyed under `LibraryWindowKey`).
-    let private openLibraryWindow (root : Window) : Window =
+    /// Open the REAL single-instance Library window through the Launcher's seam over the root-wired stores (spec 0038
+    /// step 015). The caller MUST close it (the `openMaterialsWindow` discipline, keyed under `LibraryWindowKey`).
+    let private openLibraryWindow (context : AppContext) : Window =
         let opened, sub = trackOpened ()
         use _sub = sub
-        clickOn root ConstructorUiId.openLibraryWindowButton.value
+        EditorLaunchers.defaults.openLibraryWindow context.library context.samples context.sources context.materials context.categories context.libraryBackups context.catalogueImports
         Dispatcher.UIThread.RunJobs()
         Assert.Equal(1, opened.Count)
-        Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value opened.[0], "the strip button must open the Library window")
+        Assert.True(UiDriver.hasId ConstructorUiId.libraryWindow.value opened.[0], "the seam must open the Library window")
         Assert.True(opened.[0].IsVisible, "the Library window must be shown")
         opened.[0]
 
@@ -177,9 +175,9 @@ module WireUi0040CompositionTests =
     [<Trait("Category", "ui-smoke")>]
     let ``composition acceptance (013): the Materials and Library windows open from the App root and render the collapsed tree with a visible selection`` () =
         HeadlessSession.run (fun () ->
-            let root = mountRoot ()
+            let root, appContext = mountRoot ()
             // ---- Materials window (steps 002/003) over the app scope ----
-            let materialsWindow = openMaterialsWindow root
+            let materialsWindow = openMaterialsWindow appContext
             // Collapsed by default (step 002): the entries group renders a chevron, but no leaf.
             Assert.True(isPresent materialsWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value,
                         "the Materials tree's entries group must carry a disclosure chevron")
@@ -201,7 +199,7 @@ module WireUi0040CompositionTests =
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()
             // ---- Library window (steps 002/003) over the same app scope ----
-            let libraryWindow = openLibraryWindow root
+            let libraryWindow = openLibraryWindow appContext
             Assert.True(isPresent libraryWindow (ConstructorUiId.facetTreeChevron (ConstructorUiKey "entries")).value,
                         "the Library tree's entries group must carry a disclosure chevron")
             Assert.False(isPresent libraryWindow ((ConstructorUiId.libraryEntryNode PresetIds.source600).value),

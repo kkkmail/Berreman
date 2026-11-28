@@ -47,7 +47,7 @@ module WorkbenchInfoAndCaptureTests =
 
     let private mountView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : Window =
         let window = Window(Width = 1200.0, Height = 1000.0)
-        window.Content <- Avalonia.FuncUI.Component(fun _ -> mainView model dispatch)
+        window.Content <- Avalonia.FuncUI.Component(fun _ -> UiDriver.editableTableView model dispatch)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window
@@ -92,63 +92,6 @@ module WorkbenchInfoAndCaptureTests =
                 Assert.Equal(TextWrapping.Wrap, info.TextWrapping)
             | _ -> Assert.Fail "the menu and its info line must be shown"
             menuWindow.Close()
-            Dispatcher.UIThread.RunJobs())
-
-    // ------------------------------ 4: the Library shows the current binding as chosen ------------------------------
-
-    let private libraryContext () : LW.LibraryWindowContext =
-        let samples = BuiltinCatalogue.sampleStore ()
-        {
-            library = BuiltinCatalogue.library ()
-            samples = samples
-            materials = BuiltinCatalogue.materialStore (samplesReferencing samples)
-            categories = BuiltinCatalogue.categoryStore (fun _ -> [])
-            libraryBackups = LibraryBackupProxy.createInMemory ()
-            catalogueImports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
-            openImportDialog = ignore
-            treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
-            thicknessBucketCap = ThicknessBucketCap.defaultValue
-            openSampleEditor = ignore
-            sources = SourceProxy.createInMemory ()
-            openSourceEditor = ignore
-            requestClose = ignore
-        }
-
-    [<Fact>]
-    let ``a Select session opens with the target's current entry chosen and its row visible`` () =
-        let session (current : ElementValueId option) : SelectionContext<LibraryEntry> =
-            {
-                kindConstraint = KindConstraint LightSource
-                target = TableElementTarget (ElementId "src")
-                currentEntryIdOpt = current
-                onSelected = ignore
-                onCancelled = ignore
-            }
-        let m = LW.initLibraryWindow (libraryContext ()) (Select (session (Some PresetIds.heNe633)))
-        Assert.Equal(Some PresetIds.heNe633, m.selectedEntryId)
-        Assert.Equal(Some PresetIds.heNe633.libraryEntryCode, m.selectedNodeOpt)
-        Assert.True((m.expandedNodes.nodeExpansion (ConstructorUiKey "entries") = FacetedTreeControls.ExpandedNode), "the entries group opens so the chosen row shows")
-        // Nothing bound (or a binding of another kind) shows nothing chosen.
-        Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session None))).selectedEntryId)
-        Assert.Equal(None, (LW.initLibraryWindow (libraryContext ()) (Select (session (Some PresetIds.detectorIntensity)))).selectedEntryId)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the menu's Choose… hands the Library the element's current binding`` () =
-        HeadlessSession.run (fun () ->
-            let captured : SelectionContext<LibraryEntry> option ref = ref None
-            let launchers = { EditorLaunchers.defaults with openLibrarySelectWindow = fun _ _ _ _ _ _ _ _ _ ctx -> captured.Value <- Some ctx; None }
-            let m0 = { (SceneTestFixture.mainScene () |> bind 0 PresetIds.krf248) with launchers = launchers }
-            let opened = updateTableAndElementRotation (OpenElementMenuAt (canvasPointOf 0 m0)) m0
-            let mutable model = opened
-            let window = mountView opened (fun msg -> model <- updateTableAndElementRotation msg model)
-            match findBorder window ConstructorUiId.elementMenuChoose.value with
-            | Some row -> UiDriver.pressAtCentre window row
-            | None -> Assert.Fail "the menu must offer Choose…"
-            match captured.Value with
-            | Some ctx -> Assert.Equal(Some PresetIds.krf248, ctx.currentEntryIdOpt)
-            | None -> Assert.Fail "Choose… must open the Library in Select state"
-            window.Close()
             Dispatcher.UIThread.RunJobs())
 
     // ------------------------------ 5: tunable vs fixed sources in the bay ------------------------------
@@ -220,12 +163,10 @@ module WorkbenchInfoAndCaptureTests =
                     {
                         chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                         setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
-                        addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore; confirmRemoval = ignore; cancelRemoval = ignore
-                        addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
-                        viewExperiment = ignore; openChartWindow = ignore
+                        addScanAxis = ignore; addScanBlock = ignore; openChartWindow = ignore
                     }
                 let window = Window(Width = 600.0, Height = 800.0)
-                window.Content <- Avalonia.FuncUI.Component(fun _ -> ExperimentControls.experimentControlsView state handlers)
+                window.Content <- Avalonia.FuncUI.Component(fun _ -> ExperimentControls.experimentEditorView state handlers)
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 let shown =

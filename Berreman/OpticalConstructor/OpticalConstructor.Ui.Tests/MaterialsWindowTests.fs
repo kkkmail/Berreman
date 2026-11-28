@@ -346,8 +346,6 @@ module MaterialsWindowTests =
         Assert.Equal(
             "FacetTreeNode_entry:" + string MaterialIds.glass152.value,
             (ConstructorUiId.materialsEntryNode MaterialIds.glass152).value)
-        // The constructor-side entry point: the ribbon strip's right-aligned button.
-        Assert.Equal("OpenMaterialsWindowButton", ConstructorUiId.openMaterialsWindowButton.value)
 
     [<Fact>]
     let ``the export and attribution UiIds of the Materials window are the stable intent-named ids`` () : unit =
@@ -705,7 +703,7 @@ module MaterialsWindowTests =
                 match tryFindControl window ConstructorUiId.materialsAttributionPanel.value with
                 | Some (:? StackPanel as panel) ->
                     Assert.Equal(Avalonia.Layout.Orientation.Vertical, panel.Orientation)
-                    let line = Assert.IsType<TextBlock>(Assert.Single panel.Children)
+                    let line = Assert.IsAssignableFrom<TextBlock>(Assert.Single panel.Children)
                     Assert.Equal(TextWrapping.Wrap, line.TextWrapping)
                     Assert.Equal(380.0, line.MaxWidth)
                 | _ -> Assert.Fail("Licensed materials must have an attribution panel.")
@@ -1365,18 +1363,6 @@ module MaterialsWindowTests =
 
     // ============================ headless acceptance (ui-smoke) ============================
 
-    /// Mount the REAL Main workbench MVU loop headless (the MainConstructorWindow shape with
-    /// injectable stores), for the strip-button acceptance.
-    let private mountMain (materials : MaterialProxy) (samples : SampleProxy) (categories : CategoryProxy) : HostWindow =
-        let model0 = SceneTestFixture.mainSceneWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) materials samples categories
-        let window = HostWindow(Width = 980.0, Height = 1050.0)
-        Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
-        |> Program.withHost window
-        |> Program.run
-        window.Show()
-        Dispatcher.UIThread.RunJobs()
-        window
-
     let private mountMaterialsWindow (materials : MaterialProxy) (categories : CategoryProxy) : MaterialsWindow =
         let window = MaterialsWindow(materials, categories, CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
         window.Show()
@@ -1388,14 +1374,13 @@ module MaterialsWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: the strip button opens ONE Materials window and a second click ACTIVATES it`` () =
+    let ``acceptance: the Launcher's seam opens ONE Materials window and a second press ACTIVATES it`` () =
         HeadlessSession.run (fun () ->
-            let materials, samples, categories = freshStores ()
-            let window = mountMain materials samples categories
-            Assert.True(isPresent window ConstructorUiId.openMaterialsWindowButton.value,
-                        "the ribbon strip row must carry the right-aligned Materials… button")
-            // Observe the windows the REAL defaults open (the WindowOpenedEvent seam the desktop
-            // lifetime itself uses) — subscribed only after the Main window is shown.
+            let materials, _, categories = freshStores ()
+            // The Launcher's Materials button's seam (spec 0051 `.manual/007` 2.3: the Launcher alone opens it).
+            let openMaterials () : unit =
+                Scene.EditorLaunchers.defaults.openMaterialsWindow materials categories (CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy)
+            // Observe the windows the REAL defaults open (the WindowOpenedEvent seam the desktop lifetime itself uses).
             let opened = ResizeArray<Window>()
             use _sub =
                 Window.WindowOpenedEvent.Raised
@@ -1403,27 +1388,26 @@ module MaterialsWindowTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            clickOn window ConstructorUiId.openMaterialsWindowButton.value
+            openMaterials ()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
             Assert.True(UiDriver.hasId ConstructorUiId.materialsWindow.value materialsWindow, "the opened window must be the Materials window")
             Assert.True(materialsWindow.IsVisible)
-            // The single-instance acceptance: a second click ACTIVATES the live window — the
+            // The single-instance acceptance: a second press ACTIVATES the live window — the
             // shared registry under MaterialsWindowKey creates nothing new.
-            clickOn window ConstructorUiId.openMaterialsWindowButton.value
+            openMaterials ()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(materialsWindow.IsVisible, "the activated window must still be the live one")
             // Close → the registry forgets the key, so the NEXT open creates afresh.
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()
-            clickOn window ConstructorUiId.openMaterialsWindowButton.value
+            openMaterials ()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             opened.[1].Close()
-            Dispatcher.UIThread.RunJobs()
-            window.Close())
+            Dispatcher.UIThread.RunJobs())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -1814,51 +1798,6 @@ module MaterialsWindowTests =
             Assert.Contains("Transparent glass (n = 1.52)", textOf editor (ConstructorUiId.sampleLayerRow (ConstructorUiPosition 0)).value)
             Assert.Equal("", textOf editor ConstructorUiId.sampleEditorStatus.value)
             editor.Close()
-            Dispatcher.UIThread.RunJobs())
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``acceptance (016): a changed table selection cancels and CLOSES the open Select-state Materials window too`` () =
-        HeadlessSession.run (fun () ->
-            let materials, _, categories = freshStores ()
-            let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer (FilmItemIndex 0)))
-            let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
-            // The workbench staleness machinery is window-agnostic: the session handle closes
-            // whichever Select-state window it points at.
-            let sceneSamples = BuiltinCatalogue.sampleStore ()
-            let sceneMaterials = BuiltinCatalogue.materialStore (samplesReferencing sceneSamples)
-            let sceneCategories = BuiltinCatalogue.categoryStore (materialsReferencingCategory sceneMaterials)
-            let model0 =
-                SceneTestFixture.mainSceneWith (BuiltinCatalogue.library ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
-            let session : Scene.SelectSession =
-                {
-                    target = ElementId "det"
-                    cancelAndClose = fun () -> selectWindow.Close()
-                }
-            let mainWindow = HostWindow(Width = 980.0, Height = 1050.0)
-            Program.mkSimple
-                (fun () -> { model0 with selection = Scene.ElementSelected (Scene.SceneElementIndex 1); activeSelect = Some session })
-                Scene.updateTableAndElementRotation
-                Scene.mainView
-            |> Program.withHost mainWindow
-            |> Program.run
-            mainWindow.Show()
-            Dispatcher.UIThread.RunJobs()
-            Assert.True(selectWindow.IsVisible)
-            // A REAL canvas click on the empty table changes the selection: the staleness rule
-            // closes the Materials Select window and its session cancels — exactly once.
-            match tryFindControl mainWindow ConstructorUiId.tableElementCanvas.value with
-            | Some canvas ->
-                let p = canvas.TranslatePoint(Point(TableScene.center.sx, TableScene.center.sy), mainWindow)
-                Assert.True(p.HasValue, "the canvas must have an on-screen position")
-                mainWindow.MouseDown(p.Value, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-                mainWindow.MouseUp(p.Value, MouseButton.Left, RawInputModifiers.None)
-                Dispatcher.UIThread.RunJobs()
-            | None -> Assert.Fail "the table canvas was not found"
-            Assert.False(selectWindow.IsVisible, "the changed table selection must close the Materials Select window")
-            Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
-            mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
 
     [<Fact>]

@@ -644,9 +644,9 @@ module InverseConstructorTests =
             let seed =
                 expId0Model
                 |> updateTableAndElementRotation (AttachDataFile { experiment = expId; file = FileName "m.csv"; profile = ImportProfileName.intensitySeries; rows = AllDataRows })
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
             let window = Window(Width = 1000.0, Height = 980.0)
-            window.Content <- Component(fun _ -> mainView seed ignore)
+            window.Content <- Component(fun _ -> UiDriver.editableTableView seed ignore)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             window.Close())

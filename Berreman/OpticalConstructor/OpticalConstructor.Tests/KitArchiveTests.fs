@@ -50,7 +50,7 @@ module KitArchiveTests =
         assertMatches backslashed GlobPathMatched [ "data/raw/a.csv" ]
 
         let everything = SendExcludeGlob "**"
-        assertMatches everything GlobPathMatched [ ".kit-json"; "data/raw/a.csv" ]
+        assertMatches everything GlobPathMatched [ ".optics-kit"; "data/raw/a.csv" ]
 
     [<Fact>]
     let ``the app cache is never sent, and a glob leaves out what it matches and everything inside a folder it matches`` () : unit =
@@ -66,7 +66,7 @@ module KitArchiveTests =
             ]
         let sent =
             [
-                ".kit-json"
+                ".optics-kit"
                 "data"
                 "data/raw"
                 "data/run 1.csv"
@@ -82,7 +82,7 @@ module KitArchiveTests =
 
     [<Fact>]
     let ``the sent entries keep the tree's order and drop what is left out`` () : unit =
-        let kitJson = KitTreeFile (kitPath ".kit-json")
+        let kitJson = KitTreeFile (kitPath ".optics-kit")
         let cache = KitTreeFolder (kitPath ".oc")
         let lock = KitTreeFile (kitPath ".oc/lock")
         let data = KitTreeFolder (kitPath "data")
@@ -91,7 +91,7 @@ module KitArchiveTests =
         let run = KitTreeFile (kitPath "data/run 1.csv")
         let library = KitTreeFolder (kitPath "library")
         let notes = KitTreeFile (kitPath "notes.txt")
-        let tree = [ kitJson; cache; lock; data; raw; dng; run; library; notes ]
+        let tree = [ cache; lock; kitJson; data; raw; dng; run; library; notes ]
 
         let ordinal = tree |> List.sortWith (fun first second -> String.CompareOrdinal(first.path.value, second.path.value))
         Assert.Equal<KitTreeEntry list>(tree, ordinal)

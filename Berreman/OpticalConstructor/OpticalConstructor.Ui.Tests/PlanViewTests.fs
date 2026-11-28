@@ -98,7 +98,7 @@ module PlanViewTests =
     /// The lines of the vertical list carrying `id`, in order.
     let private linesOf (window : Window) (id : ConstructorUiId) : string list =
         Assert.IsType<StackPanel>(UiDriver.ById.findControl window id).Children
-        |> Seq.map (fun line -> Assert.IsType<TextBlock>(line).Text)
+        |> Seq.map (fun line -> Assert.IsAssignableFrom<TextBlock>(line).Text)
         |> List.ofSeq
 
     /// Every text shown under `root`, a window or one row of it; a block holding no text is skipped.
@@ -117,7 +117,7 @@ module PlanViewTests =
     /// A candidate row's caption, the DockPanel's filling last child beside its docked verb (spec 0051 `.manual/003` 4.3).
     let private rowCaptionOf (window : Window) (id : ConstructorUiId) : string =
         let row = Assert.IsType<DockPanel>(UiDriver.ById.findControl window id)
-        Assert.IsType<TextBlock>(row.Children[row.Children.Count - 1]).Text
+        Assert.IsAssignableFrom<TextBlock>(row.Children[row.Children.Count - 1]).Text
 
     /// The brief's row text for the ranked step at `position` by `criterion`, written apart from the view.
     let private expectedRowText (position : int) (criterion : PlanCriterion) (step : RankedPlanStep) : string =
@@ -223,7 +223,7 @@ module PlanViewTests =
                     Assert.Equal<string list>(report.structural.findings |> List.map (fun (finding : PlannerFinding) -> finding.text), findings)
                     Assert.Equal(
                         "Rank 0 of 2 from what the kit holds: 2 combination(s) confounded.",
-                        Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.planRankText).Text)
+                        Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.planRankText).Text)
                     Assert.Equal<string list>(confounded, linesOf window ConstructorUiId.planConfoundedList)
                     UiDriver.ById.assertAbsent window ConstructorUiId.planBoundsGrid
                     Assert.Contains("No bound yet: what the kit holds leaves a combination confounded.", textsOf window)
@@ -260,12 +260,12 @@ module PlanViewTests =
                 withPlanWindow fullRank (fun window ->
                     Assert.Equal(
                         $"Rank 2 of 2 from what the kit holds; condition {condition}.",
-                        Assert.IsType<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.planRankText).Text)
+                        Assert.IsAssignableFrom<TextBlock>(UiDriver.ById.findControl window ConstructorUiId.planRankText).Text)
                     Assert.Equal<string list>([ $"Weakest: {weakest}" ], linesOf window ConstructorUiId.planConfoundedList)
-                    let grid = Assert.IsType<Grid>(UiDriver.ById.findControl window ConstructorUiId.planBoundsGrid)
+                    let grid = UiDriver.gridIn (UiDriver.ById.findControl window ConstructorUiId.planBoundsGrid)
                     let cellText (row : int) (column : int) : string =
                         let cell = grid.Children |> Seq.find (fun cell -> Grid.GetRow cell = row && Grid.GetColumn cell = column)
-                        Assert.IsType<TextBlock>(cell).Text
+                        Assert.IsAssignableFrom<TextBlock>(cell).Text
                     Assert.Equal<string list>([ "Target"; "Value"; "σ"; "σ / value" ], [ for column in 0 .. 3 -> cellText 0 column ])
                     Assert.Equal<string list>([ "g11"; "3E-05" ], [ cellText 1 0; cellText 1 1 ])
                     Assert.Equal<string list>([ "g33"; "-1E-05" ], [ cellText 2 0; cellText 2 1 ])
@@ -350,7 +350,7 @@ module PlanViewTests =
                 withPlanWindow (showing traced) (fun window ->
                     let list = candidateListOf window
                     Assert.Equal<string list>([ ""; (ConstructorUiId.planCandidateRow second.candidate).value ], childIdsOf list)
-                    Assert.Equal($"Already in the kit: {first.candidate.caption}.", Assert.IsType<TextBlock>(list.Children[0]).Text)
+                    Assert.Equal($"Already in the kit: {first.candidate.caption}.", Assert.IsAssignableFrom<TextBlock>(list.Children[0]).Text)
                     let row = rowCaptionOf window (ConstructorUiId.planCandidateRow second.candidate)
                     Assert.Equal(expectedRowText 1 TargetTracePlanCriterion second, row)
                     Assert.Contains(", Σσ² ", row)

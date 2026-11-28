@@ -255,7 +255,7 @@ module RendererControls =
             StackPanel.children [
                 row [
                     [ clickBox ConstructorUiId.rendererSwapButton (ControlCaption "Swap renderer") (fun () -> handlers.swap ())
-                      TextBlock.create [ ConstructorUiId.rendererReadout.automationAttribute<TextBlock> (); TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: {state.kind.text}" ] ]
+                      SelectableTextBlock.create [ ConstructorUiId.rendererReadout.automationAttribute<SelectableTextBlock> (); TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: {state.kind.text}" ] ]
                     knobUnit (ControlCaption "Cylinder rails:") (presetSlider RailsKnob state.rails.presetIndex handlers.setRailsIndex) state.rails.valueCaption
                 ]
                 row [

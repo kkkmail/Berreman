@@ -19,7 +19,7 @@
   "properties": {
     "schemaVersion": {
       "type": "string",
-      "const": "1.0",
+      "const": "2.0",
       "description": "The single shipped env-schema version. A differing value is a validation error, not a migration trigger (J.6 item 3)."
     },
     "favorites": {
@@ -137,7 +137,8 @@
         "wavelengthRange",
         "sweepPoints",
         "decimalPrecision",
-        "solver"
+        "solver",
+        "toolTipDelay"
       ],
       "properties": {
         "lengthUnit": { "$ref": "#/$defs/unitOfMeasure" },
@@ -145,7 +146,8 @@
         "wavelengthRange": { "$ref": "#/$defs/wavelengthRange" },
         "sweepPoints": { "type": "integer" },
         "decimalPrecision": { "type": "integer" },
-        "solver": { "$ref": "#/$defs/solverParameters" }
+        "solver": { "$ref": "#/$defs/solverParameters" },
+        "toolTipDelay": { "type": "integer", "minimum": 0, "maximum": 5000, "description": "How long a tooltip waits before it shows, in milliseconds (spec 0051 .manual/007 1.5)." }
       },
       "additionalProperties": false
     },

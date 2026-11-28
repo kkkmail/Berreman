@@ -18,7 +18,7 @@ open Avalonia.FuncUI.Types
 ///   3. the user picks what to CAPTURE (transmitted / reflected / both), sets the numeric range, and clicks
 ///      Add — which appends the experiment to a COLLECTION that persists. Existing experiments can be
 ///      Edited (re-adding updates in place, never duplicates) and Removed.
-/// This control is DOMAIN-FREE (matching `LibraryControls` / `RendererControls`): the host flattens the
+/// This control is DOMAIN-FREE (matching `RendererControls`): the host flattens the
 /// present elements into `SweepCandidate`s, the allowed variables into `VariableChoice`s, the collection
 /// into `ExperimentRow`s, pre-builds the inline chart series + labels + description, and injects the
 /// behaviour as a `Handlers` function record (the functional-proxy seam; tests pass stubs).
@@ -156,40 +156,6 @@ module ExperimentControls =
             { this with points = turned |> List.sortBy (fun point -> point.x) }
 
     /// Whether an added experiment is the one loaded in the editor (its row is highlighted).
-    type ExperimentRowFocus =
-        | LoadedInEditor
-        | NotLoadedInEditor
-
-    /// One added experiment shown in the collection (the host flattens the domain `Experiment`s to these).
-    type ExperimentRow =
-        {
-            /// The experiment's stable id (the host maps it back to `ExperimentId`).
-            id : ConstructorUiKey
-            /// A human-readable one-line description of the experiment.
-            description : ControlCaption
-            /// The data badge's text, shown beside the description (spec 0050 S9.1).
-            badge : ControlCaption
-            focus : ExperimentRowFocus
-        }
-
-    /// Whether a role box is the loaded experiment's role (spec 0050 S9.1).
-    type ExperimentRoleMark =
-        | RoleChosen
-        | RoleNotChosen
-
-    /// One role box of the loaded experiment's role row (spec 0050 S9.1).
-    type ExperimentRoleOption =
-        {
-            key : ConstructorUiKey
-            caption : ControlCaption
-            mark : ExperimentRoleMark
-        }
-
-    /// Whether Add appends a new experiment or updates the one being edited (the button reads "Update").
-    type ExperimentEditorMode =
-        | EditorAddsNew
-        | EditorUpdatesExisting
-
     /// One end of the variation range, in the varied quantity's display unit (nm or °).
     type ExperimentRangeEnd =
         | ExperimentRangeEnd of float
@@ -268,20 +234,6 @@ module ExperimentControls =
             /// Why Add experiment, Add variable and Add block are withheld, or none while they are offered (spec 0051
             /// `.manual/003` 3.6).
             addReasonOpt : ControlCaption option
-            /// Whether a collected experiment's Remove is offered (spec 0050 S5.3).
-            removalAvailability : ControlAvailability
-            /// The row whose Remove waits for its Yes or No (spec 0051 `.manual/003` 2.3).
-            removalPendingOpt : ConstructorUiKey option
-            editorMode : ExperimentEditorMode
-            /// The loaded experiment's role boxes, in the roles' order (spec 0050 S9.1).
-            roleOptions : ExperimentRoleOption list
-            /// The loaded experiment's session and notes as their fields show them (spec 0050 S9.1).
-            sessionText : ControlCaption
-            notesText : ControlCaption
-            /// Offered while an experiment is loaded in a writable kit: its role, session and notes show (spec 0050 S9.1).
-            bookkeepingAvailability : ControlAvailability
-            /// The added experiments (the persistent collection).
-            collection : ExperimentRow list
             /// The built-experiment readout, once the draft is complete.
             readout : ControlCaption option
             /// `ControlWithheld` when there are no elements to vary.
@@ -316,14 +268,6 @@ module ExperimentControls =
             scanLines = []
             scanAvailability = ControlWithheld
             addReasonOpt = None
-            removalAvailability = ControlOffered
-            removalPendingOpt = None
-            editorMode = EditorAddsNew
-            roleOptions = []
-            sessionText = ControlCaption ""
-            notesText = ControlCaption ""
-            bookkeepingAvailability = ControlWithheld
-            collection = []
             readout = None
             availability = ControlWithheld
             series = []
@@ -348,29 +292,10 @@ module ExperimentControls =
             setRangePoints : ExperimentPointCount -> unit
             /// Spec 0046: set a tunable source's wavelength for the run.
             setSourceWaveLength : BayNanometers -> unit
-            /// Confirm the draft: Add a new experiment, or Update the one being edited.
-            addOrUpdate : unit -> unit
-            /// Start a brand-new experiment (clears the editor).
-            newExperiment : unit -> unit
             /// Add variable: the edited axis joins the draft's current block (spec 0050 S9.1).
             addScanAxis : unit -> unit
             /// Add block: the draft's current block closes and a new one starts (spec 0050 S9.1).
             addScanBlock : unit -> unit
-            /// The loaded experiment takes the role of that code, its session or its notes (spec 0050 S9.1).
-            setRole : ConstructorUiKey -> unit
-            setSession : ControlCaption -> unit
-            setNotes : ControlCaption -> unit
-            /// Load an experiment (by id) into the editor for editing.
-            editExperiment : ConstructorUiKey -> unit
-            /// Ask to remove an experiment (by id) and its file; nothing is deleted until the Yes.
-            removeExperiment : ConstructorUiKey -> unit
-            /// The Yes of the pending removal: the experiment and its file go (spec 0051 `.manual/003` 2.3).
-            confirmRemoval : unit -> unit
-            /// The No of the pending removal.
-            cancelRemoval : unit -> unit
-            /// VIEW an experiment (by id): open the pop-out chart window for that collected experiment. The
-            /// per-row "View" button and a double-click on the row both call this — the same testable action.
-            viewExperiment : ConstructorUiKey -> unit
             /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart).
             /// Spec 0046: the separate "Open chart window" button is gone — a collected experiment's "View"
             /// is the explicit way to open its chart.
@@ -605,8 +530,8 @@ module ExperimentControls =
             match state.psiDelta with
             | Some reading ->
                 let psiText =
-                    TextBlock.create [
-                        ConstructorUiId.ellipsometerReadout.automationAttribute<TextBlock> ()
+                    SelectableTextBlock.create [
+                        ConstructorUiId.ellipsometerReadout.automationAttribute<SelectableTextBlock> ()
                         TextBlock.text $"Ψ = {reading.psi.text}°   Δ = {reading.delta.text}°"
                     ]
                     |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.ellipsometerReadout.value
@@ -631,8 +556,8 @@ module ExperimentControls =
                     ]
                     |> Avalonia.FuncUI.DSL.View.withKey "ExperimentChartBox"
                 let descriptionText =
-                    TextBlock.create [
-                        ConstructorUiId.experimentChartDescription.automationAttribute<TextBlock> ()
+                    SelectableTextBlock.create [
+                        ConstructorUiId.experimentChartDescription.automationAttribute<SelectableTextBlock> ()
                         TextBlock.text state.description.value
                         TextBlock.fontSize 11.0
                         TextBlock.textWrapping TextWrapping.Wrap
@@ -712,8 +637,8 @@ module ExperimentControls =
             StackPanel.orientation Orientation.Vertical
             StackPanel.isVisible hasVariable
             StackPanel.children [
-                TextBlock.create [
-                    ConstructorUiId.experimentNoCapture.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.experimentNoCapture.automationAttribute<SelectableTextBlock> ()
                     TextBlock.text "(no detector captures this element's light — put a detector on its transmitted beam or on its reflected ray: right-click an element for its rays)"
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.maxWidth 420.0
@@ -791,7 +716,7 @@ module ExperimentControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Source wavelength:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 numberField ConstructorUiId.experimentSourceWaveLength valueText availability commit
-                TextBlock.create [ ConstructorUiId.experimentSourceWaveLengthNote.automationAttribute<TextBlock> (); TextBlock.text note.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                SelectableTextBlock.create [ ConstructorUiId.experimentSourceWaveLengthNote.automationAttribute<SelectableTextBlock> (); TextBlock.text note.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
             ]
         ] :> IView
 
@@ -816,19 +741,13 @@ module ExperimentControls =
                         ] :> IView))
             ] :> IView
 
-    /// The Add / Update + New action row, then Add variable and Add block (spec 0050 S9.1).
-    let private actionRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
-        let addCaption =
-            match state.editorMode with
-            | EditorUpdatesExisting -> ControlCaption "Update experiment"
-            | EditorAddsNew -> ControlCaption "Add experiment"
+    /// Add variable and Add block, then why they are withheld (spec 0050 S9.1; 0051 `.manual/003` 3.6).
+    let private scanRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         // Spec 0051 `.manual/003` 4.3: the verbs wrap at the bay's width.
         let actions =
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children [
-                    actionButton ConstructorUiId.experimentAddButton addCaption ChosenCommand state.addAvailability handlers.addOrUpdate
-                    actionButton ConstructorUiId.experimentNewButton (ControlCaption "New") NeutralCommand state.availability handlers.newExperiment
                     actionButton ConstructorUiId.experimentAddScanAxisButton (ControlCaption "Add variable") NeutralCommand state.scanAvailability handlers.addScanAxis
                     actionButton ConstructorUiId.experimentAddScanBlockButton (ControlCaption "Add block") NeutralCommand state.scanAvailability handlers.addScanBlock
                 ]
@@ -838,163 +757,14 @@ module ExperimentControls =
             StackPanel.children ((actions :> IView) :: CommandControls.withheldReason ConstructorUiId.experimentAddReason state.addReasonOpt)
         ] :> IView
 
-    /// The loaded experiment's role row and its Session and Notes fields, shown while `bookkeepingAvailability` is offered
-    /// (spec 0050 S9.1). Keyed by the loaded row: the fields' subscriptions never change, so a recreated block keeps a
-    /// field or a box from writing to the experiment loaded before.
-    let private bookkeepingBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
-        let loadedKey =
-            state.collection
-            |> List.tryPick (fun row ->
-                match row.focus with
-                | LoadedInEditor -> Some row.id.value
-                | NotLoadedInEditor -> None)
-            |> Option.defaultValue ""
-        let commitCaption (commit : ControlCaption -> unit) (src : obj) : unit =
-            match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> commit (ControlCaption tb.Text)
-            | _ -> ()
-        let roleBox (option : ExperimentRoleOption) : IView =
-            optionBoxV
-                (ConstructorUiId.experimentRoleChoice option.key)
-                option.caption
-                (match option.mark with
-                 | RoleChosen -> ChosenChoice
-                 | RoleNotChosen -> UnchosenChoice)
-                state.bookkeepingAvailability
-                ShownInBay
-                (fun () -> handlers.setRole option.key)
-        let labelled (label : ControlCaption) (field : IView) : IView =
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.spacing 6.0
-                StackPanel.children [
-                    TextBlock.create [ TextBlock.text label.value; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                    field
-                ]
-            ] :> IView
-        let block =
-            StackPanel.create [
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.spacing 4.0
-                StackPanel.isVisible (
-                    match state.bookkeepingAvailability with
-                    | ControlOffered -> true
-                    | ControlWithheld -> false)
-                StackPanel.children [
-                    heading (ControlCaption "Role:") ShownInBay
-                    WrapPanel.create [
-                        WrapPanel.orientation Orientation.Horizontal
-                        WrapPanel.children (state.roleOptions |> List.map roleBox)
-                    ]
-                    labelled
-                        (ControlCaption "Session:")
-                        (committingField ConstructorUiId.experimentSessionField (TextBox.width 200.0) state.sessionText state.bookkeepingAvailability (commitCaption handlers.setSession))
-                    labelled
-                        (ControlCaption "Notes:")
-                        (committingField ConstructorUiId.experimentNotesField (TextBox.width 320.0) state.notesText state.bookkeepingAvailability (commitCaption handlers.setNotes))
-                ]
-            ]
-            |> Avalonia.FuncUI.DSL.View.withKey $"ExperimentBookkeeping_{loadedKey}"
-        block :> IView
-
-    /// A row action button (View / Remove).
-    let private rowActionButton (id : ConstructorUiId) (label : ControlCaption) (emphasis : CommandEmphasis) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
-        CommandControls.commandButton id label emphasis availability onClick
-            [ Button.padding (Thickness(10.0, 4.0)); Button.margin (Thickness(0.0, 0.0, 6.0, 0.0)) ]
-
-    /// One collection row: the experiment description (single-click Edit, highlighted while editing;
-    /// double-click = View), its data badge (spec 0050 S9.1), then a "View" action (open the chart window for this
-    /// experiment) and a Remove.
-    /// The row is KEYED by its experiment id, so removing an item recreates the rows that shift slots
-    /// instead of patching one row's controls into another's.
-    let private collectionRow (removal : ControlAvailability) (pendingOpt : ConstructorUiKey option) (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
-        // Spec 0051 `.manual/003` 4.3: View and Remove wrap under the row's text at the bay's width.
-        let row =
-            WrapPanel.create [
-                WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-                WrapPanel.children (
-                    [
-                        // A single click loads the experiment into the editor (amber while it is loaded); a double click
-                        // opens its chart, as View beside it does.
-                        CommandControls.choiceToggle
-                            (ConstructorUiId.experimentEditButton r.id)
-                            r.description
-                            (match r.focus with LoadedInEditor -> ChosenChoice | NotLoadedInEditor -> UnchosenChoice)
-                            PendingCommand
-                            ControlOffered
-                            (fun () -> handlers.editExperiment r.id)
-                            [ ToggleButton.padding (Thickness(10.0, 4.0))
-                              ToggleButton.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                              ToggleButton.maxWidth 300.0
-                              ToggleButton.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id.value)) ]
-                        TextBlock.create [
-                            (ConstructorUiId.experimentRowBadge r.id).automationAttribute<TextBlock> ()
-                            TextBlock.text r.badge.value
-                            TextBlock.fontSize 11.0
-                            TextBlock.foreground (brush (Color.FromRgb(90uy, 90uy, 90uy)))
-                            TextBlock.verticalAlignment VerticalAlignment.Center
-                            TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                        ] :> IView
-                        rowActionButton (ConstructorUiId.experimentViewButton r.id) (ControlCaption "View ↗") ChosenCommand ControlOffered (fun () -> handlers.viewExperiment r.id)
-                    ]
-                    @ (match pendingOpt with
-                       | Some pending when pending = r.id -> []
-                       | Some _
-                       | None ->
-                           [ rowActionButton (ConstructorUiId.experimentRemoveButton r.id) (ControlCaption "Remove") NeutralCommand removal (fun () -> handlers.removeExperiment r.id) ])
-                )
-            ]
-        // Spec 0051 `.manual/003` 2.3: the question takes its own line, so the row keeps its width.
-        let question : IView list =
-            match pendingOpt with
-            | Some pending when pending = r.id ->
-                [
-                    WrapPanel.create [
-                        WrapPanel.orientation Orientation.Horizontal
-                        WrapPanel.margin (Thickness(12.0, 0.0, 0.0, 6.0))
-                        WrapPanel.children [
-                            TextBlock.create [
-                                ConstructorUiId.experimentRemovePrompt.automationAttribute<TextBlock> ()
-                                TextBlock.text "Remove this experiment and its file?"
-                                TextBlock.verticalAlignment VerticalAlignment.Center
-                                TextBlock.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-                            ]
-                            rowActionButton ConstructorUiId.experimentRemoveConfirmButton (ControlCaption "Yes, remove") NegativeCommand removal handlers.confirmRemoval
-                            rowActionButton ConstructorUiId.experimentRemoveCancelButton (ControlCaption "No") NeutralCommand ControlOffered handlers.cancelRemoval
-                        ]
-                    ] :> IView
-                ]
-            | Some _
-            | None -> []
-        StackPanel.create [
-            StackPanel.orientation Orientation.Vertical
-            StackPanel.children (row :> IView :: question)
-        ]
-        |> Avalonia.FuncUI.DSL.View.withKey r.id.value
-        :> IView
-
-    /// The collection block: a heading and the added-experiment rows (or a hint when empty).
-    let private collectionBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
-        [
-            heading (ControlCaption "Experiments:") ShownInBay
-            (match state.collection with
-             | [] -> TextBlock.create [ TextBlock.text "(none added yet — build one above and click Add)"; TextBlock.foreground (brush (Color.FromRgb(120uy, 120uy, 120uy))) ] :> IView
-             | rows ->
-                 StackPanel.create [
-                     yield! ConstructorUiId.experimentCollection.groupAttributes<StackPanel> ()
-                     StackPanel.orientation Orientation.Vertical
-                     StackPanel.children (rows |> List.map (collectionRow state.removalAvailability state.removalPendingOpt handlers))
-                 ] :> IView)
-        ]
-
-    /// The Experiments bay — a multi-step editor (choose element → variable → capture → range → Add) and
-    /// the persistent collection of added experiments, with the inline chart of the current editor's run.
-    let experimentControlsView (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
+    /// The experiment editor: what to vary (element, variable), what is captured, the range and the source's
+    /// wavelength, the scan's blocks, then the inline chart of the draft's run. Creating and saving are the Experiments
+    /// page's (spec 0050 S9.1; 0051 `.manual/007` 6.3, 6.4).
+    let experimentEditorView (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let readoutText =
             match state.readout with
             | Some readout -> readout.value
-            | None -> "Experiment: (choose an element, a variable to vary, and click Add)"
+            | None -> "Experiment: choose an element and a variable to vary."
         // The later steps appear once something to vary is chosen (stable slots, visibility toggled).
         let laterSteps = match state.chosenVariable with Some _ -> ShownInBay | None -> HiddenInBay
         StackPanel.create [
@@ -1002,7 +772,7 @@ module ExperimentControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ ConstructorUiId.experimentReadout.automationAttribute<TextBlock> (); TextBlock.text readoutText ] :> IView
+                    SelectableTextBlock.create [ ConstructorUiId.experimentReadout.automationAttribute<SelectableTextBlock> (); TextBlock.text readoutText ] :> IView
                     heading (ControlCaption "1. Element to vary:") ShownInBay
                     elementRow state handlers
                     heading (ControlCaption "2. Vary:") ShownInBay
@@ -1012,7 +782,6 @@ module ExperimentControls =
                     heading (ControlCaption "4. Range:") laterSteps
                 ]
                 @ [ rangeRow state handlers; sourceWaveLengthRow state handlers; state.scanSummaryPanel ]
-                @ [ actionRow state handlers; bookkeepingBlock state handlers ]
-                @ collectionBlock state handlers
+                @ [ scanRow state handlers ]
                 @ resultBlock state handlers)
         ] :> IView

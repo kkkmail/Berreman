@@ -1,5 +1,5 @@
-/// The slot bar above the table: one chip per slot in light order, the open chip's fitting items and Record experiment
-/// (spec 0050 S8.4; 001 §J "Quick swap", §O).
+/// The slot bar above an edited table: one chip per slot in light order and the open chip's fitting items, each putting
+/// its item into the slot (spec 0050 S8.4; 0051 `.manual/007` 5.3, D9).
 module OpticalConstructor.Ui.SlotBarView
 
 open Avalonia
@@ -24,31 +24,22 @@ type SlotChipState =
         fitting : Kit.Item list
     }
 
-/// The bar: its chips in light order, the slot whose list is open and whether Record experiment is offered (spec 0050
-/// S8.4).
+/// The bar: its chips in light order and the slot whose list is open (spec 0050 S8.4).
 type SlotBarState =
     {
         chips : SlotChipState list
         openOpt : Library.ElementId option
-        recordAvailability : ControlAvailability
-        /// The note Record experiment names its experiment with (spec 0051 `.manual/003` 3.9).
-        recordNote : ControlCaption
     }
 
-/// What the bar sends: a chip's toggle, a listed item's swap, a letter typed on a chip, Record experiment and Setup grid…
-/// (spec 0050 S8.4).
+/// What the bar sends: a chip's toggle, a listed item put into its slot, a letter typed on a chip (spec 0050 S8.4).
 type SlotBarHandlers =
     {
         toggleChip : Library.ElementId -> unit
-        swapSlot : Library.ElementId -> Kit.ItemId -> unit
+        assignSlot : Library.ElementId -> Kit.ItemId -> unit
         pickByLetter : Library.ElementId -> Setups.PickLetter -> unit
-        recordExperiment : unit -> unit
-        setRecordNote : ControlCaption -> unit
-        openSetupGrid : unit -> unit
     }
 
-/// The bar over `state`: its chips, then Record experiment while offered and Setup grid…, on a wrapping row, and the open
-/// chip's fitting items below. A chip is a tab stop, so Tab walks the chips in light order, and a letter typed on one
+/// The bar over `state`: its chips on a wrapping row, and the open chip's fitting items below. A chip is a tab stop, so Tab walks the chips in light order, and a letter typed on one
 /// picks (spec 0050 S8.4).
 let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
     let chipBox (chip : SlotChipState) : IView =
@@ -69,25 +60,6 @@ let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
                           handlers.pickByLetter slotId letter
                       | None -> ()),
                   SubPatchOptions.Always) ]
-    let recordVerb : IView list =
-        match state.recordAvailability with
-        | ControlOffered ->
-            [
-                TextBox.create [
-                    yield! ConstructorUiId.recordNoteField.inputAttributes<TextBox> ()
-                    TextBox.placeHolderText "Note for the name"
-                    TextBox.width 160.0
-                    TextBox.margin (Thickness(0.0, 0.0, 6.0, 4.0))
-                    TextBox.text state.recordNote.value
-                    TextBox.onTextChanged (Option.ofObj >> Option.map ControlCaption >> Option.iter handlers.setRecordNote)
-                ]
-                :> IView
-                CommandControls.verbCommand ConstructorUiId.recordExperimentButton (ControlCaption "Record experiment") handlers.recordExperiment
-            ]
-        | ControlWithheld -> []
-    // The grid's edits write nothing, so a read-only kit is offered it too (spec 0050 S8.4).
-    let gridVerb : IView =
-        CommandControls.verbCommand ConstructorUiId.setupGridOpenButton (ControlCaption "Setup grid…") handlers.openSetupGrid
     let choiceList (chip : SlotChipState) : IView =
         let slotId = chip.roled.slot.id
         let choiceBox (item : Kit.Item) : IView =
@@ -96,7 +68,7 @@ let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
             | Some held when held = item.id ->
                 CommandControls.choiceCommand id item.label.caption ChosenChoice (fun () -> handlers.toggleChip slotId)
             | Some _
-            | None -> CommandControls.choiceCommand id item.label.caption UnchosenChoice (fun () -> handlers.swapSlot slotId item.id)
+            | None -> CommandControls.choiceCommand id item.label.caption UnchosenChoice (fun () -> handlers.assignSlot slotId item.id)
         let choices : IView list =
             match chip.fitting with
             | [] -> [ TextBlock.create [ TextBlock.text $"No item of this kit fits {chip.roled.role.text}." ] :> IView ]
@@ -117,7 +89,7 @@ let slotBarView (state : SlotBarState) (handlers : SlotBarHandlers) : IView =
         StackPanel.children (
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.children ((state.chips |> List.map chipBox) @ recordVerb @ [ gridVerb ])
+                WrapPanel.children (state.chips |> List.map chipBox)
             ]
             :> IView
             :: openList)

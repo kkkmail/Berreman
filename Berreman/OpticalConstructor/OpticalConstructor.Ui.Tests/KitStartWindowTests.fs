@@ -110,6 +110,7 @@ module KitStartWindowTests =
             author = kitStartAuthor
             imports = CatalogueImportContext.create (CatalogueImportProxy.createInMemory ()).proxy
             picker = picker
+            kitFolderMemory = KitFolderMemory.fixedAt (FolderName "kits")
             showKit = shown.Add
             activateKitWindow = fun _ -> NoKitWindowOpen
             zipPicker = KitZipPicker.none
@@ -463,7 +464,7 @@ module KitStartWindowTests =
                     let kit = Assert.Single<OpenedKit>(shown)
                     Assert.Equal<KitName>(KitName "Optics QZ", kit.library.kit.kitFile.name)
                     Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access)
-                    Assert.True(File.Exists(Path.Combine(fresh.value.value, ".kit-json"))))
+                    Assert.True(File.Exists(Path.Combine(fresh.value.value, ".optics-kit"))))
 
                 let notes = kitIn root "Lab notes"
                 let notesFile = Path.Combine(notes.value.value, "notes.txt")
@@ -645,7 +646,7 @@ module KitStartWindowTests =
                     Assert.Equal<ConstructorMode>(mode, shownMode)
                     Assert.Equal<KitAccess>(ReadWriteKitAccess, kit.library.kit.access)
                     Assert.Equal<KitName>(KitName (Path.GetFileName folder.value.value), kit.library.kit.kitFile.name)
-                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".kit-json")))
+                    Assert.True(File.Exists(Path.Combine(folder.value.value, ".optics-kit")))
                     Assert.Equal(1, closings.Value)
                     Assert.False(window.IsVisible, "The start screen stays open after New kit.")
                     Assert.Equal<KitFolder list>([ folder ], (context.kitHistory.readHistory ()).entries |> List.map _.folder)))
@@ -740,7 +741,7 @@ module KitStartWindowTests =
                 let sentNames =
                     using (ZipFile.OpenRead sent.sentZip.value) (fun archive -> archive.Entries |> Seq.map _.FullName |> List.ofSeq)
 
-                Assert.Contains<string>(".kit-json", sentNames)
+                Assert.Contains<string>(".optics-kit", sentNames)
 
                 for name in sentNames do
                     let received = Path.Combine(target.value.value, name)
@@ -750,3 +751,26 @@ module KitStartWindowTests =
                 Assert.Equal(1, closings.Value)
                 Assert.False(window.IsVisible, "The start screen stays open after Open kit from zip.")
                 Assert.Equal<KitFolder list>([ target ], (context.kitHistory.readHistory ()).entries |> List.map _.folder)))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``Open kit asks for the kit's .optics-kit file, New kit for a folder`` () : unit =
+        // Spec 0051 `.manual/007` 3.3: a kit is opened by its file and made in a folder.
+        HeadlessSession.run (fun () ->
+            withKitStartRoot (fun root shown ->
+                let asked = ResizeArray<KitFolderQuestion> ()
+                let picker : KitFolderPicker =
+                    {
+                        pickKitFolder =
+                            fun question ->
+                                async {
+                                    asked.Add question
+                                    return None
+                                }
+                    }
+                let context = contextOver (storedHistory ()) picker shown
+                withKitStartScreen (initKitStart context ForwardConstructor) (fun window ->
+                    clickOn window ConstructorUiId.openKitButton
+                    clickOn window ConstructorUiId.newKitButton
+                    Assert.Equal<KitFolderQuestion list>([ ChooseKitFile; ChooseKitFolder ], List.ofSeq asked)
+                    Assert.Empty(shown))))

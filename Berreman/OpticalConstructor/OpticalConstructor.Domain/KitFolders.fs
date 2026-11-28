@@ -475,11 +475,14 @@ module KitFolders =
     type KitFolderQuestion =
         | ChooseKitFolder
         | ChooseUnpackFolder
+        /// A kit is opened by its `.optics-kit` file; the kit is the file's folder (spec 0051 `.manual/007` 3.3).
+        | ChooseKitFile
 
         member this.title : string =
             match this with
             | ChooseKitFolder -> "Choose a kit folder"
             | ChooseUnpackFolder -> "Choose an empty folder to unpack the kit into"
+            | ChooseKitFile -> "Open a kit: choose its .optics-kit file"
 
     /// Asks for a kit folder asynchronously, returning None when the user cancels (spec 0050 S4.3).
     [<ReferenceEquality>]

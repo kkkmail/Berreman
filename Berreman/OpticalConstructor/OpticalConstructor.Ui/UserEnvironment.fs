@@ -115,6 +115,22 @@ type WavelengthRange =
 /// and the solver defaults. Solver defaults are the engine's own `SolverParameters`
 /// (`Solvers.fs:15`) — Part J introduces NO parallel solver-config record (AC-J7).
 /// Persists as part of `EnvironmentSettings` (J.6), hence JSON not `.binz`.
+/// How long a tooltip waits before it shows, in milliseconds, from 0 to 5000; about a second by default, as MS Word's
+/// (spec 0051 `.manual/007` 1.5, `006-11`).
+type ToolTipDelay =
+    | ToolTipDelay of int
+
+    member this.value : int = let (ToolTipDelay milliseconds) = this in milliseconds
+
+    /// One second.
+    static member defaultValue : ToolTipDelay = ToolTipDelay 1000
+
+    /// The delay of the typed milliseconds, none for a text that is not a whole number from 0 to 5000.
+    static member tryParse (text : string) : ToolTipDelay option =
+        match System.Int32.TryParse(text.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
+        | true, milliseconds when milliseconds >= 0 && milliseconds <= 5000 -> Some (ToolTipDelay milliseconds)
+        | _ -> None
+
 type Preferences =
     {
         /// Default unit for length/thickness boundary fields (a display/IO label).
@@ -129,6 +145,8 @@ type Preferences =
         decimalPrecision : ChartStyle.DecimalDigits
         /// Solver defaults — the engine's `SolverParameters` (Solvers.fs:15).
         solver : SolverParameters
+        /// How long a tooltip waits before it shows (spec 0051 `.manual/007` 1.5).
+        toolTipDelay : ToolTipDelay
     }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +301,7 @@ let defaultPreferences : Preferences =
         sweepPoints = Variables.NumberOfPoints 100
         decimalPrecision = ChartStyle.DecimalDigits 4
         solver = SolverParameters.defaultValue
+        toolTipDelay = ToolTipDelay.defaultValue
     }
 
 /// The built-in default environment — the fall-back the app uses when no settings
@@ -314,7 +333,7 @@ let defaults : EnvironmentSettings =
 /// The single shipped env-schema version, pinned with `const` in the schema. A
 /// differing value fails validation and so falls back to defaults (no migration).
 [<Literal>]
-let userEnvironmentSchemaVersion = "1.0"
+let userEnvironmentSchemaVersion = "2.0"
 
 /// The build-copied env schema content item, loaded beside the assembly at runtime
 /// (the fsproj copies it to the output root). Mirrors the slice-003 project-schema
@@ -419,6 +438,16 @@ let measuredDataFolderKey : PickerPurpose = PickerPurpose "measured-data"
 
 /// The picker purpose of an item's photo (spec 0051 `.manual/003` 5.2).
 let itemPhotoFolderKey : PickerPurpose = PickerPurpose "item-photo"
+
+/// The picker purpose of every kit dialog: the folder ABOVE the last kit opened or created, since a kit is its folder
+/// (spec 0051 `.manual/007` 3.4).
+let kitParentFolderKey : PickerPurpose = PickerPurpose "kit-parent"
+
+/// Records the folder above `kit` under `kitParentFolderKey`; a kit at a root leaves the map untouched.
+let rememberKitParent (kit : OpticalConstructor.Domain.Kit.KitFolder) (settings : EnvironmentSettings) : EnvironmentSettings =
+    match kit.parentFolderOpt with
+    | Some parent -> { settings with lastFolders = settings.lastFolders |> Map.add kitParentFolderKey parent }
+    | None -> settings
 
 /// The persisted last-used folder for `purpose`, if any. `None` on a fresh environment, or when an
 /// old array-shaped `lastFolders` file failed validation and the total `load` fell back to the

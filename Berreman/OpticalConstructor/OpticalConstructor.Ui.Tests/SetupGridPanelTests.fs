@@ -24,7 +24,7 @@ open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.Tests.UiDriver.ById
 
-/// The grid generator's panel in `mainView`, between the slot bar and the table, driven through its messages and its
+/// The grid generator's panel in `UiDriver.editableTableView`, between the slot bar and the table, driven through its messages and its
 /// presses: each slot's fitting items and R1 angles, the combinations ticked, unticked or impossible, Generate beside
 /// Close, and a read-only kit (spec 0050 S8.4; 001 §J, §O). It mounts the window as `SlotBarTests` does.
 module SetupGridPanelTests =
@@ -106,13 +106,17 @@ module SetupGridPanelTests =
     let private lineText (line : Control) : string =
         match line with
         | :? ContentControl as box -> UiDriver.textOfControl box
-        | :? Border as box -> Assert.IsType<TextBlock>(box.Child).Text
+        | :? Border as box -> Assert.IsAssignableFrom<TextBlock>(box.Child).Text
         | :? TextBlock as text -> text.Text
         | other -> failwith $"a combination line must be a box or a text, not a {other.GetType().Name}"
 
+    /// The grid open on the Experiments page, as New experiments from a setup grid… opens it (spec 0051 `.manual/007` D5).
+    let private gridOnPage (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        { (model |> update OpenSetupGrid) with flowStep = ExperimentsFlowStep; pageMode = CreatingPageEntry }
+
     [<Fact>]
     let ``the setup grid UiIds are the stable intent-named ids`` () : unit =
-        Assert.Equal("SetupGridOpenButton", ConstructorUiId.setupGridOpenButton.value)
+        Assert.Equal("NewExperimentGridButton", ConstructorUiId.newExperimentGridButton.value)
         Assert.Equal("SetupGridPanel", ConstructorUiId.setupGridPanel.value)
         Assert.Equal("SetupGridCombinationList", ConstructorUiId.setupGridCombinationList.value)
         Assert.Equal("SetupGridGenerateButton", ConstructorUiId.setupGridGenerateButton.value)
@@ -124,24 +128,16 @@ module SetupGridPanelTests =
         Assert.Equal("SetupGridAngle_Obj1_22.5", (ConstructorUiId.setupGridAngle objectRole (Angle.degree 22.5<deg>)).value)
 
     [<Fact>]
-    let ``the grid panel sits between the slot bar and the table, offers each slot's fitting items and angles, and marks each combination ticked, unticked or impossible`` () : unit =
+    let ``the grid panel is the Experiments page's Creating, offers each slot's fitting items and angles, and marks each combination ticked, unticked or impossible`` () : unit =
         HeadlessSession.run (fun () ->
             SlotBarTests.withScene (fun scene ->
                 let held = gridTable scene
                 let itemOf (label : string) : ItemId = SlotBarTests.itemLabelled (ItemLabel label) held.table
-                let opened = held.table |> update OpenSetupGrid
-                SlotBarTests.withMainWindow opened (fun window _ ->
-                    let bar = UiDriver.ById.findControl window ConstructorUiId.slotBar
+                let opened = held.table |> gridOnPage
+                SlotBarTests.withKitWindow opened (fun window _ ->
+                    // Spec 0051 `.manual/007` D5: the grid is the Experiments page's Creating, under the page's header.
                     let panel = UiDriver.ById.findControl window ConstructorUiId.setupGridPanel
-                    let canvas =
-                        window.GetVisualDescendants()
-                        |> Seq.pick (function :? Canvas as canvas when UiDriver.hasId ConstructorUiId.tableElementCanvas.value canvas -> Some canvas | _ -> None)
-                    let barBottom = (SlotBarTests.topLeftOf window bar).Y + bar.Bounds.Height
-                    let panelTop = (SlotBarTests.topLeftOf window panel).Y
-                    let panelBottom = panelTop + panel.Bounds.Height
-                    let tableTop = (SlotBarTests.topLeftOf window canvas).Y
-                    Assert.True(barBottom <= panelTop + 0.5, $"the panel's top {panelTop} must be below the bar's bottom {barBottom}")
-                    Assert.True(panelBottom <= tableTop + 0.5, $"the panel's bottom {panelBottom} must be above the table's top {tableTop}")
+                    Assert.Contains<Avalonia.Visual>(UiDriver.ById.findControl window ConstructorUiId.experimentsPagePanel, panel.GetVisualAncestors())
                     // A row per slot, in light order, each with its R1 field.
                     let roleLabels = [ "Source:"; "Prep 1:"; "Obj 1:"; "Analyzer 1:"; "Detector 1:" ]
                     let shownLabels =
@@ -174,7 +170,7 @@ module SetupGridPanelTests =
                     |> update (AddSetupGridAngle (held.sample, BarDegrees 0.0))
                     |> update (AddSetupGridAngle (held.sample, BarDegrees 45.0))
                     |> update (ToggleSetupGridCombination qz2At45)
-                SlotBarTests.withMainWindow tried (fun window _ ->
+                SlotBarTests.withKitWindow tried (fun window _ ->
                     let lines = combinationLines window
                     Assert.Equal<string list>(
                         [ "☑ Obj 1: QZ @ 0°"; "☑ Obj 1: QZ @ 45°"; "☑ Obj 1: QZ2 @ 0°"; "☐ Obj 1: QZ2 @ 45°" ],
@@ -195,7 +191,7 @@ module SetupGridPanelTests =
                     |> update (ToggleSetupGridItem (held.polarizer, itemOf "LP1"))
                     |> update (ToggleSetupGridItem (held.polarizer, itemOf "LP2"))
                     |> update (ToggleSetupGridItem (held.analyzer, itemOf "LP2"))
-                SlotBarTests.withMainWindow crossed (fun window _ ->
+                SlotBarTests.withKitWindow crossed (fun window _ ->
                     let lines = combinationLines window
                     Assert.Equal(8, lines.Length)
                     let prep = r1Of held.polarizer crossed
@@ -206,7 +202,7 @@ module SetupGridPanelTests =
                     Assert.Equal(4, impossible.Length)
                     for line in impossible do
                         // An impossible line is text in the refusal colour, which takes no press.
-                        let text = Assert.IsType<TextBlock>(line)
+                        let text = Assert.IsAssignableFrom<TextBlock>(line)
                         Assert.StartsWith("✗ ", text.Text)
                         Assert.EndsWith(twice, text.Text)
                         Assert.Equal(MaterialsWindowView.messageColor, (Assert.IsAssignableFrom<ISolidColorBrush>(text.Foreground)).Color)
@@ -220,15 +216,15 @@ module SetupGridPanelTests =
             SlotBarTests.withScene (fun scene ->
                 let held = gridTable scene
                 let qz = SlotBarTests.itemLabelled (ItemLabel "QZ") held.table
-                let opened = held.table |> update OpenSetupGrid
+                let opened = held.table |> gridOnPage
                 // Spec 0051 `.manual/003` 3.6: Generate stays in place, withheld with its reason.
-                SlotBarTests.withMainWindow opened (fun window _ ->
+                SlotBarTests.withKitWindow opened (fun window _ ->
                     Assert.False((UiDriver.ById.findControl window ConstructorUiId.setupGridGenerateButton).IsEffectivelyEnabled)
                     Assert.Equal("Try another item or angle in a slot first.", UiDriver.ById.textOf window ConstructorUiId.setupGridGenerateReason)
                     Assert.Equal("Close", UiDriver.ById.captionOf window ConstructorUiId.setupGridCloseButton))
 
                 let tried = opened |> update (ToggleSetupGridItem (held.sample, qz))
-                SlotBarTests.withMainWindow tried (fun window _ ->
+                SlotBarTests.withKitWindow tried (fun window _ ->
                     let generate = UiDriver.ById.findControl window ConstructorUiId.setupGridGenerateButton
                     let close = UiDriver.ById.findControl window ConstructorUiId.setupGridCloseButton
                     Assert.Equal("Generate", UiDriver.ById.captionOf window ConstructorUiId.setupGridGenerateButton)
@@ -245,12 +241,12 @@ module SetupGridPanelTests =
                     match tried.setupGrid with
                     | Some grid -> Assert.Single(grid.combinations)
                     | None -> failwith "The grid panel must be open."
-                SlotBarTests.withMainWindow (tried |> update (ToggleSetupGridCombination only)) (fun window _ ->
+                SlotBarTests.withKitWindow (tried |> update (ToggleSetupGridCombination only)) (fun window _ ->
                     Assert.StartsWith("☐ ", lineText (List.exactlyOne (combinationLines window)))
                     Assert.False((UiDriver.ById.findControl window ConstructorUiId.setupGridGenerateButton).IsEffectivelyEnabled)
                     Assert.Equal("Tick a combination to generate.", UiDriver.ById.textOf window ConstructorUiId.setupGridGenerateReason))
 
-                SlotBarTests.withMainWindow tried (fun window answered ->
+                SlotBarTests.withKitWindow tried (fun window answered ->
                     UiDriver.ById.clickOn window ConstructorUiId.setupGridCloseButton
                     UiDriver.ById.assertAbsent window ConstructorUiId.setupGridPanel
                     Assert.Equal<SetupGridDraft option>(None, (SlotBarTests.latestOf tried answered).setupGridOpt))))
@@ -274,10 +270,9 @@ module SetupGridPanelTests =
                             experimentData = ExperimentDataStore.createFileBacked readOnlyProxy
                             kitItems = readOnlyProxy.readItems () |> SceneTestFixture.kitSuccess
                     }
-                let gridOpen = readOnly |> update OpenSetupGrid |> update (ToggleSetupGridItem (held.sample, qz))
+                let gridOpen = readOnly |> gridOnPage |> update (ToggleSetupGridItem (held.sample, qz))
                 Assert.Equal<ControlCaption option>(None, gridOpen.kitRefusalOpt)
-                SlotBarTests.withMainWindow gridOpen (fun window _ ->
-                    UiDriver.ById.findControl window ConstructorUiId.setupGridOpenButton |> ignore
+                SlotBarTests.withKitWindow gridOpen (fun window _ ->
                     UiDriver.ById.findControl window ConstructorUiId.setupGridPanel |> ignore
                     Assert.Equal(PositiveCommand.fill, fillOf window (ConstructorUiId.setupGridItemChoice objectRole qz))
                     Assert.Equal<string list>(
@@ -294,9 +289,14 @@ module SetupGridPanelTests =
             SlotBarTests.withScene (fun scene ->
                 let held = gridTable scene
                 let itemOf (label : string) : ItemId = SlotBarTests.itemLabelled (ItemLabel label) held.table
-                SlotBarTests.withMainWindow held.table (fun window _ ->
+                let onSetup =
+                    held.table
+                    |> update (SetSetupName (ControlCaption "Grid bench"))
+                    |> update CreateSetup
+                    |> update (ShowFlowStep ExperimentsFlowStep)
+                SlotBarTests.withKitWindow onSetup (fun window _ ->
                     UiDriver.ById.assertAbsent window ConstructorUiId.setupGridPanel
-                    UiDriver.ById.clickOn window ConstructorUiId.setupGridOpenButton
+                    UiDriver.ById.clickOn window ConstructorUiId.newExperimentGridButton
                     UiDriver.ById.clickOn window (ConstructorUiId.setupGridItemChoice objectRole (itemOf "QZ"))
                     UiDriver.ById.clickOn window (ConstructorUiId.setupGridItemChoice objectRole (itemOf "QZ2"))
                     let field = Assert.IsType<TextBox>(UiDriver.ById.findControl window (ConstructorUiId.setupGridAngleField objectRole))
@@ -316,4 +316,5 @@ module SetupGridPanelTests =
                     |> SceneTestFixture.kitSuccess
                     |> List.map (fun setup -> setup.name.value)
                     |> List.sort
-                Assert.Equal<string list>([ "LP1-(QZ#45)-LP2"; "LP1-(QZ2#45)-LP2" ], names)))
+                // The grid's two setups beside the setup the grid was opened over.
+                Assert.Equal<string list>([ "Grid bench"; "LP1-(QZ#45)-LP2"; "LP1-(QZ2#45)-LP2" ], names)))

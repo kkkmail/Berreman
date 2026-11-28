@@ -20,6 +20,55 @@ open OpticalConstructor.Controls
 /// layout or hit-testing.
 module UiDriver =
 
+    /// The setup table as Edit shows it: the table's tabs, the slot chips and every gesture of the canvas, the old Main
+    /// workbench's surface (spec 0051 `.manual/007` 2.3, 5.3).
+    let editableTableView
+        (model : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationModel)
+        (dispatch : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationMsg -> unit)
+        : Avalonia.FuncUI.Types.IView =
+        OpticalConstructor.Ui.TableAndElementRotationView.setupTableView model dispatch OpticalConstructor.Ui.TableAndElementRotationView.EditableTable
+
+    /// The Setups page (spec 0051 `.manual/007` Phase 5).
+    let setupsPageTestView
+        (model : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationModel)
+        (dispatch : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationMsg -> unit)
+        : Avalonia.FuncUI.Types.IView =
+        OpticalConstructor.Ui.SetupsPageView.setupsPageView model dispatch
+
+    /// The Experiments page (spec 0051 `.manual/007` Phase 6).
+    let experimentsPageTestView
+        (model : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationModel)
+        (dispatch : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationMsg -> unit)
+        : Avalonia.FuncUI.Types.IView =
+        OpticalConstructor.Ui.ExperimentsPageView.experimentsPageView model dispatch
+
+    /// The model on the Experiments page creating an experiment over a setup of its own table, the editor's draft kept:
+    /// how a test shows the experiment editor over a table it built by messages (spec 0051 `.manual/007` 6.4).
+    let creatingExperimentOver
+        (model : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationModel)
+        : OpticalConstructor.Ui.TableAndElementRotationView.TableAndElementRotationModel =
+        let update = OpticalConstructor.Ui.TableAndElementRotationView.updateTableAndElementRotation
+        let onSetup =
+            match model.activeSetupOpt with
+            | Some _ -> model
+            | None ->
+                let created =
+                    model
+                    |> update (OpticalConstructor.Ui.TableAndElementRotationView.SetSetupName (ControlCaption "Table"))
+                    |> update OpticalConstructor.Ui.TableAndElementRotationView.CreateSetup
+                match created.activeSetupOpt with
+                | Some _ -> { created with experimentCollection = model.experimentCollection }
+                | None ->
+                    // A kit that cannot hold the table as a setup still draws its draft: the export reads no file.
+                    match OpticalConstructor.Domain.Setups.Setup.create (OpticalConstructor.Domain.Kit.SetupName "Table") model.recordedSlots [] with
+                    | Ok made -> { model with activeSetupOpt = Some made }
+                    | Error error -> failwith error.describe
+        {
+            onSetup with
+                flowStep = OpticalConstructor.Ui.TableAndElementRotationView.ExperimentsFlowStep
+                pageMode = OpticalConstructor.Ui.TableAndElementRotationView.CreatingPageEntry
+        }
+
     /// The id a control answers to: its AutomationId, else its `Name`, as Avalonia's automation peer reports it.
     let idOf (control : Control) : string =
         match AutomationProperties.GetAutomationId control with
@@ -66,6 +115,28 @@ module UiDriver =
             |> Option.defaultValue ""
 
     let textOf (window : Window) (id : string) : string = textOfControl (findControl window id)
+
+    /// The grid of a table: the control itself, or the grid a `PageControls.gridTableView` draws inside the border that
+    /// carries its id (spec 0051 `.manual/007` 1.4).
+    let gridIn (control : Control) : Grid =
+        match control with
+        | :? Grid as grid -> grid
+        | _ ->
+            match control.GetVisualDescendants() |> Seq.tryPick (function :? Grid as grid -> Some grid | _ -> None) with
+            | Some grid -> grid
+            | None -> failwith $"{idOf control} holds no grid"
+
+    /// The text a table cell shows: a text's own, or the text inside the cell's border.
+    let cellTextOf (cell : Control) : string = textOfControl cell
+
+    /// The text block a table cell shows: the cell itself, or the one inside its border.
+    let cellTextBlockOf (cell : Control) : TextBlock =
+        match cell with
+        | :? TextBlock as text -> text
+        | _ ->
+            match cell.GetVisualDescendants() |> Seq.tryPick (function :? TextBlock as text -> Some text | _ -> None) with
+            | Some text -> text
+            | None -> failwith $"{idOf cell} shows no text"
 
     /// The caption of a command control: its automation Name, else the text it shows.
     let captionOf (window : Window) (id : string) : string =

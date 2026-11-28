@@ -1,0 +1,47 @@
+{
+  "categoryOpt": null,
+  "contentHash": "b7d6fec417fccbe800c7e8d51f03cf8764d2804ab83413fb15a5b5d7640fb522",
+  "descriptionOpt": "Dispersive langasite plate (10 µm) on a silicon substrate — wavelength-dependent n, k (LangasiteOnSilicon.fsx).",
+  "id": "3e3cac98-932a-427c-bda8-f0eb2307d9af",
+  "name": "Langasite plate on silicon (10 µm, dispersive)",
+  "payload": {
+    "Case": "SamplePayload",
+    "Fields": [
+      {
+        "structure": {
+          "films": [],
+          "lower": {
+            "materialId": "0f698851-dca1-412a-ad46-fac413496667",
+            "version": 1
+          },
+          "substrate": {
+            "materialId": {
+              "materialId": "e95f01fb-0442-42c4-ba69-74d82f52e544",
+              "version": 1
+            },
+            "orientation": "PrimaryAxes",
+            "thickness": {
+              "Case": "Thickness",
+              "Fields": [
+                1E-05
+              ]
+            }
+          }
+        },
+        "substrate": "ThickPlate",
+        "supportedEmission": "EmitBoth"
+      }
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 2,
+    "version": 1
+  },
+  "version": 1
+}

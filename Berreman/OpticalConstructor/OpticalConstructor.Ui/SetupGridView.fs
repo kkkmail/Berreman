@@ -127,8 +127,8 @@ let setupGridView (state : SetupGridState) (handlers : SetupGridHandlers) : IVie
         | CombinationTicked -> CommandControls.verbCommand id (ControlCaption $"☑ {row.caption.value}") toggle
         | CombinationUnticked -> CommandControls.verbCommand id (ControlCaption $"☐ {row.caption.value}") toggle
         | CombinationImpossible reason ->
-            TextBlock.create [
-                id.automationAttribute<TextBlock> ()
+            SelectableTextBlock.create [
+                id.automationAttribute<SelectableTextBlock> ()
                 TextBlock.margin (Thickness(0.0, 2.0, 0.0, 6.0))
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)

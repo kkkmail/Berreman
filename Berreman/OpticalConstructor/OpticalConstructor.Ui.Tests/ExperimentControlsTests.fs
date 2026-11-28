@@ -60,7 +60,6 @@ module ExperimentControlsTests =
         Assert.Empty(s.candidates)
         Assert.Equal(None, s.chosenId)
         Assert.Equal(ControlWithheld, s.addAvailability)
-        Assert.Empty(s.collection)
 
     [<Fact>]
     let ``the Experiments UiIds prefix ids and are stable`` () =
@@ -68,7 +67,7 @@ module ExperimentControlsTests =
         Assert.Equal("ExperimentVariable_r1", (ConstructorUiId.experimentVariable (ConstructorUiKey "r1")).value)
         Assert.Equal("ExperimentMeasurement_both", (ConstructorUiId.experimentMeasurement (ConstructorUiKey "both")).value)
         Assert.Equal("ExperimentReadout", ConstructorUiId.experimentReadout.value)
-        Assert.Equal("ExperimentAddButton", ConstructorUiId.experimentAddButton.value)
+        Assert.Equal("NewExperimentButton", ConstructorUiId.newExperimentButton.value)
         Assert.Equal("ExperimentEdit_3", (ConstructorUiId.experimentEditButton (ConstructorUiKey "3")).value)
         Assert.Equal("ExperimentRemove_3", (ConstructorUiId.experimentRemoveButton (ConstructorUiKey "3")).value)
 
@@ -82,13 +81,12 @@ module ExperimentControlsTests =
         Assert.Equal("both", ExperimentControls.CaptureBoth.uiKey.value)
 
     [<Fact>]
-    let ``the ribbon offers every bay including Experiments and Details`` () =
+    let ``the ribbon offers the table's own tabs, Details last`` () =
         // Spec 0038 (013): the Materials bay left the ribbon (the Materials WINDOW carries that
         // workbench now); spec 0038 (015): the Library (samples) workbench bay left the same
         // way (the Library WINDOW), so seven in-pane bays remain, Details last. Spec 0046: Add first.
         Assert.Equal<Ribbon.BayName list>(
-            [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector
-              BayNames.experiments; BayNames.details ],
+            [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.details ],
             BayNames.allBayNames)
         let m = SceneTestFixture.mainScene ()
         let bays = mainBays m ignore
@@ -201,7 +199,6 @@ module ExperimentControlsTests =
         let asked = m |> updateTableAndElementRotation (ExpRemove exp.id)
         Assert.Equal(Some exp.id, asked.experimentRemovalOpt)
         Assert.Equal<Experiments.Experiment list>(m.experimentCollection.experiments, asked.experimentCollection.experiments)
-        Assert.Equal(Some exp.id.uiKey, asked.experimentState.removalPendingOpt)
         let kept = asked |> updateTableAndElementRotation ExpCancelRemove
         Assert.Equal(None, kept.experimentRemovalOpt)
         Assert.Equal<Experiments.Experiment list>(m.experimentCollection.experiments, kept.experimentCollection.experiments)
@@ -211,14 +208,17 @@ module ExperimentControlsTests =
         Assert.Equal(Some (ControlCaption $"Removed experiment '{exp.name.value}' and its file."), mRemove.kitStatusCaption)
 
     [<Fact>]
-    let ``the bay state exposes the collection rows and the editing highlight`` () =
+    let ``a committed experiment is the page's entry, and a press chooses it and caches its chart`` () =
+        // Spec 0051 `.manual/007` 6.2, 6.6: the page lists the kit's experiments; choosing one computes its chart once.
         let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit
-        let st = m.experimentState
-        Assert.Single(st.collection) |> ignore
-        let row = List.head st.collection
-        Assert.Contains("Source", row.description.value)
-        Assert.Equal(ExperimentControls.LoadedInEditor, row.focus)
-        Assert.Equal(ExperimentControls.EditorUpdatesExisting, st.editorMode)
+        let exp = Assert.Single(m.experimentCollection.experiments)
+        Assert.Contains("Source", (m.experimentDescription exp).value)
+        let chosen = m |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep) |> updateTableAndElementRotation (ChooseExperiment exp.id)
+        Assert.Equal(Some exp.id, chosen.chosenExperimentOpt)
+        match chosen.experimentChartCacheOpt with
+        | Some _ -> ()
+        | None -> Assert.Fail "choosing an experiment must cache its chart"
+        Assert.Equal(None, (chosen |> updateTableAndElementRotation (ChooseExperiment exp.id)).chosenExperimentOpt)
 
     // ============================ host branches.experimentResult ============================
 
@@ -557,11 +557,10 @@ module ExperimentControlsTests =
             | other -> Assert.Fail $"the second polarizer must hold LPd on its dial, held %A{other.content}"
 
             // Re-zeroed to 20°, the activated setup draws the reading −20° at −(−20° − 20°) = 40°.
-            let drawn =
-                recorded
-                |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 20.0<deg>))
-                |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Loaded setup 'Dial'."), drawn.kitStatusCaption)
+            let rezeroed = recorded |> applied (SetParameterState (dialDraft.id, ParameterName.dialZero, knownDegrees 20.0<deg>))
+            let drawn = rezeroed |> updateTableAndElementRotation (ActivateSetup (SetupName "Dial"))
+            // Spec 0051 `.manual/007` 5.1: choosing a setup is browsing, so it says nothing.
+            Assert.Equal<ControlCaption option>(rezeroed.kitStatusCaption, drawn.kitStatusCaption)
             Assert.Equal((Angle.degree 40.0<deg>).value, (drawn.elements |> List.find (fun slot -> slot.id = second.id)).placement.r1.value, 1e-12)
             let itemChart = chartSweepingFirst drawn
 
@@ -627,7 +626,7 @@ module ExperimentControlsTests =
                 Assert.Equal(Some Experiments.VaryDialReading, chosen.experimentCollection.draft.variable)
                 Assert.Equal(Experiments.VariableRange.forVariable Experiments.VaryDialReading, chosen.experimentCollection.draft.range)
                 let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
-                window.Content <- Component(fun _ -> mainView (chosen |> updateTableAndElementRotation (SelectBay BayNames.experiments)) ignore)
+                window.Content <- Component(fun _ -> UiDriver.experimentsPageTestView (chosen |> UiDriver.creatingExperimentOver) ignore)
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 let shown (variable : ExperimentControls.VariableChoice) : bool =
@@ -1057,10 +1056,10 @@ module ExperimentControlsTests =
             let mutable model =
                 baseModel
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                |> UiDriver.creatingExperimentOver
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
-            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Content <- Component(fun _ -> UiDriver.experimentsPageTestView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let chartVisible () : bool =
@@ -1074,10 +1073,10 @@ module ExperimentControlsTests =
     let ``the Experiments bay lists candidates and a click picks the element`` () =
         HeadlessSession.run (fun () ->
             // Spec 0051 `.manual/003` 3.6: only a tunable source has something to vary, so only it is a candidate.
-            let mutable model = withTunableSource () |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+            let mutable model = withTunableSource () |> UiDriver.creatingExperimentOver
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 300.0)
-            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Content <- Component(fun _ -> UiDriver.experimentsPageTestView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let readoutVisible () : bool =
@@ -1115,15 +1114,15 @@ module ExperimentControlsTests =
             let mutable model =
                 baseModel
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid))
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                |> UiDriver.creatingExperimentOver
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
-            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Content <- Component(fun _ -> UiDriver.experimentsPageTestView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let findAdd () : Control option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Control as b when UiDriver.hasId ConstructorUiId.experimentAddButton.value b && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Control as b when UiDriver.hasId ConstructorUiId.pageSaveButton.value b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findAdd () with
             | None -> Assert.Fail("the Add button was not visible")
             | Some b ->
@@ -1137,11 +1136,21 @@ module ExperimentControlsTests =
                 else Assert.Fail("the Add button has no on-screen position")
             window.Close())
 
+    /// The Experiments page browsing, its first experiment chosen and the editor's draft fresh (spec 0051 `.manual/007` 6.2).
+    let private browsingChosen (model : TableAndElementRotationModel) : TableAndElementRotationModel =
+        let fresh =
+            model
+            |> updateTableAndElementRotation ExpNew
+            |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+        match fresh.experimentCollection.experiments with
+        | first :: _ -> fresh |> updateTableAndElementRotation (ChooseExperiment first.id)
+        | [] -> fresh
+
     let private liveComponent (seed : TableAndElementRotationModel) : Window =
         let comp =
             Component(fun ctx ->
                 let st = ctx.useState seed
-                mainView st.Current (fun msg -> st.Set(updateTableAndElementRotation msg st.Current)))
+                UiDriver.experimentsPageTestView st.Current (fun msg -> st.Set(updateTableAndElementRotation msg st.Current)))
         Window(Width = 1000.0, Height = 980.0, Content = comp)
 
     let private clickIn (window : Window) (name : string) : unit =
@@ -1157,7 +1166,7 @@ module ExperimentControlsTests =
         | None -> Assert.Fail($"%s{name} not found")
 
     // ============================ FuncUI recycling regressions (spec 028) ============================
-    // The real app re-renders `mainView` on EVERY message (Elmish), so FuncUI diffs the tree. A styled
+    // The real app re-renders `UiDriver.experimentsPageTestView` on EVERY message (Elmish), so FuncUI diffs the tree. A styled
     // Avalonia control cannot change its `Name`, so a named control recycled onto a different item's slot
     // throws "Cannot set Name : … already styled" (the reason the Ribbon keeps all panes present, and why
     // the bay's variable selector toggles visibility and its candidate / collection items carry a mutable
@@ -1174,32 +1183,14 @@ module ExperimentControlsTests =
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid)) |> updateTableAndElementRotation ExpCommit      // exp #1
                 |> updateTableAndElementRotation ExpNew
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit     // exp #2
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                // Spec 0051 `.manual/007` 6.2: Remove sits under the chosen experiment.
+                |> updateTableAndElementRotation ExpNew
+                |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+                |> updateTableAndElementRotation (ChooseExperiment (Experiments.ExperimentId 1))
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickIn window (ConstructorUiId.experimentRemoveButton (ConstructorUiKey "1")).value   // remove the FIRST (list shifts)
-            window.Close())
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``removing a scene element re-renders the Experiments bay without a crash`` () =
-        HeadlessSession.run (fun () ->
-            // Elements: src(0), det(1), Sample(2), Polarizer(3). Select the sample and remove it (a MIDDLE
-            // element) while the Experiments bay's candidate list is present.
-            let seed =
-                SceneTestFixture.mainScene ()
-                |> updateTableAndElementRotation (AddElement Sample)
-                |> updateTableAndElementRotation (AddElement LinearPolarizer)
-                |> (fun m -> { m with selection = ElementSelected (SceneElementIndex 2) })
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
-            let window = liveComponent seed
-            window.Show()
-            Dispatcher.UIThread.RunJobs()
-            // The Remove control lives in the Add bay: switch to it and click Remove selected. The
-            // Experiments pane (kept present by the ribbon) re-renders its candidate list on the change.
-            clickIn window (ConstructorUiId.ribbonTab (ConstructorUiKey BayNames.add.value)).value
-            clickIn window ConstructorUiId.paletteRemoveSelectedButton.value
             window.Close())
 
     [<Fact>]
@@ -1212,7 +1203,7 @@ module ExperimentControlsTests =
             let seed =
                 withTunableSource () |> updateTableAndElementRotation (AddElement LinearPolarizer)     // idx 2
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src"))                     // source ⇒ variable boxes = [wavelength]
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                |> UiDriver.creatingExperimentOver
             let pid = idOf 2 seed
             let window = liveComponent seed
             window.Show()
@@ -1232,7 +1223,7 @@ module ExperimentControlsTests =
                 |> (fun m -> m |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId (idOf 2 m))))
                 |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
                 |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)   // two series (T + R)
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                |> UiDriver.creatingExperimentOver
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -1254,19 +1245,23 @@ module ExperimentControlsTests =
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid)) |> updateTableAndElementRotation ExpCommit          // exp #1 (polarizer)
                 |> updateTableAndElementRotation ExpNew
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId "src")) |> updateTableAndElementRotation ExpCommit         // exp #2 (source) → editing #2
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                |> updateTableAndElementRotation ExpNew
+                |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
             let latest = ref seed
             let comp =
                 Component(fun ctx ->
                     let st = ctx.useState seed
-                    mainView st.Current (fun msg ->
+                    UiDriver.experimentsPageTestView st.Current (fun msg ->
                         let m' = updateTableAndElementRotation msg st.Current
                         latest.Value <- m'
                         st.Set m'))
             let window = Window(Width = 1000.0, Height = 980.0, Content = comp)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (ConstructorUiId.experimentEditButton (ConstructorUiKey "1")).value          // select the FIRST experiment
+            // Spec 0051 `.manual/007` 6.3: a press chooses the experiment, Edit loads it into the editor in place.
+            clickIn window (ConstructorUiId.experimentEditButton (ConstructorUiKey "1")).value          // choose the FIRST experiment
+            Assert.Equal(Some (Experiments.ExperimentId 1), latest.Value.chosenExperimentOpt)
+            clickIn window ConstructorUiId.pageEditButton.value
             Assert.Equal(Some 1, latest.Value.experimentCollection.draft.editingId |> Option.map (fun i -> i.value))
             // The editor loaded experiment #1's element (the polarizer), not the source it was on.
             Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
@@ -1467,12 +1462,12 @@ module ExperimentControlsTests =
             let seed =
                 baseM
                 |> updateTableAndElementRotation (ExpChooseElement (Library.ElementId pid)) |> updateTableAndElementRotation ExpCommit          // add the experiment
-                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                |> browsingChosen
             let expIdStr = string (List.head seed.experimentCollection.experiments).id.value
             let mutable model = seed
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 1000.0, Height = 980.0)
-            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Content <- Component(fun _ -> UiDriver.experimentsPageTestView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let before = ChartWindow.ConstructedCount
@@ -1491,9 +1486,7 @@ module ExperimentControlsTests =
                 {
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                     setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
-                    addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore; confirmRemoval = ignore; cancelRemoval = ignore
-                    addScanAxis = ignore; addScanBlock = ignore; setRole = ignore; setSession = ignore; setNotes = ignore
-                    viewExperiment = ignore; openChartWindow = ignore
+                    addScanAxis = ignore; addScanBlock = ignore; openChartWindow = ignore
                 }
             let state =
                 { ExperimentControls.emptyExperimentControls with
@@ -1507,7 +1500,7 @@ module ExperimentControlsTests =
                         ]
                     xLabel = ControlCaption "x"; yLabel = ControlCaption "y" }
             let window = Window(Width = 420.0, Height = 560.0)
-            window.Content <- Component(fun _ -> ExperimentControls.experimentControlsView state handlers)
+            window.Content <- Component(fun _ -> ExperimentControls.experimentEditorView state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
@@ -1522,7 +1515,7 @@ module ExperimentControlsTests =
         let comp =
             Component(fun ctx ->
                 let st = ctx.useState seed
-                mainView st.Current (fun msg ->
+                UiDriver.experimentsPageTestView st.Current (fun msg ->
                     let next = updateTableAndElementRotation msg st.Current
                     latest.Value <- next
                     st.Set next))
@@ -1552,7 +1545,7 @@ module ExperimentControlsTests =
     let private sampleBay () : TableAndElementRotationModel =
         SceneTestFixture.mainScene ()
         |> updateTableAndElementRotation (AddElement Sample)
-        |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+        |> UiDriver.creatingExperimentOver
 
     /// The Main scene with a polarizer at index 2 varied on R1 and committed as E1, the Experiments bay open.
     let private committedPolarizer () : TableAndElementRotationModel =
@@ -1560,7 +1553,7 @@ module ExperimentControlsTests =
         m
         |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id)
         |> updateTableAndElementRotation ExpCommit
-        |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+        |> browsingChosen
 
     /// Spec 0051 `.manual/003` 2.3: a row's Remove becomes its question with Yes and No, and No brings the Remove back.
     [<Fact>]
@@ -1596,7 +1589,6 @@ module ExperimentControlsTests =
         Assert.Equal("ExperimentRole_calibration", (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey).value)
         Assert.Equal("ExperimentSessionField", ConstructorUiId.experimentSessionField.value)
         Assert.Equal("ExperimentNotesField", ConstructorUiId.experimentNotesField.value)
-        Assert.Equal("ExperimentBadge_3", (ConstructorUiId.experimentRowBadge (Experiments.ExperimentId 3).uiKey).value)
         Assert.Equal<string list>(
             [ "ExperimentRole_science"; "ExperimentRole_calibration"; "ExperimentRole_dark"; "ExperimentRole_drift-check"
               "ExperimentRole_diagnostic"; "ExperimentRole_ignored"; "ExperimentRole_planned" ],
@@ -1644,7 +1636,8 @@ module ExperimentControlsTests =
             window.Close())
 
     [<Fact>]
-    let ``an experiment loaded in the editor shows its role, session and notes, and a press on a role sends it`` () =
+    let ``an experiment's Edit holds its role, session and notes as a draft, and Save writes them once`` () =
+        // Spec 0051 `.manual/007` 6.3: the bookkeeping is edited in place under the experiment, written at Save.
         HeadlessSession.run (fun () ->
             let committed = committedPolarizer ()
             let e1 = Assert.Single committed.experimentCollection.experiments
@@ -1656,107 +1649,54 @@ module ExperimentControlsTests =
                 match controlIn<TextBox> window id with
                 | Some field when field.IsEffectivelyVisible -> Option.ofObj field.Text |> Option.defaultValue ""
                 | Some _ -> failwith $"{id.value} is hidden"
-                | None -> failwith $"{id.value} is not in the bay"
-            let marksWith (chosen : Experiments.ExperimentRole) : (string * ExperimentControls.ExperimentRoleMark) list =
-                Experiments.ExperimentRole.all
-                |> List.map (fun role -> role.uiKey.value, (if role = chosen then ExperimentControls.RoleChosen else ExperimentControls.RoleNotChosen))
-            let marks (model : TableAndElementRotationModel) : (string * ExperimentControls.ExperimentRoleMark) list =
-                model.experimentState.roleOptions |> List.map (fun option -> option.key.value, option.mark)
-
-            // Nothing loaded: no role box, no field shown.
-            let unloaded = committed |> updateTableAndElementRotation ExpNew
-            Assert.Empty(unloaded.experimentState.roleOptions)
-            Assert.Equal(ControlWithheld, unloaded.experimentState.bookkeepingAvailability)
-            let bare, _ = liveWithLatest unloaded
-            bare.Show()
-            Dispatcher.UIThread.RunJobs()
-            for role in Experiments.ExperimentRole.all do
-                Assert.False(roleBoxShown bare role, $"{role.text} is shown with no experiment loaded")
-            for id in [ ConstructorUiId.experimentSessionField; ConstructorUiId.experimentNotesField ] do
-                match controlIn<TextBox> bare id with
-                | Some field -> Assert.False(field.IsEffectivelyVisible, $"{id.value} is shown with no experiment loaded")
-                | None -> ()
-            bare.Close()
-
-            // E1 loaded: Science chosen, the session and notes empty.
-            let loaded = unloaded |> updateTableAndElementRotation (ExpEdit e1.id)
-            Assert.Equal<(string * ExperimentControls.ExperimentRoleMark) list>(marksWith Experiments.ScienceRun, marks loaded)
-            Assert.Equal(ControlOffered, loaded.experimentState.bookkeepingAvailability)
-            let window, latest = liveWithLatest loaded
+                | None -> failwith $"{id.value} is not on the page"
+            let window, latest = liveWithLatest committed
             window.Show()
             Dispatcher.UIThread.RunJobs()
+            // Browsing: no role box and no field.
             for role in Experiments.ExperimentRole.all do
-                Assert.True(roleBoxShown window role, $"{role.text} is not shown for the loaded experiment")
+                Assert.False(roleBoxShown window role, $"{role.text} is shown before Edit")
+            clickIn window ConstructorUiId.pageEditButton.value
+            Assert.Equal<PageMode>(EditingPageEntry, latest.Value.pageMode)
+            for role in Experiments.ExperimentRole.all do
+                Assert.True(roleBoxShown window role, $"{role.text} is not shown in Edit")
             Assert.Equal("", fieldText window ConstructorUiId.experimentSessionField)
             Assert.Equal("", fieldText window ConstructorUiId.experimentNotesField)
-
-            // A press on Calibration records it for E1.
             clickIn window (ConstructorUiId.experimentRoleChoice Experiments.CalibrationRun.uiKey).value
-            Assert.Equal<ControlCaption option>(None, latest.Value.kitRefusalOpt)
-            let recorded = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
-            Assert.Equal(Experiments.CalibrationRun, recorded.role)
-            Assert.Equal<(string * ExperimentControls.ExperimentRoleMark) list>(marksWith Experiments.CalibrationRun, marks latest.Value)
-
-            // The session and notes commit on Enter, as the range fields do.
-            let typeInto (id : ConstructorUiId) (text : string) : unit =
-                match controlIn<TextBox> window id with
-                | Some field ->
-                    field.Focus() |> ignore
-                    Dispatcher.UIThread.RunJobs()
-                    window.KeyTextInput(text)
-                    Dispatcher.UIThread.RunJobs()
-                    window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-                    window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-                | None -> failwith $"{id.value} is not in the bay"
-            typeInto ConstructorUiId.experimentSessionField "Run A"
-            typeInto ConstructorUiId.experimentNotesField "dusty mount"
-            let noted = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
-            Assert.Equal(Some "Run A", noted.sessionOpt |> Option.map (fun session -> session.value))
-            Assert.Equal("dusty mount", noted.notes.value)
-            Assert.Equal("Run A", fieldText window ConstructorUiId.experimentSessionField)
-            Assert.Equal("dusty mount", fieldText window ConstructorUiId.experimentNotesField)
-
-            // E2 recorded, then E1 loaded over it straight from its row: the next press is E1's, never E2's.
-            clickIn window ConstructorUiId.experimentNewButton.value
-            clickIn window (ConstructorUiId.experimentCandidate (ConstructorUiKey (idOf 2 committed))).value
-            clickIn window ConstructorUiId.experimentAddButton.value
-            let e2 = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id <> e1.id)
-            Assert.Equal(Some e2.id, latest.Value.experimentCollection.draft.editingId)
-            Assert.Equal("", fieldText window ConstructorUiId.experimentSessionField)
-            clickIn window (ConstructorUiId.experimentEditButton e1.id.uiKey).value
-            Assert.Equal(Some e1.id, latest.Value.experimentCollection.draft.editingId)
-            Assert.Equal("Run A", fieldText window ConstructorUiId.experimentSessionField)
-            clickIn window (ConstructorUiId.experimentRoleChoice Experiments.DarkRun.uiKey).value
-            let roleOf (id : Experiments.ExperimentId) : Experiments.ExperimentRole =
-                (latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = id)).role
-            Assert.Equal(Experiments.DarkRun, roleOf e1.id)
-            Assert.Equal(Experiments.ScienceRun, roleOf e2.id)
+            Assert.Equal(Some Experiments.CalibrationRun, latest.Value.experimentEditOpt |> Option.map (fun edit -> edit.role))
+            let held () : Experiments.Experiment = latest.Value.experimentCollection.experiments |> List.find (fun experiment -> experiment.id = e1.id)
+            Assert.Equal(Experiments.ScienceRun, (held ()).role)
+            match controlIn<TextBox> window ConstructorUiId.experimentSessionField with
+            | Some field ->
+                field.Focus() |> ignore
+                Dispatcher.UIThread.RunJobs()
+                window.KeyTextInput "Run A"
+                Dispatcher.UIThread.RunJobs()
+            | None -> failwith "the session field is not on the page"
+            Assert.Equal(None, (held ()).sessionOpt)
+            clickIn window ConstructorUiId.pageSaveButton.value
+            Assert.Equal<PageMode>(BrowsingPage, latest.Value.pageMode)
+            Assert.Equal(Experiments.CalibrationRun, (held ()).role)
+            Assert.Equal(Some "Run A", (held ()).sessionOpt |> Option.map (fun session -> session.value))
             window.Close())
 
     [<Fact>]
-    let ``each collected experiment's row shows its name, its role and its data badge`` () =
+    let ``each experiment's button shows its name, its role and its data badge`` () =
         HeadlessSession.run (fun () ->
             let committed = committedPolarizer ()
             let e1 = Assert.Single committed.experimentCollection.experiments
             Assert.Equal("E1", e1.name.value)
-            let row = Assert.Single committed.experimentState.collection
-            Assert.Equal($"E1 [Science] — {(committed.experimentDescription e1).value}", row.description.value)
-            Assert.Equal("no data", row.badge.value)
-
             let window, _ = liveWithLatest committed
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            let texts (id : ConstructorUiId) : string list =
-                match controlIn<Control> window id with
+            let texts =
+                match controlIn<Control> window (ConstructorUiId.experimentEditButton e1.id.uiKey) with
                 | Some control ->
                     (control :> Visual).GetSelfAndVisualDescendants()
                     |> Seq.choose (function :? TextBlock as t when t.IsEffectivelyVisible -> Option.ofObj t.Text | _ -> None)
                     |> List.ofSeq
-                | None -> failwith $"{id.value} is not in the bay"
-            Assert.Equal<string list>([ $"E1 [Science] — {(committed.experimentDescription e1).value}" ], texts (ConstructorUiId.experimentEditButton e1.id.uiKey))
-            Assert.Equal<string list>([ "no data" ], texts (ConstructorUiId.experimentRowBadge e1.id.uiKey))
+                | None -> failwith "E1's button is not on the page"
+            Assert.Equal<string list>([ "E1 [Science] — no data" ], texts)
             window.Close())
 
     [<Fact>]
@@ -1773,7 +1713,7 @@ module ExperimentControlsTests =
             clickIn window ConstructorUiId.experimentAddScanAxisButton.value
             clickIn window candidate
             clickIn window (ConstructorUiId.experimentVariable (ConstructorUiKey "r1")).value
-            clickIn window ConstructorUiId.experimentAddButton.value
+            clickIn window ConstructorUiId.pageSaveButton.value
             let experiment = Assert.Single latest.Value.experimentCollection.experiments
             let block = Assert.Single experiment.scan.blocks
             Assert.Equal<Experiments.VariableParameter list>([ Experiments.VaryR2; Experiments.VaryR1 ], block.axes |> List.map (fun axis -> axis.variable))

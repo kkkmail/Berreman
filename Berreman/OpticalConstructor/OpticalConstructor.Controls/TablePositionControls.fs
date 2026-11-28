@@ -153,7 +153,7 @@ module TablePositionControls =
                             Border.horizontalAlignment HorizontalAlignment.Left
                             Border.child (clickBox ConstructorUiId.tablePositionResetButton (ControlCaption "Reset position") state.availability (fun _ -> handlers.reset ()))
                         ]
-                        TextBlock.create [ ConstructorUiId.tablePositionReadout.automationAttribute<TextBlock> (); TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text state.readoutText ]
+                        SelectableTextBlock.create [ ConstructorUiId.tablePositionReadout.automationAttribute<SelectableTextBlock> (); TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text state.readoutText ]
                     ]
                 ]
             ]

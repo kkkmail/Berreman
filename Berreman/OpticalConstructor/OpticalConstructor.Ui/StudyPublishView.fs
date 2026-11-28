@@ -1,4 +1,5 @@
-/// Publication of the selected fit run's calibration and library subjects (spec 0050 S11.5).
+/// Publication of a fit run's calibration and library subjects, shown on the Kit page under the chosen run (spec 0050
+/// S11.5; 0051 `.manual/007` 2.2, 8.6).
 module OpticalConstructor.Ui.StudyPublishView
 
 open System.Globalization
@@ -17,8 +18,14 @@ open OpticalConstructor.Domain.StudyPublishing
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Previews the same revisions publication writes and offers promotion without replacing library history (spec 0050 S11.5).
-let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
+/// The run's publication: the same revisions Publish calibration writes, then its promotions, which never replace
+/// library history (spec 0050 S11.5; 0051 `.manual/007` 8.6).
+let publishRunRows
+    (model : TableAndElementRotationModel)
+    (study : OpticalConstructor.Domain.Studies.Study)
+    (run : OpticalConstructor.Domain.FitRuns.FitRun)
+    (dispatch : TableAndElementRotationMsg -> unit)
+    : IView list =
     let number (value : float) : string = value.ToString("G6", CultureInfo.InvariantCulture)
     let line (caption : ControlCaption) : IView =
         TextBlock.create [ TextBlock.text caption.value ] :> IView
@@ -34,8 +41,6 @@ let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAnd
               Button.margin (Thickness(0.0, 0.0, 10.0, 4.0))
               Button.horizontalAlignment HorizontalAlignment.Left ]
     let selected : IView list =
-        match model.selectedStudyOpt, model.selectedFitRunOpt with
-        | Some study, Some run ->
             let preview = study.calibratedItemsWith run model.kitItems
             let previewRows : IView list =
                 match preview with
@@ -120,22 +125,4 @@ let studyPublishView (model : TableAndElementRotationModel) (dispatch : TableAnd
                 |> View.withKey run.name.value
                 :> IView
             ]
-        | _ -> [ line (ControlCaption "No fit run yet: run the fit in the Fit step.") ]
-    ScrollViewer.create [
-        AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
-        ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
-        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
-        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so no page is wider than its window.
-        ScrollViewer.content (
-            MinWidthPanel.create [
-                (PanelMinWidth 520.0).minWidthPanelAttribute ()
-                MinWidthPanel.child (
-                    StackPanel.create [
-                        yield! ConstructorUiId.studyPublishPanel.groupAttributes<StackPanel> ()
-                        AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study publication", ValueNone)
-                        StackPanel.orientation Orientation.Vertical
-                        StackPanel.margin 8.0
-                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
-                    ])
-            ])
-    ] :> IView
+    selected

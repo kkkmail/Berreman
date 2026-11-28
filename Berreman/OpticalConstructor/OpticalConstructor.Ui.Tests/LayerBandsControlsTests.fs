@@ -101,10 +101,8 @@ module LayerBandsControlsTests =
         let bays = mainBays m ignore
         let names = bays |> List.map (fun b -> b.name)
         Assert.Equal<Ribbon.BayName list>(BayNames.allBayNames, names)
-        // Details comes immediately after Experiments.
-        let idxExp = List.findIndex ((=) BayNames.experiments) names
-        let idxDet = List.findIndex ((=) BayNames.details) names
-        Assert.Equal(idxExp + 1, idxDet)
+        // Spec 0051 `.manual/007` 2.3: the experiments left the ribbon for their page; Details is last.
+        Assert.Equal(Some BayNames.details, List.tryLast names)
 
     // ============================ host detailsState (pure) ============================
 
@@ -205,7 +203,7 @@ module LayerBandsControlsTests =
             try
                 window.Content <- Component(fun ctx ->
                     let state = ctx.useState initial
-                    mainView state.Current (fun msg -> state.Set (updateTableAndElementRotation msg state.Current)))
+                    UiDriver.editableTableView state.Current (fun msg -> state.Set (updateTableAndElementRotation msg state.Current)))
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
                 let titles () : TextBlock list =
@@ -291,7 +289,7 @@ module LayerBandsControlsTests =
                 |> updateTableAndElementRotation (SelectBay BayNames.details)
             let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
             let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
-            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Content <- Component(fun _ -> UiDriver.editableTableView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The Details band stack and at least the first two collapsed bands are visible.

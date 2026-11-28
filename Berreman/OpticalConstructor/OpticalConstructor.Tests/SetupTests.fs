@@ -490,38 +490,6 @@ module SetupTests =
             let turned = turnedTo (Angle.degree 50.0<deg>) slot
             Assert.Equal<SetupSlot>(turned, turned.recordedWith items)
 
-    [<Fact>]
-    let ``a swap switches to the held setup holding that content, and otherwise makes a new setup`` () : unit =
-        let dialSlot = assigned dialLp linearPolarizerChoice lp30
-        let setupA : Setup = createdOver (SetupName "A") []
-        let slotsB = [ src; dialSlot; det ]
-
-        let setupB : Setup =
-            match Setup.create (SetupName "B") slotsB [ setupA ] with
-            | Ok setup -> setup
-            | Error error -> failwith $"'B' was refused: {error.describe}"
-
-        let held = [ setupA; setupB ]
-        let fresh = SetupName "Setup 3"
-        Assert.Equal<SetupSwap>(SwitchToHeldSetup setupB, Setup.swapTarget slotsB held fresh)
-        Assert.Equal<SetupSwap>(SwitchToHeldSetup setupA, Setup.swapTarget setupA.slots held fresh)
-
-        let created (slots : SetupSlot list) : Setup =
-            {
-                name = fresh
-                revision = SetupRevision.first
-                slots = slots
-                history = []
-            }
-
-        // No held setup holds LP1 in the polarizer slot.
-        let withFixed = [ src; assigned fixedLp linearPolarizerChoice lp30; det ]
-        Assert.Equal<SetupSwap>(CreateSwappedSetup (created withFixed), Setup.swapTarget withFixed held fresh)
-
-        // B's slots with the dial reading changed hold other content, so B is not matched.
-        let otherReading = [ src; { dialSlot with content = ItemInSlot (dialLp.id, DialTurn (Angle.degree (-25.0<deg>))) }; det ]
-        Assert.Equal<SetupSwap>(CreateSwappedSetup (created otherReading), Setup.swapTarget otherReading held fresh)
-
     // ================================ spec 0050 S8.4: the slot bar's chips ================================
 
     let private circularPolarizerChoice : ItemModelChoice =

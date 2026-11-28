@@ -143,7 +143,7 @@ module LibraryEntryFiles =
 
         member this.value : string = let (CatalogueName s) = this in s
 
-    /// The GUID a kit's `.kit-json` carries (spec 0050 001 §E); S4.1's `Kit` module reuses it.
+    /// The GUID a kit's `.optics-kit` carries (spec 0050 001 §E); S4.1's `Kit` module reuses it.
     type KitId =
         | KitId of Guid
 

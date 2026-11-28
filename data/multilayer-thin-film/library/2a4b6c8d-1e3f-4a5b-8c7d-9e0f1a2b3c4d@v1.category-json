@@ -1,0 +1,24 @@
+{
+  "categoryOpt": null,
+  "contentHash": "d36e775f47d2c0c02b25f5ba29b52239dfbebc600e47e1e989ef0a1871cf59c5",
+  "descriptionOpt": null,
+  "id": "2a4b6c8d-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
+  "name": "Glass",
+  "payload": {
+    "Case": "CategoryPayload",
+    "Fields": [
+      "SelectableOnCreate"
+    ]
+  },
+  "provenance": {
+    "Case": "BuiltInProvenance",
+    "Fields": [
+      "499ae2ca-4f4c-4d4f-b53e-62ef2627130a"
+    ]
+  },
+  "schema": {
+    "kind": 6,
+    "version": 1
+  },
+  "version": 1
+}

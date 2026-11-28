@@ -293,9 +293,9 @@ module KitWindowModelTests =
                     placed
                     |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
                     |> updateTableAndElementRotation ExpCommit
-                    |> updateTableAndElementRotation (SelectBay BayNames.experiments)
+                    |> updateTableAndElementRotation (SelectBay BayNames.details)
                 Assert.Equal(1, List.length forward.experimentCollection.experiments)
-                Assert.Equal<Ribbon.BayName>(BayNames.experiments, forward.ribbon)
+                Assert.Equal<Ribbon.BayName>(BayNames.details, forward.ribbon)
                 Assert.Equal<ConstructorMode>(ForwardConstructor, forward.constructorMode)
                 let inverse = forward |> updateTableAndElementRotation (SwitchConstructorMode InverseConstructor)
                 Assert.Equal<ConstructorMode>(InverseConstructor, inverse.constructorMode)
@@ -395,7 +395,7 @@ module KitWindowModelTests =
                 writeE2 writer (List.exactlyOne committed.experimentCollection.experiments)
                 renameKit writer (KitName "Renamed")
                 let offered = committed |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
-                Assert.Equal<FileName list>([ FileName ".kit-json"; FileName "E2.experiment-json" ], offered.kitChanges)
+                Assert.Equal<FileName list>([ FileName ".optics-kit"; FileName "E2.experiment-json" ], offered.kitChanges)
                 Assert.Equal<TableAndElementRotationModel>({ committed with kitChanges = offered.kitChanges }, offered)))
 
     [<Fact>]
@@ -429,7 +429,7 @@ module KitWindowModelTests =
             Assert.Equal<SetupName list>([ SetupName "Setup 1" ], offered.kitSetups |> List.map (fun setup -> setup.name))
             Assert.Equal<Setups.Setup list>(bench :: offered.kitSetups, reloaded.kitSetups)
             Assert.Empty(reloaded.kitChanges)
-            Assert.Equal<ControlCaption option>(Some (ControlCaption "Reloaded .kit-json, Bench.setup-json, E2.experiment-json from the kit."), reloaded.kitStatusCaption)
+            Assert.Equal<ControlCaption option>(Some (ControlCaption "Reloaded .optics-kit, Bench.setup-json, E2.experiment-json from the kit."), reloaded.kitStatusCaption)
             let again = reloaded |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
             Assert.Empty(again.kitChanges))
 
@@ -446,7 +446,7 @@ module KitWindowModelTests =
             Assert.Empty(again.kitChanges)
             renameKit writer (KitName "Renamed again")
             let reoffered = again |> updateTableAndElementRotation (CheckKitChanges KitCheckOnActivation)
-            Assert.Equal<FileName list>([ FileName ".kit-json" ], reoffered.kitChanges))
+            Assert.Equal<FileName list>([ FileName ".optics-kit" ], reoffered.kitChanges))
 
     [<Fact>]
     let ``a requested check with nothing changed says so, and an activation check stays silent`` () : unit =
@@ -798,7 +798,7 @@ module KitWindowModelTests =
                 let sent = model |> updateTableAndElementRotation (SendKit zip) |> passedThrough (List.ofSeq messages)
                 Assert.True(File.Exists zip.value, "the zip must be written where it was asked for")
                 let entries = KitArchiveProxy.create().listZipEntries zip |> archiveValue
-                Assert.Contains(KitTreeFile (KitRelativePath ".kit-json"), entries)
+                Assert.Contains(KitTreeFile (KitRelativePath ".optics-kit"), entries)
                 Assert.Contains(KitTreeFolder (KitRelativePath "data"), entries)
                 Assert.Contains(KitTreeFolder (KitRelativePath "library"), entries)
                 let cacheEntries =
@@ -1574,9 +1574,9 @@ module KitWindowModelTests =
                 finally e1Chosen.closeCopySource () |> ignore))
 
     [<Fact>]
-    let ``the flow strip's steps follow 001's order and a window opens on Setups`` () : unit =
+    let ``the page row's pages follow 007's order and a window opens on Setups`` () : unit =
         Assert.Equal<ConstructorFlowStep list>(
-            [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; PlanFlowStep; FitFlowStep; ResultsFlowStep; PublishFlowStep ],
+            [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; PlanFlowStep; FitFlowStep; ResultsFlowStep; KitFlowStep ],
             ConstructorFlowStep.all)
         Assert.Equal<ControlCaption list>(
             [
@@ -1588,7 +1588,7 @@ module KitWindowModelTests =
                 ControlCaption "Plan"
                 ControlCaption "Fit"
                 ControlCaption "Results"
-                ControlCaption "Publish"
+                ControlCaption "Kit"
             ],
             ConstructorFlowStep.all |> List.map _.caption)
         let scene = initMain () |> kitValue
@@ -1603,9 +1603,9 @@ module KitWindowModelTests =
     /// Spec 0050 S9.3: measured data are the Inverse constructor's alone (spec 0046), so the Main strip has no Data step.
     [<Fact>]
     let ``the Data step is the Inverse constructor's alone, and leaving the Inverse constructor leaves it`` () : unit =
-        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep ], ConstructorFlowStep.stepsOf ForwardConstructor)
+        Assert.Equal<ConstructorFlowStep list>([ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; KitFlowStep ], ConstructorFlowStep.stepsOf ForwardConstructor)
         Assert.Equal<ConstructorFlowStep list>(
-            [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; PlanFlowStep; FitFlowStep; ResultsFlowStep; PublishFlowStep ],
+            [ ItemsFlowStep; SetupsFlowStep; ExperimentsFlowStep; DataFlowStep; UnknownsFlowStep; PlanFlowStep; FitFlowStep; ResultsFlowStep; KitFlowStep ],
             ConstructorFlowStep.stepsOf InverseConstructor)
         Assert.DoesNotContain(PlanFlowStep, ConstructorFlowStep.stepsOf ForwardConstructor)
         let stores = BuiltinCatalogue.freshStores ()
@@ -1631,7 +1631,7 @@ module KitWindowModelTests =
                     unknowns with
                         constructorMode = ForwardConstructor
                         flowStep = ExperimentsFlowStep
-                        ribbon = BayNames.experiments
+                        pageMode = BrowsingPage
                 },
                 fromUnknowns)
             Assert.Equal<TableAndElementRotationModel>(fromUnknowns, fromUnknowns |> updateTableAndElementRotation (ShowFlowStep UnknownsFlowStep))
@@ -1647,7 +1647,7 @@ module KitWindowModelTests =
                     plan with
                         constructorMode = ForwardConstructor
                         flowStep = ExperimentsFlowStep
-                        ribbon = BayNames.experiments
+                        pageMode = BrowsingPage
                 }, fromPlan)
             Assert.Equal<TableAndElementRotationModel>(fromPlan, fromPlan |> updateTableAndElementRotation (ShowFlowStep PlanFlowStep))
             let fit = details |> updateTableAndElementRotation (ShowFlowStep FitFlowStep)
@@ -1661,7 +1661,7 @@ module KitWindowModelTests =
                     fit with
                         constructorMode = ForwardConstructor
                         flowStep = ExperimentsFlowStep
-                        ribbon = BayNames.experiments
+                        pageMode = BrowsingPage
                 }, fromFit)
             Assert.Equal<TableAndElementRotationModel>(fromFit, fromFit |> updateTableAndElementRotation (ShowFlowStep FitFlowStep))
             let results = details |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep)
@@ -1675,30 +1675,27 @@ module KitWindowModelTests =
                     results with
                         constructorMode = ForwardConstructor
                         flowStep = ExperimentsFlowStep
-                        ribbon = BayNames.experiments
+                        pageMode = BrowsingPage
                 }, fromResults)
             Assert.Equal<TableAndElementRotationModel>(fromResults, fromResults |> updateTableAndElementRotation (ShowFlowStep ResultsFlowStep))
-            let publishing = details |> updateTableAndElementRotation (ShowFlowStep PublishFlowStep)
+            // Spec 0051 `.manual/007` 2.2: the Kit page is in both constructors, so a switch keeps it.
+            let kitPage = details |> updateTableAndElementRotation (ShowFlowStep KitFlowStep)
             Assert.Equal<TableAndElementRotationModel>(
                 {
-                    details with flowStep = PublishFlowStep
-                }, publishing)
-            let fromPublish = publishing |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
+                    details with flowStep = KitFlowStep
+                }, kitPage)
+            let fromKit = kitPage |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
             Assert.Equal<TableAndElementRotationModel>(
                 {
-                    publishing with
-                        constructorMode = ForwardConstructor
-                        flowStep = ExperimentsFlowStep
-                        ribbon = BayNames.experiments
-                }, fromPublish)
-            Assert.Equal<TableAndElementRotationModel>(fromPublish, fromPublish |> updateTableAndElementRotation (ShowFlowStep PublishFlowStep))
+                    kitPage with constructorMode = ForwardConstructor
+                }, fromKit)
             let forward = data |> updateTableAndElementRotation (SwitchConstructorMode ForwardConstructor)
             Assert.Equal<TableAndElementRotationModel>(
                 {
                     data with
                         constructorMode = ForwardConstructor
                         flowStep = ExperimentsFlowStep
-                        ribbon = BayNames.experiments
+                        pageMode = BrowsingPage
                 },
                 forward)
             Assert.Equal<TableAndElementRotationModel>(forward, forward |> updateTableAndElementRotation (ShowFlowStep DataFlowStep))
@@ -1727,73 +1724,32 @@ module KitWindowModelTests =
         finally scene.kit.close () |> kitValue
 
     [<Fact>]
-    let ``showing a flow step shows its surface, and the Experiments step is the Experiments bay`` () : unit =
+    let ``showing a page shows it Browsing, and the ribbon keeps its tab`` () : unit =
         let scene = initMain () |> kitValue
         try
             let experiments = scene |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
-            Assert.Equal<TableAndElementRotationModel>(
-                {
-                    scene with
-                        flowStep = ExperimentsFlowStep
-                        ribbon = BayNames.experiments
-                },
-                experiments)
+            Assert.Equal<TableAndElementRotationModel>({ scene with flowStep = ExperimentsFlowStep }, experiments)
             let items = experiments |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
-            Assert.Equal<TableAndElementRotationModel>(
-                {
-                    experiments with flowStep = ItemsFlowStep
-                },
-                items)
+            Assert.Equal<TableAndElementRotationModel>({ experiments with flowStep = ItemsFlowStep }, items)
             let setups = items |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
-            Assert.Equal<TableAndElementRotationModel>(
-                {
-                    items with
-                        flowStep = SetupsFlowStep
-                        ribbon = BayNames.add
-                },
-                setups)
+            Assert.Equal<TableAndElementRotationModel>({ items with flowStep = SetupsFlowStep }, setups)
             let details =
                 scene
                 |> updateTableAndElementRotation (SelectBay BayNames.details)
                 |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
             Assert.Equal<Ribbon.BayName>(BayNames.details, details.ribbon)
-            let detailsKept = details |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep)
-            Assert.Equal<TableAndElementRotationModel>(
-                {
-                    details with flowStep = SetupsFlowStep
-                },
-                detailsKept)
+            Assert.Equal<TableAndElementRotationModel>({ details with flowStep = SetupsFlowStep }, details |> updateTableAndElementRotation (ShowFlowStep SetupsFlowStep))
         finally scene.kit.close () |> kitValue
 
     [<Fact>]
-    let ``choosing a ribbon bay keeps the flow strip on Setups or Experiments`` () : unit =
+    let ``choosing a ribbon tab changes the tab alone, never the page`` () : unit =
+        // Spec 0051 `.manual/007` 2.3: the ribbon is the edited table's, so a tab is not a page.
         let scene = initMain () |> kitValue
         try
-            let placed = scene |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
-            let polarizer = placed.elements |> List.find (fun element -> element.placement.catalogueKind = Placement.LinearPolarizer)
-            let model =
-                placed
-                |> updateTableAndElementRotation (ExpChooseElement polarizer.id)
-                |> updateTableAndElementRotation ExpCommit
-                |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
-            Assert.Equal(1, List.length model.experimentCollection.experiments)
-            let experiments = model |> updateTableAndElementRotation (SelectBay BayNames.experiments)
-            Assert.Equal<ConstructorFlowStep>(ExperimentsFlowStep, experiments.flowStep)
-            Assert.Equal<Ribbon.BayName>(BayNames.experiments, experiments.ribbon)
-            let rotation = experiments |> updateTableAndElementRotation (SelectBay BayNames.rotation)
-            Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, rotation.flowStep)
-            Assert.Equal<Ribbon.BayName>(BayNames.rotation, rotation.ribbon)
-            let rotationFromItems = model |> updateTableAndElementRotation (SelectBay BayNames.rotation)
-            Assert.Equal<ConstructorFlowStep>(SetupsFlowStep, rotationFromItems.flowStep)
-            for answer in [ experiments; rotation; rotationFromItems ] do
-                Assert.Equal<KitContext>(model.kit, answer.kit)
-                Assert.Equal<Setups.SetupSlot list>(model.elements, answer.elements)
-                Assert.Equal<Experiments.ExperimentCollection>(model.experimentCollection, answer.experimentCollection)
-                Assert.Equal<TableAndElementRotationModel>(
-                    {
-                        model with
-                            ribbon = answer.ribbon
-                            flowStep = answer.flowStep
-                    },
-                    answer)
+            let items = scene |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
+            let rotation = items |> updateTableAndElementRotation (SelectBay BayNames.rotation)
+            Assert.Equal<TableAndElementRotationModel>({ items with ribbon = BayNames.rotation }, rotation)
+            let experiments = scene |> updateTableAndElementRotation (ShowFlowStep ExperimentsFlowStep)
+            let render = experiments |> updateTableAndElementRotation (SelectBay BayNames.render)
+            Assert.Equal<TableAndElementRotationModel>({ experiments with ribbon = BayNames.render }, render)
         finally scene.kit.close () |> kitValue

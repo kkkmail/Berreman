@@ -52,7 +52,7 @@ module BuiltInCatalogueIntegrityTests =
                     match kind with
                     | MaterialEntryKind -> ItemCount 12
                     | CategoryEntryKind -> ItemCount 5
-                    | SampleEntryKind -> ItemCount 11
+                    | SampleEntryKind -> ItemCount 13
                     | SourceEntryKind -> ItemCount 28
                     | PolarizerEntryKind -> ItemCount 3
                     | DetectorEntryKind -> ItemCount 2

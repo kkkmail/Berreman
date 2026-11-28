@@ -373,9 +373,9 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
                         CommandControls.verbCommand ConstructorUiId.materialSourceUpdateButton (ControlCaption "Update snapshot") (fun () ->
                             dispatch UpdateSourceSnapshot))
                 ]
-                TextBlock.create [
-                    ConstructorUiId.materialSourceSnapshotText.automationAttribute<TextBlock> ()
-                    ConstructorUiId.materialSourceSnapshotText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.materialSourceSnapshotText.automationAttribute<SelectableTextBlock> ()
+                    ConstructorUiId.materialSourceSnapshotText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text (
@@ -413,9 +413,9 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
                                     ProgressBar.value fraction
                                     ProgressBar.isIndeterminate (Option.isNone m.job.progress)
                                 ]
-                                TextBlock.create [
-                                    ConstructorUiId.materialSourceUpdateProgressText.automationAttribute<TextBlock> ()
-                                    ConstructorUiId.materialSourceUpdateProgressText.automationAttribute<TextBlock> ()
+                                SelectableTextBlock.create [
+                                    ConstructorUiId.materialSourceUpdateProgressText.automationAttribute<SelectableTextBlock> ()
+                                    ConstructorUiId.materialSourceUpdateProgressText.automationAttribute<SelectableTextBlock> ()
                                     TextBlock.text (m.job.progressText |> Option.defaultValue "Downloading…")
                                 ]
                             ]
@@ -477,9 +477,9 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
         match m.error, m.status with
         | Some error, _ ->
             [
-                TextBlock.create [
-                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
-                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<SelectableTextBlock> ()
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text error.caption.value
@@ -487,9 +487,9 @@ let private materialSourceRows (m : MaterialSourcesModel) (dispatch : MaterialSo
             ]
         | None, Some status ->
             [
-                TextBlock.create [
-                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
-                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<SelectableTextBlock> ()
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text status.value
                 ] :> IView
@@ -506,9 +506,9 @@ let materialSourcesView (m : MaterialSourcesModel) (dispatch : MaterialSourcesMs
         | Some _ -> materialSourceRows m dispatch
         | None ->
             [
-                TextBlock.create [
-                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
-                    ConstructorUiId.materialSourcesStatusText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<SelectableTextBlock> ()
+                    ConstructorUiId.materialSourcesStatusText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text "No online material source is configured."
                 ] :> IView

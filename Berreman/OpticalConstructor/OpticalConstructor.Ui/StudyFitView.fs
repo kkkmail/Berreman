@@ -1,4 +1,6 @@
-/// The study's pre-fit checks, joint and staged fits, progress and history (spec 0050 S11.5).
+/// The Fit page: the chosen study's fit runs as dynamic buttons, the chosen one's summary under it, and New fit run…, whose
+/// form holds the pre-fit checks, the mode and the calibration use, written into the study when Run starts the stage
+/// (spec 0050 S11.5; 0051 `.manual/007` 8.4).
 module OpticalConstructor.Ui.StudyFitView
 
 open Avalonia
@@ -17,184 +19,173 @@ open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.TableAndElementRotationView
+open OpticalConstructor.Ui.KitPageFrame
 
-/// Chooses the fit mode, runs the study through the shell's host and shows checks and history (spec 0050 S11.5; S12.1).
+/// A semi-bold heading of a block of the page.
+let private fitHeading (text : ControlCaption) : IView =
+    TextBlock.create [
+        TextBlock.fontWeight FontWeight.SemiBold
+        TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
+        TextBlock.text text.value
+    ]
+    :> IView
+
+/// Each experiment's check before the fit: ready with its point count, or why it is not (spec 0050 S11.5).
+let private prefitRows (model : TableAndElementRotationModel) : IView list =
+    let prefits : IView list =
+        match model.studyPrefitsOpt with
+        | None | Some (Ok []) -> [ PageControls.copyableLine (ControlCaption "The study holds no run a fit reads.") [] ]
+        | Some (Error error) ->
+            [ PageControls.copyableLine (ControlCaption error.describe) [ SelectableTextBlock.foreground (SolidColorBrush MaterialsWindowView.messageColor) ] ]
+        | Some (Ok checks) ->
+            checks |> List.map (fun prefit ->
+                let status =
+                    match prefit.check with
+                    | Ok points -> $"ready, {points.pointCount.value} point(s)"
+                    | Error error -> error.describe
+                let changed =
+                    match prefit.changeOpt with
+                    | None | Some DataUnchangedFlag -> ""
+                    | Some flag -> $" — {flag.text}"
+                let caption = ControlCaption $"{prefit.experiment.name.value}: {status}{changed}"
+                PageControls.copyableText (ConstructorUiId.studyPrefitRow prefit.experiment.name) caption [
+                    match prefit.check with
+                    | Error _ -> SelectableTextBlock.foreground (SolidColorBrush MaterialsWindowView.messageColor)
+                    | Ok _ -> SelectableTextBlock.foreground (SolidColorBrush(Color.FromRgb(40uy, 40uy, 40uy)))
+                ])
+    [
+        fitHeading (ControlCaption "Before the fit:")
+        StackPanel.create [
+            yield! ConstructorUiId.studyPrefitList.groupAttributes<StackPanel> ()
+            AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Before the fit", ValueNone)
+            StackPanel.children prefits
+        ]
+        :> IView
+    ]
+
+/// The New fit run… form: the checks, the fit mode, how stage 2 holds the calibration, then a Run per stage and Cancel;
+/// the study takes the form's settings when a run starts (spec 0050 S11.3, S11.5; 0051 `.manual/007` 8.4).
+let private newFitRunRows (model : TableAndElementRotationModel) (study : Study) (draft : FitRunDraft) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    let modeChoices : IView =
+        WrapPanel.create [
+            WrapPanel.children (
+                FitMode.all |> List.map (fun mode ->
+                    CommandControls.choiceCommand (ConstructorUiId.studyFitModeChoice mode) (ControlCaption mode.text) (if mode = draft.mode then ChosenChoice else UnchosenChoice) (fun () ->
+                        dispatch (SetFitRunDraftMode mode))))
+        ]
+        :> IView
+    let calibration : IView =
+        WrapPanel.create [
+            WrapPanel.children (
+                [ CalibrationHeldFixed, ConstructorUiId.studyCalibrationFixedChoice
+                  CalibrationAsPrior, ConstructorUiId.studyCalibrationPriorChoice ]
+                |> List.map (fun (choice, id) ->
+                    CommandControls.choiceCommand id (ControlCaption choice.text) (if choice = draft.calibrationUse then ChosenChoice else UnchosenChoice) (fun () ->
+                        dispatch (SetFitRunDraftCalibration choice))))
+        ]
+        :> IView
+    let runs : IView list =
+        let stages =
+            match draft.mode with
+            | JointFit -> [ JointStage, ConstructorUiId.studyRunFitButton, ControlCaption "Run joint" ]
+            | StagedFit ->
+                [
+                    CalibrationStage, ConstructorUiId.studyRunStageOneButton, ControlCaption "Run stage 1 (calibration)"
+                    ObjectStage, ConstructorUiId.studyRunStageTwoButton, ControlCaption "Run stage 2 (objects)"
+                ]
+        [
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.isEnabled (not model.studyFit.job.isRunning)
+                WrapPanel.children (
+                    (stages |> List.map (fun (stage, id, caption) -> CommandControls.actionCommand id caption PositiveCommand (fun () -> dispatch (StartFitRun stage))))
+                    @ [ CommandControls.actionCommand ConstructorUiId.pageCancelButton (ControlCaption "Cancel") NegativeCommand (fun () -> dispatch CancelPageDraft) ])
+            ]
+            |> View.withKey $"StudyFitActions_{study.name.fileStem.value}_{draft.mode.value}_{draft.calibrationUse.value}"
+            :> IView
+        ]
+    [ fitHeading (ControlCaption "New fit run") ]
+    @ prefitRows model
+    @ [ fitHeading (ControlCaption "Fit mode:"); modeChoices ]
+    @ (match draft.mode with
+       | StagedFit -> [ fitHeading (ControlCaption "Stage 2 holds the calibration:"); calibration ]
+       | JointFit -> [])
+    @ runs
+
+/// The running fit's progress and Cancel, then the last refusal (spec 0050 S11.5).
+let private fitProgressRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
+    let progress : IView list =
+        if model.studyFit.job.isRunning then
+            [
+                ProgressBar.create [
+                    ConstructorUiId.studyFitProgressBar.automationAttribute<ProgressBar> ()
+                    AttrBuilder<ProgressBar>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit running", ValueNone)
+                    ProgressBar.isIndeterminate true
+                    ProgressBar.height 12.0
+                ]
+                PageControls.copyableText ConstructorUiId.studyFitProgressText (ControlCaption (model.studyFit.job.progressText |> Option.defaultValue "")) []
+                CommandControls.actionCommand ConstructorUiId.studyFitCancelButton (ControlCaption "Cancel the fit") NegativeCommand (fun () -> dispatch (StudyFit CancelStudyFit))
+            ]
+        else []
+    let errors : IView list =
+        match model.studyFit.errorOpt with
+        | None -> []
+        | Some error ->
+            [ PageControls.copyableText ConstructorUiId.studyFitErrorText (ControlCaption error.describe) [ SelectableTextBlock.foreground (SolidColorBrush MaterialsWindowView.messageColor) ] ]
+    progress @ errors
+
+/// The Fit page (spec 0050 S11.5; 0051 `.manual/007` 8.1, 8.4).
 let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
-    let selected : IView list =
-        match model.selectedStudyOpt with
-        | None -> [ TextBlock.create [ TextBlock.text "No study is chosen: choose one in Unknowns." ] ]
-        | Some study ->
-            let prefits : IView list =
-                match model.studyPrefitsOpt with
-                | None | Some (Ok []) ->
-                    [ TextBlock.create [ TextBlock.text "The study holds no run a fit reads." ] ]
-                | Some (Error error) ->
+    let body : IView list =
+        match model.selectedStudyOpt, model.pageMode, model.fitRunDraftOpt with
+        | None, _, _ -> []
+        | Some study, CreatingPageEntry, Some draft -> newFitRunRows model study draft dispatch
+        | Some study, _, _ ->
+            let newRun : IView list =
+                match model.kitWrites, model.studyFit.job.isRunning with
+                | ControlOffered, false ->
                     [
-                        TextBlock.create [
-                            TextBlock.textWrapping TextWrapping.Wrap
-                            TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
-                            TextBlock.text error.describe
+                        Border.create [
+                            Border.horizontalAlignment HorizontalAlignment.Left
+                            Border.child (CommandControls.verbCommand ConstructorUiId.newFitRunButton (ControlCaption "New fit run…") (fun () -> dispatch BeginPageCreate))
                         ]
-                    ]
-                | Some (Ok checks) ->
-                    checks |> List.map (fun prefit ->
-                        let status =
-                            match prefit.check with
-                            | Ok points -> $"ready, {points.pointCount.value} point(s)"
-                            | Error error -> error.describe
-                        let changed =
-                            match prefit.changeOpt with
-                            | None | Some DataUnchangedFlag -> ""
-                            | Some flag -> $" — {flag.text}"
-                        let caption = ControlCaption $"{prefit.experiment.name.value}: {status}{changed}"
-                        TextBlock.create [
-                            (ConstructorUiId.studyPrefitRow prefit.experiment.name).automationAttribute<TextBlock> ()
-                            AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, caption.value, ValueNone)
-                            TextBlock.textWrapping TextWrapping.Wrap
-                            TextBlock.text caption.value
-                            match prefit.check with
-                            | Error _ -> TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
-                            | Ok _ -> ()
-                        ] :> IView)
-            let modeChoices : IView =
-                match model.kitWrites with
-                | ControlWithheld -> TextBlock.create [ TextBlock.text $"Fit mode: {study.settings.mode.text}" ] :> IView
-                | ControlOffered ->
-                    WrapPanel.create [
-                        WrapPanel.children (
-                            [
-                                TextBlock.create [
-                                    TextBlock.text "Fit mode:"
-                                    TextBlock.verticalAlignment VerticalAlignment.Center
-                                    TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
-                                ] :> IView
-                            ]
-                            @ (FitMode.all |> List.map (fun mode ->
-                                let id = ConstructorUiId.studyFitModeChoice mode
-                                let caption = ControlCaption mode.text
-                                let select () = dispatch (StudyCommand (SetFitMode (study.name, mode)))
-                                CommandControls.choiceCommand id caption (if mode = study.settings.mode then ChosenChoice else UnchosenChoice) select)))
-                    ]
-                    // Spec 0050 S12.1: actionButton retains its handler, so another study needs a fresh closure.
-                    |> View.withKey $"StudyFitModes_{study.name.fileStem.value}"
-                    :> IView
-            let runButtons : IView list =
-                match model.kitWrites with
-                | ControlWithheld -> []
-                | ControlOffered ->
-                    [
-                        // Spec 0051 `.manual/003` 4.3: the three runs wrap at the page's width.
-                        WrapPanel.create [
-                            WrapPanel.orientation Orientation.Horizontal
-                            WrapPanel.isEnabled (not model.studyFit.job.isRunning)
-                            WrapPanel.children (
-                                [
-                                    JointStage, ConstructorUiId.studyRunFitButton, ControlCaption "Run joint"
-                                    CalibrationStage, ConstructorUiId.studyRunStageOneButton, ControlCaption "Run stage 1 (calibration)"
-                                    ObjectStage, ConstructorUiId.studyRunStageTwoButton, ControlCaption "Run stage 2 (objects)"
-                                ]
-                                |> List.map (fun (stage, id, caption) ->
-                                    let request : StudyFitRequest =
-                                        {
-                                            study = study.name
-                                            stage = stage
-                                            calibrationUse = study.settings.calibrationUse
-                                        }
-                                    CommandControls.actionCommand id caption PositiveCommand
-                                        (fun () -> dispatch (StudyFit (RunFit request)))))
-                        ]
-                        // Spec 0050 S11.5: actionButton retains its handler, so each request needs a fresh closure.
-                        |> View.withKey $"StudyFitActions_{study.name.fileStem.value}_{study.settings.calibrationUse.value}"
                         :> IView
                     ]
-            let calibration : IView =
-                StackPanel.create [
-                    StackPanel.orientation Orientation.Horizontal
-                    StackPanel.children (
-                        [ CalibrationHeldFixed, ConstructorUiId.studyCalibrationFixedChoice
-                          CalibrationAsPrior, ConstructorUiId.studyCalibrationPriorChoice ]
-                        |> List.map (fun (choice, id) ->
-                            let caption = ControlCaption choice.text
-                            let select () = dispatch (StudyCommand (SetCalibrationUse (study.name, choice)))
-                            CommandControls.choiceCommand id caption (if choice = study.settings.calibrationUse then ChosenChoice else UnchosenChoice) select))
-                ] :> IView
-            let progress : IView list =
-                if model.studyFit.job.isRunning then
-                    [
-                        ProgressBar.create [
-                            ConstructorUiId.studyFitProgressBar.automationAttribute<ProgressBar> ()
-                            AttrBuilder<ProgressBar>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit running", ValueNone)
-                            ProgressBar.isIndeterminate true
-                            ProgressBar.height 12.0
+                | _ -> []
+            let row (run : FitRun) : IView =
+                let caption = ControlCaption $"{run.name.value} — {run.stage.text}, {run.engine.text}, {run.runs.Length} run(s)"
+                let chosen = model.studySurface.fitRunOpt = Some run.name
+                let menu = model.entryMenuOf run.name.caption None RenameAvailable dispatch
+                PageControls.entryToggle (ConstructorUiId.fitRunRow run.name) caption (if chosen then ChosenChoice else UnchosenChoice) NeutralCommand ControlOffered menu (fun () ->
+                    dispatch (ChooseFitRun run.name)) []
+            let under (run : FitRun) : IView list =
+                match model.studySurface.fitRunOpt with
+                | Some name when name = run.name ->
+                    let stamp = run.stamp.value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                    let runs = run.runs |> List.map _.value |> String.concat ", "
+                    underEntry (ConstructorUiKey $"ChosenFitRun_{run.name.value}") [
+                        PageControls.copyableLine (ControlCaption $"Run {stamp}: mode {run.mode.text}, stage {run.stage.text}, calibration {run.calibrationUse.text}, engine {run.engine.text}") []
+                        PageControls.copyableLine (ControlCaption $"Experiments read: {runs}") []
+                        Border.create [
+                            Border.horizontalAlignment HorizontalAlignment.Left
+                            Border.child (CommandControls.verbCommand ConstructorUiId.openFitResultsButton (ControlCaption "Open results") (fun () -> dispatch (ShowFlowStep ResultsFlowStep)))
                         ]
-                        TextBlock.create [
-                            ConstructorUiId.studyFitProgressText.automationAttribute<TextBlock> ()
-                            AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit progress", ValueNone)
-                            TextBlock.text (model.studyFit.job.progressText |> Option.defaultValue "")
-                        ]
-                        CommandControls.actionCommand ConstructorUiId.studyFitCancelButton (ControlCaption "Cancel")
-                            NegativeCommand (fun () -> dispatch (StudyFit CancelStudyFit))
+                        :> IView
                     ]
-                else []
-            let errors : IView list =
-                match model.studyFit.errorOpt with
+                | Some _
                 | None -> []
-                | Some error ->
-                    [
-                        TextBlock.create [
-                            ConstructorUiId.studyFitErrorText.automationAttribute<TextBlock> ()
-                            AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.NameProperty, error.describe, ValueNone)
-                            TextBlock.textWrapping TextWrapping.Wrap
-                            TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
-                            TextBlock.text error.describe
-                        ]
-                    ]
             let history : IView list =
-                match model.studyFitRuns with
-                | [] -> [ TextBlock.create [ TextBlock.text "No fit run yet." ] ]
+                match model.studyFitRuns |> List.rev with
+                | [] -> [ PageControls.copyableLine (ControlCaption "No fit run yet: New fit run… runs the study.") [] ]
                 | runs ->
-                    runs |> List.map (fun run ->
-                        let id = ConstructorUiId.fitRunRow run.name
-                        let caption = ControlCaption $"{run.name.value} — {run.stage.text}, {run.engine.text}, {run.runs.Length} run(s)"
-                        let select () = dispatch (SelectFitRun run.name)
-                        CommandControls.choiceCommand id caption (if model.studySurface.fitRunOpt = Some run.name then ChosenChoice else UnchosenChoice) select)
-            [
-                TextBlock.create [ TextBlock.text "Before the fit:" ]
-                StackPanel.create [
-                    yield! ConstructorUiId.studyPrefitList.groupAttributes<StackPanel> ()
-                    AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Before the fit", ValueNone)
-                    StackPanel.children prefits
-                ]
-            ]
-            @ [ modeChoices ]
-            @ runButtons
-            @ [ TextBlock.create [ TextBlock.text "Stage 2 holds the calibration:" ]; calibration ]
-            @ progress
-            @ errors
-            @ [
-                TextBlock.create [ TextBlock.text "Fit runs:" ]
-                StackPanel.create [
-                    yield! ConstructorUiId.fitRunHistory.groupAttributes<StackPanel> ()
-                    AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit runs", ValueNone)
-                    StackPanel.children history
-                ]
-            ]
-    ScrollViewer.create [
-        // Spec 0050 S11.5: reserve scrollbar space so scrolled controls remain clickable at the viewport edge.
-        AttrBuilder<ScrollViewer>.CreateProperty<bool>(ScrollViewer.AllowAutoHideProperty, false, ValueNone)
-        ScrollViewer.horizontalScrollBarVisibility ScrollBarVisibility.Auto
-        ScrollViewer.verticalScrollBarVisibility ScrollBarVisibility.Auto
-        // Spec 0051 `.manual/003` 4.3: laid out at the window's width, so no page is wider than its window.
-        ScrollViewer.content (
-            MinWidthPanel.create [
-                (PanelMinWidth 520.0).minWidthPanelAttribute ()
-                MinWidthPanel.child (
-                    StackPanel.create [
-                        yield! ConstructorUiId.studyFitPanel.groupAttributes<StackPanel> ()
-                        AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study fit", ValueNone)
-                        StackPanel.orientation Orientation.Vertical
-                        StackPanel.margin 8.0
-                        StackPanel.children ([ StudyUnknownsView.studyBarView model dispatch ] @ selected)
-                    ])
-            ])
-    ] :> IView
+                    [
+                        fitHeading (ControlCaption "Fit runs:")
+                        StackPanel.create [
+                            yield! ConstructorUiId.fitRunHistory.groupAttributes<StackPanel> ()
+                            AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit runs", ValueNone)
+                            StackPanel.children (entryRows runs row under)
+                        ]
+                        :> IView
+                    ]
+            newRun @ fitProgressRows model dispatch @ history
+    pageScroll ConstructorUiId.studyFitPanel (model.pageHeader dispatch @ StudyUnknownsView.studyContextRows model @ body)

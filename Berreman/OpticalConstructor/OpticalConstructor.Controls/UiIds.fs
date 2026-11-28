@@ -140,18 +140,6 @@ type ConstructorUiId =
     /// The single active content slot, named by the bay it shows.
     static member ribbonPane (bay : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"RibbonPane_{bay.value}"
 
-    // --- The kind-constrained Library bay list/tree (`LibraryControls`). ---
-    static member libraryBoundReadout : ConstructorUiId = ConstructorUiId "LibraryBoundReadout"
-    static member libraryKindLabel : ConstructorUiId = ConstructorUiId "LibraryKindLabel"
-    static member libraryTree : ConstructorUiId = ConstructorUiId "LibraryTree"
-    /// A leaf row's clickable box, by the entry's id.
-    static member libraryEntry (entry : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"LibraryEntry_{entry.value}"
-    /// The pending-entry full-description text (shown before confirm).
-    static member libraryEntryDescription : ConstructorUiId = ConstructorUiId "LibraryEntryDescription"
-    /// The Confirm / Cancel actions of the pending bind.
-    static member libraryConfirmButton : ConstructorUiId = ConstructorUiId "LibraryConfirmButton"
-    static member libraryCancelButton : ConstructorUiId = ConstructorUiId "LibraryCancelButton"
-
     // --- The layer-stack band view / Details bay (`LayerBandsControls`). ---
     static member layerBandsStack : ConstructorUiId = ConstructorUiId "LayerBandsStack"
     static member layerBandsTitle : ConstructorUiId = ConstructorUiId "LayerBandsTitle"
@@ -180,11 +168,8 @@ type ConstructorUiId =
     static member experimentRangeMin : ConstructorUiId = ConstructorUiId "ExperimentRangeMin"
     static member experimentRangeMax : ConstructorUiId = ConstructorUiId "ExperimentRangeMax"
     static member experimentRangePoints : ConstructorUiId = ConstructorUiId "ExperimentRangePoints"
-    /// The Add / Update and New actions.
-    static member experimentAddButton : ConstructorUiId = ConstructorUiId "ExperimentAddButton"
     /// Why Add experiment, Add variable and Add block are withheld (spec 0051 `.manual/003` 3.6).
     static member experimentAddReason : ConstructorUiId = ConstructorUiId "ExperimentAddReason"
-    static member experimentNewButton : ConstructorUiId = ConstructorUiId "ExperimentNewButton"
     /// The draft's scan lines: its closed blocks and its current block's held axes (spec 0050 S9.1).
     static member experimentScanSummary : ConstructorUiId = ConstructorUiId "ExperimentScanSummary"
     /// Add variable and Add block: the edited axis joins the current block, or closes it (spec 0050 S9.1).
@@ -205,8 +190,6 @@ type ConstructorUiId =
     static member experimentRemoveConfirmButton : ConstructorUiId = ConstructorUiId "ExperimentRemoveConfirmButton"
     static member experimentRemoveCancelButton : ConstructorUiId = ConstructorUiId "ExperimentRemoveCancelButton"
     static member experimentViewButton (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentView_{experiment.value}"
-    /// A collected experiment's data badge text (spec 0050 S9.1).
-    static member experimentRowBadge (experiment : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"ExperimentBadge_{experiment.value}"
     /// The inline result polyline (the first series — the intensity / Ψ curve).
     static member experimentChart : ConstructorUiId = ConstructorUiId "ExperimentChart"
     /// The ellipsometer Ψ/Δ single-point readout text.
@@ -215,26 +198,11 @@ type ConstructorUiId =
     static member experimentChartDescription : ConstructorUiId = ConstructorUiId "ExperimentChartDescription"
 
     // --- The Main workbench's own surfaces around the shared controls (spec 0038 steps 013-017, 037). ---
-    /// The ribbon tab-strip row's right-aligned buttons that open the single-instance Materials / Library windows.
-    static member openMaterialsWindowButton : ConstructorUiId = ConstructorUiId "OpenMaterialsWindowButton"
-    static member openLibraryWindowButton : ConstructorUiId = ConstructorUiId "OpenLibraryWindowButton"
-    /// The staleness status line under the readout (a targeted Select return whose element has vanished).
-    static member workbenchSelectStatus : ConstructorUiId = ConstructorUiId "WorkbenchSelectStatus"
-    /// The Select bay's Choose… verb and its inline quick-pick strip.
-    static member selectorChooseButton : ConstructorUiId = ConstructorUiId "SelectorChooseButton"
-    static member selectorQuickPickStrip : ConstructorUiId = ConstructorUiId "SelectorQuickPickStrip"
     /// The kit bar's status line, shown whichever bay is open (spec 0050 S4.3, S5.3).
     static member kitStatus : ConstructorUiId = ConstructorUiId "KitStatus"
-    /// The setup row's name field, Create setup action and the kit's saved setups (spec 0050 S8.2).
+    /// The new setup's name field and the kit's saved setups (spec 0050 S8.2).
     static member setupNameField : ConstructorUiId = ConstructorUiId "SetupNameField"
-    static member createSetupButton : ConstructorUiId = ConstructorUiId "CreateSetupButton"
     static member savedSetups : ConstructorUiId = ConstructorUiId "SavedSetups"
-    /// The setup row's line naming the setup the table draws, or that it is none yet (spec 0050 S8.2).
-    static member activeSetupText : ConstructorUiId = ConstructorUiId "ActiveSetupText"
-    /// The setup row's Save setup action: writes the table over the active setup (spec 0050 S8.2).
-    static member saveSetupButton : ConstructorUiId = ConstructorUiId "SaveSetupButton"
-    /// The inverse experiment data files, in the Data step (spec 0050 S4.3, S9.3).
-    static member experimentDataFiles : ConstructorUiId = ConstructorUiId "ExperimentDataFiles"
 
     // --- The materials workbench list surface (`MaterialsControls`). ---
     static member materialSearchBox : ConstructorUiId = ConstructorUiId "MaterialSearchBox"
@@ -365,8 +333,6 @@ type ConstructorUiId =
     static member elementMenuToggleReflected : ConstructorUiId = ConstructorUiId "ElementMenuToggleReflected"
     static member elementMenuToggleTransmitted : ConstructorUiId = ConstructorUiId "ElementMenuToggleTransmitted"
     static member elementMenuPlaceOnMainBeam : ConstructorUiId = ConstructorUiId "ElementMenuPlaceOnMainBeam"
-    /// Spec 0046: the menu's Choose… — the Select bay's Choose… verb for the element the menu serves.
-    static member elementMenuChoose : ConstructorUiId = ConstructorUiId "ElementMenuChoose"
     /// Spec 0046: the menu's "what is it" lines — the bound entry's name and description.
     static member elementMenuInfo : ConstructorUiId = ConstructorUiId "ElementMenuInfo"
     static member elementMenuRemove : ConstructorUiId = ConstructorUiId "ElementMenuRemove"
@@ -582,10 +548,6 @@ type ConstructorUiId =
     static member libraryLifecycleCancelButton : ConstructorUiId = ConstructorUiId "LibraryLifecycleCancelButton"
     static member libraryVersionsPanel : ConstructorUiId = ConstructorUiId "LibraryVersionsPanel"
     static member libraryViewOnlyNote : ConstructorUiId = ConstructorUiId "LibraryViewOnlyNote"
-    /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
-    static member librarySelectButton : ConstructorUiId = ConstructorUiId "LibrarySelectButton"
-    static member librarySelectCloseButton : ConstructorUiId = ConstructorUiId "LibrarySelectCloseButton"
-    static member librarySelectConstraint : ConstructorUiId = ConstructorUiId "LibrarySelectConstraint"
 
     // Spec 0050 S2.4: library-wide backup and confirmed restore.
     static member libraryBackUpNowButton : ConstructorUiId = ConstructorUiId "LibraryBackUpNowButton"
@@ -826,10 +788,6 @@ type ConstructorUiId =
     static member kitCloseButton : ConstructorUiId = ConstructorUiId "KitCloseButton"
     /// The kit bar's field holding the naming template being typed (spec 0050 S8.3).
     static member namingTemplateField : ConstructorUiId = ConstructorUiId "NamingTemplateField"
-    /// The kit bar's Save template: the field's text becomes the kit's naming template (spec 0050 S8.3).
-    static member saveNamingTemplateButton : ConstructorUiId = ConstructorUiId "SaveNamingTemplateButton"
-    /// The constructor the window runs, Main or Inverse (spec 0050 S5.3).
-    static member kitModeText : ConstructorUiId = ConstructorUiId "KitModeText"
     /// The switch to the other constructor (spec 0050 S5.3).
     static member kitSwitchModeButton : ConstructorUiId = ConstructorUiId "KitSwitchModeButton"
     /// The reload offer's question, naming the files changed outside the app (spec 0050 S5.3).
@@ -864,16 +822,10 @@ type ConstructorUiId =
     static member itemsPanel : ConstructorUiId = ConstructorUiId "ItemsPanel"
     /// The list of the kit's items, one row each (spec 0050 S7.2).
     static member kitItemList : ConstructorUiId = ConstructorUiId "KitItemList"
-    /// Add item from library model…: opens the add form (spec 0050 S7.2).
-    static member addItemButton : ConstructorUiId = ConstructorUiId "AddItemButton"
     /// The add form's bounded list of the library models it offers (spec 0050 S7.2).
     static member addItemOfferList : ConstructorUiId = ConstructorUiId "AddItemOfferList"
     /// The add form's label as typed (spec 0050 S7.2).
     static member newItemLabelField : ConstructorUiId = ConstructorUiId "NewItemLabelField"
-    /// The add form's Add: records the item in the kit (spec 0050 S7.2).
-    static member addItemConfirmButton : ConstructorUiId = ConstructorUiId "AddItemConfirmButton"
-    /// The add form's Cancel: closes it, writing nothing (spec 0050 S7.2).
-    static member addItemCancelButton : ConstructorUiId = ConstructorUiId "AddItemCancelButton"
     /// The selected item's label, relabelling it on Enter or losing focus (spec 0050 S7.2).
     static member itemLabelField : ConstructorUiId = ConstructorUiId "ItemLabelField"
     /// The selected item's model, as the library names it (spec 0050 S7.2).
@@ -913,18 +865,16 @@ type ConstructorUiId =
     /// The selected item's revisions, the current one first (spec 0050 S7.2).
     static member itemRevisionList : ConstructorUiId = ConstructorUiId "ItemRevisionList"
 
-    // --- The constructor's flow strip (FlowStripView). ---
-    /// The flow strip left of the constructor window's surface, one box per step (spec 0050 S7.2; 001 §O).
-    static member flowStrip : ConstructorUiId = ConstructorUiId "FlowStrip"
-    /// The strip's Items step: shows the kit's Items panel (spec 0050 S7.2).
+    // --- The kit window's page row (`KitWindowView`, spec 0051 `.manual/007` 2.1). ---
+    /// The page row's Items page: shows the kit's Items panel (spec 0050 S7.2).
     static member flowItemsStep : ConstructorUiId = ConstructorUiId "FlowItemsStep"
-    /// The strip's Setups step: shows the table (spec 0050 S7.2).
+    /// The page row's Setups page: shows the table (spec 0050 S7.2).
     static member flowSetupsStep : ConstructorUiId = ConstructorUiId "FlowSetupsStep"
-    /// The strip's Experiments step: shows the Experiments bay (spec 0050 S7.2).
+    /// The page row's Experiments page (spec 0050 S7.2; spec 0051 `.manual/007` Phase 6).
     static member flowExperimentsStep : ConstructorUiId = ConstructorUiId "FlowExperimentsStep"
 
     // --- The Inverse constructor's Data step (DataStepView), spec 0050 S9.3. ---
-    /// The strip's Data step: shows the experiments' data files, in the Inverse constructor alone (spec 0050 S9.3).
+    /// The page row's Data page: shows the experiments' data files, in the Inverse constructor alone (spec 0050 S9.3).
     static member flowDataStep : ConstructorUiId = ConstructorUiId "FlowDataStep"
     /// The Data step's panel: the experiment matrix, the data files, then the split verb (spec 0050 S9.3; 001 §O).
     static member dataStepPanel : ConstructorUiId = ConstructorUiId "DataStepPanel"
@@ -948,7 +898,8 @@ type ConstructorUiId =
     static member dataExcludedPointMark (point : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"DataPointExcluded_{point.value}"
     /// The review's audit note, the one a re-point to another setup sends (spec 0050 S9.3; 001 §K).
     static member dataCorrectionNoteField : ConstructorUiId = ConstructorUiId "DataCorrectionNoteField"
-    /// The reviewed experiment's audit trail: one line per setup correction, oldest first (spec 0050 S9.3; 001 §K).
+    /// An experiment's audit trail, one line per setup correction, oldest first (spec 0050 S9.3; 001 §K; spec 0051
+    /// `.manual/007` 6.2, 6.3).
     static member dataCorrectionTrail : ConstructorUiId = ConstructorUiId "DataCorrectionTrail"
     /// The Data step's experiment matrix: rows source × objects × φ, columns analyzer, a badge per experiment (spec 0050 S9.3).
     static member experimentMatrix : ConstructorUiId = ConstructorUiId "ExperimentMatrix"
@@ -960,14 +911,8 @@ type ConstructorUiId =
     static member studyUnknownsPanel : ConstructorUiId = ConstructorUiId "StudyUnknownsPanel"
     /// The kit's study choices (spec 0050 S11.5).
     static member studyList : ConstructorUiId = ConstructorUiId "StudyList"
-    /// The last study command's status (spec 0050 S11.5).
-    static member studyStatusLine : ConstructorUiId = ConstructorUiId "StudyStatusLine"
     /// The new study's name as typed (spec 0050 S11.5).
     static member newStudyNameField : ConstructorUiId = ConstructorUiId "NewStudyNameField"
-    /// Creates the named study over the chosen experiments (spec 0050 S11.5).
-    static member createStudyButton : ConstructorUiId = ConstructorUiId "CreateStudyButton"
-    /// Why Create study is withheld (spec 0051 `.manual/003` 3.6).
-    static member createStudyReason : ConstructorUiId = ConstructorUiId "CreateStudyReason"
     /// The selected study's experiments (spec 0050 S11.5).
     static member studyExperimentsText : ConstructorUiId = ConstructorUiId "StudyExperimentsText"
     /// The study's parameter owners, states, scopes and links (spec 0050 S11.5).
@@ -1061,7 +1006,8 @@ type ConstructorUiId =
 
     // --- The study's Publish step (StudyPublishView). ---
     /// Opens the Inverse constructor's Publish step (spec 0050 S11.5).
-    static member flowPublishStep : ConstructorUiId = ConstructorUiId "FlowPublishStep"
+    /// The page row's last button, the Kit page (spec 0051 `.manual/007` 2.2).
+    static member flowKitStep : ConstructorUiId = ConstructorUiId "FlowKitStep"
     /// The selected fit run's publication surface (spec 0050 S11.5).
     static member studyPublishPanel : ConstructorUiId = ConstructorUiId "StudyPublishPanel"
     /// The item revisions the selected calibration would publish (spec 0050 S11.5).
@@ -1076,10 +1022,6 @@ type ConstructorUiId =
     static member slotBar : ConstructorUiId = ConstructorUiId "SlotBar"
     /// The open chip's list of the kit's items that fit its slot (spec 0050 S8.4).
     static member slotChipChoiceList : ConstructorUiId = ConstructorUiId "SlotChipChoiceList"
-    /// Record experiment: a new experiment of the draft over the active setup (spec 0050 S8.4; 001 §O).
-    static member recordExperimentButton : ConstructorUiId = ConstructorUiId "RecordExperimentButton"
-    /// Setup grid…: opens the grid generator's panel between the bar and the table (spec 0050 S8.4; 001 §J).
-    static member setupGridOpenButton : ConstructorUiId = ConstructorUiId "SetupGridOpenButton"
 
     // --- The setup grid generator (SetupGridView). ---
     /// The grid generator's panel: each slot's items and R1 angles to try, and their combinations (spec 0050 S8.4).
@@ -1121,3 +1063,93 @@ type ConstructorUiId =
     /// The Library window's line saying entries wait for an import decision (spec 0051 `.manual/003` 5.3).
     static member libraryPendingImportsText : ConstructorUiId = ConstructorUiId "LibraryPendingImportsText"
 
+
+    // --- The page rules (spec 0051 `.manual/007` Phase 1). ---
+    /// A dynamic button's context-menu item that copies its caption (spec 0051 `.manual/007` 1.3).
+    static member entryCopyNameItem : ConstructorUiId = ConstructorUiId "EntryCopyNameItem"
+    /// A dynamic button's context-menu item that starts its in-place rename (spec 0051 `.manual/007` 1.3).
+    static member entryRenameItem : ConstructorUiId = ConstructorUiId "EntryRenameItem"
+    /// A grid table's Copy as CSV button: `CopyCsvButton_<table id>` (spec 0051 `.manual/007` 1.4).
+    static member copyTableCsvButton (table : ConstructorUiId) : ConstructorUiId = ConstructorUiId $"CopyCsvButton_{table.value}"
+    /// A page's `?` Help panel, `PageHelp_<page>` (spec 0051 `.manual/007` 1.6).
+    static member pageHelpPanel (page : ConstructorUiKey) : ConstructorUiId = ConstructorUiId $"PageHelp_{page.value}"
+    /// The chosen entry's Edit, on its line (spec 0051 `.manual/007` 1.2).
+    static member pageEditButton : ConstructorUiId = ConstructorUiId "PageEditButton"
+    /// Save or Create of the page's draft, withheld until it changed (spec 0051 `.manual/007` 1.2).
+    static member pageSaveButton : ConstructorUiId = ConstructorUiId "PageSaveButton"
+    /// Cancel of the page's draft (spec 0051 `.manual/007` 1.2).
+    static member pageCancelButton : ConstructorUiId = ConstructorUiId "PageCancelButton"
+    /// The discard question and its Yes / No (spec 0051 `.manual/007` 1.2, D11).
+    static member pageLeaveQuestionText : ConstructorUiId = ConstructorUiId "PageLeaveQuestionText"
+    static member pageLeaveYesButton : ConstructorUiId = ConstructorUiId "PageLeaveYesButton"
+    static member pageLeaveNoButton : ConstructorUiId = ConstructorUiId "PageLeaveNoButton"
+    /// The in-place rename's field, Save and Cancel (spec 0051 `.manual/007` 1.3).
+    static member renameField : ConstructorUiId = ConstructorUiId "RenameField"
+    static member renameSaveButton : ConstructorUiId = ConstructorUiId "RenameSaveButton"
+    static member renameCancelButton : ConstructorUiId = ConstructorUiId "RenameCancelButton"
+    /// The page row, the mode switch and the Kit page (spec 0051 `.manual/007` 2.1, 2.2).
+    static member pageRow : ConstructorUiId = ConstructorUiId "PageRow"
+    static member kitPagePanel : ConstructorUiId = ConstructorUiId "KitPagePanel"
+    static member kitCreatedText : ConstructorUiId = ConstructorUiId "KitCreatedText"
+    static member kitModifiedText : ConstructorUiId = ConstructorUiId "KitModifiedText"
+    static member kitFolderText : ConstructorUiId = ConstructorUiId "KitFolderText"
+    static member namingTemplateText : ConstructorUiId = ConstructorUiId "NamingTemplateText"
+    /// The Setups page: New setup, the chosen setup's line and Copy… (spec 0051 `.manual/007` 5.1, 5.4, 5.6).
+    static member newSetupButton : ConstructorUiId = ConstructorUiId "NewSetupButton"
+    static member setupLineText : ConstructorUiId = ConstructorUiId "SetupLineText"
+    static member copySetupButton : ConstructorUiId = ConstructorUiId "CopySetupButton"
+    static member setupsPagePanel : ConstructorUiId = ConstructorUiId "SetupsPagePanel"
+    /// The Experiments page (spec 0051 `.manual/007` 6.1–6.5).
+    static member experimentsPagePanel : ConstructorUiId = ConstructorUiId "ExperimentsPagePanel"
+    static member experimentsContextText : ConstructorUiId = ConstructorUiId "ExperimentsContextText"
+    static member newExperimentButton : ConstructorUiId = ConstructorUiId "NewExperimentButton"
+    static member newExperimentGridButton : ConstructorUiId = ConstructorUiId "NewExperimentGridButton"
+    static member experimentDetailsText : ConstructorUiId = ConstructorUiId "ExperimentDetailsText"
+    static member sameSetupWarningText : ConstructorUiId = ConstructorUiId "SameSetupWarningText"
+    static member sameSetupOkButton : ConstructorUiId = ConstructorUiId "SameSetupOkButton"
+    static member sameSetupCancelButton : ConstructorUiId = ConstructorUiId "SameSetupCancelButton"
+    static member sameSetupShowButton : ConstructorUiId = ConstructorUiId "SameSetupShowButton"
+    /// The Items page's New item… (spec 0051 `.manual/007` 4.3).
+    static member newItemButton : ConstructorUiId = ConstructorUiId "NewItemButton"
+    /// The Unknowns page's New study, and the study pages' context line (spec 0051 `.manual/007` 8.1, 8.2).
+    static member newStudyButton : ConstructorUiId = ConstructorUiId "NewStudyButton"
+    static member studyContextText : ConstructorUiId = ConstructorUiId "StudyContextText"
+    /// The Fit page's New fit run… (spec 0051 `.manual/007` 8.4).
+    static member newFitRunButton : ConstructorUiId = ConstructorUiId "NewFitRunButton"
+    /// The Kit page's Guide… and the Launcher's (spec 0051 `.manual/007` 9.2).
+    static member kitGuideButton : ConstructorUiId = ConstructorUiId "KitGuideButton"
+    /// The chosen item's notes, read-only (spec 0051 `.manual/007` 4.2).
+    static member itemNotesText : ConstructorUiId = ConstructorUiId "ItemNotesText"
+    /// The Items page's creation form: the chosen model and the button that opens the library's chooser (spec 0051
+    /// `.manual/007` 4.3).
+    static member addItemChosenText : ConstructorUiId = ConstructorUiId "AddItemChosenText"
+    static member addItemChooseModelButton : ConstructorUiId = ConstructorUiId "AddItemChooseModelButton"
+    /// The library's model chooser window, its filter, Choose and Cancel (spec 0051 `.manual/007` 4.3).
+    static member itemModelChooserWindow : ConstructorUiId = ConstructorUiId "ItemModelChooserWindow"
+    static member itemModelChooserFilter : ConstructorUiId = ConstructorUiId "ItemModelChooserFilter"
+    static member itemModelChooserChooseButton : ConstructorUiId = ConstructorUiId "ItemModelChooserChooseButton"
+    static member itemModelChooserCancelButton : ConstructorUiId = ConstructorUiId "ItemModelChooserCancelButton"
+    /// Why the chosen experiment's View chart is withheld (spec 0051 `.manual/007` 6.6).
+    static member experimentChartReason : ConstructorUiId = ConstructorUiId "ExperimentChartReason"
+    /// The Kit page's Publish line while the kit has no fit run (spec 0051 `.manual/007` 2.2).
+    static member publishNothingText : ConstructorUiId = ConstructorUiId "PublishNothingText"
+    /// The chosen fit run's Open results (spec 0051 `.manual/007` 8.4).
+    static member openFitResultsButton : ConstructorUiId = ConstructorUiId "OpenFitResultsButton"
+    /// The Results page's tables: the fitted values, and each problem's correlation matrix by its 1-based place (spec
+    /// 0051 `.manual/007` 8.5).
+    static member fitValuesGrid : ConstructorUiId = ConstructorUiId "FitValuesGrid"
+    static member fitCorrelationGrid (position : ConstructorUiPosition) : ConstructorUiId = ConstructorUiId $"FitCorrelationGrid_{position.value}"
+    /// The Options window, its tooltip delay, Save, Cancel and status (spec 0051 `.manual/007` 1.5).
+    static member optionsWindow : ConstructorUiId = ConstructorUiId "OptionsWindow"
+    static member optionsToolTipDelayField : ConstructorUiId = ConstructorUiId "OptionsToolTipDelayField"
+    static member optionsSaveButton : ConstructorUiId = ConstructorUiId "OptionsSaveButton"
+    static member optionsCancelButton : ConstructorUiId = ConstructorUiId "OptionsCancelButton"
+    static member optionsStatusText : ConstructorUiId = ConstructorUiId "OptionsStatusText"
+    /// The Launcher's footer Options… and Guide… (spec 0051 `.manual/007` 1.5, 9.2).
+    static member launcherOptionsButton : ConstructorUiId = ConstructorUiId "LauncherOptionsButton"
+    static member launcherGuideButton : ConstructorUiId = ConstructorUiId "LauncherGuideButton"
+    /// The Guide window, its two guides and its steps (spec 0051 `.manual/007` 9.2).
+    static member guideWindow : ConstructorUiId = ConstructorUiId "GuideWindow"
+    static member guideDirectChoice : ConstructorUiId = ConstructorUiId "GuideDirectChoice"
+    static member guideInverseChoice : ConstructorUiId = ConstructorUiId "GuideInverseChoice"
+    static member guideSteps : ConstructorUiId = ConstructorUiId "GuideSteps"

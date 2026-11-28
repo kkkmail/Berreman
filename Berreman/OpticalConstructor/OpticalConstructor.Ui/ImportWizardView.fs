@@ -457,8 +457,8 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
         match captionOpt with
         | Some caption ->
             [
-                TextBlock.create [
-                    ConstructorUiId.importWizardMessage.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.importWizardMessage.automationAttribute<SelectableTextBlock> ()
                     TextBlock.dock Dock.Bottom
                     TextBlock.margin (Thickness(0.0, 6.0, 0.0, 6.0))
                     TextBlock.textWrapping TextWrapping.Wrap
@@ -495,8 +495,8 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
             |> List.map (fun header -> choiceBox chosenHeader (ConstructorUiId.importWizardHeaderChoice header.uiKey) header.caption (SetImportHeader header))
 
         let bomText =
-            TextBlock.create [
-                ConstructorUiId.importWizardBomText.automationAttribute<TextBlock> ()
+            SelectableTextBlock.create [
+                ConstructorUiId.importWizardBomText.automationAttribute<SelectableTextBlock> ()
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (Thickness(4.0, 0.0, 8.0, 4.0))
                 TextBlock.text m.bom.caption.value
@@ -571,8 +571,8 @@ let importWizardView (m : ImportWizardModel) (dispatch : ImportWizardMsg -> unit
             | AttachWizardTarget _ -> $"Import {leaf}\nNothing is attached until you press Attach."
             | SplitWizardTarget -> $"Split {leaf} by its key column\nNothing is split until you press Split."
 
-        TextBlock.create [
-            ConstructorUiId.importWizardHeading.automationAttribute<TextBlock> ()
+        SelectableTextBlock.create [
+            ConstructorUiId.importWizardHeading.automationAttribute<SelectableTextBlock> ()
             TextBlock.textWrapping TextWrapping.Wrap
             TextBlock.margin (Thickness(0.0, 0.0, 0.0, 12.0))
             TextBlock.text text

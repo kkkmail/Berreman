@@ -50,6 +50,11 @@ module Library =
         let biaxialId : SampleId = Guid.Parse "53b01f16-faf9-4413-a419-14592670a03c" |> SampleId
         let activeCrystalPlateId : SampleId = Guid.Parse "1c170dcc-0528-466e-98a7-cabfdaf9007a" |> SampleId
         let langasiteSiliconId : SampleId = Guid.Parse "8fa9867a-b1dd-4571-a83c-46a0acf16b4f" |> SampleId
+        /// `MultilayerThinFilm_02.fsx`'s stack: 100 quarter-wave pairs at 600 nm of n = 1.75 / 1.50 on n = 1.50 glass
+        /// (spec 0051 `.manual/007` 9.1, D7).
+        let multilayerGlassPairsId : SampleId = Guid.Parse "75df80f3-28bf-4bb9-9268-0825308ff421" |> SampleId
+        /// `LangasiteOnSilicon.fsx`'s substrate: a 10 µm langasite plate on silicon (spec 0051 `.manual/007` 9.1, D7).
+        let langasitePlateSiliconId : SampleId = Guid.Parse "3e3cac98-932a-427c-bda8-f0eb2307d9af" |> SampleId
 
     /// Well-known identities of the Built-in catalogue's source, detector and polarizer presets (spec 0050 §3.3).
     module PresetIds =

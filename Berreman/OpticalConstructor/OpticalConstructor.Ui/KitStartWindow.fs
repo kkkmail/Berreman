@@ -13,6 +13,7 @@ open OpticalConstructor.Storage.KitArchiveStore
 open OpticalConstructor.Ui.KitArchiveJob
 open OpticalConstructor.Ui.KitOpening
 open OpticalConstructor.Ui.KitStartView
+open OpticalConstructor.Ui.UserEnvironment
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// The kit start screen over the app scope: a chosen kit opens in the constructor of `mode`, through the import dialog
@@ -53,6 +54,7 @@ type KitStartWindow(context : AppContext, mode : ConstructorMode, pickerFor : To
                 author = KitAuthor System.Environment.UserName
                 imports = context.catalogueImports
                 picker = pickerFor this
+                kitFolderMemory = KitFolderMemory.ofEnvironment context.locations.environmentFile context.locations.kitsFolder
                 showKit = showKit
                 // The screen closes when it brings a kit's window forward, as when it hands a kit over (spec 0050 S5.3).
                 activateKitWindow =

@@ -1,0 +1,12 @@
+{
+  "author": "langasite-on-silicon bench",
+  "created": "2026-06-03T12:00:00Z",
+  "id": "5124b7da-340e-4e74-aff0-c282fd02c9e4",
+  "importProfiles": [],
+  "modified": "2026-06-03T12:00:00Z",
+  "name": "langasite-on-silicon",
+  "namingTemplate": "{obj1}-{note}",
+  "notes": "",
+  "schemaVersion": 1,
+  "sendExclude": []
+}

@@ -41,6 +41,9 @@ type KitStartContext =
         imports : CatalogueImportContext
         /// The folder dialog of New kit…, Open kit… and Locate… (spec 0050 S5.2).
         picker : KitFolderPicker
+        /// Remembers the folder above every kit the screen opens, by any route, for the next kit dialog (spec 0051
+        /// `.manual/007` 3.4).
+        kitFolderMemory : KitFolderMemory
         /// Hands an opened kit to the screen's window (spec 0050 S5.2).
         showKit : OpenedKit -> unit
         /// Brings forward the window that already holds a chosen kit, if one does (spec 0050 S5.3).
@@ -57,7 +60,7 @@ type KitStartContext =
 type KitStartOffer =
     /// No question is pending (spec 0050 S5.2).
     | NoKitStartOffer
-    /// Open kit… met a folder without `.kit-json`: offer Make this a kit (spec 0050 S5.2).
+    /// A kit's folder without `.optics-kit`: offer Make this a kit (spec 0050 S5.2).
     | MakeKitOffer of folder : KitFolder
     /// The kit is open elsewhere, by `holder`: offer to open it read-only (spec 0050 S5.2).
     | ReadOnlyKitOffer of folder : KitFolder * holder : KitLockHolder
@@ -175,6 +178,7 @@ let private kitStartOpened (folder : KitFolder) (answer : Result<OpenedKit, KitL
     | Ok opened ->
         let bumped =
             m |> kitStartChanged (fun history -> history.bump m.context.limit m.context.clock folder opened.library.kit.kitFile)
+        m.context.kitFolderMemory.rememberKit folder
         m.context.showKit opened
         { bumped with offer = NoKitStartOffer }
     | Error (KitLibraryKitErr (KitLockedErr holder)) ->
@@ -314,7 +318,7 @@ let private kitStartActionsRow (m : KitStartModel) (dispatch : KitStartMsg -> un
                 CommandControls.verbCommand ConstructorUiId.newKitButton (ControlCaption "New kit…") (fun () ->
                     m.context.picker.pickThen ChooseKitFolder (CreateKit >> dispatch))
                 CommandControls.verbCommand ConstructorUiId.openKitButton (ControlCaption "Open kit…") (fun () ->
-                    m.context.picker.pickThen ChooseKitFolder (OpenKit >> dispatch))
+                    m.context.picker.pickThen ChooseKitFile (OpenKit >> dispatch))
             ]
             @ openKitZip)
     ] :> IView
@@ -340,8 +344,8 @@ let private kitStartOfferBlock (offerKey : ConstructorUiKey) (question : Control
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.children [
-            TextBlock.create [
-                ConstructorUiId.kitStartOfferText.automationAttribute<TextBlock> ()
+            SelectableTextBlock.create [
+                ConstructorUiId.kitStartOfferText.automationAttribute<SelectableTextBlock> ()
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.margin (Thickness(0.0, 0.0, 0.0, 4.0))
                 TextBlock.text question.value
@@ -419,7 +423,7 @@ let private kitHistoryRowView (m : KitStartModel) (dispatch : KitStartMsg -> uni
         | KitFolderMissing ->
             [
                 CommandControls.verbCommand (ConstructorUiId.kitHistoryLocateButton position) (ControlCaption "Locate…") (fun () ->
-                    m.context.picker.pickThen ChooseKitFolder (fun found -> dispatch (LocateKit { missing = folder; found = found })))
+                    m.context.picker.pickThen ChooseKitFile (fun found -> dispatch (LocateKit { missing = folder; found = found })))
                 CommandControls.verbCommand (ConstructorUiId.kitHistoryRemoveButton position) (ControlCaption "Remove from history") (fun () ->
                     dispatch (ForgetKit folder))
             ]
@@ -494,8 +498,8 @@ let kitStartView (m : KitStartModel) (dispatch : KitStartMsg -> unit) : IView =
         match m.status with
         | Some status ->
             [
-                TextBlock.create [
-                    ConstructorUiId.kitStartStatusText.automationAttribute<TextBlock> ()
+                SelectableTextBlock.create [
+                    ConstructorUiId.kitStartStatusText.automationAttribute<SelectableTextBlock> ()
                     TextBlock.foreground (MaterialsWindowView.brush MaterialsWindowView.messageColor)
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.text status.value

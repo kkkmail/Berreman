@@ -217,12 +217,12 @@ module PropagationTests =
     [<Fact>]
     let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
         let plateIds =
-            [ SampleIds.activeCrystalPlateId; SampleIds.glassVacuumId; SampleIds.glassPlate1mmId; SampleIds.glassPlate2mmId ]
+            [ SampleIds.activeCrystalPlateId; SampleIds.glassVacuumId; SampleIds.glassPlate1mmId; SampleIds.glassPlate2mmId; SampleIds.langasitePlateSiliconId ]
         for s in seededSamples do
             let w = runWaveLengthFor s
             let system = sampleToSystem (resolveOrFail s) w
             if s.id = SampleIds.multilayerQwId then Assert.Equal(41, List.length system.films)
-            elif s.id = SampleIds.euvMoSiId then Assert.Equal(200, List.length system.films)
+            elif s.id = SampleIds.euvMoSiId || s.id = SampleIds.multilayerGlassPairsId then Assert.Equal(200, List.length system.films)
             elif plateIds |> List.contains s.id then
                 Assert.Empty system.films
                 Assert.True(Option.isSome system.substrate, $"%s{s.name.value} should be a substrate plate")
@@ -467,6 +467,29 @@ module PropagationTests =
                 upper = OpticalProperties.vacuum
                 films = [ { properties = langasiteProps; thickness = Thickness.mm 0.01<mm> } ]
                 substrate = None
+                lower = siliconOpticalProperties.getProperties w
+            }
+        elif s.id = SampleIds.multilayerGlassPairsId then
+            // Spec 0051 `.manual/007` 9.1: MultilayerThinFilm_02.fsx's stack, as the script builds it.
+            let pair =
+                [ { properties = OpticalProperties.transparentGlass175; thickness = Thickness.nm ((600.0 / 1.75 / 4.0) * oneNanometer) }
+                  { properties = OpticalProperties.transparentGlass150; thickness = Thickness.nm ((600.0 / 1.50 / 4.0) * oneNanometer) } ]
+            {
+                description = None
+                upper = OpticalProperties.vacuum
+                films = List.replicate 100 pair |> List.concat
+                substrate = None
+                lower = OpticalProperties.transparentGlass150
+            }
+        elif s.id = SampleIds.langasitePlateSiliconId then
+            // Spec 0051 `.manual/007` 9.1: LangasiteOnSilicon.fsx's substrate, a 10 µm plate on silicon.
+            let langasiteProps =
+                (BuiltinCatalogue.materials () |> List.find (fun e -> e.id = MaterialLibrary.MaterialIds.langasite)).properties.getProperties w
+            {
+                description = None
+                upper = OpticalProperties.vacuum
+                films = []
+                substrate = Some (Substrate.Plate { properties = langasiteProps; thickness = Thickness.mm 0.01<mm> })
                 lower = siliconOpticalProperties.getProperties w
             }
         else failwith ($"no legacy expectation for sample %s{s.name.value}")

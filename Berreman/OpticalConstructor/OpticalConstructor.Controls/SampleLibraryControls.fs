@@ -12,8 +12,8 @@ open Avalonia.FuncUI.Types
 /// The reusable SAMPLES control (Spec 0033, step 016 — UICOMP_XDUO_0002, the samples-workbench
 /// list surface): a searchable samples list with a search box, a substrate-kind facet selector,
 /// Add / Edit / Remove / View verbs over the selected entry, and the multilayer entry point (the
-/// "make a multilayer" creation flow). This control is DOMAIN-FREE (matching `MaterialsControls` /
-/// `LibraryControls`): the host runs the search seam (`SampleProxy.searchSamples` over a
+/// "make a multilayer" creation flow). This control is DOMAIN-FREE (matching `MaterialsControls`):
+/// the host runs the search seam (`SampleProxy.searchSamples` over a
 /// `SampleQuery`) and flattens the result into `Row`s and the substrate facet into
 /// `FacetOption`s; the control renders the rows it is given and never touches a proxy. Behaviour
 /// is injected as a `Handlers` function record (the functional-proxy seam; tests pass stubs).

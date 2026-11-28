@@ -25,7 +25,7 @@ open Avalonia.FuncUI.Elmish
 open global.Elmish
 open OpticalConstructor.Ui.Tests.UiDriver.ById
 
-/// The slot bar above the Main table, mounted in `mainView` and driven through its messages, its keyboard and its
+/// The slot bar above the Main table, mounted in `UiDriver.editableTableView` and driven through its messages, its keyboard and its
 /// presses: a chip per slot in light order, the open chip's fitting items, Tab and letters, swaps and Record experiment
 /// (spec 0050 S8.4; 001 §J, §O).
 module SlotBarTests =
@@ -127,7 +127,7 @@ module SlotBarTests =
             sample = sample
         }
 
-    /// Shows `mainView` over `model` headless at 1000 × 900, as `ScrollExtentTests.constructorWindow` mounts it, keeping
+    /// Shows `UiDriver.editableTableView` over `model` headless at 1000 × 900, as `ScrollExtentTests.constructorWindow` mounts it, keeping
     /// every model the program answers in order; runs `check` over the window and those models, then closes it.
     let internal withMainWindow
         (model : TableAndElementRotationModel)
@@ -139,7 +139,30 @@ module SlotBarTests =
             answered.Add next
             next
         let window = HostWindow()
-        Program.mkSimple (fun () -> model) recordingUpdate mainView |> Program.withHost window |> Program.run
+        Program.mkSimple (fun () -> model) recordingUpdate UiDriver.editableTableView |> Program.withHost window |> Program.run
+        window.Width <- 1000.0
+        window.Height <- 900.0
+        try
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            check window answered
+        finally
+            window.Close()
+            Dispatcher.UIThread.RunJobs()
+
+    /// `model` in the kit window's own content, the page row and the page it shows, every answered model recorded (spec
+    /// 0051 `.manual/007` 2.1).
+    let internal withKitWindow
+        (model : TableAndElementRotationModel)
+        (check : Window -> ResizeArray<TableAndElementRotationModel> -> unit)
+        : unit =
+        let answered = ResizeArray<TableAndElementRotationModel> ()
+        let recordingUpdate (msg : TableAndElementRotationMsg) (current : TableAndElementRotationModel) : TableAndElementRotationModel =
+            let next = updateTableAndElementRotation msg current
+            answered.Add next
+            next
+        let window = HostWindow()
+        Program.mkSimple (fun () -> model) recordingUpdate KitWindowView.kitWindowView |> Program.withHost window |> Program.run
         window.Width <- 1000.0
         window.Height <- 900.0
         try
@@ -180,8 +203,6 @@ module SlotBarTests =
     let ``the slot bar UiIds are the stable intent-named ids`` () : unit =
         Assert.Equal("SlotBar", ConstructorUiId.slotBar.value)
         Assert.Equal("SlotChipChoiceList", ConstructorUiId.slotChipChoiceList.value)
-        Assert.Equal("RecordExperimentButton", ConstructorUiId.recordExperimentButton.value)
-        Assert.Equal("SetupGridOpenButton", ConstructorUiId.setupGridOpenButton.value)
         Assert.Equal("SlotChip_Source", (ConstructorUiId.slotChip SourceSlotRole).value)
         Assert.Equal("SlotChip_Prep1", (ConstructorUiId.slotChip (PrepSlotRole (SlotPosition 1))).value)
         Assert.Equal("SlotChip_Obj2", (ConstructorUiId.slotChip (ObjectSlotRole (SlotPosition 2))).value)
@@ -244,7 +265,7 @@ module SlotBarTests =
                     Assert.NotEqual(PositiveCommand.fill, fillOf (List.item 1 listed)))
                 withMainWindow (held.table |> update (ToggleSlotChip detector)) (fun window _ ->
                     let list = Assert.IsType<WrapPanel>(findControl window ConstructorUiId.slotChipChoiceList)
-                    Assert.Equal("No item of this kit fits Detector 1.", Assert.IsType<TextBlock>(Assert.Single(list.Children)).Text))))
+                    Assert.Equal("No item of this kit fits Detector 1.", Assert.IsAssignableFrom<TextBlock>(Assert.Single(list.Children)).Text))))
 
     [<Fact>]
     let ``Tab moves between the chips in light order, and a typed letter picks the next fitting item`` () : unit =
@@ -283,26 +304,30 @@ module SlotBarTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``pressing a chip and an item swaps the table to a kit setup that holds it`` () : unit =
+    let ``pressing a chip and an item puts the item in its slot, and the kit holds nothing until Create`` () : unit =
+        // Spec 0051 `.manual/007` 5.3, D9: a chip fills the draft's slot (`AssignSlot`); `SwapSlot` is gone.
         HeadlessSession.run (fun () ->
             withScene (fun scene ->
                 let held = barTable scene
                 let qz2 = itemLabelled (ItemLabel "QZ2") held.table
-                withMainWindow held.table (fun window _ ->
+                let setupsBefore = held.table.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess
+                withMainWindow held.table (fun window answered ->
                     assertAbsent window ConstructorUiId.slotChipChoiceList
                     clickOn window (ConstructorUiId.slotChip objectRole)
                     Assert.Same(box (findControl window (ConstructorUiId.slotChip objectRole)), focusedIn window)
                     Assert.IsType<WrapPanel>(findControl window ConstructorUiId.slotChipChoiceList) |> ignore
                     clickOn window (ConstructorUiId.slotChipChoice objectRole qz2)
                     assertAbsent window ConstructorUiId.slotChipChoiceList
-                    Assert.Equal("Obj 1: QZ2 @ 45° ▾", captionOf window (ConstructorUiId.slotChip objectRole)))
-                let setup = Assert.Single(held.table.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess)
-                let sampleSlot = setup.slots |> List.find (fun slot -> slot.id = held.sample)
-                Assert.Equal<ItemId option>(Some qz2, sampleSlot.content.itemOpt)))
+                    Assert.Equal("Obj 1: QZ2 @ 45° ▾", captionOf window (ConstructorUiId.slotChip objectRole))
+                    let latest = Seq.last answered
+                    let sampleSlot = latest.elements |> List.find (fun slot -> slot.id = held.sample)
+                    Assert.Equal<ItemId option>(Some qz2, sampleSlot.content.itemOpt))
+                Assert.Equal<Setups.Setup list>(setupsBefore, held.table.kit.proxy.readSetups () |> SceneTestFixture.kitSuccess)))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``pressing Record experiment twice records two experiments over the active setup`` () : unit =
+    let ``creating two experiments over the chosen setup records both, the second after the same-setup warning`` () : unit =
+        // Spec 0051 `.manual/007` 6.4, 6.5: New experiment over the chosen setup; a second over the same setup asks first.
         HeadlessSession.run (fun () ->
             withScene (fun scene ->
                 let held = barTable scene
@@ -310,11 +335,20 @@ module SlotBarTests =
                     held.table
                     |> update (SetSetupName (ControlCaption "Bench"))
                     |> update CreateSetup
-                    |> update (ExpChooseElement held.polarizer)
+                    |> update (ShowFlowStep ExperimentsFlowStep)
                 Assert.Equal<SetupName option>(Some (SetupName "Bench"), ready.activeSetupOpt |> Option.map (fun setup -> setup.name))
-                withMainWindow ready (fun window _ ->
-                    clickOn window ConstructorUiId.recordExperimentButton
-                    clickOn window ConstructorUiId.recordExperimentButton)
+                withKitWindow ready (fun window answered ->
+                    let latest () : TableAndElementRotationModel = Seq.last answered
+                    clickOn window ConstructorUiId.newExperimentButton
+                    clickOn window (ConstructorUiId.experimentCandidate held.polarizer.uiKey)
+                    clickOn window ConstructorUiId.pageSaveButton
+                    clickOn window ConstructorUiId.newExperimentButton
+                    clickOn window (ConstructorUiId.experimentCandidate held.polarizer.uiKey)
+                    clickOn window ConstructorUiId.pageSaveButton
+                    match (latest ()).sameSetupWarningOpt with
+                    | Some _ -> ()
+                    | None -> Assert.Fail "a second experiment over the setup asks first"
+                    clickOn window ConstructorUiId.sameSetupOkButton)
                 let recorded = ready.kit.proxy.readExperiments () |> SceneTestFixture.kitSuccess
                 Assert.Equal<Experiments.ExperimentId list>(
                     [ Experiments.ExperimentId 1; Experiments.ExperimentId 2 ],

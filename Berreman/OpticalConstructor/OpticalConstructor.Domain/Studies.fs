@@ -956,6 +956,23 @@ module Studies =
         /// The study with the reviewer's notes in place of its own (spec 0050 S11.1; 001 §E).
         member this.withNotes (notes : StudyNotes) : Study = { this with notes = notes }
 
+        /// The study with `previous` renamed `renamed` wherever it names the experiment: its list, its weights and what
+        /// it leaves out (spec 0051 `.manual/007` 1.3).
+        member this.withExperimentRenamed (previous : ExperimentName) (renamed : ExperimentName) : Study =
+            let rename (name : ExperimentName) : ExperimentName = if name = previous then renamed else name
+            {
+                this with
+                    experiments = this.experiments |> List.map rename
+                    settings =
+                        {
+                            this.settings with
+                                experimentWeights =
+                                    this.settings.experimentWeights
+                                    |> List.map (fun setting -> { setting with experiment = rename setting.experiment })
+                                disabled = this.settings.disabled |> List.map rename
+                        }
+            }
+
         /// The study's experiments without the disabled ones, in study order (spec 0050 S11.1; 001 §L).
         member this.enabledExperiments : ExperimentName list =
             this.experiments |> List.filter (fun run -> not (List.contains run this.settings.disabled))

@@ -21,11 +21,6 @@ module ConfigKey =
     [<Literal>]
     let selectWindowsModal = "SelectWindowsModal"
 
-    /// appSettings int (§9.5): the quick-pick bind-directly cutoff. Default 5 —
-    /// `QuickPickThreshold.defaultValue`.
-    [<Literal>]
-    let quickPickThreshold = "QuickPickThreshold"
-
     /// appSettings int (§7.6): the faceted-tree materialization gate. Default 100 —
     /// `TreeAutoBuildThreshold.defaultValue`.
     [<Literal>]
@@ -100,10 +95,6 @@ module WorkbenchSettingsDoors =
                 | Ok setting -> Ok setting
                 | Error _ -> Error $"not a positive count: '{this.value}'"
             | false, _ -> Error $"not a whole number: '{this.value}'"
-
-    type QuickPickThreshold with
-        static member tryCreate (v : AppSettings.ConfigValue) : Result<QuickPickThreshold, string> = v.tryPositiveCount QuickPickThreshold.tryCreate
-        member this.configValue : AppSettings.ConfigValue = AppSettings.ConfigValue $"{this.value}"
 
     type TreeAutoBuildThreshold with
         static member tryCreate (v : AppSettings.ConfigValue) : Result<TreeAutoBuildThreshold, string> = v.tryPositiveCount TreeAutoBuildThreshold.tryCreate
@@ -199,7 +190,6 @@ module AppConfig =
             let settings =
                 {
                     selectWindowModality = readSetting provider (AppSettings.ConfigKey ConfigKey.selectWindowsModal) defaults.selectWindowModality SelectWindowModality.tryCreate _.configValue
-                    quickPickThreshold = readSetting provider (AppSettings.ConfigKey ConfigKey.quickPickThreshold) defaults.quickPickThreshold QuickPickThreshold.tryCreate _.configValue
                     treeAutoBuildThreshold = readSetting provider (AppSettings.ConfigKey ConfigKey.treeAutoBuildThreshold) defaults.treeAutoBuildThreshold TreeAutoBuildThreshold.tryCreate _.configValue
                     thicknessBucketCap = readSetting provider (AppSettings.ConfigKey ConfigKey.thicknessBucketCap) defaults.thicknessBucketCap ThicknessBucketCap.tryCreate _.configValue
                     kitHistoryLimit = readSetting provider (AppSettings.ConfigKey ConfigKey.kitHistoryLimit) defaults.kitHistoryLimit KitHistoryLimit.tryCreate _.configValue
