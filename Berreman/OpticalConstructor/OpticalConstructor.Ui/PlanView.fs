@@ -24,6 +24,7 @@ open OpticalConstructor.Optimization.PlannerRuns
 open OpticalConstructor.Ui.PlanJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitPageFrame
+open OpticalConstructor.Ui.StudyUnknownsView
 
 type ControlCaption with
 
@@ -404,7 +405,7 @@ let planView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
                         yield! ConstructorUiId.planPanel.groupAttributes<StackPanel> ()
                         StackPanel.orientation Orientation.Vertical
                         StackPanel.margin 8.0
-                        StackPanel.children (model.pageHeader dispatch @ StudyUnknownsView.studyContextRows model @ selected)
+                        StackPanel.children (model.pageHeader dispatch @ model.studyContextRows @ selected)
                     ])
             ])
     ] :> IView

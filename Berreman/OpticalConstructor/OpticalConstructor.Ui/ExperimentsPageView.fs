@@ -18,24 +18,6 @@ open OpticalConstructor.Domain.Setups
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitPageFrame
 
-/// A wrapping line of the page.
-let private pageLine (text : ControlCaption) : IView =
-    TextBlock.create [
-        TextBlock.textWrapping TextWrapping.Wrap
-        TextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0))
-        TextBlock.text text.value
-    ]
-    :> IView
-
-/// A semi-bold heading of a block.
-let private pageHeading (text : ControlCaption) : IView =
-    TextBlock.create [
-        TextBlock.fontWeight FontWeight.SemiBold
-        TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
-        TextBlock.text text.value
-    ]
-    :> IView
-
 /// A labelled text field of the edit, docked so its label never leaves the row.
 let private labelledField (label : ControlCaption) (id : ConstructorUiId) (text : ControlCaption) (onChanged : ControlCaption -> unit) : IView =
     DockPanel.create [
@@ -94,25 +76,27 @@ type TableAndElementRotationModel with
             ControlCaption $"Data: {(model.dataBadgeOf experiment).text}"
         ]
 
-/// The experiment's audit trail: one line per setup correction, oldest first; nothing for an experiment never re-pointed
-/// (spec 0050 S9.3; 001 §K).
-let private correctionTrailRows (experiment : Experiments.Experiment) : IView list =
-    match experiment.corrections with
-    | [] -> []
-    | corrections ->
-        [
-            StackPanel.create [
-                yield! ConstructorUiId.dataCorrectionTrail.groupAttributes<StackPanel> ()
-                StackPanel.orientation Orientation.Vertical
-                StackPanel.margin (Thickness(0.0, 2.0, 0.0, 4.0))
-                StackPanel.children (
-                    pageLine (ControlCaption "Setup corrections:")
-                    :: (corrections
-                        |> List.map (fun correction ->
-                            PageControls.copyableLine (ControlCaption $"{correction.previous.describe} → {correction.corrected.describe}: {correction.note.value}") [])))
+type Experiments.Experiment with
+
+    /// The experiment's audit trail: one line per setup correction, oldest first; nothing for an experiment never re-pointed
+    /// (spec 0050 S9.3; 001 §K).
+    member private experiment.correctionTrailRows : IView list =
+        match experiment.corrections with
+        | [] -> []
+        | corrections ->
+            [
+                StackPanel.create [
+                    yield! ConstructorUiId.dataCorrectionTrail.groupAttributes<StackPanel> ()
+                    StackPanel.orientation Orientation.Vertical
+                    StackPanel.margin (Thickness(0.0, 2.0, 0.0, 4.0))
+                    StackPanel.children (
+                        (ControlCaption "Setup corrections:").pageLine
+                        :: (corrections
+                            |> List.map (fun correction ->
+                                PageControls.copyableLine (ControlCaption $"{correction.previous.describe} → {correction.corrected.describe}: {correction.note.value}") [])))
+                ]
+                :> IView
             ]
-            :> IView
-        ]
 
 /// The chosen experiment's verbs: View ↗ (withheld with its reason when there is no chart), Export data, Edit and
 /// Remove, Remove asking first (spec 0051 `.manual/003` 2.3, `.manual/007` 6.2, 6.6).
@@ -191,7 +175,7 @@ let private experimentDetailsRows (model : TableAndElementRotationModel) (experi
         |> String.concat "\n"
     experimentVerbs model experiment dispatch
     @ [ PageControls.copyableText ConstructorUiId.experimentDetailsText (ControlCaption lines) [ SelectableTextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0)) ] ]
-    @ correctionTrailRows experiment
+    @ experiment.correctionTrailRows
 
 /// The chosen experiment's edit in place: the editor over its own setup revision, then its role, session and notes, the
 /// re-point to another revision of its setup with the audit note, then Save and Cancel (spec 0051 `.manual/007` 6.3).
@@ -208,7 +192,7 @@ let private experimentEditRows
         // Spec 0050 S9.3: a re-point is to another setup of the kit, at its current revision.
         let others = model.kitSetups |> List.filter (fun setup -> setup.reference <> experiment.setup)
         match others with
-        | [] -> [ pageLine (ControlCaption "The kit has no other setup to re-point it to.") ]
+        | [] -> [ (ControlCaption "The kit has no other setup to re-point it to.").pageLine ]
         | held ->
             [
                 WrapPanel.create [
@@ -230,14 +214,14 @@ let private experimentEditRows
     ]
     @ exportRows model dispatch
     @ [
-        pageHeading (ControlCaption "Role:")
+        (ControlCaption "Role:").pageHeading
         WrapPanel.create [ WrapPanel.orientation Orientation.Horizontal; WrapPanel.children (Experiments.ExperimentRole.all |> List.map roleBox) ] :> IView
         labelledField (ControlCaption "Session:") ConstructorUiId.experimentSessionField edit.sessionText (SetExperimentDraftSession >> dispatch)
         labelledField (ControlCaption "Notes:") ConstructorUiId.experimentNotesField edit.notesText (SetExperimentDraftNotes >> dispatch)
-        pageHeading (ControlCaption "Its setup revision:")
+        (ControlCaption "Its setup revision:").pageHeading
     ]
     @ repointBoxes
-    @ correctionTrailRows experiment
+    @ experiment.correctionTrailRows
     @ [ model.draftActions (ControlCaption "Save") dispatch ]
 
 /// "E3 and E7 already use setup X. Create another?" with OK, Cancel and Show (spec 0051 `.manual/007` 6.4, D8, D12).
@@ -285,10 +269,10 @@ let experimentsPageView (model : TableAndElementRotationModel) (dispatch : Table
     let body : IView list =
         match model.pageMode, model.setupGridState, model.activeSetupOpt with
         | CreatingPageEntry, Some grid, _ ->
-            [ pageHeading (ControlCaption "New experiments from a setup grid"); SetupGridView.setupGridView grid (setupGridHandlers dispatch) ]
+            [ (ControlCaption "New experiments from a setup grid").pageHeading; SetupGridView.setupGridView grid (setupGridHandlers dispatch) ]
         | CreatingPageEntry, None, Some active ->
             [
-                pageHeading (ControlCaption $"New experiment over {active.name.value}")
+                (ControlCaption $"New experiment over {active.name.value}").pageHeading
                 ExperimentControls.experimentEditorView model.experimentState (experimentHandlers model dispatch)
             ]
             @ exportRows model dispatch
@@ -343,7 +327,7 @@ let experimentsPageView (model : TableAndElementRotationModel) (dispatch : Table
                 | None -> []
             let experiments : IView list =
                 match model.experimentCollection.experiments with
-                | [] -> [ pageLine (ControlCaption "This kit has no experiment yet.") ]
+                | [] -> [ (ControlCaption "This kit has no experiment yet.").pageLine ]
                 | held ->
                     [
                         StackPanel.create [

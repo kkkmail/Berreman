@@ -125,9 +125,11 @@ type ToolTipDelay =
     /// One second.
     static member defaultValue : ToolTipDelay = ToolTipDelay 1000
 
+type OpticalConstructor.Controls.ControlCaption with
+
     /// The delay of the typed milliseconds, none for a text that is not a whole number from 0 to 5000.
-    static member tryParse (text : string) : ToolTipDelay option =
-        match System.Int32.TryParse(text.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
+    member this.toolTipDelayOpt : ToolTipDelay option =
+        match System.Int32.TryParse(this.value.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
         | true, milliseconds when milliseconds >= 0 && milliseconds <= 5000 -> Some (ToolTipDelay milliseconds)
         | _ -> None
 

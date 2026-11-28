@@ -18,15 +18,6 @@ open OpticalConstructor.Domain.Studies
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitPageFrame
 
-/// A semi-bold heading of a block of the page.
-let private studyHeading (text : ControlCaption) : IView =
-    TextBlock.create [
-        TextBlock.fontWeight FontWeight.SemiBold
-        TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
-        TextBlock.text text.value
-    ]
-    :> IView
-
 type TableAndElementRotationModel with
 
     /// The study as the page shows it: its working copy while it is edited, else as held (spec 0051 `.manual/007` 8.2).
@@ -189,7 +180,7 @@ let private studyParameterGrid (model : TableAndElementRotationModel) (study : S
 let private studySessionRows (model : TableAndElementRotationModel) (study : Study) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
     let sessions = study.sessionsIn model.experimentCollection.experiments
     match sessions with
-    | [] -> [ studyHeading (ControlCaption "Sessions and gains:"); PageControls.copyableLine (ControlCaption "This study's experiments form no session.") [] ]
+    | [] -> [ (ControlCaption "Sessions and gains:").pageHeading; PageControls.copyableLine (ControlCaption "This study's experiments form no session.") [] ]
     | _ ->
         let gainCell (session : StudySession) : GridCell =
             let selected = study.gainModelOf session.name
@@ -222,7 +213,7 @@ let private studySessionRows (model : TableAndElementRotationModel) (study : Stu
                         let names = session.experiments |> List.map _.value |> String.concat ", " |> ControlCaption
                         CellsGridRow [ TextGridCell session.name.caption; TextGridCell names; gainCell session ])
             }
-        [ studyHeading (ControlCaption "Sessions and gains:"); PageControls.gridTableView table (fun text -> dispatch (CopyToClipboard text)) ]
+        [ (ControlCaption "Sessions and gains:").pageHeading; PageControls.gridTableView table (fun text -> dispatch (CopyToClipboard text)) ]
 
 /// The edited study's offers: each kit experiment it lacks and each material its items use that it has not opened
 /// (spec 0050 S11.5).
@@ -254,7 +245,7 @@ let private studyOfferRows (model : TableAndElementRotationModel) (study : Study
     | [] -> []
     | offers ->
         [
-            studyHeading (ControlCaption "Add to the study:")
+            (ControlCaption "Add to the study:").pageHeading
             WrapPanel.create [ WrapPanel.children offers ]
             |> View.withKey $"StudyOffers_{study.name.fileStem.value}"
             :> IView
@@ -283,11 +274,11 @@ let private chosenStudyRows (model : TableAndElementRotationModel) (held : Study
     @ [ PageControls.copyableText ConstructorUiId.studyExperimentsText (ControlCaption $"Experiments: {experimentNames}") [] ]
     @ offers
     @ [
-        studyHeading (
+        (
             match model.pageMode with
             | EditingPageEntry -> ControlCaption "Parameters: press a name to edit it."
             | BrowsingPage
-            | CreatingPageEntry -> ControlCaption "Parameters:")
+            | CreatingPageEntry -> ControlCaption "Parameters:").pageHeading
         studyParameterGrid model study dispatch
     ]
     @ studySessionRows model study dispatch
@@ -298,7 +289,7 @@ let private chosenStudyRows (model : TableAndElementRotationModel) (held : Study
 let private newStudyRows (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView list =
     let chosen = model.studySurface.newStudyExperiments
     [
-        studyHeading (ControlCaption "New study")
+        (ControlCaption "New study").pageHeading
         DockPanel.create [
             DockPanel.margin (Thickness(0.0, 2.0, 0.0, 4.0))
             DockPanel.children [
@@ -317,7 +308,7 @@ let private newStudyRows (model : TableAndElementRotationModel) (dispatch : Tabl
                 ]
             ]
         ]
-        studyHeading (ControlCaption "Experiments to fit:")
+        (ControlCaption "Experiments to fit:").pageHeading
         WrapPanel.create [
             WrapPanel.children (
                 model.experimentCollection.experiments
@@ -382,9 +373,11 @@ let studyUnknownsView (model : TableAndElementRotationModel) (dispatch : TableAn
             newVerb @ studies
     pageScroll ConstructorUiId.studyUnknownsPanel (model.pageHeader dispatch @ body)
 
-/// The line heading Plan, Fit and Results: the study chosen on Unknowns, the page's context, or why the page needs one
-/// (spec 0051 `.manual/007` 8.1).
-let studyContextRows (model : TableAndElementRotationModel) : IView list =
-    match model.selectedStudyOpt with
-    | Some study -> [ PageControls.copyableText ConstructorUiId.studyContextText (ControlCaption $"Study: {study.name.value}") [ SelectableTextBlock.fontWeight FontWeight.SemiBold ] ]
-    | None -> [ PageControls.copyableText ConstructorUiId.studyContextText (ControlCaption "Choose a study in Unknowns first: press Unknowns, then the study.") [] ]
+type TableAndElementRotationModel with
+
+    /// The line heading Plan, Fit and Results: the study chosen on Unknowns, the page's context, or why the page needs one
+    /// (spec 0051 `.manual/007` 8.1).
+    member model.studyContextRows : IView list =
+        match model.selectedStudyOpt with
+        | Some study -> [ PageControls.copyableText ConstructorUiId.studyContextText (ControlCaption $"Study: {study.name.value}") [ SelectableTextBlock.fontWeight FontWeight.SemiBold ] ]
+        | None -> [ PageControls.copyableText ConstructorUiId.studyContextText (ControlCaption "Choose a study in Unknowns first: press Unknowns, then the study.") [] ]

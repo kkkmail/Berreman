@@ -539,6 +539,11 @@ module ConstructorUiIdOfDomain =
         /// The notes as the Experiments bay's Notes field shows them (spec 0050 S9.1).
         member this.caption : ControlCaption = ControlCaption this.value
 
+    type Kit.ItemNotes with
+
+        /// The notes as an item's Notes field shows them (spec 0050 S7.1; 0051 `.manual/007` 4.2).
+        member this.caption : ControlCaption = ControlCaption this.value
+
     type Kit.SetupName with
 
         /// The setup name as its saved-setup button's caption (spec 0050 S8.2).

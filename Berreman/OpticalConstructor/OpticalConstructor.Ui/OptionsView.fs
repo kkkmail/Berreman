@@ -63,7 +63,7 @@ type OptionsModel =
     }
 
     /// The delay the text reads as, when it reads.
-    member this.typedDelayOpt : ToolTipDelay option = ToolTipDelay.tryParse this.delayText.value
+    member this.typedDelayOpt : ToolTipDelay option = this.delayText.toolTipDelayOpt
 
     /// Whether the typed delay differs from the saved one.
     member this.draftState : TableAndElementRotationView.DraftState =

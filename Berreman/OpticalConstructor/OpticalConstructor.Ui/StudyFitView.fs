@@ -20,48 +20,42 @@ open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Ui.StudyFitJob
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitPageFrame
+open OpticalConstructor.Ui.StudyUnknownsView
 
-/// A semi-bold heading of a block of the page.
-let private fitHeading (text : ControlCaption) : IView =
-    TextBlock.create [
-        TextBlock.fontWeight FontWeight.SemiBold
-        TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
-        TextBlock.text text.value
-    ]
-    :> IView
+type TableAndElementRotationModel with
 
-/// Each experiment's check before the fit: ready with its point count, or why it is not (spec 0050 S11.5).
-let private prefitRows (model : TableAndElementRotationModel) : IView list =
-    let prefits : IView list =
-        match model.studyPrefitsOpt with
-        | None | Some (Ok []) -> [ PageControls.copyableLine (ControlCaption "The study holds no run a fit reads.") [] ]
-        | Some (Error error) ->
-            [ PageControls.copyableLine (ControlCaption error.describe) [ SelectableTextBlock.foreground (SolidColorBrush MaterialsWindowView.messageColor) ] ]
-        | Some (Ok checks) ->
-            checks |> List.map (fun prefit ->
-                let status =
-                    match prefit.check with
-                    | Ok points -> $"ready, {points.pointCount.value} point(s)"
-                    | Error error -> error.describe
-                let changed =
-                    match prefit.changeOpt with
-                    | None | Some DataUnchangedFlag -> ""
-                    | Some flag -> $" — {flag.text}"
-                let caption = ControlCaption $"{prefit.experiment.name.value}: {status}{changed}"
-                PageControls.copyableText (ConstructorUiId.studyPrefitRow prefit.experiment.name) caption [
-                    match prefit.check with
-                    | Error _ -> SelectableTextBlock.foreground (SolidColorBrush MaterialsWindowView.messageColor)
-                    | Ok _ -> SelectableTextBlock.foreground (SolidColorBrush(Color.FromRgb(40uy, 40uy, 40uy)))
-                ])
-    [
-        fitHeading (ControlCaption "Before the fit:")
-        StackPanel.create [
-            yield! ConstructorUiId.studyPrefitList.groupAttributes<StackPanel> ()
-            AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Before the fit", ValueNone)
-            StackPanel.children prefits
+    /// Each experiment's check before the fit: ready with its point count, or why it is not (spec 0050 S11.5).
+    member private model.prefitRows : IView list =
+        let prefits : IView list =
+            match model.studyPrefitsOpt with
+            | None | Some (Ok []) -> [ PageControls.copyableLine (ControlCaption "The study holds no run a fit reads.") [] ]
+            | Some (Error error) ->
+                [ PageControls.copyableLine (ControlCaption error.describe) [ SelectableTextBlock.foreground (SolidColorBrush MaterialsWindowView.messageColor) ] ]
+            | Some (Ok checks) ->
+                checks |> List.map (fun prefit ->
+                    let status =
+                        match prefit.check with
+                        | Ok points -> $"ready, {points.pointCount.value} point(s)"
+                        | Error error -> error.describe
+                    let changed =
+                        match prefit.changeOpt with
+                        | None | Some DataUnchangedFlag -> ""
+                        | Some flag -> $" — {flag.text}"
+                    let caption = ControlCaption $"{prefit.experiment.name.value}: {status}{changed}"
+                    PageControls.copyableText (ConstructorUiId.studyPrefitRow prefit.experiment.name) caption [
+                        match prefit.check with
+                        | Error _ -> SelectableTextBlock.foreground (SolidColorBrush MaterialsWindowView.messageColor)
+                        | Ok _ -> SelectableTextBlock.foreground (SolidColorBrush(Color.FromRgb(40uy, 40uy, 40uy)))
+                    ])
+        [
+            (ControlCaption "Before the fit:").pageHeading
+            StackPanel.create [
+                yield! ConstructorUiId.studyPrefitList.groupAttributes<StackPanel> ()
+                AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Before the fit", ValueNone)
+                StackPanel.children prefits
+            ]
+            :> IView
         ]
-        :> IView
-    ]
 
 /// The New fit run… form: the checks, the fit mode, how stage 2 holds the calibration, then a Run per stage and Cancel;
 /// the study takes the form's settings when a run starts (spec 0050 S11.3, S11.5; 0051 `.manual/007` 8.4).
@@ -104,11 +98,11 @@ let private newFitRunRows (model : TableAndElementRotationModel) (study : Study)
             |> View.withKey $"StudyFitActions_{study.name.fileStem.value}_{draft.mode.value}_{draft.calibrationUse.value}"
             :> IView
         ]
-    [ fitHeading (ControlCaption "New fit run") ]
-    @ prefitRows model
-    @ [ fitHeading (ControlCaption "Fit mode:"); modeChoices ]
+    [ (ControlCaption "New fit run").pageHeading ]
+    @ model.prefitRows
+    @ [ (ControlCaption "Fit mode:").pageHeading; modeChoices ]
     @ (match draft.mode with
-       | StagedFit -> [ fitHeading (ControlCaption "Stage 2 holds the calibration:"); calibration ]
+       | StagedFit -> [ (ControlCaption "Stage 2 holds the calibration:").pageHeading; calibration ]
        | JointFit -> [])
     @ runs
 
@@ -179,7 +173,7 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                 | [] -> [ PageControls.copyableLine (ControlCaption "No fit run yet: New fit run… runs the study.") [] ]
                 | runs ->
                     [
-                        fitHeading (ControlCaption "Fit runs:")
+                        (ControlCaption "Fit runs:").pageHeading
                         StackPanel.create [
                             yield! ConstructorUiId.fitRunHistory.groupAttributes<StackPanel> ()
                             AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Fit runs", ValueNone)
@@ -188,4 +182,4 @@ let studyFitView (model : TableAndElementRotationModel) (dispatch : TableAndElem
                         :> IView
                     ]
             newRun @ fitProgressRows model dispatch @ history
-    pageScroll ConstructorUiId.studyFitPanel (model.pageHeader dispatch @ StudyUnknownsView.studyContextRows model @ body)
+    pageScroll ConstructorUiId.studyFitPanel (model.pageHeader dispatch @ model.studyContextRows @ body)

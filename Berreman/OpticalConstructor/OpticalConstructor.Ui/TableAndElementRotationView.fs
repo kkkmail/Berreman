@@ -1278,6 +1278,27 @@ type DataFileAttachParam =
         rows : DataRowSelection
     }
 
+/// A setup's rename: the name it has and the one it takes (spec 0051 `.manual/007` 1.3).
+type SetupRename =
+    {
+        setupBefore : SetupName
+        setupAfter : SetupName
+    }
+
+/// A study's rename: the name it has and the one it takes (spec 0051 `.manual/007` 1.3, D13).
+type StudyRename =
+    {
+        studyBefore : StudyName
+        studyAfter : StudyName
+    }
+
+/// A setup's copy: the setup copied and the copy's name (spec 0051 `.manual/007` 5.4).
+type SetupCopy =
+    {
+        copiedSetup : SetupName
+        copyName : SetupName
+    }
+
 type TableAndElementRotationMsg =
     /// The chosen entry's Edit: the page enters Editing over a draft of it (spec 0051 `.manual/007` 1.2).
     | BeginPageEdit
@@ -1305,11 +1326,11 @@ type TableAndElementRotationMsg =
     | CancelRename
     /// Renames a setup, re-pointing every experiment over any of its revisions: the rename's Save, and how a test
     /// renames one (spec 0051 `.manual/007` 1.3).
-    | RenameSetup of SetupName * SetupName
+    | RenameSetup of SetupRename
     /// Renames an experiment and re-points every study that lists it (spec 0051 `.manual/007` 1.3).
     | RenameExperiment of Experiments.ExperimentId * Experiments.ExperimentName
     /// Renames a study that has no fit run (spec 0051 `.manual/007` 1.3, D13).
-    | RenameStudy of StudyName * StudyName
+    | RenameStudy of StudyRename
     /// The edited item's label as typed (spec 0051 `.manual/007` 4.2).
     | SetItemDraftLabel of ControlCaption
     /// The edited item's notes as typed (spec 0051 `.manual/007` 4.2).
@@ -1324,7 +1345,7 @@ type TableAndElementRotationMsg =
     | BeginSetupCopy
     /// Copies a setup's slots under a new name as revision 1: Copy…'s Create, and how a test copies one (spec 0051
     /// `.manual/007` 5.4).
-    | CopySetup of SetupName * SetupName
+    | CopySetup of SetupCopy
     /// A press of an experiment's row: chosen, or unchosen when it is (spec 0051 `.manual/007` 6.2).
     | ChooseExperiment of Experiments.ExperimentId
     /// The edited experiment's role (spec 0051 `.manual/007` 6.3).
@@ -2966,6 +2987,9 @@ type ControlCaption with
     /// The typed text as an experiment's notes (spec 0050 S9.1).
     member private this.toExperimentNotes : Experiments.ExperimentNotes = Experiments.ExperimentNotes this.value
 
+    /// The typed text as an item's notes (spec 0050 S7.1).
+    member private this.toItemNotes : ItemNotes = ItemNotes this.value
+
 /// The model kept, telling `status`: a refused Data step write's answer, which writes nothing (spec 0050 S9.3).
 let private refusedWith (status : ControlCaption) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     {
@@ -3408,7 +3432,7 @@ type TableAndElementRotationModel with
                     {
                         itemId = item.id
                         labelText = item.label.caption
-                        notesText = ControlCaption item.notes.value
+                        notesText = item.notes.caption
                         photo = KeepItemPhoto
                         parameters = item.parameters
                     }
@@ -3517,12 +3541,14 @@ type TableAndElementRotationModel with
         | BrowsingPage, (DataFlowStep | PlanFlowStep | ResultsFlowStep | KitFlowStep)
         | (EditingPageEntry | CreatingPageEntry), _ -> model
 
-/// The library context the window records kit files through (spec 0050 S4.3).
-let private libraryOf (model : TableAndElementRotationModel) : KitLibraryContext =
-    {
-        kit = model.kit
-        imports = model.catalogueImports
-    }
+type TableAndElementRotationModel with
+
+    /// The library context the window records kit files through (spec 0050 S4.3).
+    member internal model.kitLibraryContext : KitLibraryContext =
+        {
+            kit = model.kit
+            imports = model.catalogueImports
+        }
 
 /// Copies the setup's slots under `name` as revision 1, chosen and drawn; a name another setup's file holds is refused
 /// (spec 0051 `.manual/007` 5.4).
@@ -3534,7 +3560,7 @@ let private withSetupCopied (source : SetupName) (name : SetupName) (model : Tab
             match Setups.Setup.create name held.slots model.kitSetups with
             | Error error -> model |> refusedWith (ControlCaption $"Not copied — {error.describe}")
             | Ok copy ->
-                match (libraryOf model).recordSetup copy with
+                match model.kitLibraryContext.recordSetup copy with
                 | Error error -> model |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
                 | Ok () ->
                     {
@@ -3557,7 +3583,7 @@ let private withSetupRenamed (previous : SetupName) (renamed : SetupName) (model
         | Some _, Some other -> model |> refusedWith (ControlCaption $"Not renamed — '{renamed.value}' is stored as the file of setup '{other.name.value}'.")
         | Some held, None when held.name = renamed -> model
         | Some held, None ->
-            let library = libraryOf model
+            let library = model.kitLibraryContext
             let setup = { held with name = renamed }
             let repointed = model.experimentsOverSetup previous |> List.map (fun experiment -> experiment.withSetupRenamed previous renamed)
             let sameFile = System.String.Equals(previous.fileStem.value, renamed.fileStem.value, System.StringComparison.OrdinalIgnoreCase)
@@ -3597,7 +3623,7 @@ let private withExperimentRenamed (id : Experiments.ExperimentId) (renamed : Exp
         | Some _, Some other -> model |> refusedWith (ControlCaption $"Not renamed — '{renamed.value}' is stored as the file of experiment '{other.name.value}'.")
         | Some held, None when held.name = renamed -> model
         | Some held, None ->
-            let library = libraryOf model
+            let library = model.kitLibraryContext
             let previous = held.name
             let experiment = { held with name = renamed }
             let studies =
@@ -3644,7 +3670,7 @@ let private withStudyRenamed (previous : StudyName) (renamed : StudyName) (model
             let deleteOld () : Result<unit, KitLibraryError> = model.kit.proxy.deleteKindFile StudyKitFile previous.fileStem |> Result.mapError KitLibraryKitErr
             let written =
                 (if sameFile then deleteOld () else Ok ())
-                |> Result.bind (fun () -> (libraryOf model).recordStudy study)
+                |> Result.bind (fun () -> model.kitLibraryContext.recordStudy study)
                 |> Result.bind (fun () -> if sameFile then Ok () else deleteOld ())
             match written with
             | Error error -> model |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
@@ -3675,7 +3701,7 @@ let private withItemDraftRecorded (draft : ItemEditDraft) (model : TableAndEleme
                 | Ok _ -> Ok held
                 | Error error -> Error (ItemEditRefusedErr error)
             labelled
-            |> Result.map (fun item -> item.withNotes (ItemNotes draft.notesText.value))
+            |> Result.map (fun item -> item.withNotes draft.notesText.toItemNotes)
             |> Result.bind (fun item ->
                 match draft.photo with
                 | KeepItemPhoto -> Ok item
@@ -3693,6 +3719,184 @@ let private withItemDraftRecorded (draft : ItemEditDraft) (model : TableAndEleme
                     (Ok item)))
         (fun recorded -> recorded)
 
+/// Whether a page's write was refused: its status turned to a refusal since the model it was made from (spec 0051
+/// `.manual/007` 1.2).
+type PageWriteOutcome =
+    | PageWriteRefused
+    | PageWriteAccepted
+
+/// The page rules' helpers the update calls, each handed the update itself where it needs to send a message (spec
+/// 0051 `.manual/007` 1.2).
+type TableAndElementRotationModel with
+
+    /// Refused when this model's status turned to a refusal that `before` did not hold (spec 0051 `.manual/007` 1.2).
+    member internal after.writeOutcomeSince (before : TableAndElementRotationModel) : PageWriteOutcome =
+        match after.kitStatus with
+        | Some (KitStatusRefused _) when after.kitStatus <> before.kitStatus -> PageWriteRefused
+        | Some (KitStatusRefused _)
+        | Some (KitStatusDone _)
+        | None -> PageWriteAccepted
+
+    /// The shown page with its draft dropped and Browsing again, the table back on the chosen setup and the editor on a
+    /// fresh draft; it writes nothing (spec 0051 `.manual/007` 1.2).
+    member internal model.droppedPageDraftWith (update : TableAndElementRotationMsg -> TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
+        let cleared =
+            {
+                model with
+                    pageMode = BrowsingPage
+                    leaveQuestionOpt = None
+                    renameOpt = None
+                    itemEditOpt = None
+                    parameterEditOpt = None
+                    addItemFormOpt = None
+                    setupCreationOpt = None
+                    sameSetupWarningOpt = None
+                    dataEditOpt = None
+                    studyEditOpt = None
+                    setupGridOpt = None
+                    dataSplitOpt = None
+                    fitRunDraftOpt = None
+                    namingTemplateText = model.kit.kitFile.namingTemplate.caption
+                    studySurface = { model.studySurface with newStudyName = ControlCaption ""; newStudyExperiments = [] }
+            }
+        match model.pageMode, model.flowStep with
+        | (EditingPageEntry | CreatingPageEntry), (SetupsFlowStep | ExperimentsFlowStep) ->
+            let chosen =
+                match model.experimentEditOpt with
+                | Some edit -> edit.setupBeforeOpt
+                | None -> model.activeSetupOpt |> Option.map (fun setup -> setup.name)
+            let restored =
+                match chosen with
+                | Some name -> { update (ActivateSetup name) cleared with kitStatus = model.kitStatus }
+                | None -> { cleared with activeSetupOpt = None }
+            {
+                restored with
+                    experimentCollection = restored.experimentCollection.newDraft
+                    experimentEditOpt = None
+            }
+        | _ -> cleared
+
+    /// The new experiment of the draft over the chosen setup, chosen once written (spec 0051 `.manual/007` 6.4).
+    member internal model.committedNewExperimentWith (update : TableAndElementRotationMsg -> TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
+        let before = model.experimentCollection.experiments |> List.map (fun experiment -> experiment.id)
+        let committed = update RecordExperiment model
+        match committed.experimentCollection.experiments |> List.tryFind (fun experiment -> not (List.contains experiment.id before)) with
+        | Some created ->
+            {
+                ({ committed with pageMode = BrowsingPage }).droppedPageDraftWith update with
+                    chosenExperimentOpt = Some created.id
+                    kitStatus = Some (KitStatusDone (ControlCaption $"Created experiment '{created.name.value}'."))
+            }
+        | None -> committed
+
+    /// Save or Create: the shown page's draft written once, then Browsing with the entry chosen; a refused write keeps the
+    /// draft and says why (spec 0051 `.manual/007` 1.2).
+    member internal model.committedPageDraftWith (update : TableAndElementRotationMsg -> TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
+        let browsingUnlessRefused (written : TableAndElementRotationModel) (onDone : TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
+            if written.writeOutcomeSince model = PageWriteRefused then written else onDone written
+        match model.pageMode, model.flowStep with
+        | EditingPageEntry, ItemsFlowStep ->
+            match model.itemEditOpt with
+            | None -> model
+            | Some draft ->
+                let written = model |> withItemDraftRecorded draft
+                browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; itemEditOpt = None; parameterEditOpt = None })
+        | EditingPageEntry, SetupsFlowStep ->
+            browsingUnlessRefused (update SaveSetup model) (fun saved -> { saved with pageMode = BrowsingPage })
+        | EditingPageEntry, ExperimentsFlowStep ->
+            match model.experimentEditOpt with
+            | None -> model
+            | Some edit ->
+                let committed = update ExpCommit model
+                let bookkept =
+                    if committed.writeOutcomeSince model = PageWriteRefused then committed
+                    else
+                        match committed.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = edit.experimentId) with
+                        | Some held ->
+                            let changed =
+                                (held.withRole edit.role).withSessionOpt (ExperimentSessionName.tryCreate edit.sessionText.value)
+                                |> fun experiment -> experiment.withNotes edit.notesText.toExperimentNotes
+                            if changed = held then committed else committed |> withExperimentRecorded changed (fun recorded -> recorded)
+                        | None -> committed
+                let repointed =
+                    match edit.repointOpt with
+                    | Some reference when bookkept.writeOutcomeSince model = PageWriteAccepted ->
+                        update (CorrectSetup (edit.experimentId, reference, model.dataDraft.correctionNote)) bookkept
+                    | Some _
+                    | None -> bookkept
+                browsingUnlessRefused repointed (fun saved ->
+                    { saved.droppedPageDraftWith update with kitStatus = Some (KitStatusDone (ControlCaption "Saved the experiment.")) })
+        | EditingPageEntry, DataFlowStep ->
+            match model.dataEditOpt with
+            | None -> model
+            | Some edit ->
+                match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = edit.experimentId) with
+                | Some held ->
+                    match held.dataOpt with
+                    | Some data ->
+                        let changed = { held with dataOpt = Some { data with exclusions = edit.exclusions } }
+                        let written = model |> withExperimentDataRecorded changed (ControlCaption $"Saved the exclusions of {held.name.value}.")
+                        browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; dataEditOpt = None })
+                    | None -> model
+                | None -> model
+        | EditingPageEntry, UnknownsFlowStep ->
+            match model.studyEditOpt with
+            | None -> model
+            | Some edit ->
+                let itemsWritten =
+                    edit.items
+                    |> List.filter (fun item -> not (List.contains item model.kitItems))
+                    |> List.fold (fun held item -> held |> recordKitItemEdit item.id (fun _ -> Ok item) (fun recorded -> recorded)) model
+                let written =
+                    if itemsWritten.writeOutcomeSince model = PageWriteRefused || edit.draft = edit.baseline then itemsWritten
+                    else
+                        match itemsWritten.kitLibraryContext.recordStudy edit.draft with
+                        | Ok () ->
+                            {
+                                itemsWritten with
+                                    kitStudies =
+                                        edit.draft :: (itemsWritten.kitStudies |> List.filter (fun held -> held.name <> edit.draft.name))
+                                        |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
+                                    kitStatus = Some (KitStatusDone (ControlCaption $"Saved study '{edit.draft.name.value}'."))
+                            }
+                        | Error error -> itemsWritten |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
+                browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; studyEditOpt = None; parameterEditOpt = None })
+        | EditingPageEntry, KitFlowStep ->
+            browsingUnlessRefused (update SaveNamingTemplate model) (fun saved -> { saved with pageMode = BrowsingPage })
+        | CreatingPageEntry, ItemsFlowStep ->
+            match model.addItemFormOpt |> Option.bind (fun form -> form.itemDraftOpt) with
+            | Some draft -> browsingUnlessRefused (update (AddItem draft) model) (fun added -> { added with pageMode = BrowsingPage })
+            | None -> model
+        | CreatingPageEntry, SetupsFlowStep ->
+            match model.setupCreationOpt with
+            | Some NewSetupCreation ->
+                browsingUnlessRefused (update CreateSetup model) (fun created -> { created with pageMode = BrowsingPage; setupCreationOpt = None; setupName = ControlCaption "" })
+            | Some (CopySetupCreation source) ->
+                match SetupName.tryCreate model.setupName.value with
+                | Ok name ->
+                    browsingUnlessRefused (update (CopySetup { copiedSetup = source; copyName = name }) model) (fun copied ->
+                        { copied with pageMode = BrowsingPage; setupCreationOpt = None; setupName = ControlCaption "" })
+                | Error error -> model |> refusedWith (ControlCaption $"Not copied — {error.describe}")
+            | None -> model
+        | CreatingPageEntry, ExperimentsFlowStep ->
+            match model.activeSetupOpt with
+            | Some active ->
+                match model.experimentsOverSetup active.name with
+                | [] -> model.committedNewExperimentWith update
+                | held -> { model with sameSetupWarningOpt = Some (held |> List.map (fun experiment -> experiment.id)) }
+            | None -> model
+        | CreatingPageEntry, DataFlowStep ->
+            browsingUnlessRefused (update MatchByTemplate model) (fun matched -> { matched with pageMode = BrowsingPage })
+        | CreatingPageEntry, UnknownsFlowStep ->
+            match StudyName.tryCreate model.studySurface.newStudyName.value with
+            | Ok name ->
+                browsingUnlessRefused (update (StudyCommand (CreateStudy (name, model.studySurface.newStudyExperiments))) model) (fun created ->
+                    { created with pageMode = BrowsingPage })
+            | Error error -> model |> refusedWith (ControlCaption $"Not created — {error.describe}")
+        | BrowsingPage, _
+        | (EditingPageEntry | CreatingPageEntry), (PlanFlowStep | FitFlowStep | ResultsFlowStep)
+        | CreatingPageEntry, KitFlowStep -> model
+
 // `rec` (spec 0038 step 017): the BindValueId arm delegates to the one targeted commit arm (`BindValueIdTo`).
 let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : TableAndElementRotationModel) : TableAndElementRotationModel =
     match msg with
@@ -3702,9 +3906,9 @@ let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : Tabl
         model
     | BeginPageEdit -> model.withPageEditBegun (fun message held -> updateWorkbench message held)
     | BeginPageCreate -> model.withPageCreateBegun (fun message held -> updateWorkbench message held)
-    | CommitPageDraft -> model |> committedPageDraft
+    | CommitPageDraft -> model.committedPageDraftWith updateWorkbench
     // The wrapper asks before a changed draft is dropped; here the draft is unchanged, or the page browses.
-    | CancelPageDraft -> droppedPageDraft model
+    | CancelPageDraft -> model.droppedPageDraftWith updateWorkbench
     | ConfirmPageLeave
     | KeepPageDraft -> model
     | BeginRename target ->
@@ -3728,7 +3932,7 @@ let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : Tabl
                     | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
                 | RenameSetupTarget previous ->
                     match SetupName.tryCreate rename.nameText.value with
-                    | Ok name -> updateWorkbench (RenameSetup (previous, name)) model
+                    | Ok name -> updateWorkbench (RenameSetup { setupBefore = previous; setupAfter = name }) model
                     | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
                 | RenameExperimentTarget id ->
                     match ExperimentNameOfKit.tryCreate rename.nameText.value with
@@ -3736,14 +3940,14 @@ let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : Tabl
                     | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
                 | RenameStudyTarget previous ->
                     match StudyName.tryCreate rename.nameText.value with
-                    | Ok name -> updateWorkbench (RenameStudy (previous, name)) model
+                    | Ok name -> updateWorkbench (RenameStudy { studyBefore = previous; studyAfter = name }) model
                     | Error error -> model |> refusedWith (ControlCaption $"Not renamed — {error.describe}")
             match renamed.renameCurrentName rename.target with
             | None -> { renamed with renameOpt = None }
             | Some _ -> renamed
-    | RenameSetup (previous, renamed) -> model |> withSetupRenamed previous renamed
+    | RenameSetup rename -> model |> withSetupRenamed rename.setupBefore rename.setupAfter
     | RenameExperiment (id, renamed) -> model |> withExperimentRenamed id renamed
-    | RenameStudy (previous, renamed) -> model |> withStudyRenamed previous renamed
+    | RenameStudy rename -> model |> withStudyRenamed rename.studyBefore rename.studyAfter
     | SetItemDraftLabel text ->
         match model.itemEditOpt with
         | Some draft -> { model with itemEditOpt = Some { draft with labelText = text } }
@@ -3781,7 +3985,7 @@ let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : Tabl
                     setupName = (active.name.copyNameAmong (model.kitSetups |> List.map (fun setup -> setup.name))).caption
             }
         | _ -> model
-    | CopySetup (source, name) -> model |> withSetupCopied source name
+    | CopySetup copy -> model |> withSetupCopied copy.copiedSetup copy.copyName
     | ChooseExperiment id ->
         match model.pageMode with
         | BrowsingPage ->
@@ -3810,11 +4014,11 @@ let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : Tabl
         match model.experimentEditOpt with
         | Some edit -> { model with experimentEditOpt = Some { edit with repointOpt = reference } }
         | None -> model
-    | ConfirmSameSetup -> { model with sameSetupWarningOpt = None } |> committedNewExperiment
+    | ConfirmSameSetup -> ({ model with sameSetupWarningOpt = None }).committedNewExperimentWith updateWorkbench
     | CancelSameSetup -> { model with sameSetupWarningOpt = None }
     | ShowSameSetupExperiment ->
         match model.sameSetupWarningOpt with
-        | Some (first :: _) -> { droppedPageDraft model with chosenExperimentOpt = Some first }
+        | Some (first :: _) -> { model.droppedPageDraftWith updateWorkbench with chosenExperimentOpt = Some first }
         | Some []
         | None -> { model with sameSetupWarningOpt = None }
     | BeginExperimentGrid ->
@@ -3871,9 +4075,9 @@ let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : Tabl
                 if draft.mode = study.settings.mode then model
                 else updateWorkbench (StudyCommand (SetFitMode (study.name, draft.mode))) model
             let calibrated =
-                if refusedSince model moded || draft.calibrationUse = study.settings.calibrationUse then moded
+                if moded.writeOutcomeSince model = PageWriteRefused || draft.calibrationUse = study.settings.calibrationUse then moded
                 else updateWorkbench (StudyCommand (SetCalibrationUse (study.name, draft.calibrationUse))) moded
-            if refusedSince model calibrated then calibrated
+            if calibrated.writeOutcomeSince model = PageWriteRefused then calibrated
             else
                 let request : OpticalConstructor.Optimization.StudyEngine.StudyFitRequest =
                     {
@@ -5456,173 +5660,6 @@ let rec private updateWorkbench (msg : TableAndElementRotationMsg) (model : Tabl
         | ZoomTable -> { model with view = TableScene.zoomViewBy notches model.view }
         | NoWheelAction -> model
 
-/// Whether `after` was refused where `before` was not: a status turned to a refusal (spec 0051 `.manual/007` 1.2).
-and private refusedSince (before : TableAndElementRotationModel) (after : TableAndElementRotationModel) : bool =
-    match after.kitStatus with
-    | Some (KitStatusRefused _) -> after.kitStatus <> before.kitStatus
-    | Some (KitStatusDone _)
-    | None -> false
-
-/// The shown page with its draft dropped and Browsing again, the table back on the chosen setup and the editor on a
-/// fresh draft; it writes nothing (spec 0051 `.manual/007` 1.2).
-and private droppedPageDraft (model : TableAndElementRotationModel) : TableAndElementRotationModel =
-    let cleared =
-        {
-            model with
-                pageMode = BrowsingPage
-                leaveQuestionOpt = None
-                renameOpt = None
-                itemEditOpt = None
-                parameterEditOpt = None
-                addItemFormOpt = None
-                setupCreationOpt = None
-                sameSetupWarningOpt = None
-                dataEditOpt = None
-                studyEditOpt = None
-                setupGridOpt = None
-                dataSplitOpt = None
-                fitRunDraftOpt = None
-                namingTemplateText = model.kit.kitFile.namingTemplate.caption
-                studySurface = { model.studySurface with newStudyName = ControlCaption ""; newStudyExperiments = [] }
-        }
-    match model.pageMode, model.flowStep with
-    | (EditingPageEntry | CreatingPageEntry), (SetupsFlowStep | ExperimentsFlowStep) ->
-        let chosen =
-            match model.experimentEditOpt with
-            | Some edit -> edit.setupBeforeOpt
-            | None -> model.activeSetupOpt |> Option.map (fun setup -> setup.name)
-        let restored =
-            match chosen with
-            | Some name -> { updateWorkbench (ActivateSetup name) cleared with kitStatus = model.kitStatus }
-            | None -> { cleared with activeSetupOpt = None }
-        {
-            restored with
-                experimentCollection = restored.experimentCollection.newDraft
-                experimentEditOpt = None
-        }
-    | _ -> cleared
-
-/// The new experiment of the draft over the chosen setup, chosen once written (spec 0051 `.manual/007` 6.4).
-and private committedNewExperiment (model : TableAndElementRotationModel) : TableAndElementRotationModel =
-    let before = model.experimentCollection.experiments |> List.map (fun experiment -> experiment.id)
-    let committed = updateWorkbench RecordExperiment model
-    match committed.experimentCollection.experiments |> List.tryFind (fun experiment -> not (List.contains experiment.id before)) with
-    | Some created ->
-        {
-            droppedPageDraft { committed with pageMode = BrowsingPage } with
-                chosenExperimentOpt = Some created.id
-                kitStatus = Some (KitStatusDone (ControlCaption $"Created experiment '{created.name.value}'."))
-        }
-    | None -> committed
-
-/// Save or Create: the shown page's draft written once, then Browsing with the entry chosen; a refused write keeps the
-/// draft and says why (spec 0051 `.manual/007` 1.2).
-and private committedPageDraft (model : TableAndElementRotationModel) : TableAndElementRotationModel =
-    let browsingUnlessRefused (written : TableAndElementRotationModel) (onDone : TableAndElementRotationModel -> TableAndElementRotationModel) : TableAndElementRotationModel =
-        if refusedSince model written then written else onDone written
-    match model.pageMode, model.flowStep with
-    | EditingPageEntry, ItemsFlowStep ->
-        match model.itemEditOpt with
-        | None -> model
-        | Some draft ->
-            let written = model |> withItemDraftRecorded draft
-            browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; itemEditOpt = None; parameterEditOpt = None })
-    | EditingPageEntry, SetupsFlowStep ->
-        browsingUnlessRefused (updateWorkbench SaveSetup model) (fun saved -> { saved with pageMode = BrowsingPage })
-    | EditingPageEntry, ExperimentsFlowStep ->
-        match model.experimentEditOpt with
-        | None -> model
-        | Some edit ->
-            let committed = updateWorkbench ExpCommit model
-            let bookkept =
-                if refusedSince model committed then committed
-                else
-                    match committed.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = edit.experimentId) with
-                    | Some held ->
-                        let changed =
-                            (held.withRole edit.role).withSessionOpt (ExperimentSessionName.tryCreate edit.sessionText.value)
-                            |> fun experiment -> experiment.withNotes edit.notesText.toExperimentNotes
-                        if changed = held then committed else committed |> withExperimentRecorded changed (fun recorded -> recorded)
-                    | None -> committed
-            let repointed =
-                match edit.repointOpt with
-                | Some reference when not (refusedSince model bookkept) ->
-                    updateWorkbench (CorrectSetup (edit.experimentId, reference, model.dataDraft.correctionNote)) bookkept
-                | Some _
-                | None -> bookkept
-            browsingUnlessRefused repointed (fun saved ->
-                { droppedPageDraft saved with kitStatus = Some (KitStatusDone (ControlCaption "Saved the experiment.")) })
-    | EditingPageEntry, DataFlowStep ->
-        match model.dataEditOpt with
-        | None -> model
-        | Some edit ->
-            match model.experimentCollection.experiments |> List.tryFind (fun experiment -> experiment.id = edit.experimentId) with
-            | Some held ->
-                match held.dataOpt with
-                | Some data ->
-                    let changed = { held with dataOpt = Some { data with exclusions = edit.exclusions } }
-                    let written = model |> withExperimentDataRecorded changed (ControlCaption $"Saved the exclusions of {held.name.value}.")
-                    browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; dataEditOpt = None })
-                | None -> model
-            | None -> model
-    | EditingPageEntry, UnknownsFlowStep ->
-        match model.studyEditOpt with
-        | None -> model
-        | Some edit ->
-            let itemsWritten =
-                edit.items
-                |> List.filter (fun item -> not (List.contains item model.kitItems))
-                |> List.fold (fun held item -> held |> recordKitItemEdit item.id (fun _ -> Ok item) (fun recorded -> recorded)) model
-            let written =
-                if refusedSince model itemsWritten || edit.draft = edit.baseline then itemsWritten
-                else
-                    match (libraryOf itemsWritten).recordStudy edit.draft with
-                    | Ok () ->
-                        {
-                            itemsWritten with
-                                kitStudies =
-                                    edit.draft :: (itemsWritten.kitStudies |> List.filter (fun held -> held.name <> edit.draft.name))
-                                    |> List.sortWith (fun first second -> System.String.CompareOrdinal(first.name.value, second.name.value))
-                                kitStatus = Some (KitStatusDone (ControlCaption $"Saved study '{edit.draft.name.value}'."))
-                        }
-                    | Error error -> itemsWritten |> refusedWith (ControlCaption $"Not saved to the kit — {error.describe}")
-            browsingUnlessRefused written (fun saved -> { saved with pageMode = BrowsingPage; studyEditOpt = None; parameterEditOpt = None })
-    | EditingPageEntry, KitFlowStep ->
-        browsingUnlessRefused (updateWorkbench SaveNamingTemplate model) (fun saved -> { saved with pageMode = BrowsingPage })
-    | CreatingPageEntry, ItemsFlowStep ->
-        match model.addItemFormOpt |> Option.bind (fun form -> form.itemDraftOpt) with
-        | Some draft -> browsingUnlessRefused (updateWorkbench (AddItem draft) model) (fun added -> { added with pageMode = BrowsingPage })
-        | None -> model
-    | CreatingPageEntry, SetupsFlowStep ->
-        match model.setupCreationOpt with
-        | Some NewSetupCreation ->
-            browsingUnlessRefused (updateWorkbench CreateSetup model) (fun created -> { created with pageMode = BrowsingPage; setupCreationOpt = None; setupName = ControlCaption "" })
-        | Some (CopySetupCreation source) ->
-            match SetupName.tryCreate model.setupName.value with
-            | Ok name ->
-                browsingUnlessRefused (updateWorkbench (CopySetup (source, name)) model) (fun copied ->
-                    { copied with pageMode = BrowsingPage; setupCreationOpt = None; setupName = ControlCaption "" })
-            | Error error -> model |> refusedWith (ControlCaption $"Not copied — {error.describe}")
-        | None -> model
-    | CreatingPageEntry, ExperimentsFlowStep ->
-        match model.activeSetupOpt with
-        | Some active ->
-            match model.experimentsOverSetup active.name with
-            | [] -> committedNewExperiment model
-            | held -> { model with sameSetupWarningOpt = Some (held |> List.map (fun experiment -> experiment.id)) }
-        | None -> model
-    | CreatingPageEntry, DataFlowStep ->
-        browsingUnlessRefused (updateWorkbench MatchByTemplate model) (fun matched -> { matched with pageMode = BrowsingPage })
-    | CreatingPageEntry, UnknownsFlowStep ->
-        match StudyName.tryCreate model.studySurface.newStudyName.value with
-        | Ok name ->
-            browsingUnlessRefused (updateWorkbench (StudyCommand (CreateStudy (name, model.studySurface.newStudyExperiments))) model) (fun created ->
-                { created with pageMode = BrowsingPage })
-        | Error error -> model |> refusedWith (ControlCaption $"Not created — {error.describe}")
-    | BrowsingPage, _
-    | (EditingPageEntry | CreatingPageEntry), (PlanFlowStep | FitFlowStep | ResultsFlowStep)
-    | CreatingPageEntry, KitFlowStep -> model
-
 /// The workbench's update, keeping the page rules: leaving a page, the other constructor, a Cancel or Close kit with a
 /// changed draft asks "Discard your changes?" first, and a status is the page's it was raised on (spec 0051
 /// `.manual/007` 1.2, 1.7, D11).
@@ -5644,10 +5681,10 @@ let updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model : Ta
     let next =
         match leaveOpt, msg with
         | Some leave, _ when model.pageDraftState = DraftChanged -> { model with leaveQuestionOpt = Some leave }
-        | Some leave, _ -> resumed leave (droppedPageDraft model)
+        | Some leave, _ -> resumed leave (model.droppedPageDraftWith updateWorkbench)
         | None, ConfirmPageLeave ->
             match model.leaveQuestionOpt with
-            | Some leave -> resumed leave (droppedPageDraft model)
+            | Some leave -> resumed leave (model.droppedPageDraftWith updateWorkbench)
             | None -> model
         | None, KeepPageDraft -> { model with leaveQuestionOpt = None }
         | None, _ -> updateWorkbench msg model

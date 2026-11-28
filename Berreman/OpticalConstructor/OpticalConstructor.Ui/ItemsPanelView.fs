@@ -253,21 +253,23 @@ let private itemPhotoThumbnail (model : TableAndElementRotationModel) (item : It
     | Some _, None
     | None, _ -> []
 
-/// The chosen item's revisions, the current one first (spec 0050 S7.2).
-let private itemRevisionsView (item : Item) : IView =
-    let revisionLine (revision : ItemRevision) (caption : ControlCaption) : IView =
-        let id = ConstructorUiId.itemRevisionRow revision
-        PageControls.copyableText id caption [ SelectableTextBlock.margin (Thickness(0.0, 1.0, 0.0, 1.0)) ]
-    StackPanel.create [
-        yield! ConstructorUiId.itemRevisionList.groupAttributes<StackPanel> ()
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.margin (Thickness(0.0, 4.0, 0.0, 4.0))
-        StackPanel.children (
-            (ControlCaption "Revisions:").itemsPanelHeading
-            :: revisionLine item.revision (ControlCaption $"Revision {item.revision.value} (current)")
-            :: (item.history |> List.rev |> List.map (fun record -> revisionLine record.revision record.caption)))
-    ]
-    :> IView
+type Item with
+
+    /// The chosen item's revisions, the current one first (spec 0050 S7.2).
+    member private item.revisionsView : IView =
+        let revisionLine (revision : ItemRevision) (caption : ControlCaption) : IView =
+            let id = ConstructorUiId.itemRevisionRow revision
+            PageControls.copyableText id caption [ SelectableTextBlock.margin (Thickness(0.0, 1.0, 0.0, 1.0)) ]
+        StackPanel.create [
+            yield! ConstructorUiId.itemRevisionList.groupAttributes<StackPanel> ()
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.margin (Thickness(0.0, 4.0, 0.0, 4.0))
+            StackPanel.children (
+                (ControlCaption "Revisions:").itemsPanelHeading
+                :: revisionLine item.revision (ControlCaption $"Revision {item.revision.value} (current)")
+                :: (item.history |> List.rev |> List.map (fun record -> revisionLine record.revision record.caption)))
+        ]
+        :> IView
 
 /// A labelled line of copyable text under the chosen item (spec 0051 `.manual/007` 1.4).
 let private itemInfoLine (id : ConstructorUiId) (caption : ControlCaption) : IView =
@@ -296,7 +298,7 @@ let private itemDetailsRows (model : TableAndElementRotationModel) (item : Item)
         itemInfoLine ConstructorUiId.itemPhotoText photoText
     ]
     @ itemPhotoThumbnail model item
-    @ [ itemParameterGridView model item item.parameters dispatch; itemRevisionsView item ]
+    @ [ itemParameterGridView model item item.parameters dispatch; item.revisionsView ]
 
 /// The chosen item's edit in place: its label, notes and photo as drafted, its parameters with their editor under the
 /// pressed one, then Save and Cancel (spec 0051 `.manual/007` 4.2).

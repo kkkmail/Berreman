@@ -1446,7 +1446,7 @@ module SetupModelTests =
     let ``a status shows on the page it was raised on`` () : unit =
         withSetupKit (fun _ model ->
             let kit = stocked model |> updateTableAndElementRotation (ShowFlowStep ItemsFlowStep)
-            let refused = kit |> updateTableAndElementRotation (RenameSetup (SetupName "nowhere", SetupName "else"))
+            let refused = kit |> updateTableAndElementRotation (RenameSetup { setupBefore = SetupName "nowhere"; setupAfter = SetupName "else" })
             match refused.kitStatus with
             | Some (KitStatusRefused _) -> Assert.Equal<ConstructorFlowStep>(ItemsFlowStep, refused.kitStatusStep)
             | _ -> Assert.Fail "renaming a setup the kit lacks must be refused")
@@ -1472,14 +1472,14 @@ module SetupModelTests =
             let sampled = bench |> updateTableAndElementRotation (ExpChooseElement held.sample) |> updateTableAndElementRotation RecordExperiment
             let experiment = Assert.Single(sampled.experimentCollection.experiments)
             Assert.Equal<SetupName>(SetupName "Bench", experiment.setup.name)
-            let renamed = sampled |> updateTableAndElementRotation (RenameSetup (SetupName "Bench", SetupName "Main bench"))
+            let renamed = sampled |> updateTableAndElementRotation (RenameSetup { setupBefore = SetupName "Bench"; setupAfter = SetupName "Main bench" })
             Assert.False(File.Exists(Path.Combine(folder.value.value, "Bench.setup-json")))
             Assert.True(File.Exists(Path.Combine(folder.value.value, "Main bench.setup-json")))
             let repointed = Assert.Single(renamed.experimentCollection.experiments)
             Assert.Equal<SetupName>(SetupName "Main bench", repointed.setup.name)
             Assert.Equal<SetupName list>([ SetupName "Bench # 1"; SetupName "Main bench" ], renamed.kitSetups |> List.map (fun setup -> setup.name))
             // A name another setup's file holds is refused.
-            let clash = renamed |> updateTableAndElementRotation (RenameSetup (SetupName "Main bench", SetupName "bench # 1"))
+            let clash = renamed |> updateTableAndElementRotation (RenameSetup { setupBefore = SetupName "Main bench"; setupAfter = SetupName "bench # 1" })
             match clash.kitStatus with
             | Some (KitStatusRefused told) -> Assert.StartsWith("Not renamed", told.value)
             | _ -> Assert.Fail "a clashing rename must be refused")

@@ -24,7 +24,21 @@ implementation log is `008`. Nothing is committed: the operator commits.
 
 ## Results
 
-RESULTS_TABLE
+Every figure is of the working tree as the operator will find it: after this survey's fixes and the ELEV gate's.
+
+| Suite | Result |
+|---|---|
+| `dotnet build Berreman.slnx -c Release` | succeeded: 0 errors, and no warning but the exempt NU1701 / NU1902 advisories |
+| ELEV gate (`-ExcludeRules ELEV004`) | OK: 0 findings in 13 projects, on its third run (`008`, "The ELEV gate") |
+| `OpticalConstructor.Tests` | 1911 of 1911 passed |
+| `OpticalConstructor.Ui.Tests`, whole suite | 1028 of 1029 passed, 0 failed. 1 skipped: AT-2's five-seed ensemble, an `Explicit` fact run on demand only (spec 0050 S12.2) |
+| `OpticalConstructor.Ui.Tests`, `ui-smoke` | 273 of 273 passed |
+| AT-1 to AT-4: the built kits equal the committed ones, file by file; AT-3 and AT-4 also open read-only | 8 of 8 passed |
+| `BerremanTests.MuellerReconstructionTests`, the one solver class over the changed `CommittedKits` | 25 of 25 passed |
+| `OpticalConstructor.Desktop.Tests`, real desktop | DESKTOP_RESULT |
+
+`BerremanTests` as a whole (about 52 minutes) was not run: no solver project changed, and `BerremanTestSupport` only
+gained the two new kits' cases.
 
 ## `006`'s comments, met
 

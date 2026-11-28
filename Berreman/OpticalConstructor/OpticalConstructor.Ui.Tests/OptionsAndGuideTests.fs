@@ -28,11 +28,11 @@ module OptionsAndGuideTests =
     let ``a tooltip delay is a whole number of milliseconds from 0 to 5000, one second by default`` () : unit =
         Assert.Equal(1000, ToolTipDelay.defaultValue.value)
         for text, expected in [ "0", Some 0; "5000", Some 5000; "1000", Some 1000; " 250 ", Some 250 ] do
-            Assert.Equal(expected, ToolTipDelay.tryParse text |> Option.map (fun delay -> delay.value))
+            Assert.Equal(expected, (ControlCaption text).toolTipDelayOpt |> Option.map (fun delay -> delay.value))
         for text in [ "-1"; "5001"; "abc"; "1.5"; ""; "1e3" ] do
-            Assert.Equal(None, ToolTipDelay.tryParse text |> Option.map (fun delay -> delay.value))
+            Assert.Equal(None, (ControlCaption text).toolTipDelayOpt |> Option.map (fun delay -> delay.value))
         let readsBack (milliseconds : int) : bool =
-            match ToolTipDelay.tryParse (string milliseconds) with
+            match (ControlCaption (string milliseconds)).toolTipDelayOpt with
             | Some delay -> milliseconds >= 0 && milliseconds <= 5000 && delay.value = milliseconds
             | None -> milliseconds < 0 || milliseconds > 5000
         Check.One(Config.QuickThrowOnFailure.WithMaxTest(200), Prop.forAll (Arb.fromGen (Gen.choose (-10000, 10000))) readsBack)

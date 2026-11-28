@@ -17,24 +17,6 @@ open OpticalConstructor.Domain.Kit
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitPageFrame
 
-/// A semi-bold line heading a form or a block of the page.
-let private pageHeading (text : ControlCaption) : IView =
-    TextBlock.create [
-        TextBlock.fontWeight FontWeight.SemiBold
-        TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
-        TextBlock.text text.value
-    ]
-    :> IView
-
-/// A wrapping line of the page.
-let private pageLine (text : ControlCaption) : IView =
-    TextBlock.create [
-        TextBlock.textWrapping TextWrapping.Wrap
-        TextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0))
-        TextBlock.text text.value
-    ]
-    :> IView
-
 /// The new setup's or the copy's name, as typed (spec 0050 S8.2; 0051 `.manual/007` 5.4, 5.6).
 let private setupNameField (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     DockPanel.create [
@@ -87,7 +69,7 @@ let private chosenSetupRows (model : TableAndElementRotationModel) (setup : Setu
     | EditingPageEntry ->
         setupLineRows model setup dispatch
         @ [
-            pageLine (ControlCaption "Put the kit's items in the slots with the chips; the tabs add, turn, move and draw the table's elements.")
+            (ControlCaption "Put the kit's items in the slots with the chips; the tabs add, turn, move and draw the table's elements.").pageLine
             setupTableView model dispatch EditableTable
             model.draftActions (ControlCaption "Save") dispatch
         ]
@@ -101,9 +83,9 @@ let setupsPageView (model : TableAndElementRotationModel) (dispatch : TableAndEl
         match model.pageMode, model.setupCreationOpt with
         | CreatingPageEntry, Some NewSetupCreation ->
             [
-                pageHeading (ControlCaption "New setup")
+                (ControlCaption "New setup").pageHeading
                 setupNameField model dispatch
-                pageLine (ControlCaption "It starts from a light source and a detector. Add elements with the Add tab, and put the kit's items in the slots with the chips.")
+                (ControlCaption "It starts from a light source and a detector. Add elements with the Add tab, and put the kit's items in the slots with the chips.").pageLine
                 setupTableView model dispatch EditableTable
                 model.draftActions (ControlCaption "Create") dispatch
             ]
@@ -112,7 +94,7 @@ let setupsPageView (model : TableAndElementRotationModel) (dispatch : TableAndEl
                 match model.kitSetups |> List.tryFind (fun setup -> setup.name = source) with
                 | Some setup -> [ PageControls.copyableText ConstructorUiId.setupLineText (setup.slotLine model.kitItems) [] ]
                 | None -> []
-            [ pageHeading (ControlCaption $"Copy of {source.value}") ]
+            [ (ControlCaption $"Copy of {source.value}").pageHeading ]
             @ line
             @ [ setupNameField model dispatch; model.draftActions (ControlCaption "Create") dispatch ]
         | _ ->
@@ -158,7 +140,7 @@ let setupsPageView (model : TableAndElementRotationModel) (dispatch : TableAndEl
                 | None -> []
             let setups : IView list =
                 match model.kitSetups with
-                | [] -> [ pageLine (ControlCaption "This kit has no setup yet: New setup makes one from a light source and a detector.") ]
+                | [] -> [ (ControlCaption "This kit has no setup yet: New setup makes one from a light source and a detector.").pageLine ]
                 | held ->
                     [
                         StackPanel.create [

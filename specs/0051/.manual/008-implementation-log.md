@@ -62,7 +62,7 @@ kit do not.
   1916 of 1916. Ui classes `DataFilePickerFolderTests`, `KitStartWindowTests`, `KitWindowTests`, `LauncherTests`,
   `AppContextTests`, `WireUiFinalCompositionTests`, `ScrollExtentTests`: 131 of 131.
 
-## Phase 1 — the page rules (in progress)
+## Phase 1 — the page rules
 
 - **The page state.** `PageMode` (`BrowsingPage | EditingPageEntry | CreatingPageEntry`), `PageLeave`, `DraftState`, and
   one draft per page (`ItemEditDraft`, `SetupCreation`, `ExperimentEditDraft`, `DataEditDraft`, `StudyEditDraft`,
@@ -130,7 +130,7 @@ kit do not.
   `Setup.swapTarget` / `SetupSwap`, Record experiment's button and Setup grid… are gone from it. Selecting a setup no
   longer sets a "Loaded setup" status: the chosen button shows it.
 
-## Phase 6 — Experiments (in progress)
+## Phase 6 — Experiments
 
 - **The page** (`ExperimentsPageView`): the header names the chosen setup; with none, New experiment is not shown and
   the page says to choose a setup in Setups first. The experiments are dynamic buttons (`ChooseExperiment`); under the
@@ -218,7 +218,7 @@ kit do not.
   value of the angle the chart does not vary, so points of different configurations are never joined; they share the
   model's axis.
 
-## Phase 9 — the two new samples (in progress)
+## Phase 9 — the two new samples
 
 - `SampleIds.multilayerGlassPairsId` and `SampleIds.langasitePlateSiliconId`; the built-in catalogue gains
   "Quarter-wave glass n = 1.75 / 1.50 multilayer (100 pairs) on glass" (100 × [glass n = 1.75, 600/1.75/4 nm; glass
@@ -231,6 +231,8 @@ kit do not.
   samples).
 
 ## Tests so far
+
+(The final figures are under "Results" at the end, and in `009`.)
 
 - `OpticalConstructor.Tests`, whole: **1916 of 1916** after the page rules, the renames, the catalogue samples and the
   retired swap. Retired with their behaviour: the five `SwapSlot` facts and `Setup.swapTarget`'s fact; rewritten: the
@@ -315,7 +317,51 @@ the next headless click. `TestApp.quietToolTips` turns the tooltip service off i
 - **The dead id `dataReviewButton`** went: no control carried it once the matrix became the list. Its id fact now
   checks `experimentMatrixEntry`.
 - **`DesktopPagesSurvey.fs`**: one fact per comment of `006`, each named by its comment and driven by id on the real
-  app. The report is `009`.
+  app. The report is `009`, which also lists what the survey found and fixed: Edit and Copy… moved onto the setup's
+  line, the guide's steps exposed to UI Automation, the Options, Guide and library chooser windows put under
+  `ScrollExtentTests`, and the chooser's offers made to wrap.
+- **The Library window's backup fact and the headless mouse.** In a full `OpticalConstructor.Ui.Tests` run, and in a
+  five-class batch that reproduced it every time, every other headless mouse press in that window reached no pointer
+  handler of the pressed button. The hit test landed on the button, Restore's Invoke pattern opened its panel, and the
+  next press arrived with a click count of 2. Alone, the class passed 72 of 72. Three driver changes were tried and
+  reverted, since none changed the outcome: re-reading the press's centre after every render tick, a release before
+  each press, and a second press. The fact now drives its buttons through their automation patterns, which
+  `AGENTS.md` ranks above a click at the centre; the batch then passes 145 of 145. The root cause in the headless
+  input is not established.
+
+## The ELEV gate
+
+The operator asked for the gate once, at the end. It took three runs, because the first found what the change had
+added and each fix had to be proven.
+
+- **First run: 23 findings**, all in code this change added. ELEV016, ELEV017 and the wire guard found nothing.
+  - **ELEV013 / ELEV013P (15), one-parameter helpers.** The page heading had been written five times
+    (`pageHeading` in the Experiments and Setups pages, `fitHeading`, `studyHeading`, `kitHeading`) and the page line
+    twice (`pageLine`).
+    They became `ControlCaption.pageHeading` and `pageLine` in `KitPageFrame`, one look for every page; the Kit
+    page's headings lose 4 px of top margin.
+  - The rest of the 15 became members on their types. On `Experiment`: `correctionTrailRows`. On `Item`:
+    `revisionsView`. On the model: `prefitRows`, `studyContextRows` and `kitLibraryContext`, the last formerly
+    `libraryOf`.
+  - The page rules' helpers in the update's recursive group became members of the model, defined before the group:
+    `droppedPageDraftWith`, `committedNewExperimentWith` and `committedPageDraftWith`. Each is handed the update,
+    since each sends messages through it. They are `internal`, as a private member of a type extension in the type's
+    own file is private to the type.
+  - **ELEV011 (3).** `RenameSetup`, `RenameStudy` and `CopySetup` carried a tuple of twin names. They carry the
+    records `SetupRename`, `StudyRename` and `SetupCopy` now.
+  - **ELEV001 (2).** The item notes' re-wraps became `ItemNotes.caption`, beside `ExperimentNotes.caption`, and the
+    private `ControlCaption.toItemNotes`, beside `toExperimentNotes`.
+  - **ELEV010 (1).** `ToolTipDelay.tryParse : string → …` became `ControlCaption.toolTipDelayOpt`, on the source type.
+  - **ELEV003P / ELEV010P (2).** The free `refusedSince` answered a bare `bool`. It became a member, which still
+    answered one: see the second run.
+- **Second run: 1 finding**: the `refusedSince` member still answered a bare `bool` beside the model (ELEV010). It is
+  `writeOutcomeSince`, answering `PageWriteRefused | PageWriteAccepted`.
+- **Third run: OK**, 0 new findings in 13 projects (`-ExcludeRules ELEV004`, 249 s). The known-findings list,
+  `.elevation-analyzers.json` and the analyzers were not touched.
+- **Not ours to change here:** a fresh compile of the vendored MathNet reports two `SYSLIB0051` warnings
+  (`MathNetNumerics/Numerics/Exceptions.cs`, lines 24 and 77: the obsolete serialization constructors). They predate this
+  change, which does not touch MathNet. They show only when MathNet recompiles, so both full builds of this change
+  listed none. Clearing them means editing the vendored library: a question for the operator.
 
 ## Phase 9, continued — AT-3 and AT-4
 
@@ -340,3 +386,32 @@ the next headless click. `TestApp.quietToolTips` turns the tooltip service off i
   script's own systems over the catalogue's materials within 1e-6 (`ScriptCurves.overCatalogueMaterials`), and those
   curves lie within `langasiteGyrationGap` = 5e-4 of the script's (measured: film R 3.00e-4, T 3.03e-4; plate R 8.7e-6,
   T 9.0e-7). AT-3's materials are the script's, so it is compared with the script directly.
+
+## Deviations from `007`, in one place
+
+Each is recorded where it was made, with its reason:
+
+- **4.3, the library chooser** (Phase 4): a window of its own over the add form's offers, not the Library window's
+  Select mode, which lists no item models.
+- **1.5, the help texts** (Phase 1, continued): one catalogue (`CommandHelpTexts.fs`), held by `AutomationContractTests`,
+  not a required builder argument.
+- **D3, `.optics-kit`'s fields**: the file is renamed and nothing inside it, so `modified` keeps its name and meaning. It
+  is stamped when the kit file itself is saved, not by every kit write as `007` 3.2 proposed with the rename to
+  `lastSaved`.
+- **9.1, AT-4's comparison** (Phase 9, continued): exact over the catalogue's materials, and within
+  `langasiteGyrationGap` of the script, since the built-in langasite keeps a constant ρ.
+- **The backup fact's presses** (Phase 10): through the buttons' automation patterns, the headless mouse's lost presses
+  not root-caused.
+
+## Results
+
+Of the working tree after the ELEV gate's fixes; `009` has the same table with the desktop survey:
+
+- `dotnet build Berreman.slnx -c Release`: succeeded, 0 errors, no warning but the exempt NU1701 / NU1902 advisories.
+- ELEV gate (`-ExcludeRules ELEV004`): OK, 0 findings in 13 projects.
+- `OpticalConstructor.Tests`: 1911 of 1911.
+- `OpticalConstructor.Ui.Tests`, whole: 1028 of 1029, 1 skipped (AT-2's `Explicit` five-seed ensemble).
+- `ui-smoke`: 273 of 273.
+- `BerremanTests.MuellerReconstructionTests`: 25 of 25; the whole solver suite was not run, as no solver project changed.
+- `OpticalConstructor.Desktop.Tests`, real desktop: DESKTOP_RESULT.
+- Every changed file is LF. Nothing is committed by the agent: the operator commits.

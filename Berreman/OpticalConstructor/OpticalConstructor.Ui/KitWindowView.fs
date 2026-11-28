@@ -248,15 +248,6 @@ let private pageRowView (model : TableAndElementRotationModel) (dispatch : Table
 let private kitLine (id : ConstructorUiId) (text : ControlCaption) : IView =
     PageControls.copyableText id text [ SelectableTextBlock.margin (Thickness(0.0, 1.0, 0.0, 1.0)) ]
 
-/// A semi-bold heading of a Kit page block.
-let private kitHeading (text : ControlCaption) : IView =
-    TextBlock.create [
-        TextBlock.fontWeight FontWeight.SemiBold
-        TextBlock.margin (Thickness(0.0, 10.0, 0.0, 2.0))
-        TextBlock.text text.value
-    ]
-    :> IView
-
 /// The kit's verbs: Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes and Close kit
 /// (spec 0050 S5.3, S6; 0051 `.manual/007` 2.2).
 let private kitVerbsRow (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
@@ -381,9 +372,9 @@ let private kitPageView (model : TableAndElementRotationModel) (dispatch : Table
         ]
         @ kitSendRows model dispatch
         @ kitCopyRows model dispatch
-        @ [ kitHeading (ControlCaption "Naming template") ]
+        @ [ (ControlCaption "Naming template").pageHeading ]
         @ namingTemplateRows model dispatch
-        @ [ kitHeading (ControlCaption "Publish") ]
+        @ [ (ControlCaption "Publish").pageHeading ]
         @ publishRows model dispatch
     pageScroll ConstructorUiId.kitPagePanel content
 

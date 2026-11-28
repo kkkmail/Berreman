@@ -161,6 +161,27 @@ type TableAndElementRotationModel with
             ]
         | _ -> None
 
+
+type ControlCaption with
+
+    /// A semi-bold line heading a block of a kit page.
+    member this.pageHeading : IView =
+        TextBlock.create [
+            TextBlock.fontWeight FontWeight.SemiBold
+            TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0))
+            TextBlock.text this.value
+        ]
+        :> IView
+
+    /// A wrapping line of a kit page.
+    member this.pageLine : IView =
+        TextBlock.create [
+            TextBlock.textWrapping TextWrapping.Wrap
+            TextBlock.margin (Thickness(0.0, 2.0, 0.0, 4.0))
+            TextBlock.text this.value
+        ]
+        :> IView
+
 /// The page's content in a scroller at the window's width, never narrower than 520 px (spec 0051 `.manual/003` 4.3),
 /// grouped under `id`.
 let pageScroll (id : ConstructorUiId) (content : IView list) : IView =

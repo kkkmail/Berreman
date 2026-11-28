@@ -2064,7 +2064,9 @@ module LibraryWindowTests =
             try
                 Assert.True(isPresent window ConstructorUiId.libraryBackUpNowButton.value)
                 Assert.True(isPresent window ConstructorUiId.libraryRestoreButton.value)
-                clickOn window ConstructorUiId.libraryBackUpNowButton.value
+                // The buttons are driven through their automation patterns: in a full run, every other headless mouse press
+                // in this window reached no handler of the pressed button (spec 0051 `.manual/008`).
+                UiDriver.invoke window ConstructorUiId.libraryBackUpNowButton.value
                 let backups = ctx.libraryBackups.listBackups () |> Result.defaultWith (fun error -> failwith error.describe)
                 let backup = Assert.Single backups
                 Assert.Equal($"Library backed up to {backup.value}.", textOf window ConstructorUiId.libraryBackupStatusText.value)
@@ -2076,29 +2078,16 @@ module LibraryWindowTests =
                     }
                 Assert.Equal<Result<unit, SampleError>>(Ok (), ctx.samples.saveSample sample)
                 Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), ctx.samples.tryGetSample sample.id)
-                clickOn window ConstructorUiId.libraryRestoreButton.value
-                if not (isPresent window ConstructorUiId.libraryRestorePanel.value) then
-                    let restore = findControl window ConstructorUiId.libraryRestoreButton.value
-                    let centre = restore.TranslatePoint(Point(restore.Bounds.Width / 2.0, restore.Bounds.Height / 2.0), window)
-                    let hit =
-                        match centre |> Option.ofNullable |> Option.map window.InputHitTest with
-                        | Some (:? Control as control) -> $"{control.GetType().Name} '{UiDriver.idOf control}'"
-                        | Some other -> string other
-                        | None -> "nothing"
-                    let errors =
-                        window.GetVisualDescendants()
-                        |> Seq.choose (function :? TextBlock as text -> Option.ofObj text.Text | _ -> None)
-                        |> Seq.filter (fun text -> text.Contains "not" || text.Contains "refused")
-                        |> String.concat " | "
-                    Assert.Fail $"Restore library… showed no panel: its centre {centre} hits {hit}; enabled {restore.IsEffectivelyEnabled}; window {window.Bounds}; texts {errors}"
+                UiDriver.invoke window ConstructorUiId.libraryRestoreButton.value
+                Assert.True(isPresent window ConstructorUiId.libraryRestorePanel.value)
                 Assert.Contains("The current library is backed up first.", textOf window ConstructorUiId.libraryRestorePanel.value)
                 Assert.False(isPresent window ConstructorUiId.libraryBackupStatusText.value)
-                clickOn window ConstructorUiId.libraryRestoreConfirmButton.value
+                UiDriver.invoke window ConstructorUiId.libraryRestoreConfirmButton.value
                 Assert.Equal<Result<Sample option, SampleError>>(Ok (Some sample), ctx.samples.tryGetSample sample.id)
                 Assert.Equal<Result<LibraryBackupName list, LibraryBackupError>>(Ok [ backup ], ctx.libraryBackups.listBackups ())
                 let rowId = ConstructorUiId.libraryBackupRow backup.uiKey
                 let idle = backgroundColorOf (labelBorderOf window rowId.value)
-                clickOn window rowId.value
+                UiDriver.invoke window rowId.value
                 let picked = backgroundColorOf (labelBorderOf window rowId.value)
                 Assert.NotEqual(idle, picked)
                 let restoreButton = labelBorderOf window ConstructorUiId.libraryRestoreConfirmButton.value
@@ -2107,7 +2096,7 @@ module LibraryWindowTests =
                 Assert.NotEqual(backgroundColorOf restoreButton, backgroundColorOf cancelButton)
                 Assert.Same(restoreButton.Parent, cancelButton.Parent)
                 Assert.True(restoreButton.Bounds.Right < cancelButton.Bounds.Left, "Restore and Cancel must have a visible gap")
-                clickOn window ConstructorUiId.libraryRestoreConfirmButton.value
+                UiDriver.invoke window ConstructorUiId.libraryRestoreConfirmButton.value
                 Assert.Equal<Result<Sample option, SampleError>>(Ok None, ctx.samples.tryGetSample sample.id)
                 Assert.Equal<Result<LibraryEntry option, LibraryError>>(Ok None, ctx.library.tryGetEntry sample.id.toElementValueId)
                 Assert.False(isPresent window ConstructorUiId.libraryRestorePanel.value)

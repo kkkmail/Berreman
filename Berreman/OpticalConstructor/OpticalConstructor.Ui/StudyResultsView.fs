@@ -18,6 +18,7 @@ open OpticalConstructor.Optimization.StudyEngine
 open OpticalConstructor.Ui.ConstructorUiIdOfDomain
 open OpticalConstructor.Ui.TableAndElementRotationView
 open OpticalConstructor.Ui.KitPageFrame
+open OpticalConstructor.Ui.StudyUnknownsView
 
 /// Projects the selected study's chosen or latest stored fit run without running a fit (spec 0050 S11.5).
 let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
@@ -165,7 +166,7 @@ let studyResultsView (model : TableAndElementRotationModel) (dispatch : TableAnd
                         AttrBuilder<StackPanel>.CreateProperty<string>(AutomationProperties.NameProperty, "Study results", ValueNone)
                         StackPanel.orientation Orientation.Vertical
                         StackPanel.margin 8.0
-                        StackPanel.children (model.pageHeader dispatch @ StudyUnknownsView.studyContextRows model @ selected)
+                        StackPanel.children (model.pageHeader dispatch @ model.studyContextRows @ selected)
                     ])
             ])
     ] :> IView
